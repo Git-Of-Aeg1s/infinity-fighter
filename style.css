@@ -1,0 +1,396 @@
+:root {
+  --bg-deep: #05070f;
+  --bg-panel: rgba(12, 18, 34, 0.72);
+  --accent: #4dd0ff;
+  --accent-warm: #ffb545;
+  --danger: #ff4d6d;
+  --ok: #66e39a;
+  --text: #e6f1ff;
+  --muted: #8fa2c0;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 800px at 20% 10%, #142246 0%, transparent 60%),
+    radial-gradient(900px 700px at 80% 90%, #2a1145 0%, transparent 55%),
+    var(--bg-deep);
+  color: var(--text);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+  gap: 16px;
+}
+
+.title-bar {
+  text-align: center;
+}
+
+.title-bar h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: 6px;
+  background: linear-gradient(90deg, #7ce7ff 0%, #ffffff 45%, #ffb545 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 24px rgba(77, 208, 255, 0.25);
+}
+
+.subtitle {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+
+.stage {
+  position: relative;
+  width: 480px;
+  height: 720px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(120, 180, 255, 0.18),
+    0 20px 60px rgba(0, 0, 0, 0.55),
+    inset 0 0 60px rgba(30, 90, 160, 0.15);
+  background: #050914;
+}
+
+canvas#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* ---------- HUD ---------- */
+.hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.hud-left { min-width: 220px; }
+
+/* 左上角计分表 */
+.score-panel {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(120, 180, 255, 0.22);
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.score-label {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.score-panel b {
+  color: var(--accent);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(77, 208, 255, 0.5);
+}
+
+.hp-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lives-text {
+  color: var(--danger);
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 6px rgba(255, 77, 109, 0.6);
+}
+
+.weapon-text {
+  color: var(--accent-warm);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 181, 69, 0.35);
+  border-radius: 4px;
+}
+
+.weapon-text.berserk {
+  color: #fff;
+  background: linear-gradient(90deg, var(--danger), var(--accent-warm));
+  border-color: transparent;
+  animation: berserk-pulse 0.4s ease-in-out infinite alternate;
+}
+
+.weapon-text.shield {
+  color: #06121f;
+  background: linear-gradient(90deg, #6fe3ff, #b7f3ff);
+  border-color: transparent;
+  animation: shield-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes shield-pulse {
+  from { box-shadow: 0 0 4px rgba(111, 227, 255, 0.6); }
+  to   { box-shadow: 0 0 14px rgba(111, 227, 255, 1); }
+}
+
+@keyframes berserk-pulse {
+  from { box-shadow: 0 0 4px rgba(255, 77, 109, 0.6); }
+  to   { box-shadow: 0 0 12px rgba(255, 181, 69, 0.9); }
+}
+
+.hp-label {
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.hp-bar {
+  width: 180px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--ok), #b7ff8a);
+  transition: width 0.18s ease, background 0.3s ease;
+}
+
+.hp-fill.warn { background: linear-gradient(90deg, var(--accent-warm), #ffd98a); }
+.hp-fill.danger { background: linear-gradient(90deg, var(--danger), #ff9aa8); }
+
+.hp-text {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-right .stat span {
+  color: var(--muted);
+  margin-right: 6px;
+  letter-spacing: 1px;
+}
+
+.hud-right .stat b {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+/* ---------- Overlay ---------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 6, 15, 0.72);
+  backdrop-filter: blur(4px);
+  transition: opacity 0.25s ease;
+  z-index: 5;
+}
+
+.overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.overlay-card {
+  padding: 24px 28px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  border-radius: 10px;
+  text-align: center;
+  min-width: 280px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.overlay-card h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+
+.overlay-card p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+/* ---------- 选机页面 ---------- */
+.plane-select {
+  margin: 0 0 18px;
+  text-align: center;
+}
+
+.plane-select.hidden { display: none; }
+
+.plane-select-title {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 4px;
+  margin-bottom: 10px;
+}
+
+.plane-grid {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.plane-card {
+  width: 150px;
+  padding: 14px 12px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.plane-card:hover {
+  border-color: rgba(120, 200, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+.plane-card.selected {
+  border-color: var(--accent);
+  background: rgba(77, 208, 255, 0.08);
+  box-shadow: 0 0 18px rgba(77, 208, 255, 0.35), inset 0 0 12px rgba(77, 208, 255, 0.1);
+}
+
+.plane-card canvas {
+  display: block;
+  margin: 0 auto 8px;
+}
+
+.plane-card-name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+
+.plane-card.selected .plane-card-name { color: var(--accent); }
+
+.plane-card-desc {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.plane-card-soon {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 2px;
+  padding: 30px 0;
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom-width: 2px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+#startBtn {
+  padding: 8px 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 200, 255, 0.5);
+  background: linear-gradient(180deg, rgba(77, 208, 255, 0.22), rgba(77, 208, 255, 0.06));
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+#startBtn:hover {
+  box-shadow: 0 0 20px rgba(77, 208, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+#startBtn:active { transform: translateY(0); }
+
+.tips {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* ---------- BOSS 测试模式 ---------- */
+.boss-test-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.boss-test-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 77, 109, 0.5);
+  background: linear-gradient(180deg, rgba(255, 77, 109, 0.20), rgba(255, 77, 109, 0.05));
+  color: #ffb9c6;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.boss-test-btn:hover {
+  box-shadow: 0 0 16px rgba(255, 77, 109, 0.45);
+  transform: translateY(-1px);
+}
+
+.boss-test-btn:active { transform: translateY(0); }

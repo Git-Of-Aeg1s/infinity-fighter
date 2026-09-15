@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>大无垠战机 · Great Boundless Fighter</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="title-bar">
+      <h1>大无垠战机</h1>
+      <span class="subtitle">Great Boundless Fighter · 雷霆战机风格 Demo</span>
+    </header>
+
+    <div class="stage">
+      <canvas id="game" width="480" height="720"></canvas>
+
+      <!-- HUD -->
+      <div class="hud">
+        <div class="hud-left">
+          <div class="score-panel">
+            <span class="score-label">SCORE</span>
+            <b id="scoreText">0</b>
+          </div>
+          <div class="hp-label">HP</div>
+          <div class="hp-bar">
+            <div class="hp-fill" id="hpFill"></div>
+          </div>
+          <div class="hp-row">
+            <span class="hp-text" id="hpText">100 / 100</span>
+            <span class="lives-text" id="livesText">♥♥</span>
+            <span class="weapon-text" id="weaponText">火力 Lv1</span>
+          </div>
+        </div>
+        <div class="hud-right">
+          <div class="stat"><span>关卡</span><b id="levelText">1</b></div>
+          <div class="stat"><span>高能爆弹</span><b id="bombText">1</b></div>
+        </div>
+      </div>
+
+      <!-- 开始 / 结束遮罩 -->
+      <div class="overlay" id="overlay">
+        <div class="overlay-card">
+          <h2 id="overlayTitle">准备起飞</h2>
+          <p id="overlayDesc">
+            使用 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 操纵战机<br />
+            主炮自动开火，<kbd>Space</kbd> 释放高能爆弹（重创全场敌人 + 清空敌弹）<br />
+            拾取水晶加分，升级套件提升火力（满级 Lv5 即暴走）<br />
+            <kbd>P</kbd> 暂停 · <kbd>R</kbd> 重新开始
+          </p>
+          <div class="plane-select" id="planeSelect">
+            <div class="plane-select-title">选择战机</div>
+            <div class="plane-grid" id="planeGrid"></div>
+          </div>
+          <button id="startBtn">开始游戏</button>
+          <div class="boss-test-row" id="bossTestRow"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="tips">
+      <span>提示：击落敌机得分，被击中会掉血，血量归零即游戏结束。</span>
+    </footer>
+  </div>
+
+  <script src="./game.js"></script>
+</body>
+</html>
