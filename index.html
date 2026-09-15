@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>大无垠战机 · Great Boundless Fighter</title>
+  <title>大无垠战机 · Big Infinity Fighter</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div class="app">
     <header class="title-bar">
       <h1>大无垠战机</h1>
-      <span class="subtitle">Great Boundless Fighter · 雷霆战机风格 Demo</span>
+      <span class="subtitle">Big Infinity Fighter</span>
     </header>
 
     <div class="stage">
@@ -31,6 +31,10 @@
             <span class="hp-text" id="hpText">100 / 100</span>
             <span class="lives-text" id="livesText">♥♥</span>
             <span class="weapon-text" id="weaponText">火力 Lv1</span>
+          </div>
+          <div class="buff-row">
+            <span class="buff-indicator berserk-ind" id="berserkText"></span>
+            <span class="buff-indicator shield-ind" id="shieldText"></span>
           </div>
         </div>
         <div class="hud-right">
@@ -54,7 +58,25 @@
             <div class="plane-grid" id="planeGrid"></div>
           </div>
           <button id="startBtn">开始游戏</button>
+          <button id="pauseRetryBtn" class="hidden">重新挑战</button>
+          <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <div class="boss-test-row" id="bossTestRow"></div>
+        </div>
+      </div>
+      <!-- 怪物图鉴 -->
+      <div class="encyclopedia hidden" id="encyclopedia">
+        <div class="ency-header">
+          <h2>怪物图鉴</h2>
+          <button class="ency-close" id="encyClose">✕</button>
+        </div>
+        <div class="ency-body">
+          <div class="ency-tabs" id="encyTabs"></div>
+          <div class="ency-content">
+            <div class="ency-list" id="encyList"></div>
+            <div class="ency-detail" id="encyDetail">
+              <p class="ency-placeholder">← 选择一个敌人查看详情</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
