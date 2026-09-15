@@ -53,7 +53,7 @@
   const BOSS = {
     name: '旧日之歌',
     w: 288, h: 130,            // 宽度约 60% 屏宽
-    hp: 36888,                 // 19000 × 1.6：首个 BOSS 血量上调 60%
+    hp: 32200,                 // 首个 BOSS 血量
     score: 5000,
     hoverY: 120,
     moveAmp: 78, moveSpeed: 0.55,   // 小幅左右巡航
@@ -65,9 +65,29 @@
   const BOSS_BULLET = { long: '#ff7a45', big: '#c9a0ff', arc: '#a5ffd6' };
   // long：普通长条弹（橙红，带描边）；big：技能2 大子弹；arc：技能5 双曲线弹流（特殊攻击保留幽绿色）
 
+  // ---------- BOSS2：暴风之眼（第二波；第一阶段为白色龙卷风暴） ----------
+  const STORM = {
+    name: '暴风之眼',
+    w: 384, h: 384,            // 占屏宽 80%（CANVAS_W=480）
+    hp: 42000,                 // 一阶段血量
+    score: 8000,
+    hoverY: 205,               // 风暴中心悬停高度
+    skillCd: 2.4,              // 技能间基础冷却（连中同技能 ×0.2）
+    windDmg: 30,               // 技能1 风流伤害
+    flowR: 26,                 // 风流半宽（较宽）
+    tornadoDmg: 16,            // 风弹伤害（技能2/4/5）
+    tornadoCrash: 32,          // 大型龙卷碰撞伤害
+    pillarDmg: 18,             // 技能3 风柱伤害
+    pillarW: 48,               // 风柱宽度 ≈ 10% 屏宽
+    warnTime: 1.5,             // 区域标记倒计时
+    tornadoDescend: 55,        // 大型龙卷缓慢下移速度
+  };
+  const STORM_WIND = '#dff3ff';   // 风弹/风流配色（风白）
+
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   const BOSSES = {
     song: { id: 'song', name: '旧日之歌', lv: 11 },
+    storm: { id: 'storm', name: '暴风之眼', lv: 21 },
   };
   // 警报演出时长：横杠滑入 → 红色区域与名号展示 → 整体淡出
   const BOSS_WARN = { slide: 0.9, hold: 1.9, fade: 0.5 };
@@ -91,7 +111,7 @@
 
   /**
    * 四类非 Boss 敌人：
-   *   1类 side     侧上方斜插入场，血极低；多数无攻击，少数追踪射击 / 阵亡时向下垂直射击
+   *   1类 side     从场地中部略偏上的两侧斜插窜出，血极低；多数无攻击，少数追踪射击 / 阵亡时向下垂直射击
    *   2类 striker  上方入场，血低；垂直向下直射，少部分追踪射击
    *   3类 gunship  上方入场，体型稍大血中；悬停上方，扇形 / 环形 / 双连炮多种弹幕
    *   4类 capital  上方居中入场，体型大血高；悬停上方，螺旋环 / 扇形齐射 / 环形爆发密集弹幕，
@@ -100,12 +120,12 @@
   const ENEMY_TYPES = {
     side: {
       w: 34, h: 30, hp: 1,   score: 60,   color: '#8ce36b', drawScale: 1.4,
-      bulletSpeed: 230, bulletR: 3, bulletDmg: 6, crashDmg: 12,
+      bulletSpeed: 230, bulletR: 4, bulletDmg: 6, crashDmg: 12,
       fireInterval: [1.4, 2.2],
     },
     striker: {
       w: 46, h: 40, hp: 48,  score: 150,  color: '#ff3b30', drawScale: 1.4,
-      bulletSpeed: 280, bulletR: 4, bulletDmg: 8, crashDmg: 25,
+      bulletSpeed: 280, bulletR: 5, bulletDmg: 8, crashDmg: 25,
       fireInterval: [1.1, 2.0],
     },
     gunship: {
@@ -114,7 +134,7 @@
       fireInterval: [1.8, 2.4],
     },
     capital: {
-      w: 230, h: 160, hp: 4032, score: 1500, color: '#ff4d6d', drawScale: 2.4,
+      w: 230, h: 160, hp: 2500, score: 1500, color: '#ff4d6d', drawScale: 2.4,
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [2.4, 2.8],
     },
@@ -123,6 +143,12 @@
       w: 68, h: 68, hp: 540, score: 450, color: '#3a3f4a', drawScale: 1.4,
       bulletSpeed: 210, bulletR: 6, bulletDmg: 16, crashDmg: 12.5,   // 碰撞伤害为 2 类(25) 的 50%
       fireInterval: [4, 4],
+    },
+    // 特殊敌机：暴风之眼技能2 召唤的大型龙卷（可击毁、缓慢下移直至脱离战场、随机 360° 射风弹）
+    tornado: {
+      w: 144, h: 220, hp: 1000, score: 0, color: '#eaf6ff', drawScale: 1,
+      bulletSpeed: 170, bulletR: 5, bulletDmg: 16, crashDmg: 32,
+      fireInterval: [0.2, 0.3],
     },
   };
 
@@ -164,6 +190,7 @@
     ],
   };
   const STRIKER_SPEED_MUL = 0.7;   // 2类突击艇速度降低 30%（赤红/烈橙均适用）
+  const SIDE_SPEED_MUL = 1.3;      // 1类虚像级（侧翼艇）全体速度倍率：所有生成点基值（×0.6）再统一乘此倍率，改一处即影响全部
 
   /* ---------- 3/4 类舰常规子弹：橙红色长条弹 ---------- */
   const SHIP_BULLET_COLOR = '#ff4d2e';   // 橙红色
@@ -171,6 +198,12 @@
   const SPLIT_RED = '#ff6f4d';           // 4类蓝分裂弹：淡橙红（大号母弹 + 6 小子弹）
   const PHASE_DURATION = 6;      // 蓝色4类护盾虚化时长
   const PHASE_CHANCE = 0.2;      // 蓝色4类带护盾概率
+
+  // 4类主力舰精细化配色（按变体区分：舰体暗→亮渐变 + 专属强调色/辉光，避免“仅换色”的草率感）
+  const CAPITAL_PALETTE = {
+    crimson: { dark: '#5e0c22', base: '#ff4d6d', light: '#ffb3bd', accent: '#ffb545', glow: '#ff3355' },
+    azure:   { dark: '#0d2f5e', base: '#4d9fff', light: '#b3d9ff', accent: '#7ce7ff', glow: '#3399ff' },
+  };
 
   // 按权重随机选取变体
   function pickVariant(type) {
@@ -187,6 +220,10 @@
   const MAX_BOMBS = 5;
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
+  const CAPITAL_HIGHFIRE_DR = 0.15;   // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力的减伤（受到伤害 ×0.85）
+  const BOSS_LOWFIRE_BONUS = 0.20;    // 玩家火力 Lv1 时对 BOSS 的武器伤害加成（BOSS 受到伤害 ×1.20，逆境补偿）
+  const WEAPON_DROP_HITS = 2;         // 常规：累计受击 2 次掉 1 级火力
+  const WEAPON_DROP_HITS_BOSS = 3;    // BOSS 战：累计受击 3 次才掉 1 级火力（更宽松）
 
   // 1类侧翼艇：三种行为对应三种颜色（与图鉴一致）
   //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击
@@ -212,14 +249,17 @@
   const levelText = document.getElementById('levelText');
   const bombText = document.getElementById('bombText');
   const livesText = document.getElementById('livesText');
-  const weaponText = document.getElementById('weaponText');
-  const berserkText = document.getElementById('berserkText');
-  const shieldText = document.getElementById('shieldText');
+  const berserkBar = document.getElementById('berserkBar');
+  const berserkFill = document.getElementById('berserkFill');
+  const shieldBar = document.getElementById('shieldBar');
+  const shieldFill = document.getElementById('shieldFill');
 
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
   const overlayDesc = document.getElementById('overlayDesc');
   const startBtn = document.getElementById('startBtn');
+  const musicHint = document.getElementById('musicHint');
+  const musicToggle = document.getElementById('musicToggle');
   const planeSelect = document.getElementById('planeSelect');
   const planeGrid = document.getElementById('planeGrid');
   const bossTestRow = document.getElementById('bossTestRow');
@@ -247,6 +287,7 @@
   const bgmAudios = Object.create(null);
   let bgmCurrent = null;      // 当前应播放的曲目 key
   let bgmUnlocked = false;    // 浏览器自动播放限制：首次交互后解锁
+  let audioMuted = false;     // 全局静音：音乐(BGM) + 音效(警报) 总开关，由标题栏右侧按钮切换
 
   function initBGM() {
     for (const key in BGM_TRACKS) {
@@ -284,8 +325,8 @@
       bgmCurrent = target;
     }
     if (!bgmCurrent) {
-      // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停
-      if (state.paused) {
+      // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停 / 静音
+      if (state.paused || audioMuted) {
         if (!alarmAudio.paused) alarmAudio.pause();
       } else if (alarmAudio.src && state.bossStage === 'warn' && alarmAudio.paused && alarmAudio.currentTime > 0) {
         alarmAudio.play().catch(() => {});
@@ -294,7 +335,7 @@
     }
     const a = bgmAudios[bgmCurrent];
     if (!a || !bgmUnlocked) return;
-    if (state.paused) {
+    if (state.paused || audioMuted) {
       if (!a.paused) a.pause();
     } else if (a.paused) {
       a.play().catch(() => {});
@@ -308,6 +349,7 @@
   alarmAudio.preload = 'auto';
 
   function startAlarm() {
+    if (audioMuted) return;   // 静音时不播放警报音效
     alarmAudio.currentTime = 0;
     alarmAudio.play().catch(() => {});
   }
@@ -320,12 +362,32 @@
   function unlockBGM() {
     if (bgmUnlocked) return;
     bgmUnlocked = true;
+    if (musicHint) musicHint.classList.add('hidden');   // 已解锁，隐藏“点击启用音乐”引导
     const a = bgmCurrent ? bgmAudios[bgmCurrent] : null;
-    if (a && !state.paused) a.play().catch(() => {});
+    if (a && !state.paused && !audioMuted) a.play().catch(() => {});
   }
   window.addEventListener('keydown', unlockBGM, { once: true });
   window.addEventListener('pointerdown', unlockBGM, { once: true });
   window.addEventListener('touchstart', unlockBGM, { once: true });
+
+  // ---------- 全局音乐 / 音效开关（标题栏右侧按钮） ----------
+  // 点击切换静音：静音时暂停所有 BGM 与警报音效，再次点击恢复
+  function setMuted(muted) {
+    audioMuted = muted;
+    if (musicToggle) {
+      // 图标为内联 SVG，由 CSS 依据 .muted 类切换开/关两个图标；勿用 textContent（会清空 SVG 子节点）
+      musicToggle.classList.toggle('muted', muted);
+    }
+    if (muted) {
+      for (const key in bgmAudios) { const a = bgmAudios[key]; if (!a.paused) a.pause(); }
+      if (!alarmAudio.paused) alarmAudio.pause();
+    } else {
+      updateBGM();   // 恢复：立即按当前状态续播应播曲目
+    }
+  }
+  if (musicToggle) {
+    musicToggle.addEventListener('click', () => setMuted(!audioMuted));
+  }
 
   initBGM();
 
@@ -354,6 +416,7 @@
     lives: PLAYER.lives,
     time: 0,
     spawnTimer: 0,
+    waveSeq: 0,        // 波次序号：标记本波生成的敌人，上一波机动兵力清场后才放下一波
     shakeTime: 0,
     shakeMag: 0,
     gunshipCd: 0,      // 3类炮艇出场冷却
@@ -375,6 +438,7 @@
     w: PLAYER.w,
     h: PLAYER.h,
     hp: PLAYER.maxHp,
+    kbT: 0, kbVx: 0, kbVy: 0,   // 风暴风流/风柱命中的击退（短暂位移、快速衰减）
     cooldown: 0,
     invuln: 0,
     alive: true,
@@ -395,16 +459,29 @@
   /** @type {Array} */ let crystals = [];
   /** @type {Array} */ let missileWarns = [];   // 炮火先兆者导弹垂直预警线
   /** @type {Array} */ let missiles = [];       // 预警结束后从上方下落的导弹
+  /** @type {Array} */ let zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警，1.5s 倒计时）
+  /** @type {Array} */ let windFlows = [];      // 标记到期后沿曲线呼啸而至的风流
+  /** @type {Array} */ let pillarStrikes = [];  // 标记到期后降下的垂直风柱打击
   /** @type {Array} */ let stars = [];
 
   // ---------- 星空 ----------
+  // 星星着色：多数蓝白，少量粉(#FFC0CB)/青(#39C5BB)，与星云雾霭共同营造"青粉丝域"
+  const STAR_TINTS = [
+    [200, 225, 255],   // 常规蓝白
+    [255, 192, 203],   // 粉
+    [120, 230, 220],   // 青
+  ];
+
   function initStars() {
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
+      const roll = Math.random();
+      const tint = roll < 0.76 ? 0 : (roll < 0.88 ? 1 : 2);   // 76% 蓝白 / 12% 粉 / 12% 青
       stars.push({
         x: Math.random() * CANVAS_W,
         y: Math.random() * CANVAS_H,
         z: Math.random() * 0.8 + 0.2,   // 视深度：影响速度与亮度
+        tint,
       });
     }
   }
@@ -422,7 +499,8 @@
   function drawStars() {
     for (const s of stars) {
       const a = 0.35 + s.z * 0.55;
-      ctx.fillStyle = `rgba(200, 225, 255, ${a.toFixed(3)})`;
+      const [r, g, b] = STAR_TINTS[s.tint || 0];
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
       const size = s.z > 0.7 ? 2 : 1;
       ctx.fillRect(s.x | 0, s.y | 0, size, size);
     }
@@ -447,7 +525,7 @@
       speed: rand(12, 32),           // 下漂速度（比星星慢很多）
       drift: rand(-8, 8),            // 横向微漂
       color: c,
-      alpha: rand(0.04, 0.11),       // 低透明度，隐约可见
+      alpha: rand(0.16, 0.32),       // 提高不透明度：粉/青云雾在深蓝背景上清晰可见
       pulse: rand(0, Math.PI * 2),   // 呼吸相位
       pulseSpd: rand(0.3, 0.8),      // 呼吸速度
     };
@@ -472,6 +550,8 @@
   }
 
   function drawNebulae() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';   // 叠加发光：粉/青云雾在深蓝背景上真正可见
     for (const n of nebulae) {
       const [r, g, b] = n.color;
       const breath = 1 + Math.sin(n.pulse) * 0.15;   // 呼吸缩放
@@ -479,12 +559,13 @@
       const a = n.alpha * (0.8 + Math.sin(n.pulse) * 0.2);
       const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, rad);
       grd.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${a.toFixed(4)})`);
-      grd.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, ${(a * 0.6).toFixed(4)})`);
-      grd.addColorStop(0.75, `rgba(${r}, ${g}, ${b}, ${(a * 0.2).toFixed(4)})`);
+      grd.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, ${(a * 0.55).toFixed(4)})`);
+      grd.addColorStop(0.75, `rgba(${r}, ${g}, ${b}, ${(a * 0.18).toFixed(4)})`);
       grd.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
       ctx.fillStyle = grd;
       ctx.fillRect(n.x - rad, n.y - rad, rad * 2, rad * 2);
     }
+    ctx.restore();
   }
 
   // ---------- 工具 ----------
@@ -552,6 +633,7 @@
       arrived: false,
       holdTimer: opts.holdTimer || 0,   // striker 短暂停顿 / gunship・capital 悬停时长
       speedMul: opts.speedMul != null ? opts.speedMul : 1,   // 移动/下落速度倍率（特殊编队用）
+      staticX: opts.staticX || false,   // 悬停期间固定水平位置、不左右巡航（BOSS 召唤的先兆者用）
       fireTimer: initFire,
       pattern: 0,
       burst: null,       // 多发连射状态（螺旋 / 双连炮）
@@ -581,16 +663,16 @@
     return e;
   }
   
-  // 1类：从侧上方斜插入场，最少 3 个一组；编队形态随机（纵队/斜线/横排梯队/V字），一碰就碎
-  // 行为概率：shoot 10% / kamikaze 20% / pass 70%；速度已降低 40%（×0.6）；整组同速以保持队形
+  // 1类：从场地中部略偏上的两侧斜插窜出，最少 3 个一组；编队形态随机（纵队/斜线/横排梯队/V字），一碰就碎
+  // 行为概率：shoot 10% / kamikaze 20% / pass 70%；速度基值已降 40%（×0.6），实际速度另乘 SIDE_SPEED_MUL；整组同速以保持队形
   function spawnSideGroup() {
     const fromLeft = Math.random() < 0.5;
     const dirX = fromLeft ? 1 : -1;
     const n = 3 + Math.floor(Math.random() * 3);    // 3~5 架（最少三个一组）
-    const vx = dirX * rand(90, 120);                // 原 150~200 × 0.6
-    const vy = rand(54, 84);                         // 原 90~140 × 0.6
+    const vx = dirX * rand(90, 120);                // 原 150~200 × 0.6（另乘 SIDE_SPEED_MUL）
+    const vy = rand(54, 84);                         // 原 90~140 × 0.6（另乘 SIDE_SPEED_MUL）
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;   // 屏幕侧外入场
-    const baseY = rand(-70, 10);                     // 入场上缘基准高度
+    const baseY = rand(CANVAS_H * 0.36, CANVAS_H * 0.46);   // 入场基准高度：场地中部略偏上（两侧窜出）
     const formation = Math.floor(Math.random() * 4); // 0 纵队 / 1 斜线 / 2 横排梯队 / 3 V 字
     const mid = (n - 1) / 2;
     for (let k = 0; k < n; k++) {
@@ -667,11 +749,11 @@
   function spawnSideSweep() {
     const count = 6 + Math.floor(Math.random() * 3);   // 每队 6~8
     const gap = 46;                                    // 队列沿行进反方向排开
-    const startY = 58;                                 // 入场上缘高度
+    const startY = CANVAS_H * 0.40;                    // 入场高度：场地中部略偏上（两侧窜出）
     for (const fromLeft of [true, false]) {
       const dirX = fromLeft ? 1 : -1;                  // 横向穿越方向
-      const vx = dirX * rand(99, 117);                  // 原 165~195 × 0.6，从一边扫向另一边
-      const vy = rand(54, 69);                           // 原 90~115 × 0.6，同时下沉
+      const vx = dirX * rand(99, 117);                  // 原 165~195 × 0.6（另乘 SIDE_SPEED_MUL），从一边扫向另一边
+      const vy = rand(54, 69);                           // 原 90~115 × 0.6（另乘 SIDE_SPEED_MUL），同时下沉
       const edgeX = fromLeft ? -30 : CANVAS_W + 30;    // 屏幕侧外入场
       for (let k = 0; k < count; k++) {
         const r = Math.random();
@@ -682,6 +764,29 @@
         makeEnemy('side', x, y, {
           behavior,
           deathShot: behavior === 'kamikaze',
+          fireTimer: rand(0.8, 1.6),
+        })._sideVel = { vx, vy };
+      }
+    }
+  }
+
+  // 特殊编队：左右两侧各依次出来七个 1 类紫（kamikaze 自爆），成纵列斜扫穿越（紫=亡语向下垂直射一发）
+  function spawnSideKamikazeStream() {
+    const count = 7;
+    const gap = 64;                                    // 队列间距：保证依次入场
+    const startY = CANVAS_H * 0.40;                    // 入场高度：场地中部略偏上（两侧窜出）
+    for (const fromLeft of [true, false]) {
+      const dirX = fromLeft ? 1 : -1;
+      const vx = dirX * rand(99, 117);                 // 与侧翼斜扫同速（基值 ×0.6，另乘 SIDE_SPEED_MUL）
+      const vy = rand(54, 69);
+      const edgeX = fromLeft ? -30 : CANVAS_W + 30;
+      for (let k = 0; k < count; k++) {
+        // 后方跟随：队尾更靠外、更高，形成长队斜线依次入场
+        const x = edgeX - dirX * k * gap;
+        const y = startY - k * gap * 0.55;
+        makeEnemy('side', x, y, {
+          behavior: 'kamikaze',
+          deathShot: true,
           fireTimer: rand(0.8, 1.6),
         })._sideVel = { vx, vy };
       }
@@ -725,16 +830,16 @@
   // 非对称编队：一列混编沿对角线从一个上角斜插入场
   function spawnDiagonalRaid() {
     const fromLeft = Math.random() < 0.5;
-    const n = 5;
+    const n = 6;
     const stepX = fromLeft ? 62 : -62;
     const startX = fromLeft ? 60 : CANVAS_W - 60;
     for (let k = 0; k < n; k++) {
       const x = startX + k * stepX;
       const y = -40 - k * 40;                          // 阶梯式滞后 → 斜线
-      if (k === 2) {
+      if (k === 3) {
         makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 30, fireTimer: 1.3 });
-      } else if (k % 2 === 0) {
-        makeEnemy('side', x, y, { behavior: Math.random() < 0.10 ? 'shoot' : 'pass', fireTimer: rand(0.8, 1.5) })._sideVel = { vx: fromLeft ? 24 : -24, vy: rand(90, 111) };
+      } else if (k % 2 === 0) {   // k=0/2/4 → 1类（三个一组，满足≥3）
+        makeEnemy('side', x, y, { behavior: Math.random() < 0.10 ? 'shoot' : 'pass', fireTimer: rand(0.8, 1.5) })._sideVel = { vx: fromLeft ? 24 : -24, vy: rand(90, 111) };   // 基值 ×0.6，另乘 SIDE_SPEED_MUL
       } else {
         makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: rand(0.4, 0.9) });
       }
@@ -747,10 +852,10 @@
     const count = 4 + Math.floor(Math.random() * 4);   // 数艘：4~7
     const gap = 54;                                    // 队列间距（沿行进反方向排开）
     const dirX = fromLeft ? 1 : -1;
-    const vx = dirX * rand(90, 120);                   // 与常规 1类同速（已×0.6）
+    const vx = dirX * rand(90, 120);                   // 与常规 1类同速（基值 ×0.6，另乘 SIDE_SPEED_MUL）
     const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
-    const startY = rand(-40, 30);                      // 入场上缘高度
+    const startY = rand(CANVAS_H * 0.36, CANVAS_H * 0.46);  // 入场高度：场地中部略偏上（两侧窜出）
     for (let k = 0; k < count; k++) {
       const r = Math.random();
       const behavior = r < 0.10 ? 'shoot' : r < 0.30 ? 'kamikaze' : 'pass';
@@ -766,10 +871,18 @@
   }
 
   // 波次调度：常规以 2 类为主，1 类成群（每组≥3）；小概率穿插 1 类长队；达关卡后穿插特殊编队
+  // spawnWave 给本波敌人打上波次标记，主循环据此判断“上一波机动兵力已清场”才放下一波
   function spawnWave() {
+    state.waveSeq++;
+    const before = enemies.length;
+    spawnWaveBody();
+    for (let i = before; i < enemies.length; i++) enemies[i].waveTag = state.waveSeq;
+  }
+
+  function spawnWaveBody() {
     // 2 关起，约 40% 概率触发特殊编队（对称/非对称混合）
     if (state.level >= 2 && Math.random() < 0.40) {
-      const specials = [spawnMirrorRow, spawnSideSweep, spawnStrikerVee, spawnGunshipWings, spawnDiagonalRaid];
+      const specials = [spawnMirrorRow, spawnSideSweep, spawnStrikerVee, spawnGunshipWings, spawnDiagonalRaid, spawnSideKamikazeStream];
       specials[Math.floor(Math.random() * specials.length)]();
       return;
     }
@@ -795,10 +908,12 @@
   }
   
   // 特殊3类：炮火先兆者（后排炮兵）—— 缓慢就位于更高处，充能召唤导弹，约 18s（最多 4 发）后以进场速度前开走
-  function spawnHarbinger(x) {
+  function spawnHarbinger(x, opts) {
+    const o = opts || {};
     makeEnemy('harbinger', x != null ? x : rand(120, CANVAS_W - 120), -50, {
-      hoverY: rand(75, 110),
+      hoverY: o.hoverY != null ? o.hoverY : rand(75, 110),
       holdTimer: HARBINGER.hold,
+      staticX: o.staticX || false,
     });
   }
 
@@ -823,7 +938,7 @@
     const cx = CANVAS_W / 2;
     switch (ch.type) {
       case 'side':
-        // 侧翼艇：缓慢斜插（速度 ×0.6），飞出屏幕后由 updateChallenge 重新生成
+        // 侧翼艇：缓慢斜插（基值 ×0.6，另乘 SIDE_SPEED_MUL），飞出屏幕后由 updateChallenge 重新生成
         makeEnemy('side', cx - 130, -40, { behavior: ch.behavior || 'shoot', fireTimer: 1.0 })._sideVel = { vx: 33, vy: 42 };
         break;
       case 'striker':
@@ -866,9 +981,12 @@
     // 例外——BOSS 测试模式的 BOSS：e.hp 锁定到“测试血量基准”testHp，
     //   使我方子弹伤害被每帧覆盖抵消（BOSS 对炮火无敌），仅高能爆弹能削血（见 useBomb）
     for (const e of enemies) {
-      if (ch.kind === 'boss' && e.type === 'boss') {
-        if (e.testHp == null) e.testHp = e.maxHp;
-        e.hp = e.testHp;
+      if (ch.kind === 'boss') {
+        // BOSS 测试：仅 BOSS 本体锁定 testHp（对炮火无敌）；其召唤的小怪（炮火先兆者）不回血，可被正常击杀
+        if (e.type === 'boss') {
+          if (e.testHp == null) e.testHp = e.maxHp;
+          e.hp = e.testHp;
+        }
       } else if (e.hp < e.maxHp) {
         e.hp = e.maxHp;
       }
@@ -880,7 +998,28 @@
 
   // ---------- BOSS：旧日之歌 ----------
   function spawnBoss(id) {
+    // 进入 BOSS 战：火力不足 Lv3 时补到 Lv3；并重置受击掉火力的累计计数（正常 / 挑战模式通用）
+    if (player.weapon < 3) player.weapon = 3;
+    player.hitCount = 0;
     const B = BOSSES[id] || BOSSES.song;
+    // 暴风之眼：第一阶段为白色龙卷风暴（风暴之风汇聚成旋涡入场）
+    if (B.id === 'storm') {
+      enemies.push({
+        type: 'boss', bossId: 'storm', name: B.name, lv: B.lv,
+        x: CANVAS_W / 2, y: STORM.hoverY,
+        w: STORM.w, h: STORM.h,
+        hp: STORM.hp, maxHp: STORM.hp,
+        score: STORM.score,
+        phase: 'converge',   // converge（风暴汇聚）→ combat
+        phaseT: 0,
+        scale: 0.25, combatReady: false,
+        moveT: 0, t: 0, rot: 0,   // rot：风暴自转角（逆时针）
+        skill: null, skillCd: 1.8,
+        lastSkill: -1, skillStreak: 0,
+      });
+      shake(6, 0.6);
+      return;
+    }
     // 部件组装数据：6 个组件从黑洞边缘飞出并镶接到机体
     const parts = [];
     const partDefs = [
@@ -913,14 +1052,242 @@
       score: BOSS.score,
       phase: 'blackhole',    // blackhole → emerge → assemble → combat
       phaseT: 0,
+      barT: 0,               // 血条登场动画计时（combat 阶段每帧累加）
+      hpTrail: BOSS.hp,      // 血条残像：缓慢追赶 hp，形成受击白色余条
       scale: 0, combatReady: false,
       moveT: 0, t: 0,
       skill: null, skillCd: 1.4,
-      lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarb: false, harbT: 0,
+      lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarbL: false,
       parts,
       unfoldT: 0,   // 兼容图鉴预览
     });
     shake(6, 0.6);
+  }
+
+  // ---------- BOSS2：暴风之眼 · 第一阶段（白色龙卷风暴） ----------
+  // 出场：风暴之风从四周汇聚成旋涡（2.2s）→ 战斗：缓慢漂移 + 技能循环
+  function updateBossStorm(e, dt) {
+    e.t += dt;
+    e.rot -= dt * 1.4;   // 逆时针旋转（canvas y 轴向下，角度递减为逆时针视觉）
+
+    if (e.phase === 'converge') {
+      e.phaseT += dt;
+      const p = clamp(e.phaseT / 2.2, 0, 1);
+      e.scale = 0.25 + p * 0.75;   // 旋涡逐渐成形放大
+      if (p >= 1) {
+        e.phase = 'combat';
+        e.phaseT = 0;
+        e.scale = 1;
+        e.combatReady = true;
+        shake(8, 0.4);
+      }
+      return;
+    }
+
+    // 战斗阶段：风暴巨大，仅小幅漂移
+    e.moveT += dt;
+    e.x = CANVAS_W / 2 + Math.sin(e.moveT * 0.22) * 26;
+    e.y = STORM.hoverY + Math.sin(e.moveT * 0.43) * 14;
+
+    if (e.skill) runStormSkill(e, e.skill, dt);
+    else {
+      e.skillCd -= dt;
+      if (e.skillCd <= 0) startStormSkill(e);
+    }
+  }
+
+  function startStormSkill(e) {
+    let id;
+    if (e.lastSkill === -1) {
+      // 暴风之眼第一次释放技能必定是技能1（风流）
+      id = 0;
+    } else {
+      id = Math.floor(Math.random() * 5);   // 乱序释放（共 5 个技能）
+      // 全局规则：同一技能最多连续释放两次，禁止三连
+      if (id === e.lastSkill && e.skillStreak >= 2) {
+        const pool = [0, 1, 2, 3, 4].filter(x => x !== e.lastSkill);
+        id = pool[Math.floor(Math.random() * pool.length)];
+      }
+    }
+    // 全局规则：连续随机到同一技能 → 技能间冷却 -80%
+    const repeat = id === e.lastSkill;
+    e.skillStreak = repeat ? e.skillStreak + 1 : 1;
+    e.skillCd = repeat ? STORM.skillCd * 0.2 : STORM.skillCd;
+    e.lastSkill = id;
+    const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速/风流速度 ×1.4
+
+    switch (id) {
+      case 0: {
+        // 技能1：屏幕右侧射出 3~4 道风流（曲线样式，似风暴臂的延长线）
+        // 白色区域标记 1.5s 后风流呼啸而至（30 伤害 + 击退）
+        const n = 3 + Math.floor(Math.random() * 2);
+        const bandH = CANVAS_H * 0.66;
+        for (let k = 0; k < n; k++) {
+          zoneMarks.push({
+            kind: 'flow',
+            x0: CANVAS_W + 40,
+            y0: CANVAS_H * 0.10 + (k + rand(0.1, 0.7)) * (bandH / n),
+            ang0: Math.PI + rand(-0.22, 0.10),   // 大体向左，略带随机偏角
+            curve: rand(0.45, 1.0) * (Math.random() < 0.5 ? 1 : -1),   // 曲率：像风暴臂一样弯曲
+            len: rand(0.8, 1.0) * CANVAS_W,
+            speed: rand(320, 400) * spMul,
+            t: 0, dur: STORM.warnTime,
+          });
+        }
+        e.skill = { id: 0, t: 0, dur: 0.9 };
+        break;
+      }
+      case 1:
+        // 技能2：蓄力 0.7s 后向正前方（正下方）推出一个大型龙卷
+        // （可击毁、缓慢下移直至脱离战场、随机 360° 快速射风弹，碰撞 32）
+        e.skill = { id: 1, t: 0, dur: 1.1, charged: false, spMul };
+        break;
+      case 2:
+        // 技能3：连续随机选定 5 处垂直风柱（每 0.32s 布置一处标记，各 1.5s 后落下，18 伤害 + 击退）
+        e.skill = { id: 2, t: 0, dur: 2.0, count: 0, next: 0.15 };
+        break;
+      case 3:
+        // 技能4：漩涡状弹幕（4 条臂），前半程逆时针旋转、后半程顺时针旋转
+        e.skill = { id: 3, t: 0, dur: 4.6, fire: 0, armAng: Math.random() * Math.PI * 2, spMul };
+        break;
+      case 4: {
+        // 技能5：机体上随机 9 处召唤风弹（朝下方 120° 区域随机方向）+ 中心一枚瞄准玩家
+        const pts = [];
+        for (let k = 0; k < 9; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = rand(24, STORM.w * 0.40);
+          pts.push({ dx: Math.cos(a) * rr * 0.95, dy: Math.sin(a) * rr * 0.72, delay: 0.2 + k * 0.09, fired: false });
+        }
+        e.skill = { id: 4, t: 0, dur: 1.9, pts, centerFired: false, spMul };
+        break;
+      }
+    }
+  }
+
+  function runStormSkill(e, s, dt) {
+    s.t += dt;
+    const sm = s.spMul || 1;
+
+    if (s.id === 1) {
+      // 技能2：蓄力完成后向正前方推出大型龙卷
+      if (!s.charged && s.t >= 0.7) {
+        s.charged = true;
+        makeEnemy('tornado', e.x, e.y + e.h * 0.30);
+        spawnParticles(e.x, e.y + e.h * 0.3, '#ffffff', 26, 260);
+        shake(6, 0.3);
+      }
+    } else if (s.id === 2) {
+      // 技能3：连续布置 5 处风柱标记（各 1.5s 后降下打击）
+      s.next -= dt;
+      while (s.next <= 0 && s.count < 5) {
+        s.next += 0.32;
+        s.count++;
+        zoneMarks.push({
+          kind: 'pillar',
+          x: clamp(rand(24, CANVAS_W - 24), STORM.pillarW / 2, CANVAS_W - STORM.pillarW / 2),
+          t: 0, dur: STORM.warnTime,
+        });
+      }
+    } else if (s.id === 3) {
+      // 技能4：4 条臂漩涡弹幕，前半程逆时针、后半程顺时针
+      const dir = s.t < s.dur / 2 ? 1 : -1;
+      s.armAng += dir * 1.6 * dt;
+      s.fire -= dt;
+      if (s.fire <= 0) {
+        s.fire = 0.11;
+        for (let k = 0; k < 4; k++) {
+          pushBossBullet(e.x, e.y, s.armAng + k * Math.PI / 2, 185 * sm,
+            { r: 5, dmg: STORM.tornadoDmg, color: STORM_WIND });
+        }
+      }
+    } else if (s.id === 4) {
+      // 技能5：9 处风弹（下方 120° 区域随机方向）+ 中心瞄准玩家的一枚
+      for (const p of s.pts) {
+        p.delay -= dt;
+        if (p.delay <= 0 && !p.fired) {
+          p.fired = true;
+          const ang = Math.PI / 2 + rand(-Math.PI / 6, Math.PI / 6);
+          pushBossBullet(e.x + p.dx, e.y + p.dy, ang, rand(170, 240) * sm,
+            { r: 5, dmg: STORM.tornadoDmg, color: STORM_WIND });
+          spawnParticles(e.x + p.dx, e.y + p.dy, '#ffffff', 4, 110);
+        }
+      }
+      if (!s.centerFired && s.t >= 0.55) {
+        s.centerFired = true;
+        pushBossBullet(e.x, e.y, Math.atan2(player.y - e.y, player.x - e.x), 300 * sm,
+          { r: 7, dmg: STORM.tornadoDmg, color: STORM_WIND });
+        spawnParticles(e.x, e.y, '#ffffff', 8, 140);
+      }
+    }
+
+    if (s.t >= s.dur) e.skill = null;
+  }
+
+  // 风暴风流/风柱命中的击退：短暂推开玩家（速度指数衰减）
+  function knockbackPlayer(dirX, dirY, power) {
+    const len = Math.hypot(dirX, dirY) || 1;
+    player.kbVx = (dirX / len) * power;
+    player.kbVy = (dirY / len) * power;
+    player.kbT = 0.32;
+  }
+
+  // ---------- 暴风之眼：区域标记与打击（风流 / 风柱） ----------
+  // 白色区域标记 1.5s 倒计时 → 风流沿曲线呼啸而过 / 风柱降下
+  function updateZoneMarks(dt) {
+    // 标记倒计时
+    for (let i = zoneMarks.length - 1; i >= 0; i--) {
+      const z = zoneMarks[i];
+      z.t += dt;
+      if (z.t < z.dur) continue;
+      zoneMarks.splice(i, 1);
+      if (z.kind === 'flow') {
+        windFlows.push(z);   // 风流呼啸而至
+        shake(3, 0.2);
+      } else {
+        pillarStrikes.push({ x: z.x, t: 0, dur: 0.45, hit: false });   // 风柱打击降下
+        shake(4, 0.25);
+      }
+    }
+    // 风流：沿曲线移动的宽风带
+    for (let i = windFlows.length - 1; i >= 0; i--) {
+      const f = windFlows[i];
+      f.prog = (f.prog || 0) + f.speed * dt / f.len;
+      const pt = stormFlowPoint(f, Math.min(f.prog, 1));
+      f.px = pt.x; f.py = pt.y;
+      if (player.alive && player.invuln <= 0 &&
+          Math.hypot(f.px - player.x, f.py - (player.y + PLAYER.hitOffsetY)) < STORM.flowR + PLAYER.hitRadius) {
+        damagePlayer(STORM.windDmg);
+        knockbackPlayer(player.x - f.px, player.y - f.py, 520);
+      }
+      if (f.prog >= 1.2) windFlows.splice(i, 1);
+    }
+    // 风柱：短暂存在的垂直打击光柱（每根命中一次）
+    for (let i = pillarStrikes.length - 1; i >= 0; i--) {
+      const p = pillarStrikes[i];
+      p.t += dt;
+      if (!p.hit && player.alive && player.invuln <= 0 &&
+          Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER.hitRadius) {
+        p.hit = true;
+        damagePlayer(STORM.pillarDmg);
+        knockbackPlayer(player.x - p.x, 0, 420);
+      }
+      if (p.t >= p.dur) pillarStrikes.splice(i, 1);
+    }
+  }
+
+  // 风流曲线：二次贝塞尔（起点屏幕右侧外，控制点沿法线偏移形成风暴臂般的弯曲）
+  function stormFlowPoint(f, p) {
+    const mx = f.x0 + Math.cos(f.ang0) * f.len * 0.5;
+    const my = f.y0 + Math.sin(f.ang0) * f.len * 0.5;
+    const cx = mx - Math.sin(f.ang0) * f.curve * f.len * 0.22;
+    const cy = my + Math.cos(f.ang0) * f.curve * f.len * 0.22;
+    const ex = f.x0 + Math.cos(f.ang0) * f.len;
+    const ey = f.y0 + Math.sin(f.ang0) * f.len;
+    const u = 1 - p;
+    return {
+      x: u * u * f.x0 + 2 * u * p * cx + p * p * ex,
+      y: u * u * f.y0 + 2 * u * p * cy + p * p * ey,
+    };
   }
 
   function pushBossBullet(x, y, ang, speed, opts = {}) {
@@ -938,6 +1305,7 @@
 
   function updateBoss(e, dt) {
     e.t += dt;
+    if (e.bossId === 'storm') { updateBossStorm(e, dt); return; }   // 暴风之眼走独立状态机
 
     // 新出场流程：黑洞形成 → 机体浮现 → 部件组装 → 战斗
     const BLACKHOLE_DUR = 2.7;
@@ -1003,6 +1371,11 @@
       return;
     }
 
+    // 血条登场计时 + 残血余像（hpTrail 缓慢追赶 hp，受击时白色余条缓慢消退）
+    e.barT = (e.barT || 0) + dt;
+    if (e.hpTrail == null) e.hpTrail = e.hp;
+    e.hpTrail += (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
+
     // 技能1期间停止移动（moveT 同步冻结，避免技能结束后因 moveT 继续累加而瞬移），其余时间小幅左右巡航
     if (!e.skill || e.skill.id !== 0) {
       e.moveT += dt;
@@ -1015,18 +1388,10 @@
       if (e.skillCd <= 0) startBossSkill(e);
     }
 
-    // 血量首次低于 70%：最左侧立即召唤炮火先兆者，1s 后右侧再召唤一个（正常出现、正常逻辑）
-    if (!e.summonHarb && e.hp <= e.maxHp * 0.70) {
-      e.summonHarb = true;
-      spawnHarbinger(e.x - e.w / 2);   // 最左侧
-      e.harbT = 1.0;                   // 1s 后右侧
-    }
-    if (e.summonHarb && e.harbT > 0) {
-      e.harbT -= dt;
-      if (e.harbT <= 0) {
-        e.harbT = 0;
-        spawnHarbinger(e.x + e.w / 2); // 右侧
-      }
+    // 血量首次低于 70%：在屏幕最左侧召唤一个炮火先兆者（staticX 固定靠边、不巡航，避免被 BOSS 机体挡住）
+    if (!e.summonHarbL && e.hp <= e.maxHp * 0.70) {
+      e.summonHarbL = true;
+      spawnHarbinger(40, { staticX: true });
     }
 
     // 血量 70%：掉落一个暴走道具（一次性）
@@ -1145,15 +1510,16 @@
         }
       }
     } else if (s.id === 3) {
-      // 技能4：双管乱射长条弹，间隔与方向均不规律；10% 概率双管齐指玩家当前方向
+      // 技能4：双管乱射长条弹，间隔不规律；血量>50% 时 270° 大范围散射（避开正上方 90°，仍会往斜上方射，相当于削弱），≤50% 时收敛到下半球（满火力）；10% 概率双管齐指玩家
       s.next -= dt;
       if (s.next <= 0) {
         s.next = rand(0.133, 0.267);
         const aim = Math.random() < 0.10;
+        const high = (e.hp / e.maxHp) > 0.5;   // 血量>50%：270° 散射（削弱）；≤50%：一律朝下
         for (const bx of [lx, rx]) {
           const ang = aim
             ? Math.atan2(player.y - by, player.x - bx)
-            : rand(0.1, Math.PI - 0.1) + rand(-0.15, 0.15);   // 以下半球为主的随机方向
+            : (high ? rand(-Math.PI / 4, Math.PI * 1.25) : rand(0.2, Math.PI - 0.2));   // 270°：右上 45° → 下 → 左上 45°，避开正上方 90° 死角
           pushBossBullet(bx, by, ang, rand(160, 300) * sm, { len: BOSS.longLen, dmg: BOSS.bulletDmg });
         }
       }
@@ -1208,11 +1574,17 @@
   }
   
   function updateEnemyMovement(e, dt) {
+    if (e.type === 'tornado') {
+      // 大型龙卷：缓慢垂直下移直至脱离战场（轻微左右摇摆）
+      e.y += STORM.tornadoDescend * dt;
+      e.x += Math.sin(e.wobble * 0.5) * 14 * dt;
+      return;
+    }
     if (e.type === 'side') {
-      // 斜插直线穿越，不反弹
+      // 斜插直线穿越，不反弹；SIDE_SPEED_MUL 统一控制全部虚像级（1类）飞船实际移动速度
       const v = e._sideVel;
-      e.x += v.vx * dt;
-      e.y += v.vy * dt;
+      e.x += v.vx * SIDE_SPEED_MUL * dt;
+      e.y += v.vy * SIDE_SPEED_MUL * dt;
       return;
     }
     if (e.type === 'striker') {
@@ -1259,8 +1631,9 @@
       // 悬停期间水平巡航
       if (e.type === 'capital') {
         e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
-      } else {
+      } else if (!e.staticX) {
         // gunship / harbinger：轻幅左右巡航（先兆者幅度更小，稳居后排）
+        // staticX：BOSS 召唤的先兆者固定在最左/最右，不巡航，避免被 BOSS 机体挡住打不到
         e.x += Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * dt;
       }
       e.x = clamp(e.x, e.w / 2, CANVAS_W - e.w / 2);
@@ -1278,6 +1651,19 @@
   
   function updateEnemyFire(e, dt) {
     if (e.y < 0) return;   // 未入场不开火
+    // 大型龙卷：随机向 360° 快速射出风弹（从机体内部随机点射出）
+    if (e.type === 'tornado') {
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        e.fireTimer = rand(0.20, 0.30);
+        for (let k = 0; k < 2; k++) {
+          pushEBullet(e, Math.random() * Math.PI * 2, rand(120, 210), ENEMY_TYPES.tornado,
+            { x: e.x + rand(-e.w * 0.2, e.w * 0.2), y: e.y + rand(-e.h * 0.3, e.h * 0.3),
+              r: 5, dmg: STORM.tornadoDmg, color: STORM_WIND });
+        }
+      }
+      return;
+    }
     // 炮火先兆者：独立充能循环，红色充满即召唤导弹预警（最多导引 4 次）
     if (e.type === 'harbinger') {
       if (!e.arrived) return;
@@ -1375,12 +1761,13 @@
             break;
         }
       } else if (e.skill === 'ring') {
-        // 金：'/\/\' 弹幕（快速2发+延迟1发） / 巨型橙红弹（单发） 交替
+        // 金：'/\/\' 弹幕（快速2发×2组） / 巨型橙红弹（单发） 交替
         switch (e.pattern % 2) {
-          case 0:   // 技能1：'/\/\' 弹幕 —— 快速发射两发，隔一段时间再发射一次
+          case 0:   // 技能1：'/\/\' 弹幕 —— 快速发射两次，短暂间隔后再快速发射两次
             fireSlashPattern(e, cfg);
             e.scheduled.push({ t: 0.14, fn: () => fireSlashPattern(e, cfg) });
             e.scheduled.push({ t: 0.62, fn: () => fireSlashPattern(e, cfg) });
+            e.scheduled.push({ t: 0.76, fn: () => fireSlashPattern(e, cfg) });
             break;
           case 1: {   // 技能2：向玩家发射一枚巨型橙红弹（常规配色、半径缩小30%、仅1发）
             const ang = Math.atan2(player.y - e.y, player.x - e.x);
@@ -1613,10 +2000,13 @@
     }
   }
 
-  // 高能爆弹等清场时一并清除导弹与预警线
+  // 高能爆弹等清场时一并清除导弹与预警线（含暴风之眼区域标记/风流/风柱）
   function clearMissiles() {
     missileWarns.length = 0;
     missiles.length = 0;
+    zoneMarks.length = 0;
+    windFlows.length = 0;
+    pillarStrikes.length = 0;
   }
   
   function killEnemy(index) {
@@ -1624,7 +2014,9 @@
     // 挑战模式：敌方血量无限，不可被击杀（回满血量并保留）
     // 例外——BOSS 测试中被高能爆弹削至 0 的 BOSS：真正击杀并退出测试（走下方 BOSS 结算流程）
     const bossTestKill = state.challenge && state.challenge.kind === 'boss' && e.type === 'boss' && e.hp <= 0;
-    if (state.challenge && !bossTestKill) { e.hp = e.maxHp; return; }
+    // BOSS 测试模式下召唤的小怪（非 BOSS）可被正常击杀，不进入无敌回血
+    const bossTestMinion = state.challenge && state.challenge.kind === 'boss' && e.type !== 'boss';
+    if (state.challenge && !bossTestKill && !bossTestMinion) { e.hp = e.maxHp; return; }
     // BOSS 击毁：单独结算
     if (e.type === 'boss') {
       state.score += e.score;
@@ -1656,6 +2048,13 @@
       state.bossVictoryDelay = 2.5;  // 延迟后返回主界面
       state.defeatedBossName = e.name;
       enemies.splice(index, 1);
+      // BOSS 被击败：强行击坠场上所有剩余敌方单位（小怪 / 护航 / 召唤物，含 BOSS 测试召唤物）
+      // 倒序遍历逐个走 killEnemy 完整击杀演出（爆炸粒子 / 水晶 / 计分）
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (enemies[i] && enemies[i].type !== 'boss') killEnemy(i);
+      }
+      // 清场击杀可能触发 1 类紫亡语射击，统一再清一次残留敌弹
+      clearEnemyBullets();
       return;
     }
     // 1类亡语 variants：阵亡时向下垂直射击
@@ -1776,6 +2175,15 @@
       player.x += dx * PLAYER.speed * dt;
       player.y += dy * PLAYER.speed * dt;
     }
+        // 击退位移（风暴风流/风柱命中）：随时间快速衰减
+        if (player.kbT > 0) {
+          player.kbT -= dt;
+          const damp = Math.exp(-7 * dt);
+          player.x += player.kbVx * dt;
+          player.y += player.kbVy * dt;
+          player.kbVx *= damp;
+          player.kbVy *= damp;
+        }
     player.x = clamp(player.x, player.w / 2, CANVAS_W - player.w / 2);
     player.y = clamp(player.y, player.h / 2, CANVAS_H - player.h / 2);
 
@@ -1865,10 +2273,11 @@
     player.invuln = PLAYER.invulnTime;
     shake(8, 0.3);
     spawnParticles(player.x, player.y, '#7ce7ff', 12, 180);
-    // 被击中掉火力：累计受击两次才掉一层；暴走（Lv5）/护盾期间不计也不掉
+    // 被击中掉火力：常规累计受击 2 次掉一层，BOSS 战放宽到 3 次；暴走（Lv5）/护盾期间不计也不掉
     if (player.weapon < 5 && player.weapon > 1) {
+      const dropHits = (state.bossStage === 'warn' || state.bossStage === 'fight') ? WEAPON_DROP_HITS_BOSS : WEAPON_DROP_HITS;
       player.hitCount++;
-      if (player.hitCount >= 2) { player.weapon--; player.hitCount = 0; }
+      if (player.hitCount >= dropHits) { player.weapon--; player.hitCount = 0; }
     }
     if (player.hp <= 0) {
       player.hp = 0;
@@ -1974,7 +2383,11 @@
         const e = enemies[j];
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (Math.abs(b.x - e.x) < e.w / 2 + b.r && Math.abs(b.y - e.y) < e.h / 2 + b.r) {
-          e.hp -= b.dmg;
+          // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
+          let dmg = b.dmg;
+          if (e.type === 'capital' && player.weapon >= 4) dmg *= (1 - CAPITAL_HIGHFIRE_DR);
+          else if (e.type === 'boss' && player.weapon === 1) dmg *= (1 + BOSS_LOWFIRE_BONUS);
+          e.hp -= dmg;
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           pBullets.splice(i, 1);
           if (e.hp <= 0) killEnemy(j);
@@ -2378,6 +2791,47 @@
         g.lineTo(tipX4, 17);
         g.closePath();
         g.fill();
+
+        // ===== 前翼：暴走时向前外方大幅展开，形成醒目的“机翼张开”轮廓 =====
+        // fwOpen 驱动尖端从机身侧向外前方扫出（x:13→36），直观呈现“张开”动画
+        const fwOpen = spreadT;
+        // 主前翼片（大三角、前掠）：根部靠机身肩，尖端向外前方大幅扫出
+        const fwRootFx = sx * 5, fwRootFy = -8;
+        const fwTipX = sx * (13 + 23 * fwOpen);       // 尖端 x：13 → 36（大幅外展）
+        const fwTipY = -6 - 10 * fwOpen;              // 尖端 y：向前（上）扫出
+        const fwRootBx = sx * 15 * wingSpread, fwRootBy = 4;
+        const fwGrd = g.createLinearGradient(fwRootFx, fwRootFy, fwTipX, fwTipY);
+        fwGrd.addColorStop(0, `rgba(255, 245, 252, ${(alpha * 0.95).toFixed(3)})`);  // 根部近白热
+        fwGrd.addColorStop(0.4, `rgba(255, 120, 195, ${(alpha * 0.9).toFixed(3)})`);  // 中段亮粉
+        fwGrd.addColorStop(1, `rgba(255, 55, 145, ${(alpha * 0.8).toFixed(3)})`);     // 尖端深粉
+        g.fillStyle = fwGrd;
+        g.beginPath();
+        g.moveTo(fwRootFx, fwRootFy);
+        g.lineTo(fwTipX, fwTipY);
+        g.lineTo(fwRootBx, fwRootBy);
+        g.closePath();
+        g.fill();
+        // 前缘能量刃（高亮描边，强化“张开”锐利感）
+        g.strokeStyle = `rgba(255, 235, 248, ${(alpha * 0.95).toFixed(3)})`;
+        g.lineWidth = 1.3;
+        g.beginPath();
+        g.moveTo(fwRootFx, fwRootFy);
+        g.lineTo(fwTipX, fwTipY);
+        g.stroke();
+
+        // 次前翼片（叠在主翼片上方、更靠前缘，增加层次与张开密度）
+        const fw2TipX = sx * (10 + 16 * fwOpen);
+        const fw2TipY = -11 - 8 * fwOpen;
+        const fw2Grd = g.createLinearGradient(sx * 4, -10, fw2TipX, fw2TipY);
+        fw2Grd.addColorStop(0, `rgba(255, 210, 235, ${(alpha * 0.75).toFixed(3)})`);
+        fw2Grd.addColorStop(1, `rgba(255, 90, 165, ${(alpha * 0.6).toFixed(3)})`);
+        g.fillStyle = fw2Grd;
+        g.beginPath();
+        g.moveTo(sx * 4, -10);
+        g.lineTo(fw2TipX, fw2TipY);
+        g.lineTo(sx * 11 * wingSpread, -1);
+        g.closePath();
+        g.fill();
       }
       g.shadowBlur = 0;
     }
@@ -2619,6 +3073,7 @@
   }
 
   function drawEnemy(e) {
+    if (e.type === 'tornado') { drawTornado(e); return; }   // 龙卷专用绘制（自身处理 translate）
     ctx.save();
     ctx.translate(e.x, e.y);
     // 虚化（护盾期）：机身半透明闪烁
@@ -2679,6 +3134,13 @@
       ctx.lineTo(-30, 8);
       ctx.lineTo(-20, 24);
       ctx.closePath();
+      // 舰体渐变（后/上暗 → 前/下亮）取代纯色平涂，增强装甲立体感
+      const cpal = CAPITAL_PALETTE[e.variant] || CAPITAL_PALETTE.crimson;
+      const hullGrd = ctx.createLinearGradient(0, -34, 0, 34);
+      hullGrd.addColorStop(0, cpal.dark);
+      hullGrd.addColorStop(0.5, cpal.base);
+      hullGrd.addColorStop(1, cpal.light);
+      ctx.fillStyle = hullGrd;
     }
     ctx.fill();
     ctx.stroke();
@@ -2689,15 +3151,78 @@
     ctx.arc(0, 0, e.type === 'capital' ? 7 : e.type === 'gunship' ? 4.5 : 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // 4类额外细节：舰体中线与两侧炮口
+    // 4类主力舰精细化：装甲分块 + 变体涂装光带 + 舰桥指挥塔 + 引擎辉光 + 受光边缘
     if (e.type === 'capital') {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect(-4, -28, 8, 52);
-      ctx.fillStyle = '#ffd166';
-      ctx.beginPath();
-      ctx.arc(-34, 0, 4, 0, Math.PI * 2);
-      ctx.arc(34, 0, 4, 0, Math.PI * 2);
-      ctx.fill();
+      const pal = CAPITAL_PALETTE[e.variant] || CAPITAL_PALETTE.crimson;
+      const pulse = 0.6 + Math.sin(state.time * 3 + (e.wobble || 0)) * 0.4;   // 光带/引擎呼吸
+
+      // (1) 装甲分块线（暗色，勾勒厚重舰体结构）
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, 30); ctx.stroke();          // 中央龙骨
+      for (const yy of [-14, 2, 18]) {                                              // 横向装甲缝
+        ctx.beginPath(); ctx.moveTo(-24, yy); ctx.lineTo(24, yy); ctx.stroke();
+      }
+      for (const sx of [-1, 1]) {                                                   // 两侧斜向分块
+        ctx.beginPath(); ctx.moveTo(sx * 15, -20); ctx.lineTo(sx * 38, -8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx * 13, 8); ctx.lineTo(sx * 30, 14); ctx.stroke();
+      }
+
+      // (2) 变体涂装光带：赤红 = 两侧 V 形光带；苍蓝 = 横向甲板灯带
+      ctx.shadowColor = pal.glow;
+      ctx.shadowBlur = 9;
+      ctx.globalAlpha = 0.5 + pulse * 0.4;
+      if (e.variant === 'azure') {
+        ctx.strokeStyle = pal.accent;                     // 横向甲板灯带
+        ctx.lineWidth = 2.2;
+        for (const yy of [-20, 14]) {
+          ctx.beginPath(); ctx.moveTo(-20, yy); ctx.lineTo(20, yy); ctx.stroke();
+        }
+      } else {
+        ctx.strokeStyle = pal.accent;
+        ctx.lineWidth = 2.2;
+        for (const sx of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(sx * 7, -26); ctx.lineTo(sx * 18, -6); ctx.lineTo(sx * 11, 22);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+
+      // (3) 舰桥指挥塔（暗座 + 径向发光核心 + 强调色描边）
+      ctx.fillStyle = 'rgba(12, 9, 18, 0.88)';
+      ctx.beginPath(); ctx.ellipse(0, -2, 13, 15, 0, 0, Math.PI * 2); ctx.fill();   // 舰桥底座
+      const bridgeGrd = ctx.createRadialGradient(0, -3, 1, 0, -3, 8);
+      bridgeGrd.addColorStop(0, '#ffffff');
+      bridgeGrd.addColorStop(0.4, pal.light);
+      bridgeGrd.addColorStop(0.75, pal.base);
+      bridgeGrd.addColorStop(1, pal.dark);
+      ctx.fillStyle = bridgeGrd;
+      ctx.beginPath(); ctx.arc(0, -3, 7.5, 0, Math.PI * 2); ctx.fill();             // 发光核心
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 1.3;
+      ctx.shadowColor = pal.glow; ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // (4) 引擎辉光（后部/上方 3 个喷口，呼吸明灭）
+      for (const ex of [-12, 0, 12]) {
+        const engGrd = ctx.createRadialGradient(ex, -30, 0.5, ex, -30, 7);
+        engGrd.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+        engGrd.addColorStop(0.35, pal.accent);
+        engGrd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.globalAlpha = 0.45 + pulse * 0.55;
+        ctx.fillStyle = engGrd;
+        ctx.beginPath(); ctx.ellipse(ex, -30, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      // (5) 舰体受光边缘高光（后缘 + 前缘，增强立体感）
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.30)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(-10, -34); ctx.lineTo(10, -34); ctx.stroke();                  // 后缘
+      ctx.beginPath(); ctx.moveTo(-18, 24); ctx.lineTo(0, 33); ctx.lineTo(18, 24); ctx.stroke();  // 前缘
     }
     }   // 结束 else（非 harbinger）
 
@@ -2725,8 +3250,8 @@
       ctx.globalAlpha = 1;
     }
 
-    // 血条
-    if (e.hp < e.maxHp) {
+    // 血条（测试环境 state.challenge 下敌人每帧回满血、受击时血条会抖动，故不显示；BOSS 血条在 drawBoss 中单独绘制，不受影响）
+    if (e.hp < e.maxHp && !state.challenge) {
       const w = e.w;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillRect(-w / 2, -e.h / 2 - 8, w, 3);
@@ -2737,25 +3262,382 @@
     ctx.restore();
   }
 
+    // ---------- 暴风之眼：绘制（区域标记 / 风流 / 风柱 / 风暴本体 / 大型龙卷） ----------
+    function drawZoneMarks() {
+      // 白色区域标记：风流（曲线带）/ 风柱（垂直带），倒计时闪烁 + 白色风流特效
+      for (const z of zoneMarks) {
+        const prog = clamp(z.t / z.dur, 0, 1);
+        const pulse = clamp(0.5 + Math.sin(state.time * 14) * 0.22 + prog * 0.35, 0, 0.92);   // 越接近落下越亮
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        if (z.kind === 'flow') {
+          // 风流标记：沿整条曲线的半透明白色风带 + 流动的白色风流短线
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.30)';
+          ctx.lineWidth = STORM.flowR * 2;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          const N = 24;
+          for (let k = 0; k <= N; k++) {
+            const pt = stormFlowPoint(z, k / N);
+            k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
+          // 流动风纹：沿曲线滑动的细短线
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+          ctx.lineWidth = 2;
+          for (let s = 0; s < 5; s++) {
+            const base = (state.time * 0.9 + s * 0.23) % 1;
+            ctx.beginPath();
+            for (let k = 0; k <= 6; k++) {
+              const p = clamp(base + k * 0.015, 0, 1);
+              const pt = stormFlowPoint(z, p);
+              k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
+          }
+        } else {
+          // 风柱标记：垂直白色区域 + 上升风流线
+          const w = STORM.pillarW;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
+          ctx.fillRect(z.x - w / 2, 0, w, CANVAS_H);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.lineWidth = 2;
+          for (let s = 0; s < 3; s++) {
+            const lx = z.x - w * 0.25 + s * w * 0.25;
+            const off = (state.time * 120 + s * 53) % (CANVAS_H + 60);
+            ctx.beginPath();
+            ctx.moveTo(lx, CANVAS_H - off);
+            ctx.lineTo(lx, CANVAS_H - off - 46);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.strokeRect(z.x - w / 2, 0, w, CANVAS_H);
+        }
+        ctx.restore();
+      }
+      // 风流打击：呼啸而过的宽风带（风头最亮，带拖尾）
+      for (const f of windFlows) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        const N = 18;
+        const tail = Math.max(0, f.prog - 0.3);
+        ctx.beginPath();
+        for (let k = 0; k <= N; k++) {
+          const p = Math.min(tail + (Math.min(f.prog, 1) - tail) * (k / N), 1);
+          const pt = stormFlowPoint(f, p);
+          k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = 'rgba(223, 243, 255, 0.55)';
+        ctx.lineWidth = STORM.flowR * 2;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 14;
+        ctx.stroke();
+        // 风头（亮核）
+        const hg = ctx.createRadialGradient(f.px, f.py, 0, f.px, f.py, STORM.flowR);
+        hg.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+        hg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(f.px, f.py, STORM.flowR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      // 风柱打击：垂直白色光柱（迅速变亮后消散）
+      for (const p of pillarStrikes) {
+        const life = p.t / p.dur;
+        const a = life < 0.25 ? life / 0.25 : 1 - (life - 0.25) / 0.75;
+        const w = STORM.pillarW * (0.7 + life * 0.5);
+        ctx.save();
+        ctx.globalAlpha = clamp(a, 0, 1);
+        const g = ctx.createLinearGradient(p.x - w / 2, 0, p.x + w / 2, 0);
+        g.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        g.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
+        g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(p.x - w / 2, 0, w, CANVAS_H);
+        ctx.restore();
+      }
+    }
+  
+    // BOSS：暴风之眼（第一阶段）—— 白色龙卷风暴（俯视旋涡：多层旋臂 + 风暴眼），逆时针旋转
+    function drawStormBoss(e) {
+      // 顶部专用血条（仅战斗阶段显示；图鉴预览 phase='preview' 跳过）
+      if (e.phase === 'combat') {
+        const bw = 320;
+        const bx = (CANVAS_W - bw) / 2;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fillRect(bx - 2, 4, bw + 4, 14);
+        const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+        g.addColorStop(0, '#9fd8ff');
+        g.addColorStop(1, '#ffffff');
+        ctx.fillStyle = g;
+        ctx.fillRect(bx, 6, bw * clamp(e.hp / e.maxHp, 0, 1), 10);
+        ctx.fillStyle = '#dfe7ff';
+        ctx.font = 'bold 12px "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 32);
+      }
+  
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      if (e.phase === 'converge') ctx.globalAlpha = clamp(e.phaseT / 1.2, 0, 1) * 0.9;
+      ctx.scale(e.scale, e.scale);
+      const R = e.w / 2;
+      const rot = e.rot || 0;
+  
+      // 多层旋臂云带：外层宽、内层窄，各层以不同速度逆时针旋转
+      for (let ring = 0; ring < 4; ring++) {
+        const rr = R * (1 - ring * 0.2);
+        const aRot = rot * (1 + ring * 0.28);
+        ctx.save();
+        ctx.rotate(aRot);
+        ctx.strokeStyle = ring % 2 === 0 ? 'rgba(240, 250, 255, 0.75)' : 'rgba(190, 222, 245, 0.6)';
+        ctx.lineWidth = R * (0.16 - ring * 0.02);
+        ctx.lineCap = 'round';
+        // 每层 2 条对称旋臂（螺旋弧线）
+        for (let arm = 0; arm < 2; arm++) {
+          ctx.beginPath();
+          const a0 = arm * Math.PI + ring * 0.7;
+          for (let k = 0; k <= 16; k++) {
+            const p = k / 16;
+            const ang = a0 + p * 2.4;   // 螺旋展开约 137°
+            const rad = rr * (0.35 + p * 0.65);
+            const px = Math.cos(ang) * rad;
+            const py = Math.sin(ang) * rad;
+            k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // 外缘风雾光环
+      const rim = ctx.createRadialGradient(0, 0, R * 0.55, 0, 0, R);
+      rim.addColorStop(0, 'rgba(210, 235, 255, 0)');
+      rim.addColorStop(0.75, 'rgba(225, 244, 255, 0.28)');
+      rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = rim;
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, Math.PI * 2);
+      ctx.fill();
+      // 风暴眼：中心平静空洞（微亮核 + 深色环）
+      const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.22);
+      eye.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      eye.addColorStop(0.55, 'rgba(140, 180, 210, 0.55)');
+      eye.addColorStop(1, 'rgba(30, 50, 70, 0)');
+      ctx.fillStyle = eye;
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      // 环绕风粒子
+      for (let i = 0; i < 14; i++) {
+        const ang = rot * 1.6 + (i / 14) * Math.PI * 2;
+        const rad = R * (0.45 + 0.4 * ((Math.sin(state.time * 1.7 + i * 1.9) + 1) / 2));
+        const sz = 1.5 + Math.sin(i * 2.3 + state.time * 5) * 0.8;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(Math.cos(ang) * rad - sz / 2, Math.sin(ang) * rad - sz / 2, sz, sz);
+      }
+      ctx.restore();
+    }
+  
+    // 大型龙卷（技能2）：白色漏斗状旋风，多层旋带自转 + 内部扰动风粒子
+    function drawTornado(e) {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      const H = e.h, W = e.w;
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+      ctx.shadowBlur = 10;
+      // 自上而下收窄的旋带：顶部宽（约 0.92W）→ 底部窄（约 0.37W）
+      const bands = 9;
+      for (let i = 0; i < bands; i++) {
+        const p = i / (bands - 1);   // 0 顶 → 1 底
+        const y = -H / 2 + p * H;
+        const rx = W * 0.5 * (0.92 - p * 0.55);
+        const rot = state.time * (3.2 - p * 1.6) + i * 0.9;
+        ctx.strokeStyle = i % 2 === 0 ? 'rgba(244, 251, 255, 0.85)' : 'rgba(200, 228, 248, 0.7)';
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.ellipse(0, y, rx, rx * 0.26, 0, rot, rot + Math.PI * 1.55);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      // 内部扰动风粒子
+      for (let i = 0; i < 10; i++) {
+        const p = (i / 10 + state.time * 0.35) % 1;
+        const y = -H / 2 + p * H;
+        const rx = W * 0.5 * (0.92 - p * 0.55);
+        const ang = state.time * 5 + i * 1.7;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.fillRect(Math.cos(ang) * rx * 0.7 - 1.5, y - 1.5, 3, 3);
+      }
+      ctx.restore();
+    }
+  
   // BOSS：旧日之歌 —— 灰黑渐变舰体 + 流动彩色光泽 + 音核涟漪 + 双炮管
   function drawBoss(e) {
+      if (e.bossId === 'storm') { drawStormBoss(e); return; }   // 暴风之眼专用绘制
     const isEntering = (e.phase === 'blackhole' || e.phase === 'emerge' || e.phase === 'assemble');
 
-    // 顶部专用血条（仅战斗阶段显示）
+    // 顶部专用血条：两端收尖的长六边形 + 暗紫光芒笼罩 + 登场横向展开演出（仅战斗阶段）
     if (e.phase === 'combat') {
-      const bw = 320;
-      const bx = (CANVAS_W - bw) / 2;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.fillRect(bx - 2, 4, bw + 4, 14);
-      const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-      g.addColorStop(0, '#ff4d6d');
-      g.addColorStop(1, '#ffb545');
-      ctx.fillStyle = g;
-      ctx.fillRect(bx, 6, bw * clamp(e.hp / e.maxHp, 0, 1), 10);
-      ctx.fillStyle = '#dfe7ff';
-      ctx.font = 'bold 12px "Microsoft YaHei", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${BOSS.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 32);
+      const revealP = clamp(e.barT / 0.8, 0, 1);
+      const reveal = 1 - Math.pow(1 - revealP, 3);   // easeOutCubic：以中心为基准横向展开
+      const flash = 1 - revealP;                      // 登场瞬间的紫光爆闪
+
+      const bw = 360, bh = 13;   // 高度缩短 20%（16 → 13）
+      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
+      const taper = 15;
+      const x0 = cx - bw / 2, x1 = cx + bw / 2;
+      // 长六边形轮廓（左右两端各收出一个尖点）
+      const hexPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(x0, mid);
+        ctx.lineTo(x0 + taper, top);
+        ctx.lineTo(x1 - taper, top);
+        ctx.lineTo(x1, mid);
+        ctx.lineTo(x1 - taper, bot);
+        ctx.lineTo(x0 + taper, bot);
+        ctx.closePath();
+      };
+
+      ctx.save();
+      ctx.translate(cx, 0); ctx.scale(reveal, 1); ctx.translate(-cx, 0);
+
+      // 底座 + 暗紫光芒笼罩（呼吸辉光 + 登场爆闪）
+      ctx.shadowColor = '#8b5cf6';
+      ctx.shadowBlur = 14 + Math.sin(state.time * 2.5) * 4 + flash * 22;
+      hexPath();
+      ctx.fillStyle = `rgba(26, 10, 48, ${(0.88 + flash * 0.12).toFixed(3)})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(167, 139, 250, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})`;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 内部裁剪：残血余像 → 主血量 → 刻度 → 暗紫罩染
+      ctx.save();
+      hexPath();
+      ctx.clip();
+      const ratio = clamp(e.hp / e.maxHp, 0, 1);
+      const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
+      if (trail > ratio + 0.002) {          // 刚扣除的血量以白色余条缓慢消退
+        ctx.fillStyle = 'rgba(255, 230, 240, 0.5)';
+        ctx.fillRect(x0, top, (x1 - x0) * trail, bh);
+      }
+      const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 主血量：幽紫 → 猩红 → 金橙
+      hg.addColorStop(0, '#6d28d9');
+      hg.addColorStop(0.3, '#ff4d6d');
+      hg.addColorStop(1, '#ffb545');
+      ctx.fillStyle = hg;
+      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, bh - 2.4);
+      // 能量前线：血量填充最前端的发光亮线，随血量减少而滑动
+      if (ratio > 0.005 && ratio < 1) {
+        ctx.fillStyle = 'rgba(240, 225, 255, 0.9)';
+        ctx.shadowColor = '#c4b5fd';
+        ctx.shadowBlur = 6;
+        ctx.fillRect(x0 + (x1 - x0) * ratio - 1, top + 1.2, 2, bh - 2.4);
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';          // 顶部高光
+      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, 2.5);
+      ctx.fillStyle = 'rgba(10, 4, 24, 0.55)';              // 每 10% 一道刻度
+      for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
+      const tint = ctx.createLinearGradient(0, top, 0, bot); // 暗紫罩染：血量也蒙上紫气
+      tint.addColorStop(0, 'rgba(139, 92, 246, 0.30)');
+      tint.addColorStop(0.55, 'rgba(139, 92, 246, 0.05)');
+      tint.addColorStop(1, 'rgba(46, 16, 84, 0.30)');
+      ctx.fillStyle = tint;
+      ctx.fillRect(x0, top, x1 - x0, bh);
+      ctx.restore();
+
+      ctx.restore();
+
+      // 破碎感主题：泛白紫碎块在血条周围持续剥落、漂移、消散（旧日之歌 = 空间异物）
+      if (!e.shards) {
+        e.shards = [];
+        const SHARD_COLS = ['#ece6fa', '#dcd0f6', '#cdc0f0', '#f4f0fc'];
+        for (let i = 0; i < 10; i++) {
+          const vn = 3 + Math.floor(Math.random() * 2);   // 3~4 边不规则碎形
+          const pts = [];
+          for (let k = 0; k < vn; k++) {
+            const a = (k / vn) * Math.PI * 2 + Math.random() * 0.9;
+            const rr = 0.6 + Math.random() * 0.6;
+            pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+          }
+          e.shards.push({
+            bx: rand(-bw / 2 - 26, bw / 2 + 26),   // 沿血条及两端外侧散布
+            by: rand(-14, 14),
+            sz: rand(1.6, 4.2),
+            amp: rand(2, 5),
+            fs: rand(0.5, 1.1),                    // 漂浮速度
+            ph: Math.random() * Math.PI * 2,       // 生命周期相位
+            spd: rand(0.05, 0.14),                 // 生命周期速度
+            dx: rand(-12, 12),                     // 单周期水平漂移
+            rspd: rand(-1.2, 1.2),                 // 自转速度
+            col: SHARD_COLS[Math.floor(Math.random() * SHARD_COLS.length)],
+            pts,
+          });
+        }
+      }
+      for (const s of e.shards) {
+        const cyc = (state.time * s.spd + s.ph) % 1;              // 0→1 生命周期
+        const a = Math.sin(cyc * Math.PI) * 0.85 * revealP;       // 淡入→淡出（随血条展开浮现）
+        const x = s.bx + (cyc - 0.5) * s.dx;                      // 缓慢漂移
+        const y = s.by + Math.sin(state.time * s.fs + s.ph * 3) * s.amp;
+        ctx.save();
+        ctx.translate(cx + x, mid + y);
+        ctx.rotate(state.time * s.rspd + s.ph);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = s.col;
+        ctx.shadowColor = '#b9a8f5';
+        ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.moveTo(s.pts[0][0] * s.sz, s.pts[0][1] * s.sz);
+        for (let k = 1; k < s.pts.length; k++) ctx.lineTo(s.pts[k][0] * s.sz, s.pts[k][1] * s.sz);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+
+      // 登场瞬间：碎块自血条向四周迸散（破碎感开场）
+      if (flash > 0.02) {
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + 0.35;
+          const dist = 18 + reveal * 95;
+          const px2 = cx + Math.cos(ang) * dist * 1.35;   // 横向飞得更远（血条为横长条）
+          const py2 = mid + Math.sin(ang) * dist * 0.45;
+          const sz2 = 2 + (i % 3) * 0.9;
+          ctx.save();
+          ctx.translate(px2, py2);
+          ctx.rotate(state.time * 3 + i);
+          ctx.globalAlpha = flash * (0.85 - (i % 4) * 0.1);
+          ctx.fillStyle = i % 2 ? '#e8e2f8' : '#cfc0f2';
+          ctx.shadowColor = '#b9a8f5';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.moveTo(sz2, 0);
+          ctx.lineTo(-sz2 * 0.5, sz2 * 0.7);
+          ctx.lineTo(-sz2 * 0.4, -sz2 * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // 名称与数值（展开完成后淡入）
+      const txtA = clamp((e.barT - 0.45) / 0.35, 0, 1);
+      if (txtA > 0.01) {
+        ctx.globalAlpha = txtA;
+        ctx.fillStyle = '#e6d5ff';
+        ctx.shadowColor = '#8b5cf6';
+        ctx.shadowBlur = 6;
+        ctx.font = 'bold 12px "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${BOSS.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 34);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
     }
 
     // ---------- 黑洞特效（进场演出期间始终绘制） ----------
@@ -3180,17 +4062,27 @@
         ctx.strokeRect(-b.len / 2, -b.r, b.len, b.r * 2);
         ctx.restore();
       } else {
-        // 圆弹：大子弹用径向渐变（白核 → 主色 → 暗边），小子弹平涂
+        // 圆弹：大子弹用径向渐变（白核 → 主色 → 暗边）；低级小怪黄弹改为外圈红+内部黄；其余小子弹平涂
         if (b.r >= 10) {
           const bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
           bg.addColorStop(0, '#ffffff');
           bg.addColorStop(0.35, b.color);
           bg.addColorStop(1, 'rgba(180, 40, 0, 0.9)');
           ctx.fillStyle = bg;
+          ctx.shadowColor = b.color;
+        } else if (b.color === '#ffd166') {
+          // 低级小怪（1/2类）圆弹：外圈红 + 内部黄，更醒目
+          const bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+          bg.addColorStop(0, '#fff6b0');      // 中心亮黄
+          bg.addColorStop(0.5, '#ffd166');    // 黄
+          bg.addColorStop(0.78, '#ff5a3c');   // 橙红过渡
+          bg.addColorStop(1, '#e01b1b');      // 外圈红
+          ctx.fillStyle = bg;
+          ctx.shadowColor = '#ff3b30';        // 红色辉光，增强辨识度
         } else {
           ctx.fillStyle = b.color;
+          ctx.shadowColor = b.color;
         }
-        ctx.shadowColor = b.color;
         ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
@@ -3290,6 +4182,7 @@
     drawStars();
     drawNebulae();
     drawMissileWarns();
+        drawZoneMarks();   // 暴风之眼：区域标记 / 风流 / 风柱
     drawCrystals();
     drawPowerups();
     for (const e of enemies) {
@@ -3366,25 +4259,14 @@
     // BOSS 测试模式：高能爆弹无限，显示 ∞
     bombText.textContent = (state.challenge && state.challenge.kind === 'boss') ? '∞' : state.bombs;
     livesText.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
-    const berserkOn = player.weapon === 5;
+    const berserkOn = player.weapon === 5 && player.berserk > 0;
     const shieldOn = player.shield > 0;
-    // 火力等级始终显示（暴走时显示 Lv5）
-    weaponText.textContent = `火力 Lv${player.weapon}`;
-    weaponText.classList.remove('berserk', 'shield');
-    // 暴走指示器（独立显示）
-    if (berserkOn && player.berserk > 0) {
-      berserkText.textContent = `暴走 ${player.berserk.toFixed(1)}s`;
-      berserkText.classList.add('active');
-    } else {
-      berserkText.classList.remove('active');
-    }
-    // 护盾指示器（独立显示）
-    if (shieldOn) {
-      shieldText.textContent = `护盾 ${player.shield.toFixed(1)}s`;
-      shieldText.classList.add('active');
-    } else {
-      shieldText.classList.remove('active');
-    }
+    // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
+    berserkBar.classList.toggle('active', berserkOn);
+    berserkFill.style.width = berserkOn ? (player.berserk / BERSERK.duration * 100) + '%' : '0%';
+    // 护盾读条（右下角）
+    shieldBar.classList.toggle('active', shieldOn);
+    shieldFill.style.width = shieldOn ? (player.shield / SHIELD_DURATION * 100) + '%' : '0%';
   }
 
   // ---------- 主循环 ----------
@@ -3432,10 +4314,12 @@
       }
 
       if (!state.challenge && state.bossStage === 'none') {
-        // 雷霆战机模式：等待上一波清完（或差不多）才出下一波
+        // 雷霆战机模式：上一波的机动兵力（1/2 类）完全清场后才放下一波，避免波次重叠的体验问题；
+        // 悬停型（3/4 类/先兆者）与主力舰护航走独立冷却槽，不阻塞波次释放
         const activeEnemies = enemies.filter(e => e.type !== 'boss').length;
+        const waveLeft = enemies.filter(e => e.waveTag === state.waveSeq && (e.type === 'side' || e.type === 'striker')).length;
         state.spawnTimer -= dt;
-        if (state.spawnTimer <= 0 && activeEnemies <= 2) {
+        if (state.spawnTimer <= 0 && waveLeft === 0) {
           spawnWave();
           const base = Math.max(0.55, 2.1 - (state.level - 1) * 0.15);
           state.spawnTimer = rand(base * 0.7, base * 1.3);
@@ -3461,6 +4345,7 @@
       updateEnemies(dt);
       updateBullets(dt);
       updateMissiles(dt);
+            updateZoneMarks(dt);   // 暴风之眼：区域标记倒计时 / 风流 / 风柱
       updatePowerups(dt);
       updateCrystals(dt);
       updateParticles(dt);
@@ -3551,11 +4436,15 @@
     crystals = [];
     missileWarns = [];
     missiles = [];
+    zoneMarks = [];
+    windFlows = [];
+    pillarStrikes = [];
 
     player.x = CANVAS_W / 2;
     player.y = CANVAS_H - 90;
     player.hp = PLAYER.maxHp;
     player.cooldown = 0;
+    player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
     player.invuln = 1.0;
     player.alive = true;
     player.weapon = (state.testBoss || state.challenge) ? 4 : 1;   // BOSS 试炼 / 图鉴挑战：默认火力 Lv4
@@ -3703,7 +4592,7 @@
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_white'] },
     { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'harbinger'] },
     { name: '诗篇级', entries: ['capital_crimson', 'capital_azure'] },
-    { name: '长歌级', entries: ['boss'] },
+    { name: '长歌级', entries: ['boss', 'boss_storm'] },
   ];
   
   // 每种颜色变体独立成条目；type 用于绘制/生成，variant/behavior 用于强制指定变体/行为
@@ -3746,22 +4635,22 @@
     },
     gunship_amber: {
       name: '金曜炮艇', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 300, score: 400,
-      desc: '炮艇金色变体。技能交替：<b>“八”字形斜弹幕</b>（左右两侧各射一组对称斜弹、与竖直方向夹角 10°；快速连发两次后隔一段时间再补一发）→ <b>瞄准单发巨型弹</b>（改用常规橙红配色、半径较原来缩小 30%、伤害更高，每次仅发射 1 发）。子弹均为<b>橙红色长条弹</b>。',
+      desc: '炮艇金色变体。技能交替：<b>“八”字形斜弹幕</b>（左右两侧各射一组对称斜弹、与竖直方向夹角 10°；快速连发两次、短暂间隔后再快速连发两次）→ <b>瞄准单发巨型弹</b>（改用常规橙红配色、半径较原来缩小 30%、伤害更高，每次仅发射 1 发）。子弹均为<b>橙红色长条弹</b>。',
     },
     harbinger: {
       name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 540, score: 450,
       desc: '灰黑体+红核，上方极慢入场，悬停位置更靠上（后排）。不直接开火：核心红色从中心扩展 3s 充满后召唤垂直导弹（最多导引 4 次），随后 2s 灰黑覆盖循环。<br />导弹命中：<b>HP&lt;60 直接击杀</b>；HP≥60 失去 80% 当前血量 + 武器等级 -1。碰撞伤害仅为突击艇的 50%。',
     },
     capital_crimson: {
-      name: '赤红主力舰', type: 'capital', variant: 'crimson', color: '#ff4d6d', hp: 4032, score: 1500,
-      desc: '主力舰红色变体。技能循环：<b>双翼交叉矛</b>（发射点上移，左右翼各 3 发向内交叉成 X、飞抵下方时更分散）→ <b>双曲线宽扇</b>（从一侧机翼朝斜下方射出 6 枚弹、横向加速度递增弯成覆盖面极广的双曲线，最内侧近乎直射正下、最外侧弯到与水平约成 20°；一侧射完短暂间隔后另一侧再射，先左先右随机）→ <b>“/||\\”→“/|\\” 加速弹幕</b>（每笔画 4 发橙红长条弹、间距更大，初速极低但加速到常规弹速 2 倍、加速时间更长；先 30° 的 “/||\\”、随后 45° 的 “/|\\”）。常规子弹均为<b>橙红色长条弹</b>。居中快速入场，出场及在场期间由 1/2 类护航。',
+      name: '赤红主力舰', type: 'capital', variant: 'crimson', color: '#ff4d6d', hp: 2500, score: 1500,
+      desc: '主力舰红色变体。技能循环：<b>双翼交叉矛</b>（发射点上移，左右翼各 3 发向内交叉成 X、飞抵下方时更分散）→ <b>双曲线宽扇</b>（从一侧机翼朝斜下方射出 6 枚弹、横向加速度递增弯成覆盖面极广的双曲线，最内侧近乎直射正下、最外侧弯到与水平约成 20°；一侧射完短暂间隔后另一侧再射，先左先右随机）→ <b>“/||\\”→“/|\\” 加速弹幕</b>（每笔画 4 发橙红长条弹、间距更大，初速极低但加速到常规弹速 2 倍、加速时间更长；先 30° 的 “/||\\”、随后 45° 的 “/|\\”）。常规子弹均为<b>橙红色长条弹</b>。<b>对玩家 Lv4 / 暴走(Lv5) 火力有 15% 减伤</b>。居中快速入场，出场及在场期间由 1/2 类护航。',
     },
     capital_azure: {
-      name: '苍蓝主力舰', type: 'capital', variant: 'azure', color: '#4d9fff', hp: 4032, score: 1500,
-      desc: '主力舰蓝色变体，更聚焦玩家。技能循环：<b>瞄准六连齐射</b>（每发带 ±20° 随机偏差）→ <b>分裂橙红弹</b>（向前方发射大号淡橙红弹，飞行较短一段后在极短时间内平滑减速到 0、再分裂成 6 个小子弹、互相 60° 散开）→ <b>双臂螺旋 12 发</b>。出现时 <b>20% 概率带护盾</b>：前 6s 虚化不受伤害、我方炮弹会穿过护盾打到它后面的敌人。常规子弹为<b>橙红色长条弹</b>。',
+      name: '苍蓝主力舰', type: 'capital', variant: 'azure', color: '#4d9fff', hp: 2500, score: 1500,
+      desc: '主力舰蓝色变体，更聚焦玩家。技能循环：<b>瞄准六连齐射</b>（每发带 ±20° 随机偏差）→ <b>分裂橙红弹</b>（向前方发射大号淡橙红弹，飞行较短一段后在极短时间内平滑减速到 0、再分裂成 6 个小子弹、互相 60° 散开）→ <b>双臂螺旋 12 发</b>。出现时 <b>20% 概率带护盾</b>：前 6s 虚化不受伤害、我方炮弹会穿过护盾打到它后面的敌人。常规子弹为<b>橙红色长条弹</b>。<b>对玩家 Lv4 / 暴走(Lv5) 火力有 15% 减伤</b>。',
     },
     boss: {
-      name: '旧日之歌', type: 'boss', color: '#ff7a45', hp: 36888, score: 5000,
+      name: '旧日之歌', type: 'boss', color: '#ff7a45', hp: 32200, score: 5000, bossId: 'song',
       desc: '宽约 60% 屏宽，小幅左右巡航。拥有 5 种技能乱序释放：<br />' +
         '<b>技能1</b> 双管极快连发长条弹 + 双曲线弹流（50%血以下两种曲线并存）<br />' +
         '<b>技能2</b> 散射大子弹（3 轮，随机缺失）<br />' +
@@ -3769,6 +4658,15 @@
         '<b>技能4</b> 双管乱射长条弹<br />' +
         '<b>技能5</b> 双曲线弹流<br />' +
         '血量 ≤30% 强制释放技能5；≤66% 掉落暴走道具；<50% 技能间隔减半。',
+    },
+boss_storm: {
+      name: '暴风之眼（第一阶段）', type: 'boss', color: '#dff3ff', hp: 42000, score: 8000, bossId: 'storm',
+      desc: '第二波 BOSS。第一阶段为占屏宽 80% 的白色龙卷风暴，逆时针旋转、小幅漂移，整个风暴区域均可受击。5 种技能乱序释放：<br />' +
+        '<b>技能1</b> 屏幕右侧射出数道曲线风流（似风暴臂延长线），白色区域标记 1.5s 后呼啸而至，<b>30 伤害 + 击退</b><br />' +
+        '<b>技能2</b> 蓄力后向正前方推出<b>大型龙卷</b>（约占屏宽 30%，可击毁、缓慢下移，随机 360° 快速射出 16 伤害风弹，碰撞 32 伤害）<br />' +
+        '<b>技能3</b> 连续随机选定 5 处召唤<b>垂直风柱</b>（约 10% 屏宽，白色区域标记 1.5s 后落下，18 伤害 + 击退）<br />' +
+        '<b>技能4</b> 漩涡状弹幕（4 条臂），先逆时针旋转一周、再顺时针旋转一周<br />' +
+        '<b>技能5</b> 机体上随机 9 处召唤风弹（下方 120° 区域随机方向）+ 中心一枚瞄准玩家。',
     },
   };
 
@@ -3799,7 +4697,9 @@
       const data = ENCY_DATA[entryId];
       const card = document.createElement('div');
       card.className = 'ency-card';
-      card.innerHTML = `<div class="ency-card-icon" style="background:${data.color}"></div><span class="ency-card-name">${data.name}</span>`;
+      // 缩略图直接渲染敌人形态（复用 drawEncyPreview，小图模式按比例完整显示）
+      card.innerHTML = `<canvas class="ency-card-icon"></canvas><span class="ency-card-name">${data.name}</span>`;
+      drawEncyPreview(data, card.querySelector('canvas'), 44, 32, true);
       card.addEventListener('click', () => {
         encyList.querySelectorAll('.ency-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
@@ -3834,10 +4734,10 @@
       <div class="ency-detail-desc">${d.desc}</div>
       ${actionHtml}
     `;
-    // 绘制预览
-    drawEncyPreview(d);
+    // 绘制预览（220×140 大图）
+    drawEncyPreview(d, document.getElementById('encyPreview'));
     if (isBoss) {
-      document.getElementById('encyTrialBtn').addEventListener('click', () => startBossTrial());
+      document.getElementById('encyTrialBtn').addEventListener('click', () => startBossTrial(entryId));
     }
     document.getElementById('encyChallengeBtn').addEventListener('click', () => startChallenge(entryId));
   }
@@ -3846,24 +4746,25 @@
   function startChallenge(entryId) {
     const d = ENCY_DATA[entryId];
     const challenge = d.type === 'boss'
-      ? { kind: 'boss', type: 'boss', bossId: 'song' }
+      ? { kind: 'boss', type: 'boss', bossId: d.bossId || 'song' }
       : { kind: 'enemy', type: d.type, variant: d.variant || null, behavior: d.behavior || null };
     closeEncyclopedia();
     resetGame(true, { challenge });
   }
 
   // BOSS 试炼：正常战斗模式（双方均不无敌，走 testBoss 流程直接进警报登场）
-  function startBossTrial() {
+  // 传入的可能是图鉴条目 id（boss_storm）或 BOSS id（storm），统一解析为 BOSS id
+  function startBossTrial(entryId) {
     closeEncyclopedia();
-    resetGame(true, { testBoss: 'song' });
+    const d = ENCY_DATA[entryId];
+    resetGame(true, { testBoss: (d && d.bossId) || entryId || 'song' });
   }
 
-  // 图鉴预览：复用游戏内真实绘制逻辑（临时将全局 ctx 指向预览画布）
-  function drawEncyPreview(d) {
-    const cvs = document.getElementById('encyPreview');
+  // 图鉴预览：复用游戏内真实绘制逻辑（临时将全局 ctx 指向目标画布）
+  // 详情大图与列表缩略图共用；small = 缩略图模式：严格按比例完整显示（不设缩放上下限）
+  function drawEncyPreview(d, cvs, LW = 220, LH = 140, small = false) {
     if (!cvs) return;
-    // 高 DPI 适配：逻辑尺寸 220×140，物理像素按 DPR 放大
-    const LW = 220, LH = 140;
+    // 高 DPI 适配：物理像素按 DPR 放大
     cvs.width = LW * DPR;
     cvs.height = LH * DPR;
     cvs.style.width = LW + 'px';
@@ -3875,16 +4776,21 @@
     ctx = pctx;
     try {
       if (d.type === 'boss') {
-        const scale = Math.min(LW * 0.72 / BOSS.w, LH * 0.72 / (BOSS.h * 1.15));
+        const isStorm = d.bossId === 'storm';
+        const bw = isStorm ? STORM.w : BOSS.w;
+        const bh = isStorm ? STORM.h : BOSS.h;
+        const bhp = isStorm ? STORM.hp : BOSS.hp;
+        const scale = Math.min(LW * 0.72 / bw, LH * 0.72 / (bh * 1.15));
         pctx.save();
         pctx.translate(LW / 2, LH / 2 + 6);
         pctx.scale(scale, scale);
         // phase:'preview' 跳过血条和黑洞特效，直接展示完整机体
-        drawBoss({ type: 'boss', x: 0, y: 0, w: BOSS.w, h: BOSS.h, hp: BOSS.hp, maxHp: BOSS.hp, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [] });
+        drawBoss({ type: 'boss', bossId: d.bossId || 'song', x: 0, y: 0, w: bw, h: bh, hp: bhp, maxHp: bhp, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [], rot: 0 });
         pctx.restore();
       } else {
         const et = ENEMY_TYPES[d.type];
-        const scale = clamp(Math.min(LW * 0.7 / et.w, LH * 0.7 / et.h), 0.4, 1.7);
+        const fit = Math.min(LW * 0.7 / et.w, LH * 0.7 / et.h);
+        const scale = small ? fit : clamp(fit, 0.4, 1.7);   // 缩略图不设缩放上下限，保证 4 类等大体型完整入图
         pctx.save();
         pctx.translate(LW / 2, LH / 2);
         pctx.scale(scale, scale);

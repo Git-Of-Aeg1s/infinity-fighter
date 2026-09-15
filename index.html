@@ -11,6 +11,19 @@
     <header class="title-bar">
       <h1>大无垠战机</h1>
       <span class="subtitle">Big Infinity Fighter</span>
+      <!-- 音乐 / 音效开关：标题栏右侧，位于游戏画面之外，不遮挡 HUD -->
+      <button id="musicToggle" class="music-toggle" title="音乐 / 音效开关" aria-label="音乐 / 音效开关">
+        <svg class="mt-icon mt-on" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </svg>
+        <svg class="mt-icon mt-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <line x1="22" y1="9" x2="16" y2="15" />
+          <line x1="16" y1="9" x2="22" y2="15" />
+        </svg>
+      </button>
     </header>
 
     <div class="stage">
@@ -23,19 +36,6 @@
             <span class="score-label">SCORE</span>
             <b id="scoreText">0</b>
           </div>
-          <div class="hp-label">HP</div>
-          <div class="hp-bar">
-            <div class="hp-fill" id="hpFill"></div>
-          </div>
-          <div class="hp-row">
-            <span class="hp-text" id="hpText">100 / 100</span>
-            <span class="lives-text" id="livesText">♥♥</span>
-            <span class="weapon-text" id="weaponText">火力 Lv1</span>
-          </div>
-          <div class="buff-row">
-            <span class="buff-indicator berserk-ind" id="berserkText"></span>
-            <span class="buff-indicator shield-ind" id="shieldText"></span>
-          </div>
         </div>
         <div class="hud-right">
           <div class="stat"><span>关卡</span><b id="levelText">1</b></div>
@@ -43,10 +43,35 @@
         </div>
       </div>
 
+      <!-- 左下角：HP 条与生命 -->
+      <div class="hud-bl">
+        <div class="hp-row">
+          <span class="hp-label">HP</span>
+          <span class="hp-text" id="hpText">100 / 100</span>
+          <span class="lives-text" id="livesText">♥♥</span>
+        </div>
+        <div class="hp-bar">
+          <div class="hp-fill" id="hpFill"></div>
+        </div>
+      </div>
+
+      <!-- 右下角：暴走 / 护盾倒计时读条（有颜色区域逐渐变短） -->
+      <div class="hud-br">
+        <div class="buff-bar berserk-bar" id="berserkBar">
+          <span class="buff-tag">暴走</span>
+          <div class="buff-track"><div class="buff-fill" id="berserkFill"></div></div>
+        </div>
+        <div class="buff-bar shield-bar" id="shieldBar">
+          <span class="buff-tag">护盾</span>
+          <div class="buff-track"><div class="buff-fill" id="shieldFill"></div></div>
+        </div>
+      </div>
+
       <!-- 开始 / 结束遮罩 -->
       <div class="overlay" id="overlay">
         <div class="overlay-card">
           <h2 id="overlayTitle">准备起飞</h2>
+          <div id="musicHint" class="music-hint">🔊 点击任意处启用背景音乐</div>
           <p id="overlayDesc">
             使用 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 操纵战机<br />
             主炮自动开火，<kbd>Space</kbd> 释放高能爆弹（重创全场敌人 + 清空敌弹）<br />
