@@ -328,6 +328,8 @@ canvas#game {
   border-radius: 10px;
   text-align: center;
   min-width: 280px;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 }
 
@@ -369,7 +371,7 @@ canvas#game {
 
 /* ---------- 选机页面 ---------- */
 .plane-select {
-  margin: 0 0 18px;
+  margin: 0 0 10px;
   text-align: center;
 }
 
@@ -438,6 +440,13 @@ canvas#game {
   border-style: dashed;
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* 僚机“无”卡片：无缩略图，flex 拉伸等高 + 内容垂直居中，与有图卡片对齐 */
+.wingman-card.wingman-none {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 kbd {
