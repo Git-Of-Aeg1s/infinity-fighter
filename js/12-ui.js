@@ -1,0 +1,254 @@
+// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
+'use strict';
+
+
+  // ---------- HUD ----------
+  function updateHUD() {
+    const ratio = player.hp / PLAYER.maxHp;
+    hpFill.style.width = (ratio * 100) + '%';
+    hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
+    hpFill.classList.toggle('danger', ratio <= 0.25);
+    hpText.textContent = `${Math.ceil(player.hp)} / ${PLAYER.maxHp}`;
+    // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
+    scoreText.parentElement.style.display = state.challenge ? 'none' : '';
+    scoreText.textContent = state.score;
+    // 右上角爆弹图标：图标数量代表爆弹数（上限 3）；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
+    if (state.challenge) {
+      bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>';
+    } else {
+      const n = Math.max(0, state.bombs);
+      if (bombIcons.childElementCount !== n) {
+        let html = '';
+        for (let i = 0; i < n; i++) html += '<span class="bomb-icon"></span>';
+        bombIcons.innerHTML = html;   // 仅数量变化时重建，避免每帧重排
+      }
+    }
+    livesText.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
+    const berserkOn = player.weapon === 5 && player.berserk > 0;
+    const shieldOn = player.shield > 0;
+    // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
+    berserkBar.classList.toggle('active', berserkOn);
+    berserkFill.style.width = berserkOn ? (player.berserk / BERSERK.duration * 100) + '%' : '0%';
+    // 护盾读条（右下角）
+    shieldBar.classList.toggle('active', shieldOn);
+    shieldFill.style.width = shieldOn ? (player.shield / SHIELD_DURATION * 100) + '%' : '0%';
+  }
+  // ---------- 流程控制 ----------
+  function resetGame(autoStart = false, opts = {}) {
+    state.score = 0;
+    state.level = 1;
+    state.bombs = 1;
+    state.lives = PLAYER.lives;
+    state.spawnTimer = 1.2;
+    state.time = 0;
+    state.paused = false;
+    pauseHomeBtn.classList.add('hidden');
+    pauseRetryBtn.classList.add('hidden');
+    retrialBtn.classList.add('hidden');
+    state.shakeTime = 0;
+    state.shakeMag = 0;
+    state.lowPressureT = 0;
+    state.specialIdleT = 0;
+    state.capitalIdleT = 0;
+    state.harbingerIntro = false;
+    state.orangeBombUsed = false;
+    state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.35）
+    state.bossTimer = 0;
+    state.bossPhase = 0;
+    state.bossStage = 'none';
+    state.bossVictoryDelay = 0;
+    state.postBossDelay = 0;
+    state.postBossWaveT = 0;
+    state.defeatedBossName = '';
+    victoryOverlayActive = false;
+    state.warnT = 0;
+    // 测试模式：指定 BOSS 直接挑战；按 R 重开时保留测试目标，点“开始游戏”则清除
+    state.testBoss = opts.testBoss !== undefined ? opts.testBoss
+      : (opts.keepTest ? state.testBoss : null);
+    // 图鉴挑战模式：按 R 重开时保留，点“开始游戏”/返回主界面则清除
+    state.challenge = opts.challenge !== undefined ? opts.challenge
+      : (opts.keepTest ? state.challenge : null);
+    const bossChallenge = state.challenge && state.challenge.kind === 'boss';
+    state.pendingBoss = (bossChallenge ? state.challenge.bossId : null) || state.testBoss || 'song';
+    if (bossChallenge || state.testBoss) state.bossStage = 'wait';   // 跳过等待，清场后进警报（直接 wait→warn，避免开场多打一发）
+    flash = 0;
+    shieldBurst.active = false;
+    stopAlarm();
+
+    enemies = [];
+    pBullets = [];
+    eBullets = [];
+    delayedShots = [];   // Lv4 半拍补射队列随重开清空
+    trailGhosts = [];
+    particles = [];
+    powerups = [];
+    crystals = [];
+    missileWarns = [];
+    missiles = [];
+    blBombs = [];
+    zoneMarks = [];
+    windFlows = [];
+    pillarStrikes = [];
+
+    player.x = CANVAS_W / 2;
+    player.y = CANVAS_H - 90;
+    player.hp = PLAYER.maxHp;
+    player.cooldown = 0;
+    player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
+    player.invuln = 1.0;
+    player.alive = true;
+    player.weapon = (state.testBoss || state.challenge) ? 4 : (currentPlane.startWeapon || 1);   // BOSS 试炼 / 图鉴挑战：默认火力 Lv4
+    player.berserkBanner = 0;
+    player.shield = 0;
+    player.respawnTimer = 0;
+    player.hitCount = 0;
+    initWingmen();
+
+    if (autoStart) {
+      state.mode = 'playing';
+      overlay.classList.add('hidden');
+    } else {
+      state.mode = 'idle';
+      planeSelect.classList.remove('hidden'); wingmanSelect.classList.remove('hidden');   // 标题页：展示选机卡片
+      bossTestRow.style.display = 'none';   // BOSS 试炼已移入怪物图鉴
+      showOverlay('准备起飞~', defaultDesc(), '开始游戏');
+      // 图鉴入口按钮
+      let encyBtn = document.getElementById('encyEntryBtn');
+      if (!encyBtn) {
+        const btn = document.createElement('button');
+        btn.id = 'encyEntryBtn';
+        btn.className = 'ency-entry-btn';
+        btn.textContent = '怪物图鉴';
+        btn.addEventListener('click', openEncyclopedia);
+        startBtn.parentNode.insertBefore(btn, startBtn.nextSibling);
+      } else {
+        encyBtn.style.display = '';
+      }
+    }
+  }
+
+  function defaultDesc() {
+    return `<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>Space</kbd> 爆弹 · <kbd>P</kbd> 暂停 · <kbd>R</kbd> 重新开始`;
+  }
+
+  function showOverlay(title, html, btnText) {
+    overlayTitle.textContent = title;
+    overlayDesc.innerHTML = html;
+    startBtn.textContent = btnText;
+    overlay.classList.remove('hidden');
+  }
+
+  // ---------- 选机页面 ----------
+    // ---------- 选僚机页面 ----------
+  function buildWingmanCards() {
+    wingmanGrid.innerHTML = '';
+    for (const id in WINGMEN) {
+      const wm = WINGMEN[id];
+      if (wm.empty) continue;   // 去掉“无僚机/不选僚机”选项：必须携带僚机出击
+      const card = document.createElement('div');
+      card.className = 'plane-card wingman-card' + (wm.id === currentWingman.id ? ' selected' : '');
+      card.dataset.wingman = wm.id;
+      if (!wm.empty) {
+        const cvs = document.createElement('canvas');
+        cvs.width = 56 * DPR; cvs.height = 60 * DPR;
+        cvs.style.width = '56px'; cvs.style.height = '60px';
+        const c = cvs.getContext('2d');
+        c.scale(DPR, DPR);
+        c.translate(28, 32);
+        paintWingman(c, 1);   // 与游戏内僚机同一造型
+        card.appendChild(cvs);
+      } else {
+        card.classList.add('wingman-none');
+      }
+      const name = document.createElement('div');
+      name.className = 'plane-card-name';
+      name.textContent = wm.name;
+      const desc = document.createElement('div');
+      desc.className = 'plane-card-desc';
+      desc.innerHTML = wm.desc;
+      card.append(name, desc);
+      card.addEventListener('click', () => {
+        currentWingman = wm;
+        wingmanGrid.querySelectorAll('.plane-card').forEach(el =>
+          el.classList.toggle('selected', el.dataset.wingman === wm.id));
+      });
+      wingmanGrid.appendChild(card);
+    }
+  }
+
+function buildPlaneCards() {
+    planeGrid.innerHTML = '';
+    for (const id in PLANES) {
+      const p = PLANES[id];
+      const card = document.createElement('div');
+      card.className = 'plane-card' + (p.id === currentPlane.id ? ' selected' : '');
+      card.dataset.plane = p.id;
+
+      // 缩略图：复用玩家战机造型（高 DPI 适配）
+      const cvs = document.createElement('canvas');
+      cvs.width = 56 * DPR; cvs.height = 60 * DPR;
+      cvs.style.width = '56px'; cvs.style.height = '60px';
+      const c = cvs.getContext('2d');
+      c.scale(DPR, DPR);
+      c.translate(28, 30);
+      paintShip(c);   // 与游戏内战机同一造型，选机页同步更新
+
+      const name = document.createElement('div');
+      name.className = 'plane-card-name';
+      name.textContent = p.name;
+      const desc = document.createElement('div');
+      desc.className = 'plane-card-desc';
+      desc.innerHTML = p.desc;
+
+      card.append(cvs, name, desc);
+      card.addEventListener('click', () => {
+        currentPlane = p;
+        planeGrid.querySelectorAll('.plane-card').forEach(el =>
+          el.classList.toggle('selected', el.dataset.plane === p.id));
+      });
+      planeGrid.appendChild(card);
+    }
+    // 占位：后续新机
+    const soon = document.createElement('div');
+    soon.className = 'plane-card plane-card-soon';
+    soon.textContent = '更多战机 · 敬请期待';
+    planeGrid.appendChild(soon);
+  }
+
+  function togglePause() {
+    state.paused = !state.paused;
+    if (state.paused) {
+      planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');
+      bossTestRow.style.display = 'none';
+      const encyBtn = document.getElementById('encyEntryBtn');
+      if (encyBtn) encyBtn.style.display = 'none';
+      showOverlay('已暂停', '按 <kbd>P</kbd> 继续游戏', '继续游戏');
+      retrialBtn.classList.add('hidden');   // 暂停菜单不显示胜利页专属按钮
+      pauseHomeBtn.classList.remove('hidden');
+      // 挑战模式（含 BOSS 试炼/测试）：额外显示“重新挑战”
+      if (state.challenge || state.testBoss) pauseRetryBtn.classList.remove('hidden');
+      else pauseRetryBtn.classList.add('hidden');
+    } else {
+      overlay.classList.add('hidden');
+      pauseHomeBtn.classList.add('hidden');
+      pauseRetryBtn.classList.add('hidden');
+      retrialBtn.classList.add('hidden');
+    }
+  }
+
+  function endGame() {
+    state.mode = 'gameover';
+    planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');   // 结算页：隐藏选机，直接重开
+    const encyBtn = document.getElementById('encyEntryBtn');
+    if (encyBtn) encyBtn.style.display = 'none';
+    showOverlay(
+      '战机陨落',
+      `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
+       抵达关卡：<b style="color:#ffb545">${state.level}</b><br />
+       剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b><br /><br />
+       按 <kbd>R</kbd> 或点击下方按钮再次出击`,
+      '再来一局'
+    );
+  }
+
+  let victoryOverlayActive = false;

@@ -27,7 +27,7 @@
     </header>
 
     <div class="stage">
-      <canvas id="game" width="480" height="720"></canvas>
+      <canvas id="game" width="480" height="792"></canvas>
 
       <!-- HUD -->
       <div class="hud">
@@ -38,8 +38,8 @@
           </div>
         </div>
         <div class="hud-right">
-          <div class="stat"><span>关卡</span><b id="levelText">1</b></div>
-          <div class="stat"><span>高能爆弹</span><b id="bombText">1</b></div>
+          <!-- 高能爆弹：图标数量代表爆弹数（上限 3，BOSS 测试模式 ∞），由 updateHUD 渲染 -->
+          <div class="bomb-icons" id="bombIcons" title="高能爆弹（Space 释放）"></div>
         </div>
       </div>
 
@@ -71,7 +71,6 @@
       <div class="overlay" id="overlay">
         <div class="overlay-card">
           <h2 id="overlayTitle">准备起飞</h2>
-          <div id="musicHint" class="music-hint">🔊 点击任意处启用背景音乐</div>
           <p id="overlayDesc">
             使用 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 操纵战机<br />
             主炮自动开火，<kbd>Space</kbd> 释放高能爆弹（重创全场敌人 + 清空敌弹）<br />
@@ -87,6 +86,7 @@
             <div class="plane-grid" id="wingmanGrid"></div>
           </div>
           <button id="startBtn">开始游戏</button>
+          <button id="retrialBtn" class="hidden">再次挑战</button>
           <button id="pauseRetryBtn" class="hidden">重新挑战</button>
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <div class="boss-test-row" id="bossTestRow"></div>
@@ -109,12 +109,22 @@
         </div>
       </div>
     </div>
-
-    <footer class="tips">
-      <span>提示：击落敌机得分，被击中会掉血，血量归零即游戏结束。</span>
-    </footer>
   </div>
 
-  <script src="./game.js"></script>
+  <!-- 游戏脚本：经典 <script> 共享全局词法作用域，必须严格按序号加载（01 常量 → 14 启动入口） -->
+  <script src="./js/01-config.js"></script>
+  <script src="./js/02-core.js"></script>
+  <script src="./js/03-audio.js"></script>
+  <script src="./js/04-spawn.js"></script>
+  <script src="./js/05-boss.js"></script>
+  <script src="./js/06-enemy.js"></script>
+  <script src="./js/07-player.js"></script>
+  <script src="./js/08-entities.js"></script>
+  <script src="./js/09-draw-ships.js"></script>
+  <script src="./js/10-draw-world.js"></script>
+  <script src="./js/11-draw-boss.js"></script>
+  <script src="./js/12-ui.js"></script>
+  <script src="./js/13-encyclopedia.js"></script>
+  <script src="./js/14-main.js"></script>
 </body>
 </html>
