@@ -72,6 +72,8 @@
         pendingBoss: 'song',   // 即将登场的 BOSS id
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我血量无限、仅单个敌人
+    hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
+    prevLevel: 1,      // 上一帧关卡等级：检测「关卡提升」以触发斗志昂扬 5% 出现
   };
 
   const player = {
@@ -103,12 +105,14 @@
   /** @type {Array} */ let missileWarns = [];   // 炮火先兆者导弹垂直预警线
   /** @type {Array} */ let missiles = [];       // 预警结束后从上方下落的导弹
   /** @type {Array} */ let blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
+  /** @type {Array} */ let popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
   /** @type {Array} */ let zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警：风流约 1.1s / 风柱 1.3s）
   /** @type {Array} */ let windFlows = [];      // 标记到期后沿曲线呼啸而至的风流
   /** @type {Array} */ let pillarStrikes = [];  // 标记到期后降下的垂直风柱打击
   /** @type {Object|null} */ let stormVortex = null;   // 暴风之眼：涡流风旋（技能7，自转喷出密集风条）
   /** @type {Array} */ let stars = [];
   /** @type {Array} */ let wingmen = [];   // 僚机（成对，跟随主机两侧，不可被击中）
+  /** @type {Array} */ let douzhiFx = [];  // 斗志昂扬死亡演出（脱离渐隐的蓝盒 / 淡黄扩大光环 / 快速渐隐的本体）
 
   // ---------- 星空 ----------
   // 星星着色：多数蓝白，少量粉(#FFC0CB)/青(#39C5BB)，与星云雾霭共同营造"青粉丝域"
@@ -217,6 +221,9 @@
   // ---------- 工具 ----------
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+  // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时返回 2，否则 1）
+  function hasteMul() { return state.hasteT > 0 ? DOUZHI.buffMul : 1; }
 
   // 按权重从池中随机取一个 id（weights 缺失的 id 视为 1）——BOSS 技能加权随机用
   function weightedPick(pool, weights) {

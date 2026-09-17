@@ -41,6 +41,8 @@
     state.lives = PLAYER.lives;
     state.spawnTimer = 1.2;
     state.time = 0;
+    state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
+    state.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     state.paused = false;
     pauseHomeBtn.classList.add('hidden');
     pauseRetryBtn.classList.add('hidden');
@@ -86,6 +88,8 @@
     missileWarns = [];
     missiles = [];
     blBombs = [];
+    popianMissiles = [];
+    douzhiFx = [];
     zoneMarks = [];
     windFlows = [];
     pillarStrikes = [];

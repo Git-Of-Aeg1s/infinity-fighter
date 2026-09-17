@@ -51,8 +51,9 @@
       escortTimer: 0,    // 仅 capital：周期召唤护航
       leaving: false,        // 停留结束后停止攻击、以进场速度前开走
       chargeT: 0,            // 仅 harbinger：红/灰充能循环计时
+      chargeWave: 0,         // 仅 harbinger：充能波序号（0=首波 1.5s红+3s灰；≥1=后续波 2s红+1s复位+1.5s灰）
       firedThisCycle: false, // 仅 harbinger：本轮是否已召唤导弹
-      missilesGuided: 0,     // 仅 harbinger：已导引导弹数（上限 4）
+      missilesGuided: 0,     // 仅 harbinger：已导引导弹数（上限 5）
     };
     // 蓝色4类(capital azure)：出现时 20% 概率带护盾，前 6s 虚化不会受伤
     if (type === 'capital' && variant && variant.id === 'azure' && Math.random() < PHASE_CHANCE) {
@@ -101,6 +102,12 @@
       e.blThrown = false;  // 炸弹是否已脱离（未脱离时被击毁 → 原地爆炸）
       e.blWarn = null;     // 停车锁定阶段的预警区 { tx, ty, t }
       e.blWaitT = 0;       // 投弹后停留计时
+    }
+    // 斗志昂扬（增益无人机）：横向匀速穿越 + 余弦上下浮动；dirX/baseY/cosPhase 由 spawnDouzhi 按出场侧设定
+    if (type === 'douzhi') {
+      e.dirX = 1;          // 横穿方向（1=左→右 / -1=右→左）
+      e.baseY = y;         // 余弦轨迹基准高度
+      e.cosPhase = 0;      // 上下浮动相位
     }
     enemies.push(e);
     return e;
@@ -162,7 +169,9 @@
     for (let k = 0; k < n; k++) {
       const x = x0 + k * gap;
       const y = vShape ? -50 - Math.abs(k - (n - 1) / 2) * 40 : -50 - k * 16;
-      makeEnemy('striker', x, y, {
+      if (rollFashiA1()) spawnFashiA1(x, y);
+      else if (rollPopian()) spawnPopian(x, y);
+      else makeEnemy('striker', x, y, {
         behavior: Math.random() < 0.25 ? 'track' : 'straight',
         holdTimer: 8,   // 停留8s后再冲锋
       });
@@ -179,7 +188,9 @@
     for (let k = 0; k < seq.length; k++) {
       const x = x0 + k * gap;
       if (seq[k] === 2) {
-        makeEnemy('striker', x, -50, {
+        if (rollFashiA1()) spawnFashiA1(x, -50);
+        else if (rollPopian()) spawnPopian(x, -50);
+        else makeEnemy('striker', x, -50, {
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
           holdTimer: rand(0.4, 0.8),
         });
@@ -244,13 +255,17 @@
   // 对称编队：2类组成箭头/V 字，从上方对称俯冲
   function spawnStrikerVee() {
     const cx = CANVAS_W / 2;
-    makeEnemy('striker', cx, -46, { behavior: 'track', holdTimer: rand(0.4, 0.7) });   // 顶点
+    if (rollFashiA1()) spawnFashiA1(cx, -46);
+    else if (rollPopian()) spawnPopian(cx, -46);
+    else makeEnemy('striker', cx, -46, { behavior: 'track', holdTimer: rand(0.4, 0.7) });   // 顶点
     const pairs = 3;
     for (let k = 1; k <= pairs; k++) {
       const dx = k * 56;
       const y = -46 - k * 42;                          // 逐级滞后 → V 字
       for (const sx of [-1, 1]) {
-        makeEnemy('striker', cx + sx * dx, y, {
+        if (rollFashiA1()) spawnFashiA1(cx + sx * dx, y);
+        else if (rollPopian()) spawnPopian(cx + sx * dx, y);
+        else makeEnemy('striker', cx + sx * dx, y, {
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
           holdTimer: rand(0.4, 0.8),
         });
@@ -270,7 +285,10 @@
       });
     }
     for (let k = -1; k <= 1; k++) {
-      makeEnemy('striker', CANVAS_W / 2 + k * 60, -50, {
+      const sx = CANVAS_W / 2 + k * 60;
+      if (rollFashiA1()) spawnFashiA1(sx, -50);
+      else if (rollPopian()) spawnPopian(sx, -50);
+      else makeEnemy('striker', sx, -50, {
         behavior: Math.random() < 0.3 ? 'track' : 'straight',
         holdTimer: rand(0.5, 1.0),
       });
@@ -293,7 +311,9 @@
       } else if (k % 2 === 0) {   // k=0/2/4 → 1类（三个一组，满足≥3）
         spawnSideUnit(x, y, { vx: fromLeft ? 24 : -24, vy: rand(90, 111) }, Math.random() < 0.10 ? 'shoot' : 'pass', rand(0.8, 1.5));   // 基值 ×0.6，另乘 SIDE_SPEED_MUL
       } else {
-        makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: rand(0.4, 0.9) });
+        if (rollFashiA1()) spawnFashiA1(x, y);
+        else if (rollPopian()) spawnPopian(x, y);
+        else makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: rand(0.4, 0.9) });
       }
     }
   }
@@ -370,8 +390,8 @@
 
   // 3类槽位抽取：本局首次（仅第一轮）必为炮火先兆者；之后按阶段权重抽取——
   // Lv10 以下（第一轮）：普通炮艇 80% / 先兆者 20%（寒霜、威龙、御4、暴鸰不出场）；
-  // Lv10 起（实际仅第二轮出现）：炮艇 35 / 先兆者 20 / 寒霜 20 / 威龙 10 / 御4 15 / 暴鸰 10（总 110）
-  // （暴鸰已实装：spawnBaoling 常驻可用，Lv10 起直接按权重参与抽取）
+  // Lv10 起（实际仅第二轮出现）：炮艇 35 / 先兆者 20 / 寒霜 20 / 威龙 10 / 御4 15 / 铁砧 15 / 暴鸰 10 / 焦香螺旋桨 10（总 135）
+  // （暴鸰、焦香螺旋桨已实装：Lv10 起直接按权重参与抽取）
   function pickSpecial3Spawn() {
     const hiLv = state.level >= 10;
     const pool = [
@@ -380,7 +400,9 @@
       { fn: spawnHanshuang, w: hiLv ? 20 : 0 },
       { fn: spawnWeilong, w: hiLv ? 10 : 0 },
       { fn: spawnYu4, w: hiLv ? 15 : 0 },   // 御4：Lv10 前不出场
+      { fn: spawnAnvil, w: hiLv ? 15 : 0 },   // 铁砧：Lv10 前不出场
       { fn: spawnBaoling, w: hiLv ? 10 : 0 },   // 暴鸰
+      { fn: spawnJiaoxiang, w: hiLv ? 10 : 0 },   // 焦香螺旋桨：Lv10 前不出场
     ].filter(it => it.w > 0 && typeof it.fn === 'function');
     let total = 0;
     for (const it of pool) total += it.w;
@@ -452,6 +474,67 @@
   // 普通炮艇替换判定：1.5% 概率改为暴鸰
   function rollBaoling() {
     return Math.random() < BAOLING.replaceChance;
+  }
+
+  // 2类突击艇替换判定：lv10 前低概率替换为法术大师A1，lv10 后较多出现
+  function rollFashiA1() {
+    const chance = state.level < 10 ? FASHI_A1.spawnLowLv : FASHI_A1.spawnHighLv;
+    return Math.random() < chance;
+  }
+
+  // 特殊2类：法术大师A1 —— 紫光激光无人机：不停留，出场 1s 后停移射击，50% 横移再恢复下降
+  function spawnFashiA1(x, y) {
+    const e = makeEnemy('fashiA1', x, y, {});
+    e.fa1State = 'descend';
+    e.fa1T = 0;
+    e.fa1FireTimer = 0;   // 首次攻击：等 firstDelay(1s) 后立即刷停开火（不叠加 fireInterval）
+    e.fa1Fired = false;
+    e.entryT = 0;
+    e.vx = 0;
+    e.vy = FASHI_A1.entrySpeed;   // 入场初速不变（最大速降 25%，0.5s 内快速衰减到 speed）
+    e.strafeDir = 0;
+    e.strafeDist = 0;
+    e.strafeMoved = 0;
+    return e;
+  }
+
+  // 2类突击艇替换判定：lv10 前极低概率替换为破片，lv10 后正常出现（权重见 PRESSURE_W.popian）
+  function rollPopian() {
+    const chance = state.level < 10 ? POPIAN.spawnLowLv : POPIAN.spawnHighLv;
+    return Math.random() < chance;
+  }
+
+  // 特殊2类：破片 —— 三连发导弹无人机：直线飞向选定点急停锁停（除非被击毁不再移动）→
+  // 索敌范围内锁定玩家位置红圈预警 0.5s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；20% 概率侧翼入场
+  function spawnPopian(x, y) {
+    const flank = Math.random() < POPIAN.flankChance;
+    let sx, sy;
+    if (flank) {
+      const fromLeft = Math.random() < 0.5;
+      sx = fromLeft ? -50 : CANVAS_W + 50;
+      sy = rand(CANVAS_H * 0.08, CANVAS_H * 0.22);
+    } else {
+      sx = x != null ? x : rand(60, CANVAS_W - 60);
+      sy = y != null ? y : -50;
+    }
+    const e = makeEnemy('popian', sx, sy, {});
+    // 停留点：落在从上往下 30%~80% 屏高区间；nearBias 幂函数使靠近入场高度（近处）概率更高
+    const t = Math.pow(Math.random(), POPIAN.nearBias);
+    const ty = CANVAS_H * (POPIAN.stopTopY + (POPIAN.stopBotY - POPIAN.stopTopY) * t);
+    // 水平落点：以入场 x 为中心随机横移（幅度受 moveMax 约束），夹在屏内
+    const tx = clamp(sx + rand(-1, 1) * POPIAN.moveMax * 0.5, 40, CANVAS_W - 40);
+    e.tpX = tx;
+    e.tpY = ty;
+    e.arrived = false;
+    e.entryT = 0;
+    e.faceAng = 0;
+    e.detectR = CANVAS_H * POPIAN.detectBase;
+    e.vx = 0; e.vy = 0;
+    e.warn = null;
+    e.popBurst = null;
+    e.popBurstTimer = 0;
+    e.atkT = POPIAN.firstDelay;
+    return e;
   }
 
   // 特殊3类：暴鸰 —— 自爆无人机：不悬停、以炮艇 40% 速度径直下压；登场 0.8s 后进入玩家距离内即
@@ -569,6 +652,70 @@
     return e;
   }
 
+  // 铁砧：治疗无人机，悬停于炮火先兆者(75~110)前方一些（更靠下），停留 25s（同御4），0.5s 后展开正方形治疗光环
+  function spawnAnvil(holdTimer) {
+    const e = makeEnemy('anvil', rand(110, CANVAS_W - 110), -60, {
+      hoverY: rand(120, 165),   // 炮火先兆者停留位置前方（更靠下）
+      holdTimer: holdTimer != null ? holdTimer : ANVIL.dwell,
+      // 铁砧不攻击：不再传 fireTimer，沿用注册表 fireInterval[1e9,1e9] 的天文默认间隔；
+      // （此前误传 1.2s 导致到场后穿透 updateEnemyFire 通用段、落到 capital 默认弹幕放出 6 枚扇形弹）
+    });
+    e.auraT = 0;   // 登场计时（超过 auraDelay 后治疗光环渐显）
+    e.healT = 0;   // 治疗节拍计时
+    return e;
+  }
+
+  // 焦香螺旋桨：火焰灼烧无人机，登场后移动到场地 40% 以下位置绕大圈巡航；20% 概率从侧翼出场
+  function spawnJiaoxiang() {
+    const cx = CANVAS_W / 2;
+    const cy = CANVAS_H * JIAOXIANG.orbitCy;
+    const R = JIAOXIANG.orbitR;
+    const flank = Math.random() < JIAOXIANG.flankChance;
+    let e;
+    if (flank) {
+      // 侧翼出场：从左/右侧水平入场，无登场加速，光环延迟 1.2s
+      const fromLeft = Math.random() < 0.5;
+      const sx = fromLeft ? -60 : CANVAS_W + 60;
+      e = makeEnemy('jiaoxiang', sx, cy, {});
+      e.jxFlank = true;
+      e.jxPhase = 0;         // 0=入场移动, 1=绕圈
+      e.jxDir = fromLeft ? 1 : -1;   // 水平移动方向
+      e.jxTargetX = fromLeft ? cx - R : cx + R;   // 入场目标点（圈边缘）
+      e.jxTargetY = cy;
+      e.jxOrbitDir = e.jxDir;   // 绕圈方向：左入场顺时针、右入场逆时针（与入场动量衔接最自然）
+      e.vx = e.jxDir * JIAOXIANG.speed;   // 初始速度：水平朝内（无加速）
+      e.vy = 0;
+    } else {
+      // 顶部出场：180% 加速 0.5s 衰减，光环延迟 0.8s
+      const sx = rand(80, CANVAS_W - 80);
+      e = makeEnemy('jiaoxiang', sx, -60, {});
+      e.jxFlank = false;
+      e.jxPhase = 0;
+      e.jxEntryT = 0;        // 入场计时（用于加速衰减）
+      e.jxTargetX = cx;      // 入场目标点：圈顶
+      e.jxTargetY = cy - R;
+      e.jxOrbitDir = Math.random() < 0.5 ? 1 : -1;   // 绕圈方向随机
+      // 初始速度：朝目标点方向，带 180% 入场加速
+      const idx = e.jxTargetX - sx, idy = e.jxTargetY - (-60);
+      const il = Math.hypot(idx, idy) || 1;
+      const iv = JIAOXIANG.speed * JIAOXIANG.entryBoost;
+      e.vx = idx / il * iv;
+      e.vy = idy / il * iv;
+    }
+    e.auraT = 0;             // 登场计时（超过 auraDelay 后火焰光环渐显）
+    e.jxSpinA = Math.random() * Math.PI * 2;   // 三根横杠初始角（随机）
+    e.jxSpinB = Math.random() * Math.PI * 2;
+    e.jxSpinC = Math.random() * Math.PI * 2;
+    // 旋转方向：B/C（白圆上的两根）方向一致随机，A（直径杠）独立随机
+    const bcDir = Math.random() < 0.5 ? 1 : -1;
+    const aDir = Math.random() < 0.5 ? 1 : -1;
+    e.jxSpdA = JIAOXIANG.spinA * aDir;
+    e.jxSpdB = JIAOXIANG.spinB * bcDir;
+    e.jxSpdC = JIAOXIANG.spinC * bcDir;
+    e.jxJitX = 0; e.jxJitY = 0;   // 绕圈相干随机漂移初值（OU 游走状态，见 updateEnemyMovement）
+    return e;
+  }
+
   // 御4防御光环减伤判定：目标敌机中心位于任一已显现的御4光环内时，受到的非真实伤害 ×0.70（-30%）
   // （真实伤害——高能爆弹——在 useBomb 直接结算，不经过此乘区）
   function yu4AuraMul(target) {
@@ -578,6 +725,20 @@
         return 1 - YU4.dmgReduce;
     }
     return 1;
+  }
+
+  // 特殊2类：斗志昂扬 —— 升级时 5% 概率从屏幕左/右侧出现，朝对侧横穿（速度=威龙×1.5），
+  // 同时沿余弦曲线小幅上下浮动；无碰撞、不攻击；击毁后触发我方攻速/弹速翻倍增益（见 killEnemy / updateDouzhiFx）
+  function spawnDouzhi() {
+    const fromLeft = Math.random() < 0.5;
+    const dirX = fromLeft ? 1 : -1;
+    const x = fromLeft ? -60 : CANVAS_W + 60;
+    const y = rand(CANVAS_H * 0.22, CANVAS_H * 0.55);   // 入场高度：场地上半部
+    const e = makeEnemy('douzhi', x, y, {});
+    e.dirX = dirX;         // 横穿方向（左→右 或 右→左）
+    e.baseY = y;           // 余弦轨迹基准高度
+    e.cosPhase = Math.random() * Math.PI * 2;   // 上下浮动初相位
+    return e;
   }
 
   // ---------- 图鉴挑战模式 ----------
@@ -612,8 +773,23 @@
       case 'yu4':
         spawnYu4(1e9);   // 不攻击；防御光环减伤；挑战模式永驻场
         break;
+      case 'anvil':
+        spawnAnvil(1e9);   // 不攻击；治疗光环；挑战模式永驻场
+        break;
       case 'baoling':
         spawnBaoling(CANVAS_W / 2);   // 自爆突进；飞出屏幕后由 updateChallenge 重新生成
+        break;
+      case 'jiaoxiang':
+        spawnJiaoxiang();   // 绕圈巡航 + 火焰灼烧；挑战模式永驻场
+        break;
+      case 'douzhi':
+        spawnDouzhi();   // 横穿（余弦浮动）；飞出屏幕后由 updateChallenge 重新生成
+        break;
+      case 'fashiA1':
+        spawnFashiA1(cx, -50);   // 下降+停移射击；飞出屏幕后由 updateChallenge 重新生成
+        break;
+      case 'popian':
+        spawnPopian(cx, -50);   // 直线急停锁停后持续红圈预警三连发导弹；停稳后永驻场
         break;
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
@@ -655,8 +831,8 @@
       } else if (e.hp < e.maxHp) {
         e.hp = e.maxHp;
       }
-      if (e.type === 'harbinger' && e.missilesGuided >= 4) {
-        e.missilesGuided = 0; e.chargeT = 0; e.firedThisCycle = false;
+      if (e.type === 'harbinger' && e.missilesGuided >= HARBINGER.maxMissiles) {
+        e.missilesGuided = 0; e.chargeT = 0; e.chargeWave = 0; e.firedThisCycle = false;   // 挑战模式：导引满一轮后重置循环（回首波动画），持续可观察
       }
     }
   }

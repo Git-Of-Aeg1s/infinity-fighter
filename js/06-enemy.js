@@ -30,6 +30,8 @@
       if (e.phase > 0) e.phase -= dt;   // 虚化倒计时，归零后可被伤害
       if (e.unfoldT > 0) e.unfoldT -= dt;   // 4类就位展开动画计时
       if (e.type === 'yu4') e.auraT += dt;   // 御4：登场计时（超过 auraDelay 后防御光环渐显）
+      if (e.type === 'anvil') { e.auraT += dt; anvilHealTick(e, dt); }   // 铁砧：登场计时 + 每秒治疗光环内敌人
+      if (e.type === 'jiaoxiang') { e.auraT += dt; jiaoxiangBurn(e, dt); }   // 焦香螺旋桨：登场计时 + 持续火焰灼烧
       updateEnemyMovement(e, dt);
       updateEnemyFire(e, dt);
   
@@ -50,12 +52,20 @@
         continue;
       }
   
-      // 撞玩家（仅机身中心判定点）；幽暮突击艇无法碰撞：既不撞伤玩家、也不受撞机反伤，与玩家互相穿过
-      if (!(e.type === 'striker' && e.skill === 'dusk') &&
+      // 撞玩家（仅机身中心判定点）；幽暮突击艇、斗志昂扬无法碰撞：既不撞伤玩家、也不受撞机反伤，与玩家互相穿过
+      if (!(e.type === 'striker' && e.skill === 'dusk') && e.type !== 'douzhi' && e.type !== 'jiaoxiang' &&
           player.alive && player.invuln <= 0 &&
           Math.hypot(e.x - player.x, e.y - (player.y + PLAYER.hitOffsetY)) < PLAYER.hitRadius + Math.max(e.w, e.h) / 2) {
         // 卫护飞船（invulnMul 0.4）：撞击造成的无敌时间仅为常规的 40%
-        damagePlayer(ENEMY_TYPES[e.type].crashDmg, ENEMY_TYPES[e.type].invulnMul || 1);
+        // 破片：碰撞伤害按登场时间分段（0.5s 内无伤害 / 0.5~2s 2类×80% / 2s 后 2类×150%）
+        let crashDmg = ENEMY_TYPES[e.type].crashDmg;
+        if (e.type === 'popian') {
+          const base2 = ENEMY_TYPES.striker.crashDmg;
+          crashDmg = e.entryT < POPIAN.crashImmune ? 0
+            : e.entryT < POPIAN.crashLowEnd ? base2 * POPIAN.crashLowMul
+            : base2 * POPIAN.crashHighMul;
+        }
+        if (crashDmg > 0) damagePlayer(crashDmg, ENEMY_TYPES[e.type].invulnMul || 1);
         e.hp -= 40 * yu4AuraMul(e);   // 撞机反伤为普通伤害，可被御4防御光环削减（真实伤害仅高能爆弹）
         spawnParticles(e.x, e.y, e.color, 18, 220);
         shake(6, 0.25);   // 撞机冲击震屏较弱（受击本体反馈见 damagePlayer）
@@ -208,9 +218,177 @@
       e.y += BAOLING.speedPost * e.speedMul * dt;   // 投弹完毕：以炮艇 70% 速继续俯冲（出屏由通用检测移除）
       return;
     }
+    if (e.type === 'douzhi') {
+      // 斗志昂扬：横向匀速穿越（速度=威龙×1.5），同时沿余弦曲线小幅上下浮动；不悬停、不攻击（出屏由通用检测移除）
+      e.x += DOUZHI.speed * e.dirX * e.speedMul * dt;
+      e.cosPhase += DOUZHI.freqY * dt;
+      e.y = e.baseY + Math.sin(e.cosPhase) * DOUZHI.ampY;
+      return;
+    }
+    if (e.type === 'fashiA1') {
+      // 法术大师A1：速度积分驱动状态机（下降 → 刹停 → 射击 → 可选横移 → 恢复下降）
+      e.entryT += dt;
+      const spd = FASHI_A1.speed * e.speedMul;
+      const acc = FASHI_A1.accel;
+      switch (e.fa1State) {
+        case 'descend': {
+          // 入场 0.5s 内从 entrySpeed 线性衰减到 speed（最大速度），之后保持 speed
+          const t = Math.min(1, e.entryT / FASHI_A1.entryDecay);
+          const targetVy = FASHI_A1.entrySpeed + (spd - FASHI_A1.entrySpeed) * t;
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (targetVy - e.vy) * Math.min(1, dt * acc);
+          if (e.entryT >= FASHI_A1.firstDelay) {
+            e.fa1FireTimer -= dt;
+            if (e.fa1FireTimer <= 0) e.fa1State = 'brake';
+          }
+          break;
+        }
+        case 'brake':
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (0 - e.vy) * Math.min(1, dt * acc);
+          if (Math.abs(e.vy) < 8 && Math.abs(e.vx) < 8) {
+            e.vx = 0; e.vy = 0;
+            e.fa1State = 'fire'; e.fa1T = 0; e.fa1Fired = false;
+          }
+          break;
+        case 'fire': {
+          e.fa1T += dt;
+          if (!e.fa1Fired && e.fa1T >= FASHI_A1.firePause) {
+            e.fa1Fired = true;
+            const ang = Math.atan2(player.y - e.y, player.x - e.x);
+            const cfg = ENEMY_TYPES.fashiA1;
+            // 激光：尾端锢定（b.x/b.y = 尾端），无上限持续生长，直到尾端出界才消失
+            pushEBullet(e, ang, FASHI_A1.laserSpeed, cfg, {
+              laser: true, len: 4, growRate: FASHI_A1.laserGrowRate,
+              r: FASHI_A1.laserR, color: '#a855f7', dmg: FASHI_A1.laserDmg,
+            });
+          }
+          if (e.fa1Fired && e.fa1T >= FASHI_A1.firePause + FASHI_A1.fireLingerAfter) {
+            if (Math.random() < FASHI_A1.strafeChance) {
+              e.fa1State = 'strafe'; e.fa1T = 0;
+              // 左 15% / 右 15% 区域：强制向场心方向横移（不再靠近那一侧边界）
+              const inLeft = e.x < CANVAS_W * 0.15;
+              const inRight = e.x > CANVAS_W * 0.85;
+              if (inLeft) e.strafeDir = 1;
+              else if (inRight) e.strafeDir = -1;
+              else e.strafeDir = Math.random() < 0.5 ? -1 : 1;
+              e.strafeDist = rand(FASHI_A1.strafeMin, FASHI_A1.strafeMax);
+              const maxX = e.strafeDir > 0 ? (CANVAS_W - 40 - e.x) : (e.x - 40);
+              e.strafeDist = Math.min(e.strafeDist, Math.max(30, maxX));
+              e.strafeMoved = 0;
+            } else {
+              e.fa1State = 'resume'; e.fa1T = 0;
+            }
+          }
+          break;
+        }
+        case 'strafe': {
+          const tvx = e.strafeDir * FASHI_A1.strafeSpeed;
+          e.vx += (tvx - e.vx) * Math.min(1, dt * acc);
+          e.vy += (0 - e.vy) * Math.min(1, dt * acc);
+          e.strafeMoved += Math.abs(e.vx * dt);
+          if (e.strafeMoved >= e.strafeDist) { e.fa1State = 'resume'; e.fa1T = 0; }
+          break;
+        }
+        case 'resume':
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (spd - e.vy) * Math.min(1, dt * acc);
+          if (e.vy >= spd * 0.9) {
+            e.fa1State = 'descend';
+            e.fa1FireTimer = rand(FASHI_A1.fireInterval[0], FASHI_A1.fireInterval[1]);
+          }
+          break;
+      }
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      e.x += Math.sin(e.wobble) * 6 * dt;   // 轻微摆动
+      return;
+    }
+    if (e.type === 'jiaoxiang') {
+      // 焦香螺旋桨：全程速度积分驱动（位置连续变化，杜绝切换闪动/状态重置）；
+      // 入场朝目标点逼近 → 绕圈用"引导点追踪"（追圆周上领先角度的点）形成大致圆形轨迹，含轻微随机漂移
+      const cx = CANVAS_W / 2, cy = CANVAS_H * JIAOXIANG.orbitCy, R = JIAOXIANG.orbitR;
+      const spd = JIAOXIANG.speed * e.speedMul;
+      // 横杠旋转（三根异速，B/C 同向、A 独立）
+      e.jxSpinA += e.jxSpdA * dt;
+      e.jxSpinB += e.jxSpdB * dt;
+      e.jxSpinC += e.jxSpdC * dt;
+      let wantVx, wantVy;
+      if (e.jxPhase === 0) {
+        // 入场阶段：朝目标点直线逼近（顶部带 180% 加速衰减）
+        let boost = 1;
+        if (!e.jxFlank) {
+          e.jxEntryT += dt;
+          boost = e.jxEntryT < JIAOXIANG.entryBoostTime
+            ? 1 + (JIAOXIANG.entryBoost - 1) * (1 - e.jxEntryT / JIAOXIANG.entryBoostTime)
+            : 1;
+        }
+        const dx = e.jxTargetX - e.x, dy = e.jxTargetY - e.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const s = spd * boost;
+        wantVx = dx / dist * s; wantVy = dy / dist * s;
+        // 逼近目标点 → 切入绕圈（速度向量原样保留，天然连贯，无任何位置重置）
+        if (dist < JIAOXIANG.entryReach) e.jxPhase = 1;
+      } else {
+        // 绕圈阶段：追踪圆周上"领先角度"的引导点，速度积分自然形成大致圆形轨迹（非严格圆）
+        const curA = Math.atan2(e.y - cy, e.x - cx);
+        const leadA = curA + e.jxOrbitDir * JIAOXIANG.leadAngle;
+        const gx = cx + Math.cos(leadA) * R, gy = cy + Math.sin(leadA) * R;
+        const gdx = gx - e.x, gdy = gy - e.y;
+        const gl = Math.hypot(gdx, gdy) || 1;
+        // 期望速度 = 朝引导点（绕圈速度 ×orbitSpeedMul，较入场降 25%）+ 相干随机漂移（"乱动"）
+        // "乱动"用 OU 相干随机游走：漂移向量朝随机目标缓变，而非逐帧白噪声；
+        // 白噪声会被下方转向平滑（turn≈0.05/帧）滤波抵消几乎不动，相干游走有持续性故明显可见
+        const jr = Math.min(1, dt * JIAOXIANG.jitterRate);
+        e.jxJitX += (rand(-1, 1) * JIAOXIANG.jitter - e.jxJitX) * jr;
+        e.jxJitY += (rand(-1, 1) * JIAOXIANG.jitter - e.jxJitY) * jr;
+        wantVx = gdx / gl * spd * JIAOXIANG.orbitSpeedMul + e.jxJitX;
+        wantVy = gdy / gl * spd * JIAOXIANG.orbitSpeedMul + e.jxJitY;
+      }
+      // 速度平滑转向（限制角速度 → 速度曲线连贯无突变）+ 位置积分（连续，绝不跳变）
+      const turn = Math.min(1, dt * JIAOXIANG.turnRate);
+      e.vx += (wantVx - e.vx) * turn;
+      e.vy += (wantVy - e.vy) * turn;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      return;
+    }
+    if (e.type === 'popian') {
+      // 破片：登场计时（碰撞分段 + 索敌增长）→ 直线飞向选定点 → 到位急停锁停（除非被击毁不再移动）
+      e.entryT += dt;
+      // 索敌范围随时间增长（30% 屏高起步、每秒 +5% 屏高，封顶 detectMax）——体现为攻击范围增大
+      e.detectR = Math.min(CANVAS_H * POPIAN.detectMax,
+        CANVAS_H * (POPIAN.detectBase + POPIAN.detectGrow * e.entryT));
+      if (!e.arrived) {
+        const dx = e.tpX - e.x, dy = e.tpY - e.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const spd = POPIAN.speed * e.speedMul;
+        // 速度曲线圆滑：临近落点在 brakeDist 内按剩余距离线性减速到 0（而非从高速直接跳 0）
+        const brakeDist = 60;
+        const wantSpd = dist >= brakeDist ? spd : spd * Math.max(0, dist / brakeDist);
+        const tvx = dx / dist * wantSpd, tvy = dy / dist * wantSpd;
+        e.vx += (tvx - e.vx) * Math.min(1, dt * 12);
+        e.vy += (tvy - e.vy) * Math.min(1, dt * 12);
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        // 飞行朝向：机身平滑倾斜对齐速度方向（局部 +y 指向飞行方向）
+        const face = Math.atan2(e.vy, e.vx) - Math.PI / 2;
+        e.faceAng += (face - e.faceAng) * Math.min(1, dt * 10);
+        if (dist <= 2.5 || wantSpd < 5) {
+          // 到位：锁停（位置吸附、速度归零），停稳后才可攻击（首次攻击延迟 firstDelay）
+          e.x = e.tpX; e.y = e.tpY; e.vx = 0; e.vy = 0;
+          e.arrived = true;
+          e.atkT = POPIAN.firstDelay;
+        }
+      } else {
+        // 停稳：机身平滑回正（朝下），不再移动
+        e.faceAng += (0 - e.faceAng) * Math.min(1, dt * 8);
+      }
+      // 已锁停：不再移动（攻击由 updateEnemyFire 处理）
+      return;
+    }
     // gunship / capital / harbinger / yu4：下降到悬停高度 → 停留开火 → 停止攻击、以进场同速前开走（可能撞击玩家）
     // 御4 与炮艇悬停位置/行为一致，但速度降低 20%（320 → 256）
-    const cruise = (e.type === 'capital' ? 260 : e.type === 'harbinger' ? HARBINGER.descend : e.type === 'yu4' ? YU4.speed : 320) * e.speedMul;
+    const cruise = (e.type === 'capital' ? 260 : e.type === 'harbinger' ? HARBINGER.descend : e.type === 'yu4' ? YU4.speed : e.type === 'anvil' ? ANVIL.speed : 320) * e.speedMul;
     if (!e.arrived) {
       // 接近悬停高度时逐渐减速到 0（而非瞬间归零）
       if (e.vy == null) e.vy = cruise;
@@ -282,6 +460,8 @@
     if (e.y < 0 || e.x < -30 || e.x > CANVAS_W + 30) return;   // 未入场不开火（含横向尚未入场的长队队尾，避免屏外开火）
     // 幽暮突击艇：环射由移动状态机在“瞄准停顿”结束时触发，不走通用开火计时
     if (e.type === 'striker' && e.skill === 'dusk') return;
+    // 法术大师A1：攻击逻辑在移动状态机内处理，不走通用开火
+    if (e.type === 'fashiA1') return;
     // 大型龙卷：随机向 360° 快速射出风条（从机体内部随机点射出，与涡流风旋技能的风条完全一致）
     if (e.type === 'tornado') {
       e.fireTimer -= dt;
@@ -297,17 +477,21 @@
       }
       return;
     }
-    // 炮火先兆者：独立充能循环，红色充满即召唤导弹预警（最多导引 4 次）
+    // 炮火先兆者：入场瞬间即开始充能（不等待就位），红色充满即召唤导弹预警（最多 5 发）
+    // 充能与召唤均在 updateEnemyFire 内进行，不影响 updateEnemyMovement 的移动（下降/悬停巡航照常）
     if (e.type === 'harbinger') {
-      if (!e.arrived) return;
-      if (e.leaving && e.missilesGuided >= 4) return;
+      if (e.leaving) return;   // 已离场：停止充能
       e.chargeT += dt;
-      if (!e.firedThisCycle && e.chargeT >= HARBINGER.charge && e.missilesGuided < 4) {
+      // 首波红相 1.5s、后续波红相 2s；充满即召唤（chargeWave 整波保持不变，避免召唤后动画参数跳变）
+      const cd = (e.chargeWave || 0) === 0 ? HARBINGER.chargeFirst : HARBINGER.charge;
+      if (!e.firedThisCycle && e.chargeT >= cd && e.missilesGuided < HARBINGER.maxMissiles) {
         e.firedThisCycle = true;
         e.missilesGuided++;
         summonMissile(e);
+        // 最后一轮（第 5 发）召唤后立即离场：置 holdTimer=0 令移动分支转入离场
+        if (e.missilesGuided >= HARBINGER.maxMissiles) e.holdTimer = 0;
       }
-      if (e.chargeT >= HARBINGER.charge + HARBINGER.cover) { e.chargeT = 0; e.firedThisCycle = false; }
+      if (e.chargeT >= HARBINGER.cycle) { e.chargeT = 0; e.chargeWave = (e.chargeWave || 0) + 1; e.firedThisCycle = false; }
       return;
     }
     // 威龙：每隔一段时间朝玩家射 5 枚无偏转快弹（弹速 +60%）；发起时设置攻击窗口（期间停止移动）
@@ -337,6 +521,48 @@
         };
         e.burstTimer = 0;   // 首立即发
         e.attackT = WEILONG.burstGap * (WEILONG.burstCount - 1) + 0.10;   // 攻击窗口：期间停止移动
+      }
+      return;
+    }
+    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.5s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）
+    if (e.type === 'popian') {
+      if (!e.arrived || e.leaving) return;   // 未停稳不攻击
+      // 红圈预警进行中：倒计时结束即锁定红圈中心、发起三连发
+      if (e.warn) {
+        e.warn.t += dt;
+        if (e.warn.t >= POPIAN.warnTime) {
+          e.popBurst = { count: POPIAN.burstCount, shots: 0, gap: POPIAN.burstGap, tx: e.warn.tx, ty: e.warn.ty, firstHit: false };
+          e.popBurstTimer = 0;   // 首立即发
+          e.warn = null;
+        }
+        return;
+      }
+      // 三连发进行中：按间隔逐发射出（共享 burst.firstHit 状态）
+      if (e.popBurst) {
+        e.popBurstTimer -= dt;
+        if (e.popBurstTimer <= 0) {
+          const b = e.popBurst;
+          spawnPopianMissile(e, b.tx, b.ty, b.shots, b);
+          b.shots++;
+          e.popBurstTimer = b.gap;
+          if (b.shots >= b.count) e.popBurst = null;
+        }
+        return;
+      }
+      // 攻击间隔计时：仅当玩家处于索敌范围内才发起预警（范围随时间增长，迟早进入）
+      e.atkT -= dt;
+      if (e.atkT <= 0) {
+        if (player.alive && Math.hypot(player.x - e.x, player.y - e.y) <= e.detectR) {
+          // 锁定玩家当前位置（含少量随机偏移）为红圈中心，预警期间不再跟踪
+          e.warn = {
+            tx: clamp(player.x + rand(-POPIAN.warnOffset, POPIAN.warnOffset), 12, CANVAS_W - 12),
+            ty: clamp(player.y + rand(-POPIAN.warnOffset, POPIAN.warnOffset), 12, CANVAS_H - 12),
+            t: 0,
+          };
+          e.atkT = rand(POPIAN.fireInterval[0], POPIAN.fireInterval[1]);
+        } else {
+          e.atkT = 0.25;   // 不在范围：短暂重试
+        }
       }
       return;
     }
@@ -539,6 +765,9 @@
       dmg: opts.dmg != null ? opts.dmg : cfg.bulletDmg,
       color: opts.color || (isShip ? SHIP_BULLET_COLOR : '#ffd166'),
       split: opts.split || null,    // 分裂弹配置（飞行一段→停止→分裂）
+      laser: !!opts.laser,          // 自定义渲染：胶囊形紫色激光（fashiA1）
+      lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
+      growRate: opts.growRate || 0,   // 每秒生长像素
       traveled: 0,
     });
   }
@@ -691,12 +920,74 @@
   function clearMissiles() {
     missileWarns.length = 0;
     missiles.length = 0;
+    popianMissiles.length = 0;   // 破片三连发导弹一并清除
     zoneMarks.length = 0;
     windFlows.length = 0;
     pillarStrikes.length = 0;
     stormVortex = null;   // 涡流风旋（技能7）一并清除
   }
   
+  // ---------- 破片三连发导弹 ----------
+  // 从破片下方炮管射出，高速飞向锁定的红圈中心；不可被击毁（护盾仍可免疫）；命中按首发/后两发规则结算
+  function spawnPopianMissile(e, tx, ty, idx, burst) {
+    const ox = e.x + (idx === 0 ? 0 : (idx === 1 ? -7 : 7));   // 三发略错开出射点（中/左/右炮管感）
+    const oy = e.y + 12;
+    const dx = tx - ox, dy = ty - oy;
+    const d = Math.hypot(dx, dy) || 1;
+    popianMissiles.push({ x: ox, y: oy, ux: dx / d, uy: dy / d, spd: POPIAN.missileSpeed, r: POPIAN.missileR, tx, ty, idx, burst });
+    spawnParticles(ox, oy, '#ff7a45', 5, 120);
+  }
+
+  function updatePopianMissiles(dt) {
+    for (let i = popianMissiles.length - 1; i >= 0; i--) {
+      const m = popianMissiles[i];
+      const step = m.spd * dt;
+      // 护盾消解（导弹不可被击毁，但护盾仍免疫）
+      if (player.shield > 0 && player.alive &&
+          Math.hypot(m.x - player.x, m.y - player.y) < 36 + m.r) {
+        spawnParticles(m.x, m.y, '#6fe3ff', 12, 200);
+        popianMissiles.splice(i, 1);
+        continue;
+      }
+      // 命中玩家判定点（不预先判无敌：由 popianMissileHit 依首发/后两发规则结算）
+      if (player.alive &&
+          Math.hypot(m.x - player.x, m.y - (player.y + PLAYER.hitOffsetY)) < PLAYER.hitRadius + m.r) {
+        popianMissileHit(m);
+        popianMissiles.splice(i, 1);
+        continue;
+      }
+      // 飞向锁定目标点：抵达即小范围爆炸，玩家在爆圈内视为命中
+      const dist = Math.hypot(m.tx - m.x, m.ty - m.y);
+      if (step >= dist) {
+        spawnParticles(m.tx, m.ty, '#ff5a3c', 12, 220);
+        if (player.alive && Math.hypot(player.x - m.tx, player.y - m.ty) <= POPIAN.blastR) {
+          m.x = m.tx; m.y = m.ty;
+          popianMissileHit(m);
+        }
+        popianMissiles.splice(i, 1);
+        continue;
+      }
+      m.x += m.ux * step; m.y += m.uy * step;
+      if (Math.random() < 0.5) spawnParticles(m.x, m.y, '#ff7a45', 1, 30);   // 高速尾焰
+      if (m.y > CANVAS_H + 40 || m.x < -40 || m.x > CANVAS_W + 40) { popianMissiles.splice(i, 1); continue; }
+    }
+  }
+
+  // 破片导弹命中结算：首发 8 伤害（正常无敌判定）；首发命中后，后两发无视无敌各 5 伤害；
+  // 若首发未命中/玩家无敌，后两发命中则无敌时间 -30%（invulnMul 0.7）
+  function popianMissileHit(m) {
+    const b = m.burst;
+    if (m.idx === 0) {
+      if (damagePlayer(POPIAN.firstDmg)) b.firstHit = true;   // 首发成功造成伤害 → 标记，后两发无视无敌
+    } else if (b.firstHit) {
+      damagePlayer(POPIAN.followDmg, 1, true);   // 无视玩家无敌时间
+    } else {
+      damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul);   // 该次受击无敌时间 -30%
+    }
+    spawnParticles(m.x, m.y, '#ff5a3c', 8, 180);
+    shake(3, 0.15);
+  }
+
   // ---------- 暴鸰炸弹 ----------
   // 已投出的炸弹：低速下坠 dropTime → 沿固定方向极速加速冲向预警区中心 → 抵达即爆炸（仅伤玩家，不伤敌人）
   function updateBaolingBombs(dt) {
@@ -763,6 +1054,33 @@
     }
   }
 
+  // ---------- 斗志昂扬死亡演出 ----------
+  // 序列：蓝盒脱离并迅速渐隐 → 淡黄光环扩大（同时激活我方攻速/弹速翻倍 8s）→ 本体快速渐隐消失
+  // 演出约 boxFade + haloDur（0.65s）结束后移除；增益 hasteT 独立倒计时 8s（不随演出结束而中断）
+  function updateDouzhiFx(dt) {
+    // 增益倒计时（每帧递减；演出结束后仍继续，直至 8s 到期）
+    if (state.hasteT > 0) state.hasteT = Math.max(0, state.hasteT - dt);
+    for (let i = douzhiFx.length - 1; i >= 0; i--) {
+      const f = douzhiFx[i];
+      f.t += dt;
+      // 蓝盒脱离渐隐（0 → boxFade）：向下漂离 + 透明度 1→0
+      const bp = clamp(f.t / DOUZHI.boxFade, 0, 1);
+      f.boxAlpha = 1 - bp;
+      f.boxDy = bp * DOUZHI.boxDetach;
+      // 蓝盒渐隐结束（仅一次）：激活淡黄光环 + 我方攻速/弹速翻倍增益
+      if (!f.buffGiven && f.t >= DOUZHI.boxFade) {
+        f.buffGiven = true;
+        state.hasteT = DOUZHI.buffDuration;   // 增益不可叠加：直接重置为满时长（重复获得刷新计时）
+        const pds = ENEMY_TYPES.douzhi.drawScale;
+        spawnParticles(f.x, f.y + f.boxDy + 18.5 * pds, '#f6ecb4', 22, 260);   // 以掉落的盒子为中心迸发
+      }
+      // 本体快速渐隐（蓝盒渐隐结束后开始）
+      f.bodyAlpha = clamp(1 - (f.t - DOUZHI.boxFade) / DOUZHI.bodyFade, 0, 1);
+      // 光环播完即移除（本体此时已完全渐隐）
+      if (f.t >= DOUZHI.boxFade + DOUZHI.haloDur) douzhiFx.splice(i, 1);
+    }
+  }
+
   // 敌人颜色标记：决定道具掉落规则（1类按行为 / 2·3·4类按变体 / 特殊舰船与 BOSS 按固定标记）
   //   red=套件×1.5 | purple=套件×1.2 | yellow=套件×1.2（含金）| blue=护盾6% | green=加血10% | orange=爆弹1%（整场一次）
   //   gray / white / black 无专属掉落规则，仅作分类（gray=灰黑系特殊无人机/炮兵）
@@ -782,7 +1100,10 @@
       case 'weilong':   return ['orange', 'yellow']; // 威龙：橙 + 黄
       case 'hanshuang': return ['gray', 'blue'];     // 寒霜：灰 + 蓝
       case 'yu4':       return ['gray', 'blue'];     // 御4：灰 + 蓝
+      case 'anvil':     return ['gray', 'green'];    // 铁砧：灰 + 绿（治疗无人机，绿色→加血掉落倾向）
       case 'baoling':   return ['gray', 'red'];      // 暴鸰：灰 + 红
+      case 'jiaoxiang': return ['orange', 'red'];    // 焦香螺旋桨：橙 + 红（火焰系）
+      case 'douzhi':    return ['gray'];             // 斗志昂扬：灰蓝系（增益已由死亡演出赋予，无专属掉落加成）
       case 'boss':      return e.bossId === 'storm' ? ['white', 'blue'] : ['black'];   // 暴风之眼：白 + 蓝 / 旧日之歌：黑
       default:          return [];
     }
@@ -826,6 +1147,46 @@
     if (tags.includes('orange') && !state.orangeBombUsed && Math.random() < DROP_BOMB_ORANGE) {
       state.orangeBombUsed = true;
       spawnPowerup(x, y, 'bomb', 12);
+    }
+  }
+
+  // 铁砧治疗光环：登场 auraDelay 后激活；每 healInterval 秒，对正方形光环内所有敌人（含自身、含 BOSS）
+  // 回复 maxHp×healRatio + healFlat（各自不超过 maxHp）。判定以敌机中心是否落在正方形范围内。
+  function anvilHealTick(e, dt) {
+    if (e.auraT < ANVIL.auraDelay) return;   // 光环未显现不治疗
+    e.healT = (e.healT || 0) + dt;
+    if (e.healT < ANVIL.healInterval) return;
+    e.healT -= ANVIL.healInterval;
+    const R = ANVIL.auraR;
+    for (const t of enemies) {
+      if (t.hp <= 0 || t.hp >= t.maxHp) continue;
+      if (Math.abs(t.x - e.x) <= R && Math.abs(t.y - e.y) <= R) {
+        t.hp = Math.min(t.maxHp, t.hp + t.maxHp * ANVIL.healRatio + ANVIL.healFlat);
+        spawnParticles(t.x, t.y, '#8ce36b', 3, 60);   // 轻微治疗粒子
+      }
+    }
+  }
+
+  // 焦香螺旋桨火焰灼烧：登场 auraDelay 后激活；光环内玩家持续掉血（近本体翻倍）；
+  // 复刻 BOSS 接触伤害的连续扣血模型（无视无敌帧；护盾免疫；挑战模式不扣血）
+  function jiaoxiangBurn(e, dt) {
+    const delay = e.jxFlank ? JIAOXIANG.auraDelayFlank : JIAOXIANG.auraDelay;
+    if (e.auraT < delay) return;
+    if (!player.alive || player.shield > 0 || state.challenge) return;
+    const dist = Math.hypot(e.x - player.x, e.y - (player.y + PLAYER.hitOffsetY));
+    if (dist > JIAOXIANG.auraR) return;
+    const near = dist <= JIAOXIANG.nearR;
+    const dps = JIAOXIANG.burnDps * (near ? 2 : 1);
+    player.hp -= dps * dt;
+    if (Math.random() < 0.35) spawnParticles(player.x + rand(-8, 8), player.y + rand(-8, 8), near ? '#ff4500' : '#ff7a18', 1, 70);
+    if (player.hp <= 0) {
+      player.hp = 0;
+      player.alive = false;
+      state.lives--;
+      spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
+      shake(16, 0.6);
+      if (state.lives <= 0) setTimeout(() => endGame(), 700);
+      else player.respawnTimer = PLAYER.respawnTime;
     }
   }
 
@@ -959,10 +1320,34 @@
       spawnParticles(e.x, e.y, '#e8d28a', 22, 280);
       spawnParticles(e.x, e.y, '#8b95a3', 14, 220);
     }
+    // 铁砧击毁：治疗力场瓦解，青绿 + 灰黑碎片演出（不抖屏）
+    if (e.type === 'anvil') {
+      spawnParticles(e.x, e.y, '#8ce36b', 22, 280);
+      spawnParticles(e.x, e.y, '#6b7280', 14, 220);
+    }
     // 暴鸰击毁：机体爆碎演出（未投弹时 detonateBaoling 另有大型爆炸；不抖屏）
     if (e.type === 'baoling') {
       spawnParticles(e.x, e.y, '#ff7a45', 20, 280);
       spawnParticles(e.x, e.y, '#ffd166', 12, 220);
+    }
+    // 焦香螺旋桨击毁：橙红黄三色火焰碎片 + 震屏（高血量精英）
+    if (e.type === 'jiaoxiang') {
+      spawnParticles(e.x, e.y, '#ff7a18', 30, 340);
+      spawnParticles(e.x, e.y, '#ff4500', 20, 280);
+      spawnParticles(e.x, e.y, '#ffd166', 14, 220);
+      shake(10, 0.4);
+    }
+    // 斗志昂扬击毁：进入死亡演出序列（蓝盒脱离迅速渐隐 → 淡黄扩大光环 → 我方攻速/弹速翻倍 8s → 本体快速渐隐）
+    // 增益在演出中段（蓝盒渐隐结束）由 updateDouzhiFx 激活；本体作为 douzhiFx 独立绘制、渐隐后移除
+    if (e.type === 'douzhi') {
+      douzhiFx.push({ x: e.x, y: e.y, t: 0, wobble: e.wobble, buffGiven: false, boxAlpha: 1, boxDy: 0, bodyAlpha: 1 });
+      spawnParticles(e.x, e.y, '#8fd0ff', 18, 240);
+      spawnParticles(e.x, e.y, '#f6ecb4', 12, 200);
+    }
+    // 法术大师A1击毁：紫光碎裂演出
+    if (e.type === 'fashiA1') {
+      spawnParticles(e.x, e.y, '#a855f7', 16, 240);
+      spawnParticles(e.x, e.y, '#e0d0ff', 10, 180);
     }
     // 水晶掉落：大概率，数量随体型增加；直接垂直下坠，不乱飘
     // 幽暮突击艇：必定掉落 2~3 个水晶
@@ -974,7 +1359,10 @@
       e.type === 'weilong' ? 6 + Math.floor(Math.random() * 7) :
       e.type === 'hanshuang' ? 4 + Math.floor(Math.random() * 4) :
       e.type === 'baoling' ? 2 + Math.floor(Math.random() * 3) :
-      e.type === 'gunship' || e.type === 'harbinger' || e.type === 'yu4' ? 4 + Math.floor(Math.random() * 4) :
+      e.type === 'douzhi' ? 3 + Math.floor(Math.random() * 3) :
+      e.type === 'fashiA1' ? 2 + Math.floor(Math.random() * 2) :
+      e.type === 'jiaoxiang' ? 8 + Math.floor(Math.random() * 6) :
+      e.type === 'gunship' || e.type === 'harbinger' || e.type === 'yu4' || e.type === 'anvil' ? 4 + Math.floor(Math.random() * 4) :
       1 + Math.floor(Math.random() * 3);
     if (isDusk || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.55 : 0.8)) {
       for (let k = 0; k < cCount; k++) {

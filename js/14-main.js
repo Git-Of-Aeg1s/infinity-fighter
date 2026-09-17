@@ -56,6 +56,14 @@
       const lvPhaseTime = SPAWN_PHASE_TIMES[state.bossPhase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
       state.level = lvCfg.base + Math.floor(Math.min(state.bossTimer, lvPhaseTime) / lvCfg.step);
 
+      // 关卡提升时：每次升级有 DOUZHI.spawnChance 概率从屏幕左/右侧生成一架斗志昂扬横穿（挑战模式不生成）
+      if (state.level > state.prevLevel) {
+        state.prevLevel = state.level;
+        if (!state.challenge && Math.random() < DOUZHI.spawnChance) spawnDouzhi();
+      } else if (state.level < state.prevLevel) {
+        state.prevLevel = state.level;
+      }
+
       // BOSS 流程状态机：none → wait(等清场) → warn(警报演出) → fight(BOSS战) → none
       // 关卡节奏：刷怪 50s → 旧日之歌 → 击败后 2s + 固定首波 + 4s → 再刷怪 50s → 暴风之眼 → 胜利结算
       // 达到登场条件后不再出怪；场上清空后播放警报，演出结束 BOSS 中速进场并展开
@@ -138,7 +146,7 @@
         // 3类槽位通道（同屏限 1；仅“槽位出场”的 3 类占用——波次编队自带的炮艇带 waveTag，不占用）：
         // 压力低于阈值 → 直接刷新；高于阈值 → 等待，槽位空闲超过上限仍会强制刷新
         const hasSpecial3 = enemies.some(e =>
-          (e.type === 'gunship' || e.type === 'harbinger' || e.type === 'weilong' || e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'baoling') &&
+          (e.type === 'gunship' || e.type === 'harbinger' || e.type === 'weilong' || e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'anvil' || e.type === 'baoling') &&
           e.waveTag == null);
         if (state.level >= 2 && !hasSpecial3) {
           state.specialIdleT += dt;
@@ -173,6 +181,8 @@
       updateBullets(dt);
       updateMissiles(dt);
       updateBaolingBombs(dt);   // 暴鸰：炸弹下坠 / 加速冲向预警区中心 / 爆炸
+      updatePopianMissiles(dt); // 破片：三连发导弹飞行 / 命中结算（条件性无视无敌）
+      updateDouzhiFx(dt);       // 斗志昂扬：死亡演出推进 + 增益时长衰减
             updateZoneMarks(dt);   // 暴风之眼：区域标记倒计时 / 风流 / 风柱
       updatePowerups(dt);
       updateCrystals(dt);

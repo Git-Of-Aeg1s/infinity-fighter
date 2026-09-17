@@ -86,9 +86,9 @@
       w.y += (ty - w.y) * k;
       if (!player.alive || locked) { w.burst = null; w.cooldown = 0; continue; }
 
-      // 连射进行中：按 volleyGap 逐轮发射
+      // 连射进行中：按 volleyGap 逐轮发射（斗志昂扬增益期间间隔缩短、攻速翻倍）
       if (w.burst) {
-        w.burst.gap -= dt;
+        w.burst.gap -= dt * hasteMul();
         if (w.burst.gap <= 0) {
           fireWingmanVolley(w, w.burst.volleys[w.burst.idx], w.burst.spread);
           w.burst.idx++;
@@ -97,8 +97,8 @@
         }
         continue;
       }
-      // 冷却结束：启动一次"连续发射两次"
-      w.cooldown -= dt;
+      // 冷却结束：启动一次"连续发射两次"（斗志昂扬增益期间僚机攻速翻倍）
+      w.cooldown -= dt * hasteMul();
       if (w.cooldown <= 0) {
         const lv = WINGMAN_LEVELS[player.weapon] || WINGMAN_LEVELS[1];
         w.burst = { volleys: lv.volleys, spread: lv.spread, idx: 0, gap: 0 };
@@ -165,7 +165,7 @@ function updatePlayer(dt) {
     // 自动开火（Lv5 即暴走：使用暴走弹道与射速）
     // BOSS 出场演出期间停止攻击，展开完毕后立即恢复
     const berserk = player.weapon === 5;
-    player.cooldown -= dt * playerFrostSlowMul();   // 寒霜光圈内射速 -35%
+    player.cooldown -= dt * playerFrostSlowMul() * hasteMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍
     if (player.cooldown <= 0) {
       if (!playerFireLocked()) {
         player.cooldown = berserk ? BERSERK.interval : WEAPON_LEVELS[player.weapon].interval;
@@ -236,15 +236,16 @@ function updatePlayer(dt) {
     player.hitCount = 0;
   }
 
-  function damagePlayer(amount, invulnMul = 1) {
-    if (player.invuln > 0 || !player.alive) return;
-    if (player.shield > 0) return;   // 护盾期间免疫碰撞伤害
+  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false) {
+    if (!player.alive) return false;
+    if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
+    if (player.shield > 0) return false;   // 护盾期间免疫碰撞伤害（无视无敌 ≠ 无视护盾）
     // 挑战模式：我方血量无限，仅播放受击特效，不扣血不掉命
     if (state.challenge) {
       player.invuln = PLAYER.invulnTime * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示
       shake(3, 0.15);   // 受击震屏较弱
       spawnParticles(player.x, player.y, '#7ce7ff', 10, 160);
-      return;
+      return true;
     }
     player.hp -= amount;
     player.invuln = PLAYER.invulnTime * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示
@@ -268,6 +269,7 @@ function updatePlayer(dt) {
         player.respawnTimer = PLAYER.respawnTime;
       }
     }
+    return true;
   }
 
   // 拾取升级套件：升火力；抵达 Lv5 即进入暴走；暴走期间拾取重置倒计时

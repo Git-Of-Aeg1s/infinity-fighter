@@ -8,9 +8,11 @@
       trailGhosts[i].life -= dt;
       if (trailGhosts[i].life <= 0) trailGhosts.splice(i, 1);
     }
+    // 斗志昂扬增益：期间我方（含僚机）弹道飞行速度翻倍 —— 作用于所有在飞子弹，增益结束即恢复常速
+    const hm = hasteMul();
     for (let i = pBullets.length - 1; i >= 0; i--) {
       const b = pBullets[i];
-      b.x += b.vx * dt; b.y += b.vy * dt;
+      b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
       if (b.y < -10) { pBullets.splice(i, 1); continue; }
 
       for (let j = enemies.length - 1; j >= 0; j--) {
@@ -49,7 +51,10 @@
         b.vx = nx * ns; b.vy = ny * ns;
       }
       // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
-      if (b.lenTarget && b.len < b.lenTarget) {
+      // 激光（b.laser）：无上限持续生长，直到尾端出界才消失（尾端锢定于 b.x/b.y）
+      if (b.laser) {
+        b.len += (b.growRate || 130) * dt;
+      } else if (b.lenTarget && b.len < b.lenTarget) {
         b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
       }
       // 分裂弹：飞行一段距离→短时间内减速到 0→分裂成 N 个小子弹（互相等角）
@@ -99,8 +104,8 @@
       if (b.y > CANVAS_H + 20 || b.y < -40 || b.x < -20 || b.x > CANVAS_W + 20) {
         eBullets.splice(i, 1); continue;
       }
-      // 护盾加持：碰到护盾气泡的敌弹直接消解
-      if (player.shield > 0 && player.alive &&
+      // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
+      if (!b.laser && player.shield > 0 && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r) {
         spawnParticles(b.x, b.y, '#6fe3ff', 6, 140);
         eBullets.splice(i, 1);
@@ -109,7 +114,14 @@
       // 命中判定：长条弹按胶囊体（判定点到弹体线段的最近距离）计算，普通弹按圆计算
       let hitPlayer = false;
       if (player.alive && player.invuln <= 0) {
-        if (b.len) {
+        if (b.laser) {
+          // 激光尾端锢定：胶囊体从 (b.x, b.y) 到 (b.x + ux*b.len, b.y + uy*b.len)
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const ux = b.vx / sp, uy = b.vy / sp;
+          const py = player.y + PLAYER.hitOffsetY;
+          const tproj = clamp((player.x - b.x) * ux + (py - b.y) * uy, 0, b.len);
+          hitPlayer = Math.hypot(player.x - (b.x + ux * tproj), py - (b.y + uy * tproj)) < PLAYER.hitRadius + b.r;
+        } else if (b.len) {
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const ux = b.vx / sp, uy = b.vy / sp;
           const py = player.y + PLAYER.hitOffsetY;
@@ -121,7 +133,7 @@
       }
       if (hitPlayer) {
         damagePlayer(b.dmg);
-        eBullets.splice(i, 1);
+        if (!b.laser) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
       }
     }
   }

@@ -33,10 +33,20 @@
       drawWeilongBody(e);     // 自带填充与描边（四角环状旋翼 + 磨角矩形机身 + 指向炮管 + 橙黄渐变）
     } else if (e.type === 'baoling') {
       drawBaolingBody(e);     // 自带填充与描边（白灰磨角方形机体 + 黑横杠风扇 + 前挂红道黑炸弹）
+    } else if (e.type === 'douzhi') {
+      drawDouzhiBody(e);      // 自带填充与描边（类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂蓝色盒子）
     } else if (e.type === 'hanshuang') {
       drawHanshuangBody(e);   // 自带填充与描边（四角圆角矩形旋翼舱 + 灰黑渐变机身 + 天蓝霜纹边缘 + 冰蓝光圈）
     } else if (e.type === 'yu4') {
       drawYu4Body(e);         // 自带填充与描边（介于圆与方之间的超椭圆暖灰渐变机身 + 金色X形条纹 + 中央淡黄反应核 + 四角风扇圆 + 金色六边力场）
+    } else if (e.type === 'anvil') {
+      drawAnvilBody(e);       // 自带填充与描边（菱形黑灰框架 + 中央灰黑正方形 + 上下左右横杠 + 中心朝下凸出白杠 + 正方形青绿治疗光环）
+    } else if (e.type === 'fashiA1') {
+      drawFashiA1Body(e);     // 自带填充与描边（四角风扇圆 + 灰黑矩形1:3:1紫光条 + 底部深紫炮管）
+    } else if (e.type === 'popian') {
+      drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
+    } else if (e.type === 'jiaoxiang') {
+      drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
       drawDuskStrikerBody(e); // 自带填充与描边（暗黑渐变菱形 + 微亮描边 + 中央白色发光核心；渐显/渐隐透明度内含）
     } else {
@@ -173,7 +183,7 @@
         ctx.beginPath(); ctx.moveTo(sx * 8, 8); ctx.lineTo(sx * 15, 9); ctx.stroke();      // 前翼缝
       }
 
-      // (2) 变体涂装：紫=双侧斜向能量纹 / 红=机头攻击 V 形光带 / 金=环绕旋转光环（呼应环形弹幕）
+      // (2) 变体涂装：紫=双侧斜向能量纹(脉动变亮) / 红=环绕核心的正六边形(脉动变亮、不旋转) / 金=环绕旋转光环（呼应环形弹幕）
       ctx.shadowColor = pal.glow;
       ctx.shadowBlur = 8;
       ctx.globalAlpha = 0.55 + pulse * 0.4;
@@ -187,12 +197,24 @@
           ctx.stroke();
         }
       } else if (e.variant === 'crimson') {
-        for (const sx of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(sx * 6, -10); ctx.lineTo(sx * 13, 2); ctx.lineTo(sx * 7, 15);
-          ctx.stroke();
+        // 赤红：环绕能量核心的正六边形——固定朝向(不旋转)、随 pulse 定期脉动变亮（取代原橙色 <> 光带）
+        ctx.globalAlpha = 0.30 + pulse * 0.65;   // 脉动亮度
+        ctx.shadowBlur = 3 + pulse * 15;         // 脉动辉光
+        ctx.lineWidth = 1.5 + pulse * 1.5;       // 脉动线宽
+        const R = 11;                            // 外接圆半径：环绕 r4.5 的能量核心
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = Math.PI / 3 * k;             // 固定角度（不含 state.time → 不旋转）
+          const hx = Math.cos(a) * R, hy = Math.sin(a) * R;
+          if (k === 0) ctx.moveTo(hx, hy); else ctx.lineTo(hx, hy);
         }
+        ctx.closePath();
+        ctx.stroke();
       } else {
+        // 紫晶：双侧斜向能量纹（条纹）——与赤红同样的定期脉动变亮
+        ctx.globalAlpha = 0.30 + pulse * 0.65;
+        ctx.shadowBlur = 3 + pulse * 15;
+        ctx.lineWidth = 1.5 + pulse * 1.5;
         for (const sx of [-1, 1]) {
           ctx.beginPath();
           ctx.moveTo(sx * 11, -4); ctx.lineTo(sx * 19, 0);
@@ -502,6 +524,38 @@
         ctx.arc(b.x, b.y, b.r * 2.8, 0, Math.PI * 2);
         ctx.fill();
       }
+      if (b.laser) {
+        // 法术大师A1 紫色激光：尾端锢定于 (b.x, b.y)，头端圆形；
+        // 横向渐变（垂直于长度方向）：两边炫紫 → 中间白，无边框描边
+        const ang = Math.atan2(b.vy, b.vx);
+        ctx.save();
+        ctx.translate(b.x, b.y);   // 尾端位置
+        ctx.rotate(ang);
+        const L = b.len, lr = b.r;
+        ctx.shadowColor = '#a855f7';
+        ctx.shadowBlur = 14;
+        // 横向渐变（y 轴垂直于飞行方向）：上边绚紫 → 中心白亮 → 下边绚紫
+        const lg = ctx.createLinearGradient(0, -lr, 0, lr);
+        lg.addColorStop(0, '#a855f7');
+        lg.addColorStop(0.28, '#c084fc');
+        lg.addColorStop(0.5, '#ffffff');
+        lg.addColorStop(0.72, '#c084fc');
+        lg.addColorStop(1, '#a855f7');
+        ctx.fillStyle = lg;
+        ctx.beginPath();
+        // 尾端半圆（左侧）
+        ctx.arc(0, 0, lr, Math.PI / 2, -Math.PI / 2);
+        // 上边线到头端
+        ctx.lineTo(L, -lr);
+        // 头端半圆（右侧，圆形处理）
+        ctx.arc(L, 0, lr, -Math.PI / 2, Math.PI / 2);
+        // 下边线回尾端
+        ctx.lineTo(0, lr);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
       if (b.len) {
         // 长条弹：沿飞行方向的渐变胶囊体（b.oval 时为椭圆体，风条）
         const ang = Math.atan2(b.vy, b.vx);
@@ -704,6 +758,8 @@
     drawBullets();
     drawMissiles();
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
+    drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
+    drawDouzhiFx();       // 斗志昂扬死亡演出：脱离渐隐蓝盒 + 淡黄扩大光环 + 渐隐本体
     drawParticles();
 
     // BOSS 警报演出（全屏覆盖层）
