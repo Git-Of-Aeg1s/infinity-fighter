@@ -146,7 +146,7 @@ function updatePlayer(dt) {
     if (dx || dy) {
       const len = Math.hypot(dx, dy);
       dx /= len; dy /= len;
-      const pspd = PLAYER.speed * playerFrostMoveMul();   // 寒霜光圈内移动速度 -25%
+      const pspd = PLAYER.speed * playerFrostMoveMul();   // 寒霜光圈内移动速度 -35%
       player.x += dx * pspd * dt;
       player.y += dy * pspd * dt;
     }

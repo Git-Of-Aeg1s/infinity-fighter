@@ -46,8 +46,8 @@
   function loop(now) {
     const dt = Math.min(0.033, (now - lastTime) / 1000);
     lastTime = now;
-
-    if (state.mode === 'playing' && !state.paused) {
+    try {
+      if (state.mode === 'playing' && !state.paused) {
       state.time += dt;
 
       // 关卡推进：由当前阶段的有效刷怪时间决定（bossTimer 仅在 bossStage==='none' 期间累加，
@@ -56,10 +56,12 @@
       const lvPhaseTime = SPAWN_PHASE_TIMES[state.bossPhase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
       state.level = lvCfg.base + Math.floor(Math.min(state.bossTimer, lvPhaseTime) / lvCfg.step);
 
-      // 关卡提升时：每次升级有 DOUZHI.spawnChance 概率从屏幕左/右侧生成一架斗志昂扬横穿（挑战模式不生成）
+      // 关卡提升时：每次升级有 DOUZHI.spawnChance 概率从屏幕左/右侧生成一架斗志昂扬横穿（挑战模式不生成）；
+      // 击败 BOSS 引发的阶段跳变升级除外（douzhiSkipOnce，见 killEnemy）
       if (state.level > state.prevLevel) {
         state.prevLevel = state.level;
-        if (!state.challenge && Math.random() < DOUZHI.spawnChance) spawnDouzhi();
+        if (state.douzhiSkipOnce) state.douzhiSkipOnce = false;
+        else if (!state.challenge && Math.random() < DOUZHI.spawnChance) spawnDouzhi();
       } else if (state.level < state.prevLevel) {
         state.prevLevel = state.level;
       }
@@ -137,6 +139,12 @@
         state.spawnTimer -= dt * rush;
         if (state.spawnTimer <= 0) {
           spawnWave();
+          // Lv13 后本局限定：首次刷新的怪中必定伴随一台焦香螺旋桨（一次性，随波打上 waveTag）
+          if (!state.jiaoxiang13Done && state.level >= 13) {
+            state.jiaoxiang13Done = true;
+            spawnJiaoxiang();
+            enemies[enemies.length - 1].waveTag = state.waveSeq;
+          }
           const base = Math.max(0.55, 2.1 - (state.level - 1) * 0.15);
           // 高于阈值时下一波间隔放大（较慢）；低于阈值保持基础间隔并叠加加速流逝 → 迅速补怪
           state.spawnTimer = rand(base * 0.7, base * 1.3) * (pressure >= threshold ? SPAWN_SLOW_MUL : 1);
@@ -210,6 +218,7 @@
           // BOSS 试炼 / 图鉴挑战胜利：额外提供「再次挑战」（重开同一目标）；正常流程胜利不显示
           if (state.testBoss || state.challenge) retrialBtn.classList.remove('hidden');
           else retrialBtn.classList.add('hidden');
+          syncInfoEntryBtn();
         }
       }
     } else if (!state.paused) {
@@ -245,7 +254,13 @@
       updateHUD();
     }
     updateBGM();
-    scheduleLoop();
+    } catch (err) {
+      // 帧内异常只跳过本帧并记录，绝不中断主循环——
+      // 此前任何一帧抛错都会跳过末尾的 scheduleLoop()，导致画面永久冻结（音乐走音频线程仍在播放、点击无效）
+      console.error('[main-loop] 帧内异常，已跳过该帧：', err);
+    } finally {
+      scheduleLoop();   // 无论本帧是否抛错，都保证排程下一帧
+    }
   }
 
 
@@ -280,10 +295,40 @@
   });
   encyClose.addEventListener('click', closeEncyclopedia);
 
+  // ---------- 自适应缩放 ----------
+  // 视口适配：把「标题栏 + 游戏舞台」作为整体按视口等比缩放（大屏放大、小屏缩小、垂直居中），
+  // 并同步提升画布物理分辨率（缩放比 × DPR）保持任意缩放下清晰。HUD/遮罩/图鉴为 DOM 元素，随 transform 一致缩放。
+  const gameWrap = document.querySelector('.game-wrap');
+  const gameSizer = document.querySelector('.game-sizer');
+  let wrapNaturalH = 0;   // 未缩放时的整体高度（标题 + 间距 + 舞台），首次测量后缓存
+  function fitStage() {
+    if (!gameWrap || !gameSizer) return;
+    if (!wrapNaturalH) wrapNaturalH = gameWrap.offsetHeight || 1;
+    const k = clamp(
+      Math.min((window.innerHeight - 36) / wrapNaturalH, (window.innerWidth - 28) / CANVAS_W),
+      0.42, 2.4);
+    gameWrap.style.transform = `scale(${k})`;
+    gameSizer.style.width = (CANVAS_W * k) + 'px';
+    gameSizer.style.height = (wrapNaturalH * k) + 'px';
+    // 画布物理分辨率：显示尺寸 = 480k CSS px × DPR 设备像素 → 与逐像素 1:1，保持清晰
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.round(CANVAS_W * k * dpr);
+    const bh = Math.round(CANVAS_H * k * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+      const s = bw / CANVAS_W;   // 设备像素 / 游戏逻辑像素
+      ctx.setTransform(s, 0, 0, s, 0, 0);   // 覆盖 02-core 的初始 DPR 变换
+    }
+  }
+  window.addEventListener('resize', fitStage);
+  window.addEventListener('orientationchange', fitStage);
+
   // ---------- 启动 ----------
   initStars();
   initNebulae();
   buildPlaneCards();
   buildWingmanCards();
   resetGame(false);
+  fitStage();
   scheduleLoop();

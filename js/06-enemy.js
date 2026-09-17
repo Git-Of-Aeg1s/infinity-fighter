@@ -1,4 +1,4 @@
-// 06-enemy：敌机更新（移动 / 开火 / 弹幕）+ 先兆者导弹 + 暴鸰炸弹 + 掉落 + killEnemy
+﻿// 06-enemy：敌机更新（移动 / 开火 / 弹幕）+ 先兆者导弹 + 暴鸰炸弹 + 掉落 + killEnemy
 'use strict';
 
 
@@ -43,6 +43,34 @@
           if (Math.random() < 0.5) spawnSideGroup();
           else spawnStrikerGroup();
         }
+        // 赤金主力舰「金环扩散」：圆环扩大 1.2s，环带上的我方与敌方子弹瞬间消散；到范围后停止并淡出消散
+        if (e.variant === 'crgold') {
+          // 旋转双环显现：机翼展开完成后（unfoldT 归零）逐渐淡入
+          if (e.arrived && !(e.unfoldT > 0)) e.ringT = (e.ringT || 0) + dt;
+          // 扩环特效：环缘随机迸出金色火星（随扩环持续）
+          if (e.ringWave && e.ringWave.t <= e.ringWave.dur) {
+            const wa = Math.random() * Math.PI * 2;
+            spawnParticles(e.x + Math.cos(wa) * e.ringWave.r, e.y + Math.sin(wa) * e.ringWave.r, '#ffd166', 2, 90);
+          }
+        }
+        if (e.ringWave) {
+          const w = e.ringWave;
+          w.t += dt;
+          if (w.t <= w.dur) {
+            w.r += 150 * dt;   // 扩张速度（px/s）
+            const band = 16;   // 环带判定厚度
+            for (let i = pBullets.length - 1; i >= 0; i--) {
+              const pb = pBullets[i];
+              if (Math.abs(Math.hypot(pb.x - e.x, pb.y - e.y) - w.r) <= band) pBullets.splice(i, 1);
+            }
+            for (let i = eBullets.length - 1; i >= 0; i--) {
+              const eb = eBullets[i];
+              if (Math.abs(Math.hypot(eb.x - e.x, eb.y - e.y) - w.r) <= band) eBullets.splice(i, 1);
+            }
+          } else {
+            e.ringWave = null;   // 到达最大范围即刻消散（无停顿）
+          }
+        }
       }
   
       // 飞出屏幕（仅穿越型会触发）；横向边界 ±460：各长队编队（BOSS 后固定首波 / 1类长队 /
@@ -82,7 +110,7 @@
       return;
     }
     if (e.type === 'side' || e.type === 'prolifera' || e.type === 'escort') {
-      // 斜插直线穿越，不反弹；SIDE_SPEED_MUL 统一控制全部虚像级（1类）飞船实际移动速度；
+      // 斜插直线穿越，不反弹；SIDE_SPEED_MUL 统一控制全部虚象级（1类）飞船实际移动速度；
       // 入场瞬间额外冲刺（_entryMul 初值 >1），随后按指数快速衰减回 1（整组同帧生成、同倍率衰减，队形不变）
       // 增生侧翼艇同 1类移动；卫护飞船继承母舰 _sideVel 沿原航向大致继续飞行（_entryMul 预置 1，无入场冲刺）
       const v = e._sideVel || { vx: 0, vy: 60 };
@@ -91,6 +119,15 @@
       const mul = SIDE_SPEED_MUL * e._entryMul;
       e.x += v.vx * mul * dt;
       e.y += v.vy * mul * dt;
+      // 赤月：入场 1.8~2.8s 后随机时刻，向顶角方向（当前航向正前方）发射一枚子弹（仅此一次）
+      if (e.type === 'side' && e.behavior === 'moon' && !e.moonFired && e.moonFireT != null) {
+        e.moonFireT -= dt;
+        if (e.moonFireT <= 0) {
+          e.moonFired = true;
+          const cfg = ENEMY_TYPES.side;
+          pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
+        }
+      }
       return;
     }
     if (e.type === 'striker' && e.skill === 'dusk') {
@@ -159,19 +196,26 @@
       return;
     }
     if (e.type === 'hanshuang') {
-      // 寒霜：登场计时 → 直线下移到 60%~80% 随机高度 → 停留 20s → 向下离场（不攻击，不走通用逻辑）
+      // 寒霜：登场计时 → 平滑减速下移到 60%~80% 随机高度 → 停留 20s → 向下离场（不攻击，不走通用逻辑）
       e.auraT += dt;
       const spd = HANSHUANG.speed * e.speedMul;
       if (!e.arrived) {
-        e.y += spd * dt;
-        if (e.y >= e.targetY) { e.y = e.targetY; e.arrived = true; }
+        // 平滑进站：首帧以全速进场，接近落点按距离比例减速（不瞬间归零）
+        if (!e.hsEntry) { e.vy = spd; e.hsEntry = true; }
+        const dist = e.targetY - e.y;
+        const targetVy = dist >= 90 ? spd : spd * Math.max(0.12, dist / 90);
+        e.vy += (targetVy - e.vy) * Math.min(1, dt * 10);
+        e.y += e.vy * dt;
+        if (dist <= 1) { e.y = e.targetY; e.vy = 0; e.arrived = true; }
       } else if (state.challenge) {
         // 图鉴挑战模式：永驻场，便于观察光圈减速效果
       } else if (e.dwellT > 0) {
         e.dwellT -= dt;
       } else {
+        // 停留结束向下离场：从静止平滑加速到全速，出屏后由通用检测移除
         e.leaving = true;
-        e.y += spd * dt;   // 停留结束向下离场，出屏后由通用检测移除
+        e.vy += (spd - e.vy) * Math.min(1, dt * 10);
+        e.y += e.vy * dt;
       }
       return;
     }
@@ -193,17 +237,10 @@
         return;
       }
       if (e.blPhase === 1) {
-        // 停车：预警倒计时，结束后炸弹向下脱离（火星特效），交由 blBombs 独立飞行
+        // 停车：预警倒计时，结束后炸弹脱离本体（火星特效），交由 blBombs 独立飞行
         e.blWarn.t += dt;
         if (e.blWarn.t >= BAOLING.warnTime) {
-          blBombs.push({
-            x: e.x, y: e.y + 18,
-            tx: e.blWarn.tx, ty: e.blWarn.ty,
-            phase: 'drop', t: 0, spd: BAOLING.dropSpeed, ux: 0, uy: 1,
-          });
-          spawnParticles(e.x, e.y + 16, '#ffd166', 12, 220);   // 脱离火星
-          spawnParticles(e.x, e.y + 16, '#ff7a45', 8, 160);
-          e.blThrown = true;
+          throwBaolingBomb(e);
           e.blPhase = 2;
           e.blWaitT = 0;
         }
@@ -230,6 +267,23 @@
       e.entryT += dt;
       const spd = FASHI_A1.speed * e.speedMul;
       const acc = FASHI_A1.accel;
+      // 炮管朝向：正常阶段平滑追踪玩家（最大转向角速度很大，几乎实时转向）；
+      // 超过屏高 80% 后不再追踪，炮管缓慢转向正下方（faceAng 0 = 炮口朝正下）作为离场姿态
+      if (e.y > CANVAS_H * 0.8) {
+        e.faceAng = (e.faceAng || 0) + clamp(0 - (e.faceAng || 0), -FASHI_A1.exitTurn * dt, FASHI_A1.exitTurn * dt);
+      } else {
+        const wantFace = Math.atan2(player.y - e.y, player.x - e.x) - Math.PI / 2;
+        const df = Math.atan2(Math.sin(wantFace - (e.faceAng || 0)), Math.cos(wantFace - (e.faceAng || 0)));
+        e.faceAng = (e.faceAng || 0) + clamp(df, -FASHI_A1.maxTurn * dt, FASHI_A1.maxTurn * dt);
+      }
+      // 超过屏高 80%（从上往下）：不再攻击与左右移动，径直加速下压飞离战场（出屏后由通用检测移除）
+      if (e.y > CANVAS_H * 0.8) {
+        e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+        e.vy += (spd - e.vy) * Math.min(1, dt * acc);
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        return;
+      }
       switch (e.fa1State) {
         case 'descend': {
           // 入场 0.5s 内从 entrySpeed 线性衰减到 speed（最大速度），之后保持 speed
@@ -257,8 +311,12 @@
             e.fa1Fired = true;
             const ang = Math.atan2(player.y - e.y, player.x - e.x);
             const cfg = ENEMY_TYPES.fashiA1;
-            // 激光：尾端锢定（b.x/b.y = 尾端），无上限持续生长，直到尾端出界才消失
+            // 发射点位：炮口（局部 +y 14 × drawScale，随机身 faceAng 旋转到世界坐标）——激光从炮管处射出
+            const mz = 14 * cfg.drawScale;
+            // 激光：尾端锚定（b.x/b.y = 尾端），无上限持续生长，直到尾端出界才消失
             pushEBullet(e, ang, FASHI_A1.laserSpeed, cfg, {
+              x: e.x - Math.sin(e.faceAng || 0) * mz,
+              y: e.y + Math.cos(e.faceAng || 0) * mz,
               laser: true, len: 4, growRate: FASHI_A1.laserGrowRate,
               r: FASHI_A1.laserR, color: '#a855f7', dmg: FASHI_A1.laserDmg,
             });
@@ -304,10 +362,130 @@
       e.x += Math.sin(e.wobble) * 6 * dt;   // 轻微摆动
       return;
     }
+    if (e.type === 'fashiA2') {
+      // 法术大师A2：与 A1 同款速度积分状态机（下降 → 刹停 → 射击 → 可选横移 → 恢复下降），
+      // 差异：速度取威龙（远慢于 A1）→ 横移进行中攻击计时照常递减，触发即打断横移（刹停射击后
+      // strafeAbort 置位 → 本次射击完毕放弃剩余横移、径直下降直到下次攻击）
+      e.entryT += dt;
+      const spd = FASHI_A2.speed * e.speedMul;
+      const acc = FASHI_A2.accel;
+      // 炮管朝向：同 A1——正常阶段平滑追踪玩家；超过屏高 80% 后不再追踪，缓慢转向正下方（离场姿态）
+      if (e.y > CANVAS_H * 0.8) {
+        e.faceAng = (e.faceAng || 0) + clamp(0 - (e.faceAng || 0), -FASHI_A2.exitTurn * dt, FASHI_A2.exitTurn * dt);
+      } else {
+        const wantFace = Math.atan2(player.y - e.y, player.x - e.x) - Math.PI / 2;
+        const df = Math.atan2(Math.sin(wantFace - (e.faceAng || 0)), Math.cos(wantFace - (e.faceAng || 0)));
+        e.faceAng = (e.faceAng || 0) + clamp(df, -FASHI_A2.maxTurn * dt, FASHI_A2.maxTurn * dt);
+      }
+      // 超过屏高 80%（从上往下）：不再攻击与左右移动，径直加速下压飞离战场（出屏后由通用检测移除）
+      if (e.y > CANVAS_H * 0.8) {
+        e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+        e.vy += (spd - e.vy) * Math.min(1, dt * acc);
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        return;
+      }
+      switch (e.fa2State) {
+        case 'descend': {
+          // 入场 0.5s 内从 entrySpeed 线性衰减到 speed（最大速度），之后保持 speed
+          const t = Math.min(1, e.entryT / FASHI_A2.entryDecay);
+          const targetVy = FASHI_A2.entrySpeed + (spd - FASHI_A2.entrySpeed) * t;
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (targetVy - e.vy) * Math.min(1, dt * acc);
+          if (e.entryT >= (e.fa2FirstAt != null ? e.fa2FirstAt : FASHI_A2.firstDelay[0])) {
+            e.fa2FireTimer -= dt;
+            if (e.fa2FireTimer <= 0) e.fa2State = 'brake';
+          }
+          break;
+        }
+        case 'brake':
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (0 - e.vy) * Math.min(1, dt * acc);
+          if (Math.abs(e.vy) < 8 && Math.abs(e.vx) < 8) {
+            e.vx = 0; e.vy = 0;
+            e.fa2State = 'fire'; e.fa2T = 0; e.fa2Fired = false;
+          }
+          break;
+        case 'fire': {
+          e.fa2T += dt;
+          if (!e.fa2Fired && e.fa2T >= FASHI_A2.firePause) {
+            e.fa2Fired = true;
+            const ang = Math.atan2(player.y - e.y, player.x - e.x);
+            const cfg = ENEMY_TYPES.fashiA2;
+            // 发射点位：炮口（局部 +y 18 × drawScale，随机身 faceAng 旋转到世界坐标）——激光从更粗更长的炮管处射出
+            const mz = 18 * cfg.drawScale;
+            // 激光：尾端锚定（b.x/b.y = 尾端），无上限持续生长，直到尾端出界才消失；更亮更粗（laserBright 标记渲染增强）
+            pushEBullet(e, ang, FASHI_A2.laserSpeed, cfg, {
+              x: e.x - Math.sin(e.faceAng || 0) * mz,
+              y: e.y + Math.cos(e.faceAng || 0) * mz,
+              laser: true, laserBright: true, len: 6, growRate: FASHI_A2.laserGrowRate,
+              r: FASHI_A2.laserR, color: '#c084fc', dmg: FASHI_A2.laserDmg,
+            });
+          }
+          if (e.fa2Fired && e.fa2T >= FASHI_A2.firePause + FASHI_A2.fireLingerAfter) {
+            // 攻击计时从本次射击完毕重新起算：横移与随后的下降共用同一窗口（1~1.5s），
+            // 横移耗时（80~160px ÷ 62）常超出窗口 → 下一击在横移途中触发（见 strafe 分支打断）
+            e.fa2FireTimer = rand(FASHI_A2.fireInterval[0], FASHI_A2.fireInterval[1]);
+            // 横移被打断的情况：射击完毕放弃剩余横移，径直下降直到下次攻击（不再掷横移）
+            if (e.strafeAbort) {
+              e.strafeAbort = false;
+              e.fa2State = 'resume'; e.fa2T = 0;
+            } else if (Math.random() < FASHI_A2.strafeChance) {
+              e.fa2State = 'strafe'; e.fa2T = 0;
+              // 左 15% / 右 15% 区域：强制向场心方向横移（不再靠近那一侧边界）
+              const inLeft = e.x < CANVAS_W * 0.15;
+              const inRight = e.x > CANVAS_W * 0.85;
+              if (inLeft) e.strafeDir = 1;
+              else if (inRight) e.strafeDir = -1;
+              else e.strafeDir = Math.random() < 0.5 ? -1 : 1;
+              e.strafeDist = rand(FASHI_A2.strafeMin, FASHI_A2.strafeMax);
+              const maxX = e.strafeDir > 0 ? (CANVAS_W - 40 - e.x) : (e.x - 40);
+              e.strafeDist = Math.min(e.strafeDist, Math.max(30, maxX));
+              e.strafeMoved = 0;
+            } else {
+              e.fa2State = 'resume'; e.fa2T = 0;
+            }
+          }
+          break;
+        }
+        case 'strafe': {
+          // 斜下 45° 移动（统一替代原纯水平横移）：攻击计时照常递减，到点即打断（brake 刹停射击，strafeAbort 记录放弃剩余斜移）
+          e.fa2FireTimer -= dt;
+          if (e.fa2FireTimer <= 0) {
+            e.strafeAbort = true;   // 打断：射击完毕后放弃剩余斜移
+            e.fa2State = 'brake';
+            break;
+          }
+          // 标量速度斜坡 → 精确 45° 速度向量：水平/垂直分量恒等（不随逐帧插值/初速差异偏转）
+          const ramp = Math.min(1, dt * acc);
+          const m = Math.hypot(e.vx, e.vy) + (FASHI_A2.strafeSpeed - Math.hypot(e.vx, e.vy)) * ramp;   // 速度模长向 strafeSpeed 平滑逼近
+          e.vx = e.strafeDir * m / Math.SQRT2;
+          e.vy = m / Math.SQRT2;
+          e.strafeMoved += Math.abs(e.vx * dt);
+          if (e.strafeMoved >= e.strafeDist) { e.fa2State = 'resume'; e.fa2T = 0; }
+          break;
+        }
+        case 'resume':
+          e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+          e.vy += (spd - e.vy) * Math.min(1, dt * acc);
+          if (e.vy >= spd * 0.9) {
+            e.fa2State = 'descend';   // 攻击计时已在射击完毕时重置（横移/下降共用窗口）
+          }
+          break;
+      }
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      // 轻微摆动（斜移期间禁用，保证 45° 路径不受横向摆动偏转）
+      if (e.fa2State !== 'strafe') e.x += Math.sin(e.wobble) * 6 * dt;
+      return;
+    }
     if (e.type === 'jiaoxiang') {
       // 焦香螺旋桨：全程速度积分驱动（位置连续变化，杜绝切换闪动/状态重置）；
       // 入场朝目标点逼近 → 绕圈用"引导点追踪"（追圆周上领先角度的点）形成大致圆形轨迹，含轻微随机漂移
-      const cx = CANVAS_W / 2, cy = CANVAS_H * JIAOXIANG.orbitCy, R = JIAOXIANG.orbitR;
+      // 绕圈圆心/半径逐次随机（spawn 时写入本体；缺省回退屏中/固定值以防异常生成路径）
+      const cx = e.jxCx != null ? e.jxCx : CANVAS_W / 2;
+      const cy = e.jxCy != null ? e.jxCy : CANVAS_H * 0.60;
+      const R = e.jxR != null ? e.jxR : 175;
       const spd = JIAOXIANG.speed * e.speedMul;
       // 横杠旋转（三根异速，B/C 同向、A 独立）
       e.jxSpinA += e.jxSpdA * dt;
@@ -351,6 +529,11 @@
       e.vy += (wantVy - e.vy) * turn;
       e.x += e.vx * dt;
       e.y += e.vy * dt;
+      // 绕圈阶段硬性边框约束（轨迹不出边框；入场阶段不 clamp 以免挡住屏外入场）
+      if (e.jxPhase === 1) {
+        e.x = clamp(e.x, e.w / 2, CANVAS_W - e.w / 2);
+        e.y = clamp(e.y, e.h / 2, CANVAS_H - e.h / 2);
+      }
       return;
     }
     if (e.type === 'popian') {
@@ -370,9 +553,10 @@
         e.vx += (tvx - e.vx) * Math.min(1, dt * 12);
         e.vy += (tvy - e.vy) * Math.min(1, dt * 12);
         e.x += e.vx * dt; e.y += e.vy * dt;
-        // 飞行朝向：机身平滑倾斜对齐速度方向（局部 +y 指向飞行方向）
+        // 飞行朝向：机身平滑倾斜对齐速度方向（局部 +y 指向飞行方向），受最大转向角速度限制
         const face = Math.atan2(e.vy, e.vx) - Math.PI / 2;
-        e.faceAng += (face - e.faceAng) * Math.min(1, dt * 10);
+        const dfly = Math.atan2(Math.sin(face - e.faceAng), Math.cos(face - e.faceAng));
+        e.faceAng += clamp(dfly, -POPIAN.maxTurn * dt, POPIAN.maxTurn * dt);
         if (dist <= 2.5 || wantSpd < 5) {
           // 到位：锁停（位置吸附、速度归零），停稳后才可攻击（首次攻击延迟 firstDelay）
           e.x = e.tpX; e.y = e.tpY; e.vx = 0; e.vy = 0;
@@ -380,8 +564,10 @@
           e.atkT = POPIAN.firstDelay;
         }
       } else {
-        // 停稳：机身平滑回正（朝下），不再移动
-        e.faceAng += (0 - e.faceAng) * Math.min(1, dt * 8);
+        // 停稳：不再移动，但头部以最大转向角速度平滑转向玩家方向（局部 +y 头部始终朝向玩家所在处）
+        const face = Math.atan2(player.y - e.y, player.x - e.x) - Math.PI / 2;
+        const df = Math.atan2(Math.sin(face - e.faceAng), Math.cos(face - e.faceAng));
+        e.faceAng += clamp(df, -POPIAN.maxTurn * dt, POPIAN.maxTurn * dt);
       }
       // 已锁停：不再移动（攻击由 updateEnemyFire 处理）
       return;
@@ -406,12 +592,17 @@
       }
       return;
     }
-    if (e.holdTimer > 0) {
-      e.holdTimer -= dt;
-      // 悬停期间水平巡航
-      if (e.type === 'capital') {
-        e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
-      } else if (!e.staticX) {
+      if (e.holdTimer > 0) {
+        e.holdTimer -= dt;
+        // 悬停期间水平巡航
+        if (e.type === 'capital') {
+          // 赤金技能3：停移（holdEase 平滑过渡 1↔0，摆动速度不瞬间归零、恢复时不瞬间起跳）
+          if (e.holdEase == null) e.holdEase = 1;   // 首帧初始化（避免 undefined 参与运算产生 NaN）
+          const wantHold = (e.variant === 'crgold' && e.crgoldHold > 0) ? 0 : 1;
+          if (e.crgoldHold > 0) e.crgoldHold -= dt;
+          e.holdEase += (wantHold - e.holdEase) * Math.min(1, dt * 6);
+          e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * e.holdEase * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
+        } else if (!e.staticX) {
         // gunship / harbinger：轻幅左右巡航（先兆者幅度更小，稳居后排）
         // staticX：BOSS 召唤的先兆者固定在最左/最右，不巡航，避免被 BOSS 机体挡住打不到
         e.x += Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * dt;
@@ -462,6 +653,8 @@
     if (e.type === 'striker' && e.skill === 'dusk') return;
     // 法术大师A1：攻击逻辑在移动状态机内处理，不走通用开火
     if (e.type === 'fashiA1') return;
+    // 法术大师A2：攻击逻辑在移动状态机内处理，不走通用开火
+    if (e.type === 'fashiA2') return;
     // 大型龙卷：随机向 360° 快速射出风条（从机体内部随机点射出，与涡流风旋技能的风条完全一致）
     if (e.type === 'tornado') {
       e.fireTimer -= dt;
@@ -524,7 +717,7 @@
       }
       return;
     }
-    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.5s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）
+    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）
     if (e.type === 'popian') {
       if (!e.arrived || e.leaving) return;   // 未停稳不攻击
       // 红圈预警进行中：倒计时结束即锁定红圈中心、发起三连发
@@ -549,10 +742,14 @@
         }
         return;
       }
-      // 攻击间隔计时：仅当玩家处于索敌范围内才发起预警（范围随时间增长，迟早进入）
+      // 攻击间隔计时：仅当玩家处于索敌范围内、且机身已朝向玩家（对齐阈值内）才发起预警
+      // （未朝向玩家时无法发射——等待转向完成，短暂重试）
       e.atkT -= dt;
       if (e.atkT <= 0) {
-        if (player.alive && Math.hypot(player.x - e.x, player.y - e.y) <= e.detectR) {
+        const wantFace = Math.atan2(player.y - e.y, player.x - e.x) - Math.PI / 2;
+        const df = Math.atan2(Math.sin(wantFace - e.faceAng), Math.cos(wantFace - e.faceAng));
+        if (player.alive && Math.abs(df) <= POPIAN.fireAlign &&
+            Math.hypot(player.x - e.x, player.y - e.y) <= e.detectR) {
           // 锁定玩家当前位置（含少量随机偏移）为红圈中心，预警期间不再跟踪
           e.warn = {
             tx: clamp(player.x + rand(-POPIAN.warnOffset, POPIAN.warnOffset), 12, CANVAS_W - 12),
@@ -561,7 +758,7 @@
           };
           e.atkT = rand(POPIAN.fireInterval[0], POPIAN.fireInterval[1]);
         } else {
-          e.atkT = 0.25;   // 不在范围：短暂重试
+          e.atkT = 0.25;   // 不在范围 / 尚未转向到位：短暂重试
         }
       }
       return;
@@ -708,7 +905,59 @@
       return;
     }
     // capital：按变体技能循环弹幕（3/4类常规子弹均为橙红色长条弹）
-    if (e.skill === 'lance') {
+    if (e.skill === 'crgold') {
+      // 赤金主力舰：三技能循环 —— 锁定三轮齐射 / 金环扩散清弹 / 双向加速弹幕
+      switch (e.pattern % 3) {
+        case 0: {
+          // 技能1：锁定玩家当前瞬间坐标——首轮 5 发（最远两发间总夹角 40°）、随后 2/2 两轮；
+          // 每次射击为紧凑两连发（一前一后）：第二轮间隔翻倍（0.56s）、第二轮→第三轮间隔减 25%（0.21s）
+          const lockAng = Math.atan2(player.y - e.y, player.x - e.x);
+          const volleys = [[5, 40], [2, 22], [2, 25]];   // [发数, 总夹角°]
+          const times = [0, 0.56, 0.77];
+          const twinGap = 0.06;   // 同一次射击两发的前后间隔
+          volleys.forEach(([n, spread], vi) => {
+            const half = spread * Math.PI / 360;
+            for (let k = 0; k < n; k++) {
+              const off = n === 1 ? 0 : -half + (2 * half) * k / (n - 1);
+              e.scheduled.push({ t: times[vi], fn: () => pushEBullet(e, lockAng + off, cfg.bulletSpeed, cfg) });
+              e.scheduled.push({ t: times[vi] + twinGap, fn: () => pushEBullet(e, lockAng + off, cfg.bulletSpeed, cfg) });
+            }
+          });
+          break;
+        }
+        case 1: {
+          // 技能2：金环扩散 —— 消耗一枚旋转环扩大 1.2s，环带上我方与敌方子弹瞬间消散（双环最多放两次）
+          if ((e.ringsLeft || 0) > 0) {
+            e.ringsLeft--;
+            e.ringWave = { r: e.w * 0.22, t: 0, dur: 1.2 };
+            spawnParticles(e.x, e.y, '#ffd166', 18, 220);
+            shake(4, 0.2);
+          } else {
+            // 双环耗尽：退化为瞄准双发
+            const ang = Math.atan2(player.y - e.y, player.x - e.x);
+            const a5 = Math.PI / 36;
+            pushEBullet(e, ang - a5, cfg.bulletSpeed * 1.15, cfg);
+            pushEBullet(e, ang + a5, cfg.bulletSpeed * 1.15, cfg);
+          }
+          break;
+        }
+        case 2: {
+          // 技能3：朝竖直向下依次射出四组「左3右3」加速长条弹（初速≈0、逐渐加速到最大速度），
+          // 四组的左右两 stream 夹角依次为 75°/55°/35°/15°（逐组收窄）；释放期间自身停移（crgoldHold）
+          const accel = 420, maxSpeed = cfg.bulletSpeed * 1.8;
+          e.crgoldHold = 2.0;
+          for (let g = 0; g < 4; g++) {
+            const halfA = [75, 55, 35, 15][g] * Math.PI / 360;   // 每侧偏角 = 夹角的一半
+            const t0 = g * 0.5;
+            for (let i = 0; i < 3; i++) {
+              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 + halfA, 0.5, cfg, { accel, maxSpeed }) });
+              e.scheduled.push({ t: t0 + i * 0.07 + 0.035, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed }) });
+            }
+          }
+          break;
+        }
+      }
+    } else if (e.skill === 'lance') {
       // 蓝：更聚焦玩家 —— 六连齐射(±20°随机偏差) / 大红弹飞行后分裂6小弹 / 双臂螺旋
       switch (e.pattern % 3) {
         case 0:   // 技能1：瞄准六连齐射，每发 ±20° 随机偏差
@@ -765,7 +1014,8 @@
       dmg: opts.dmg != null ? opts.dmg : cfg.bulletDmg,
       color: opts.color || (isShip ? SHIP_BULLET_COLOR : '#ffd166'),
       split: opts.split || null,    // 分裂弹配置（飞行一段→停止→分裂）
-      laser: !!opts.laser,          // 自定义渲染：胶囊形紫色激光（fashiA1）
+      laser: !!opts.laser,          // 自定义渲染：胶囊形紫色激光（fashiA1/A2）
+      laserBright: !!opts.laserBright, // A2 专属：激光更亮（渲染辉光与配色增强）
       lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
       growRate: opts.growRate || 0,   // 每秒生长像素
       traveled: 0,
@@ -956,10 +1206,13 @@
         popianMissiles.splice(i, 1);
         continue;
       }
-      // 飞向锁定目标点：抵达即小范围爆炸，玩家在爆圈内视为命中
+      // 飞向锁定目标点：抵达即小范围爆炸（多粒子 + 提亮，更明显），玩家在爆圈内视为命中
       const dist = Math.hypot(m.tx - m.x, m.ty - m.y);
       if (step >= dist) {
-        spawnParticles(m.tx, m.ty, '#ff5a3c', 12, 220);
+        spawnParticles(m.tx, m.ty, '#ff5a3c', 20, 300);
+        spawnParticles(m.tx, m.ty, '#ffb545', 12, 240);
+        spawnParticles(m.tx, m.ty, '#ffffff', 6, 180);
+        shake(4, 0.2);
         if (player.alive && Math.hypot(player.x - m.tx, player.y - m.ty) <= POPIAN.blastR) {
           m.x = m.tx; m.y = m.ty;
           popianMissileHit(m);
@@ -984,8 +1237,11 @@
     } else {
       damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul);   // 该次受击无敌时间 -30%
     }
-    spawnParticles(m.x, m.y, '#ff5a3c', 8, 180);
-    shake(3, 0.15);
+    // 命中爆炸：三层粒子 + 更强震屏（比落点空爆更明显）
+    spawnParticles(m.x, m.y, '#ff5a3c', 22, 320);
+    spawnParticles(m.x, m.y, '#ffb545', 14, 260);
+    spawnParticles(m.x, m.y, '#ffffff', 8, 200);
+    shake(5, 0.25);
   }
 
   // ---------- 暴鸰炸弹 ----------
@@ -1031,6 +1287,19 @@
         Math.hypot(player.x - b.tx, player.y - b.ty) <= BAOLING.blastR) {
       damagePlayer(BAOLING.playerDmg);
     }
+  }
+
+  // 暴鸰投弹：炸弹脱离本体（预警倒计时结束正常脱离 / 停车锁定期间被击毁时强制提前脱离），
+  // 交由 blBombs 独立飞向预警区中心——一旦脱离，击毁暴鸰也无法终止
+  function throwBaolingBomb(e) {
+    blBombs.push({
+      x: e.x, y: e.y + 18,
+      tx: e.blWarn.tx, ty: e.blWarn.ty,
+      phase: 'drop', t: 0, spd: BAOLING.dropSpeed, ux: 0, uy: 1,
+    });
+    spawnParticles(e.x, e.y + 16, '#ffd166', 12, 220);   // 脱离火星
+    spawnParticles(e.x, e.y + 16, '#ff7a45', 8, 160);
+    e.blThrown = true;
   }
 
   // 暴鸰亡语：炸弹尚未投出即被击毁 → 原地爆炸，对爆圈内所有单位造成伤害
@@ -1087,7 +1356,7 @@
   function enemyColorTags(e) {
     switch (e.type) {
       case 'side':      // 1类：白=pass 无规则 / 黄=shoot / 紫=kamikaze
-        return e.behavior === 'shoot' ? ['yellow'] : e.behavior === 'kamikaze' ? ['purple'] : [];
+        return e.behavior === 'shoot' ? ['yellow'] : e.behavior === 'kamikaze' ? ['purple'] : e.behavior === 'moon' ? ['red'] : [];
       case 'prolifera': // 增生侧翼艇（淡青绿）
         return ['green'];
       case 'striker':   // 赤红 / 烈橙 / 幽蓝（霜白、幽暮无规则）
@@ -1114,6 +1383,11 @@
   function rollItemDrops(e, x, y) {
     const tags = enemyColorTags(e);
     const isBoss = e.type === 'boss';
+    // 类型掉率修正：1类（含增生侧翼艇；卫护飞船不走此池）所有道具概率减半；2类突击艇全部道具概率 ×0.75。
+    // 高能爆弹为橙色标记的独立判定（见函数末尾），不在此修正范围内
+    let dropMul = 1;
+    if (e.type === 'side' || e.type === 'prolifera') dropMul = 0.5;
+    else if (e.type === 'striker') dropMul = 0.75;
     // 升级套件：基础 9% → 红 ×1.5 / 紫 ×1.2 / 黄（含金）×1.2；
     // 再按「场上已有套件数 + 我方火力等级」统一降率：===4 全体 ×0.5、>=5 全体 ×0.3
     let kitRate = DROP_KIT_RATE;
@@ -1123,11 +1397,13 @@
     const kitLoad = powerups.reduce((n, p) => n + (p.kind === 'kit' ? 1 : 0), 0) + player.weapon;
     if (kitLoad >= 5) kitRate *= 0.3;
     else if (kitLoad === 4) kitRate *= 0.5;
+    kitRate *= dropMul;
     // 量子护盾：基础 2% / 蓝色 6%；场上已有护盾道具或我方已带盾时 ×0.35
     let shieldRate = tags.includes('blue') ? DROP_SHIELD_BLUE : DROP_SHIELD_RATE;
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
+    shieldRate *= dropMul;
     // 加血套件：普通敌人走互斥链（基础 1.8% / 增生侧翼艇固定 10%）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
-    const hpRate = isBoss ? 0 : (tags.includes('green') ? DROP_HP_GREEN : DROP_HP_RATE);
+    const hpRate = isBoss ? 0 : (tags.includes('green') ? DROP_HP_GREEN : DROP_HP_RATE) * dropMul;
     const pr = Math.random();
     if (pr < kitRate) {
       // 升级套件；其中 5% 变为暴走道具（红橙大 S，吃到攻击等级立刻满级）
@@ -1229,10 +1505,12 @@
       rollItemDrops(e, e.x, e.y);
       state.bossStage = 'none';   // BOSS 流程结束
       state.bossTimer = 0;
-      // 击败第一个 BOSS（旧日之歌）：水晶磁吸半径永久 +35%（本场战斗持续生效，重开归 1）
-      if (e.bossId === 'song') state.crystalMagnetMul = 1.35;
+      // 击败第一个 BOSS（旧日之歌）：水晶磁吸半径永久 ×1.5（本场战斗持续生效，重开归 1）
+      if (e.bossId === 'song') state.crystalMagnetMul = 1.5;
       // 阶段推进：还有下一个 BOSS → 重置计时进入新一轮刷怪；已是最终 BOSS（或测试 / 图鉴挑战）→ 延迟后胜利结算
       state.bossPhase++;
+      // 击败 BOSS 引发的阶段跳变升级（如 6 → 11）：下一次「关卡提升」不召唤斗志昂扬
+      state.douzhiSkipOnce = true;
       if (state.bossPhase < BOSS_SEQUENCE.length && !state.testBoss && !state.challenge) {
         state.bossVictoryDelay = 0;
         state.postBossDelay = 2;   // 击败 BOSS 后 2s 再刷怪（不计入关卡推进；到时固定刷首波 1类长队）
@@ -1244,7 +1522,9 @@
       // BOSS 被击败：强行击坠场上所有剩余敌方单位（小怪 / 护航 / 召唤物，含 BOSS 测试召唤物）
       // 倒序遍历逐个走 killEnemy 完整击杀演出（爆炸粒子 / 水晶 / 计分）
       // （增生侧翼艇被清场击毁时会分裂卫护飞船并追加到数组尾部，故循环至场上无残留为止）
-      while (enemies.some(en => en.type !== 'boss')) {
+      // guard 上限防御性兜底：理论上必然清空，防任何未知路径（如未来 killEnemy 新增提前 return）造成主线程死循环卡死
+      let clearGuard = 0;
+      while (enemies.some(en => en.type !== 'boss') && clearGuard++ < 50) {
         for (let i = enemies.length - 1; i >= 0; i--) {
           if (enemies[i] && enemies[i].type !== 'boss') killEnemy(i);
         }
@@ -1282,12 +1562,22 @@
       const cfg = ENEMY_TYPES[e.type];
       pushEBullet(e, Math.PI / 2, cfg.bulletSpeed * 1.1, cfg);
     }
-    // 暴鸰亡语：炸弹尚未投出即被击毁 → 原地爆炸（敌我通杀）；已投出则无亡语
-    if (e.type === 'baoling' && !e.blThrown) detonateBaoling(e);
+    // 赤月亡语：尚未发射过子弹即被击毁时，12% 概率向顶角方向（航向正前方）补射一枚（与常规发射同弹速）
+    if (e.type === 'side' && e.behavior === 'moon' && !e.moonFired && Math.random() < SIDE_MOON.deathShotChance) {
+      const v = e._sideVel || { vx: 0, vy: 60 };
+      const cfg = ENEMY_TYPES.side;
+      pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
+    }
+    // 暴鸰亡语分派：炸弹已脱离 → 无亡语；预警区已形成（停车锁定中）→ 强制提前投弹，
+    // 炸弹仍将抵达目标位置并爆炸（击杀无法终止）；预警区形成前被击毁 → 原地爆炸（敌我通杀）
+    if (e.type === 'baoling') {
+      if (!e.blThrown && e.blWarn) throwBaolingBomb(e);
+      else if (!e.blThrown) detonateBaoling(e);
+    }
     spawnParticles(e.x, e.y, e.color, 22, 260);
     state.score += e.score;
-    // 非 4类/BOSS 敌机被击毁不再抖屏（仅保留 4 类与 BOSS 的击毁震屏）
-    // 增生侧翼艇：击毁后分裂出 2~3 个卫护飞船（蓝色小三角，沿原航向大致继续飞行，出厂带随机虚化护盾）
+    // 所有非 BOSS 敌机被击毁均不再抖屏（仅保留 BOSS 的击毁震屏）
+    // 增生侧翼艇：击毁后分裂出 2~3 个卫护飞船（深蓝紫渐变小三角，沿原航向大致继续飞行，出厂带随机虚化护盾）
     if (e.type === 'prolifera') {
       const n = 2 + Math.floor(Math.random() * 2);
       const base = e._sideVel || { vx: 0, vy: 60 };
@@ -1296,12 +1586,11 @@
         esc._sideVel = { vx: base.vx + rand(-16, 16), vy: base.vy + rand(-10, 14) };   // 大致沿原路径，带小幅散布
         esc._entryMul = 1;   // 预置 1：无入场冲刺，平滑接续原航向
       }
-      spawnParticles(e.x, e.y, '#9cd6ff', 10, 180);
+      spawnParticles(e.x, e.y, '#9a7bff', 10, 180);
     }
     // 3 / 4 类击毁后槽位释放，再次出场由场面压力刷新系统接管（无固定冷却）
     if (e.type === 'capital') {
       spawnParticles(e.x, e.y, '#ffd166', 30, 340);
-      shake(14, 0.5);
       // 高能爆弹：击败 4 类主力舰 5% 掉落（BOSS 为 20%；橙色敌人另有 0.5%，整场最多一次，见 rollItemDrops）
       if (Math.random() < 0.05) spawnPowerup(e.x, e.y, 'bomb', 12);
     }
@@ -1349,22 +1638,30 @@
       spawnParticles(e.x, e.y, '#a855f7', 16, 240);
       spawnParticles(e.x, e.y, '#e0d0ff', 10, 180);
     }
+    // 法术大师A2击毁：紫白爆裂演出（较 A1 更盛）
+    if (e.type === 'fashiA2') {
+      spawnParticles(e.x, e.y, '#c084fc', 26, 300);
+      spawnParticles(e.x, e.y, '#f3e8ff', 16, 240);
+      shake(8, 0.3);
+    }
     // 水晶掉落：大概率，数量随体型增加；直接垂直下坠，不乱飘
     // 幽暮突击艇：必定掉落 2~3 个水晶
+    // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍（2~6）
     const isDusk = e.type === 'striker' && e.skill === 'dusk';
     const dropR = Math.random();
-    const cCount =
-      isDusk ? 2 + Math.floor(Math.random() * 2) :
+    const cCount = (e.postBossWave ? 2 : 1) *
+      (isDusk ? 2 + Math.floor(Math.random() * 2) :
       e.type === 'capital' ? 8 + Math.floor(Math.random() * 8) :
       e.type === 'weilong' ? 6 + Math.floor(Math.random() * 7) :
       e.type === 'hanshuang' ? 4 + Math.floor(Math.random() * 4) :
       e.type === 'baoling' ? 2 + Math.floor(Math.random() * 3) :
       e.type === 'douzhi' ? 3 + Math.floor(Math.random() * 3) :
       e.type === 'fashiA1' ? 2 + Math.floor(Math.random() * 2) :
+      e.type === 'fashiA2' ? 4 + Math.floor(Math.random() * 3) :
       e.type === 'jiaoxiang' ? 8 + Math.floor(Math.random() * 6) :
       e.type === 'gunship' || e.type === 'harbinger' || e.type === 'yu4' || e.type === 'anvil' ? 4 + Math.floor(Math.random() * 4) :
-      1 + Math.floor(Math.random() * 3);
-    if (isDusk || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.55 : 0.8)) {
+      1 + Math.floor(Math.random() * 3));
+    if (e.postBossWave || isDusk || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.55 : 0.8)) {
       for (let k = 0; k < cCount; k++) {
         // 极小概率巨型水晶（0.4%）：体型稍大，价值 50 颗普通水晶
         const giant = Math.random() < 0.004;
@@ -1379,6 +1676,7 @@
     }
     // 通用道具掉落（颜色标记驱动，见 rollItemDrops）：
     // 升级套件 9%（红×1.5 / 紫×1.2 / 黄×1.2，负载降率） / 量子护盾 2%（蓝 6%） / 加血套件 1.8%（绿 10%）
+    // 类型修正：1类（含增生侧翼艇）全体道具概率减半、2类突击艇全体道具概率 ×0.75（水晶掉率不在本池、不受影响）
     // 注：高能爆弹不在此通用池，仅由 4 类（5%）与 BOSS（20%）掉落，另有橙色敌人 0.5%（整场最多一次，rollItemDrops 内判定）
     rollItemDrops(e, e.x, e.y);
     enemies.splice(index, 1);

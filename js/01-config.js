@@ -1,4 +1,4 @@
-// 01-config：全部常量与注册表（画布/战机/僚机/敌机类型/BOSS/掉落率/压力权重）
+﻿// 01-config：全部常量与注册表（画布/战机/僚机/敌机类型/BOSS/掉落率/压力权重）
 'use strict';
 
 /**
@@ -27,7 +27,7 @@
     bulletDamage: 12,
     invulnTime: 1.2,     // 受击后无敌
     respawnTime: 1.6,    // 掉命后重生延迟
-    magnetRadius: 110,   // 水晶吸附半径
+    magnetRadius: 132,   // 水晶吸附半径（基础值；击败旧日之歌后另乘 crystalMagnetMul 1.5 → 198）
     hitRadius: 4,        // 判定点半径：仅机身中心小点被击中才算命中
     hitOffsetY: 4,       // 判定点下移偏移（与白点视觉位置一致）
   };
@@ -81,8 +81,12 @@
     score: 8000,
     hoverY: 205,               // 风暴中心悬停高度
     skillCd: BOSS.skillCd * 0.5,   // 技能间基础冷却 = 旧日之歌常态间隔（2.2s）的 50%（连中同技能 ×0.2）
-    windDmg: 30,               // 技能1 风流伤害
-    flowR: 18.2,                // 风流半宽（已降 30%：26→18.2）
+    windDmg: 28,               // 技能1 风波伤害（原 30）
+    flowR: 18.2,               // （旧风流半宽，已弃用仅留参考）风波取其稍宽值，见 waveHalfW
+    waveHalfW: 21,             // 风波竖直半厚（旧风流 18.2 的稍宽版）
+    waveSagMin: 32,            // 风波下弯最小幅度（px：弯在下面，形似"（"逆时针旋转 90°，可不对称）
+    waveSagMax: 68,            // 风波下弯最大幅度（px；曲率已增大）
+    waveDur: 0.55,             // 风波显现后存留时长（瞬时降临、快速渐隐）
     tornadoDmg: 16,            // 风弹伤害（技能2/4/5/6）
     tornadoCrash: 32,          // 大型龙卷碰撞伤害
     pillarDmg: 18,             // 技能3 风柱伤害
@@ -169,7 +173,7 @@
    * 四类非 Boss 敌人：
    *   1类 side     从场地中部略偏上的两侧斜插窜出，血极低；多数无攻击，少数追踪射击 / 阵亡时向下垂直射击
    *        prolifera  增生侧翼艇（1类特殊）：淡青绿、无攻击；阵亡分裂 2~3 个卫护飞船（escort），加血道具掉率 ×3
-   *        escort     卫护飞船（增生侧翼艇衍生）：蓝色小三角、无攻击、沿原航向漂移；碰撞伤/无敌时间 ×0.4；仅掉水晶
+   *        escort     卫护飞船（增生侧翼艇衍生）：深蓝紫渐变小三角（边缘紫光）、无攻击、沿原航向漂移；碰撞伤/无敌时间 ×0.4；仅掉水晶
    *   2类 striker  上方入场，血低；垂直向下直射，少部分追踪射击
    *   3类 gunship  上方入场，体型稍大血中；悬停上方，扇形 / 环形 / 双连炮多种弹幕
    *   4类 capital  上方居中入场，体型大血高；悬停上方，螺旋环 / 扇形齐射 / 环形爆发密集弹幕，
@@ -188,10 +192,10 @@
       crashDmg: 12,
       fireInterval: [1.4, 2.2],   // 无攻击，字段仅为 makeEnemy 取值完整性
     },
-    // 卫护飞船（增生侧翼艇衍生）：小三角形（纯等腰三角、无核心），蓝色，无攻击，沿原航向继续飞行；
+    // 卫护飞船（增生侧翼艇衍生）：小三角形（纯等腰三角、无核心），深蓝紫渐变（边缘紫光），无攻击，沿原航向继续飞行；
     // 碰撞伤害与撞击无敌时间均为增生侧翼艇的 40%；出厂随机虚化护盾；仅掉水晶
     escort: {
-      w: 12, h: 14, hp: 1,   score: 20,   color: '#9cd6ff', drawScale: 1.25,
+      w: 12, h: 14, hp: 1,   score: 20,   color: '#6a5ce0', drawScale: 1.25,   // 深蓝紫（与浅蓝水晶区分）
       crashDmg: 4.8,              // 增生侧翼艇（12）的 40%
       invulnMul: 0.4,             // 撞击造成的无敌时间同样为 40%（0.48s）
       fireInterval: [1.4, 2.2],   // 无攻击，字段仅为 makeEnemy 取值完整性
@@ -204,6 +208,7 @@
     gunship: {
       w: 76, h: 62, hp: 300,  score: 400,  color: '#c084fc', drawScale: 1.55,
       bulletSpeed: 250, bulletR: 4, bulletDmg: 8, crashDmg: 30,
+      firstFire: [1.2, 2.4],   // 出场后首次射击延迟随机区间（就位后计，与出场途径无关）
       fireInterval: [1.8, 2.4],
     },
     capital: {
@@ -240,7 +245,7 @@
     // 特殊3类：铁砧（治疗无人机）—— 菱形黑灰框架 + 中央灰黑正方形 + 上下左右横杠 + 中心朝下凸出白杠 + 正方形青绿治疗光环；
     // 不攻击：登场 0.5s 后展开治疗光环（圈内所有敌人含自身每秒回复 1% 最大生命 + 60），悬停于炮火先兆者前方，停留 25s；Lv10 前不出场
     anvil: {
-      w: 58, h: 48, hp: 600, score: 450, color: '#8ce36b', drawScale: 1.2,
+      w: 70, h: 58, hp: 600, score: 450, color: '#8ce36b', drawScale: 1.44,   // 体型增大 20%（58×48 → 70×58；drawScale 同步 ×1.2 使视觉与碰撞盒一致）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 30,   // 碰撞伤害等同常规 3 类炮艇(30)
       fireInterval: [1e9, 1e9],   // 不攻击：间隔天文数字，永不落入通用开火逻辑
     },
@@ -275,11 +280,20 @@
     },
     // 特殊2类：破片（三连发导弹无人机）—— 造型类铁砧但更小、灰白金属主导（边框+核心）；中心两条黑杠（头部红、下方缩短）；
     // 下方两根黑色炮管（前部加粗、图层最底）；只沿直线飞到选定点后急停锁停（除非被击毁不再移动），停稳后才攻击；
-    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.5s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv10 前低权重
+    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv10 前低权重
     popian: {
       w: 46, h: 40, hp: 200, score: 200, color: '#cfd6e0', drawScale: 1.0,   // 体型同常规 2 类突击艇
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,   // 碰撞伤害按登场时间分段覆盖（见 updateEnemies）：0.5s 内 0 / 0.5~2s 2类×80% / 2s 后 2类×150%
       fireInterval: [1e9, 1e9],   // 攻击逻辑在移动/开火状态机内处理，不走通用开火
+    },
+    // 特殊3类：法术大师A2（紫白激光无人机）—— 法术大师A1 的强化版：体型较威龙 +30%、血量 900；
+    // 移动/攻击逻辑与 A1 一致（不停留下降、停移射击、50% 横移），但速度较慢（威龙 ×1.3=62.4，仍远慢于 A1 的 147）
+    // ——横移常在下一次攻击触发前未走完，此时照常停移射击，射击完毕后放弃剩余横移、径直下降；
+    // 激光伤害 32（A1 ×2）、更亮更粗；四角风扇圆心为紫色（A1 为黑色）
+    fashiA2: {
+      w: 99, h: 91, hp: 900, score: 450, color: '#c084fc', drawScale: 3.0,   // 体型 = 威龙(76×70) × 1.3；局部造型沿用 A1 小坐标 → drawScale 3.0 使视觉尺寸与碰撞盒匹配（A1 为 1.4/盒46）
+      bulletSpeed: 472.5, bulletR: 6, bulletDmg: 32, crashDmg: 35,   // 激光弹速与 FASHI_A2.laserSpeed 一致；碰撞伤害与威龙一致
+      fireInterval: [1e9, 1e9],   // 攻击逻辑在移动状态机内处理，不走通用开火
     },
     // 特殊敌机：暴风之眼技能2 召唤的大型龙卷（可击毁、缓慢下移直至脱离战场、随机 360° 射风弹）
     tornado: {
@@ -330,7 +344,7 @@
     auraR: 150,          // 寒霜光圈半径（较大范围，以玩家核心位置判定）
     dwell: 20,           // 到位后停留时长
     fireSlow: 0.65,      // 光圈内玩家射速倍率（-35%：冷却流速乘 0.65）
-    moveSlow: 0.75,      // 光圈内玩家移动速度倍率（-25%）
+    moveSlow: 0.65,      // 光圈内玩家移动速度倍率（-35%）
   };
 
   // 御4参数（特殊3类防御无人机）
@@ -394,8 +408,11 @@
     nearR: 55,             // 近本体判定半径（圈内灼烧翻倍）
     burnDps: 15,           // 光环内每秒灼烧伤害（近本体 ×2 = 30）
     flankChance: 0.20,     // 侧翼出场概率
-    orbitR: 160,           // 绕圈半径
-    orbitCy: 0.60,         // 绕圈中心 Y 占屏幕高度比（60%：圈顶 ≈ 40%）
+    orbitRMin: 150,        // 绕圈半径随机下限（逐次出场随机；受屏宽约束，半径越大圆心 X 越贴近中线）
+    orbitRMax: 200,        // 绕圈半径随机上限
+    orbitBottomMin: 0.84,  // 圈底位置随机下限（占屏高比——决定火焰光环可灼烧的最低区域）
+    orbitBottomMax: 0.94,  // 圈底位置随机上限（圈底最低时光环可烧到屏幕最下方）
+    orbitMargin: 46,       // 圆心/半径的边框安全余量（机体半宽 + 漂移量）；配合绕圈阶段出界硬 clamp 保证轨迹不出边框
     spinA: 0.5,            // 横杠 A（直径杠）旋转角速度 rad/s（方向独立随机）
     spinB: 0.9,            // 横杠 B 旋转角速度 rad/s（B/C 方向一致随机）
     spinC: 0.6,            // 横杠 C 旋转角速度 rad/s（与 B 同向）
@@ -428,17 +445,43 @@
     fireInterval: [1.0, 1.5],   // 攻击间隔：随机 1~1.5s
     firePause: 0.25,     // 停稳后到发射的短暂停顿（视觉反馈）
     fireLingerAfter: 0.35, // 发射后继续静止时长（不移动，原 0.15 + 0.2）
-    laserSpeed: 380,     // 激光射弹速度
+    laserSpeed: 425.25,  // 激光射弹速度（= A2 472.5 × 0.9；原 350）
     laserDmg: 16,        // 激光伤害
     laserLenPct: 0.4,    // （已废弃：激光无上限生长，直到尾端出界才消失）
-    laserGrowRate: 792,  // 激光生长速率（px/s）：无上限持续生长（原 440 × 1.8 = +80%）
+    laserGrowRate: 151.875, // 激光生长速率 px/s（= A2 168.75 × 0.9；原 150）：无上限持续生长，直到尾端出界才消失
     laserR: 5,           // 激光宽度（半径）
-    strafeChance: 0.5,   // 攻击后 50% 概率横移
-    strafeMin: 80,       // 横移最小距离
-    strafeMax: 160,      // 横移最大距离
+    strafeChance: 0.5,   // 攻击后 50% 概率朝斜下方（45°）移动
+    strafeMin: 80,       // 斜移水平分量最小距离
+    strafeMax: 160,      // 斜移水平分量最大距离
     strafeSpeed: 192,    // 横移速度（原 320 × 0.6 = 降 40%）
-    spawnLowLv: 0.06,    // lv10 前替换概率（低权重）
-    spawnHighLv: 0.22,   // lv10 后替换概率（较多出现）
+    spawnLowLv: 0,       // lv10 前替换概率（0 = 不替换，仅图鉴挑战可生成）
+    spawnHighLv: 0.30,   // lv10 后替换概率（较多出现）
+    maxTurn: 10,         // 最大转向角速度（rad/s，很大）：炮管始终对准玩家，几乎实时转向但仍有可见转动过程
+    exitTurn: 2.5,       // 下压超过屏高 80% 后炮管缓慢转向正下方的角速度（rad/s；约 1.2s 转完 180°）
+  };
+
+  // 法术大师A2 参数（特殊3类紫白激光无人机）：法术大师A1 强化版——移动/攻击逻辑一致，
+  // 但下降速度较慢（78 ≈ 威龙 48 的 1.63 倍，仍慢于 A1 的 147）→ 斜下 45° 移动（80~160px 水平分量）常在下一次攻击触发前未走完：
+  // 此时照常停移射击，射击完毕后放弃剩余斜移、径直下降直到下次攻击
+  const FASHI_A2 = {
+    entrySpeed: 104,     // 入场初速 = speed / 0.75（同 A1 比例）
+    entryDecay: 0.5,     // 入场后从 entrySpeed 快速衰减到 speed 的时长
+    speed: 78,           // 最大下降速度 = 62.4 × 1.25（约威龙 48 的 1.63 倍，仍慢于 A1 的 147）
+    accel: 14,           // 加速度系数（同 A1：停移/横移/恢复都极快但平滑）
+    firstDelay: [1.8, 2.3],       // 登场后随机 1.8~2.3s 触发首次刹停（每架独立随机）
+    fireInterval: [1.22, 1.83],   // 攻击间隔：随机 1.22~1.83s（上一版 1.35~2.03 × 0.9）
+    firePause: 0.25,     // 停稳后到发射的短暂停顿（视觉反馈）
+    fireLingerAfter: 0.35, // 发射后继续静止时长
+    laserSpeed: 472.5,   // 激光射弹速度（525 × 0.9；A1 的 1.11 倍）
+    laserDmg: 32,        // 激光伤害（A1 16 的 2 倍）
+    laserGrowRate: 168.75, // 激光生长速率（187.5 × 0.9；无上限持续生长，直到尾端出界才消失）
+    laserR: 6,           // 激光宽度（A1 5 → 略粗）
+    strafeChance: 0.5,   // 攻击后 50% 概率朝斜下方（45°）移动
+    strafeMin: 80,       // 斜移水平分量最小距离
+    strafeMax: 160,      // 斜移水平分量最大距离
+    strafeSpeed: 101,    // 斜下 45° 移动速度（81 × 1.25；慢于 A1 → 斜移常被攻击打断）
+    maxTurn: 10,         // 最大转向角速度（同 A1）
+    exitTurn: 2.5,       // 下压超过屏高 80% 后炮管回正转向下方的角速度（同 A1）
   };
 
   // 破片参数（特殊2类三连发导弹无人机）：直线飞到选定点急停锁停 → 索敌范围随时间增长 → 红圈预警 → 三连发不可击毁导弹
@@ -451,13 +494,14 @@
     flankChance: 0.20,     // 20% 概率从侧翼入场
     stopTopY: 0.30,        // 停留区上界（从上往下 30% 屏高）
     stopBotY: 0.80,        // 停留区下界（80% 屏高）；停留点落在此区间、近处概率高
+    stopMarginX: 0.15,     // 停留点与左右边缘的最小距离（占屏宽比）：不停留在两侧 15% 边缘区域内
     moveMin: 120,          // 最小移动距离（防止出场就停）
     moveMax: 420,          // 最大移动距离（防止飞跃整屏）
     nearBias: 1.8,         // 选点距离偏向近处的指数（random^nearBias：越大越偏向近距离）
     detectBase: 0.30,      // 初始索敌半径 = 30% 屏高
     detectGrow: 0.05,      // 每秒 +5% 屏高（攻击范围增大）
     detectMax: 1.2,        // 索敌半径上限（120% 屏高，防无限增长）
-    warnTime: 0.5,         // 发射前红圈预警时长
+    warnTime: 0.8,         // 发射前红圈预警时长（0.5 +0.3s）
     warnOffset: 26,        // 红圈中心相对玩家位置的少量随机偏移上限
     blastR: 44.2,          // 红圈预警半径 / 导弹抵达小范围爆炸半径（原34扩大30%）
     burstCount: 3,         // 三连发
@@ -469,8 +513,10 @@
     invulnCutMul: 0.7,     // 首发未命中/玩家无敌时，后两发命中带来的无敌时间 -30%
     firstDelay: 0.4,       // 停稳后首次攻击延迟
     fireInterval: [1.6, 2.4],   // 停稳后攻击间隔
+    maxTurn: 3.2,          // 最大转向角速度（rad/s）：飞行倾斜与就位追踪玩家共用，转向有可见过程
+    fireAlign: 0.35,       // 发射所需朝向对齐阈值（弧度，约 20°）：未朝向玩家时无法发起攻击
     spawnLowLv: 0.04,      // lv10 前替换概率（很低）
-    spawnHighLv: 0.18,     // lv10 后替换概率（正常出现）
+    spawnHighLv: 0.08,     // lv10 后替换概率
   };
 
   /* ---------- 场面压力权重刷新系统（替代固定冷却：gunshipCd / capitalCd / 清场门槛） ----------
@@ -491,6 +537,7 @@
     jiaoxiang: 5,                           // 焦香螺旋桨（持续灼烧威胁，高权重）
     fashiA1: 2,                             // 法术大师A1（同 2类突击艇权重）
     popian: 2,                              // 破片（同 2类突击艇权重）
+    fashiA2: 4,                             // 法术大师A2（高血量激光无人机，介于威龙与暴鸰之间）
   };
   const PRESSURE_CAPACITY = 25;   // 满场压力基准（权重和 ÷ 25 = 压力比）
   const SPAWN_SLOW_MUL = 2.5;     // 高于压力阈值时的波次刷新间隔倍率（较慢）
@@ -513,8 +560,8 @@
 
   /* ---------- 2/3/4 类变体：不同颜色 + 不同技能（weight 为出现权重） ----------
    * striker 2类：赤红(直射±10°、不追踪、首发+1s) / 烈橙(spread 前方双弹、夹角 50°/60°/70° 随机) / 幽蓝(homing 追踪弹、首发+1s、登场 10% 1s 或 10% 2s 虚化护盾) / 霜白(silent 不开火、到位停留 2s 再冲锋) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；速度均 -30%
-   * gunship 3类：紫(mixed 散射+追踪) / 红(aggressive 火力猛瞄准连射) / 金(ring 环形弹幕密集、初次开火准备 +0.4s)
-   * capital 4类：红(barrage 密集弹幕) / 蓝(lance 瞄准齐射+螺旋；出现时 20% 带护盾，前 6s 虚化不受伤害、炮弹穿过)
+   * gunship 3类：紫(mixed 散射+追踪) / 红(aggressive 火力猛瞄准连射) / 金(ring 环形弹幕密集)
+    * capital 4类：红(barrage 密集弹幕) / 蓝(lance 瞄准齐射+螺旋；出现时 20% 带护盾，前 5s 虚化不受伤害、炮弹穿过)
    */
   const VARIANTS = {
     striker: [
@@ -527,15 +574,16 @@
     gunship: [
       { id: 'violet',  color: '#c084fc', weight: 0.5, skill: 'mixed' },
       { id: 'crimson', color: '#ff5a5a', weight: 0.3, skill: 'aggressive' },
-      { id: 'amber',   color: '#ffbf47', weight: 0.2, skill: 'ring', firstDelay: 0.4 },   // 金曜（黄）：初次开火前准备 +0.4s（在常规首发间隔上叠加）
+      { id: 'amber',   color: '#ffbf47', weight: 0.2, skill: 'ring' },   // 金曜（黄）：与其它变体共用统一首射延迟
     ],
     capital: [
-      { id: 'crimson', color: '#ff4d6d', weight: 0.6, skill: 'barrage' },
-      { id: 'azure',   color: '#4d9fff', weight: 0.4, skill: 'lance' },
+      { id: 'crimson', color: '#ff4d6d', weight: 0.5, skill: 'barrage' },
+      { id: 'azure',   color: '#4d9fff', weight: 0.3, skill: 'lance' },
+      { id: 'crgold',  color: '#ff9a1a', weight: 0.2, skill: 'crgold' },   // 赤金主力舰：橙黄舰体 + 旋转双环 + 三技能（锁定齐射 / 金环扩散清弹 / 双向加速弹幕）
     ],
   };
   const STRIKER_SPEED_MUL = 0.7;   // 2类突击艇速度降低 30%（赤红/烈橙均适用）
-  const SIDE_SPEED_MUL = 1.3;      // 1类虚像级（侧翼艇）全体速度倍率：所有生成点基值（×0.6）再统一乘此倍率，改一处即影响全部
+  const SIDE_SPEED_MUL = 1.56;     // 1类虚象级（侧翼艇）全体速度倍率：所有生成点基值（×0.6）再统一乘此倍率，改一处即影响全部（1.3 → ×1.2 = 1.56，净速度约为原始基准的 94%）
   const SIDE_ENTRY_BOOST = 2.2;    // 1类入场冲刺倍率：入场瞬间速度更快，随后快速衰减
   const SIDE_ENTRY_DECAY = 5;      // 入场冲刺指数衰减系数（/s）：约 0.7s 内衰减至常规速度
 
@@ -543,13 +591,14 @@
   const SHIP_BULLET_COLOR = '#ff4d2e';   // 橙红色
   const SHIP_BULLET_LEN = 22;            // 长条弹长度（略短于 BOSS 的 26）
   const SPLIT_RED = '#ff6f4d';           // 4类蓝分裂弹：淡橙红（大号母弹 + 6 小子弹）
-  const PHASE_DURATION = 6;      // 蓝色4类护盾虚化时长
+  const PHASE_DURATION = 5;      // 蓝色4类护盾虚化时长
   const PHASE_CHANCE = 0.2;      // 蓝色4类带护盾概率
 
   // 4类主力舰精细化配色（按变体区分：舰体暗→亮渐变 + 专属强调色/辉光，避免“仅换色”的草率感）
   const CAPITAL_PALETTE = {
     crimson: { dark: '#5e0c22', base: '#ff4d6d', light: '#ffb3bd', accent: '#ffb545', glow: '#ff3355' },
     azure:   { dark: '#0d2f5e', base: '#4d9fff', light: '#b3d9ff', accent: '#7ce7ff', glow: '#3399ff' },
+    crgold:  { dark: '#5e3a06', base: '#ff9a1a', light: '#ffe2a8', accent: '#ffd166', glow: '#ffaa22' },   // 赤金：橙黄舰体 + 金色饰带/双环
   };
 
   // 3类炮艇精细化配色（按变体区分：舰体暗→亮渐变 + 专属强调色/辉光，与 4 类涂装同规格）
@@ -559,21 +608,35 @@
     amber:   { dark: '#5e3a06', base: '#ffbf47', light: '#ffeab3', accent: '#fff2c9', glow: '#ffaa22' },
   };
 
+  // 2类变体出现权重（幽暮按关卡调整 + 其余变体等比缩放补足）：pickVariant 与「数值与机制图鉴」共用
+  // 返回 [{ id, w }]，w 为概率（0~1，总和 1）
+  function strikerVariantWeights(lv) {
+    const list = VARIANTS.striker;
+    const duskMul = lv < 10 ? 0.10 : 0.40;
+    const duskW = (list.find(v => v.id === 'dusk') || { weight: 0 }).weight * duskMul;
+    const otherW = list.reduce((s, v) => s + (v.id === 'dusk' ? 0 : v.weight), 0);
+    const scale = otherW > 0 ? (1 - duskW) / otherW : 1;
+    return list.map(v => ({ id: v.id, w: v.id === 'dusk' ? duskW : v.weight * scale }));
+  }
+
   // 按权重随机选取变体
   // 幽暮突击艇出现率按关卡调整：Lv10 前为基础权重（12%）的 10%，Lv10 起为 40%；
   // 缩减的概率按比例摊给其余变体，保证幽暮出现率精确达标
   function pickVariant(type) {
+    if (type === 'striker') {
+      const ws = strikerVariantWeights(state.level);
+      let r = Math.random();
+      for (const it of ws) {
+        if (r < it.w) return VARIANTS.striker.find(v => v.id === it.id);
+        r -= it.w;
+      }
+      return VARIANTS.striker[0];
+    }
     const list = VARIANTS[type];
-    const isDusk = v => type === 'striker' && v.id === 'dusk';
-    const duskMul = state.level < 10 ? 0.10 : 0.40;
-    const duskW = list.reduce((s, v) => s + (isDusk(v) ? v.weight : 0), 0) * duskMul;
-    const otherW = list.reduce((s, v) => s + (isDusk(v) ? 0 : v.weight), 0);
-    const scale = otherW > 0 ? (1 - duskW) / otherW : 1;
     let r = Math.random();
     for (const v of list) {
-      const w = isDusk(v) ? duskW : v.weight * scale;
-      if (r < w) return v;
-      r -= w;
+      if (r < v.weight) return v;
+      r -= v.weight;
     }
     return list[0];
   }
@@ -587,7 +650,10 @@
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害（真实伤害：无视御4防御光环等一切减伤）
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
   const CAPITAL_HIGHFIRE_DR = 0.15;   // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力的减伤（受到伤害 ×0.85）
+  const CAPITAL_DESCEND_DR = 0.20;    // 4类主力舰：俯冲减速前（距悬停高度 ≥90px、速度未明显衰减）的减伤（受到伤害 ×0.8）
   const BOSS_LOWFIRE_BONUS = 0.20;    // 玩家火力 Lv1 时对 BOSS 的武器伤害加成（BOSS 受到伤害 ×1.20，逆境补偿）
+  const POPIAN_VULN_LV1 = 0.30;       // 火力 Lv1 时对破片的易伤（受到伤害 ×1.30，低火力补偿）
+  const POPIAN_VULN_LV2 = 0.10;       // 火力 Lv2 时对破片的易伤（受到伤害 ×1.10）
   const WEAPON_DROP_HITS = 2;         // 常规：累计受击 2 次掉 1 级火力
   const WEAPON_DROP_HITS_BOSS = 3;    // BOSS 战：累计受击 3 次才掉 1 级火力（更宽松）
 
@@ -606,11 +672,24 @@
   const DROP_BOMB_ORANGE = 0.005;  // 橙色敌人爆弹掉率（整场战斗最多触发一次，不影响 4类 5% 与 BOSS 20%）
   const DROP_KIT_BERSERK = 0.05;   // 升级套件变为暴走道具的概率
 
-  // 1类侧翼艇：三种行为对应三种颜色（与图鉴一致）
-  //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击
+  // 1类侧翼艇：四种行为对应四种颜色（与图鉴一致）
+  //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击 | moon(红)：赤月定向单射
   const SIDE_BEHAVIOR_COLORS = {
     pass:     '#f0f0f5',   // 白
     shoot:    '#ffd166',   // 黄
     kamikaze: '#c084fc',   // 紫
+    moon:     '#ff3b30',   // 赤（赤月侧翼艇）
   };
+
+  // 赤月侧翼艇（红色 1类）：机体为三角形、顶角指向当前航向；
+  // 入场 1.8~2.8s 后随机时刻向顶角方向（航向正前方）发射一枚子弹，仅此一次；
+  // 未发射即被击毁时 12% 概率触发亡语补射（同方向同弹速）
+  const SIDE_MOON = {
+    fireDelay: [1.8, 2.8],   // 入场后到发射的随机延时区间（s）
+    deathShotChance: 0.12,   // 未发射即被击毁时的亡语补射概率
+  };
+
+  // 1类常规生成混合权重：白影 65 / 增生 8 / 黄芒 10 / 紫电 5 / 赤月 5
+  // 注意：这是相对权重而非概率（总和 93），由 pickSideSpawn 抽取（各常规 1类编队场景共用）
+  const SIDE_SPAWN_W = { pass: 65, prolifera: 8, shoot: 10, kamikaze: 5, moon: 5 };
 

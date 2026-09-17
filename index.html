@@ -8,7 +8,9 @@
 </head>
 <body>
   <div class="app">
-    <header class="title-bar">
+    <div class="game-sizer">
+      <div class="game-wrap">
+        <header class="title-bar">
       <h1>大无垠战机</h1>
       <span class="subtitle">Big Infinity Fighter</span>
       <!-- 音乐 / 音效开关：标题栏右侧，位于游戏画面之外，不遮挡 HUD -->
@@ -43,27 +45,29 @@
         </div>
       </div>
 
-      <!-- 左下角：HP 条与生命 -->
+      <!-- 左下角：心心 + HP 条 -->
       <div class="hud-bl">
         <div class="hp-row">
-          <span class="hp-label">HP</span>
-          <span class="hp-text" id="hpText">100 / 100</span>
           <span class="lives-text" id="livesText">♥♥</span>
-        </div>
-        <div class="hp-bar">
-          <div class="hp-fill" id="hpFill"></div>
+          <div class="hp-bar">
+            <div class="hp-fill" id="hpFill"></div>
+          </div>
         </div>
       </div>
 
-      <!-- 右下角：暴走 / 护盾倒计时读条（有颜色区域逐渐变短） -->
+      <!-- 右下角：暴走 / 护盾 / 斗志昂扬 倒计时读条（文字居右） -->
       <div class="hud-br">
         <div class="buff-bar berserk-bar" id="berserkBar">
-          <span class="buff-tag">暴走</span>
           <div class="buff-track"><div class="buff-fill" id="berserkFill"></div></div>
+          <span class="buff-tag">暴走</span>
         </div>
         <div class="buff-bar shield-bar" id="shieldBar">
-          <span class="buff-tag">护盾</span>
           <div class="buff-track"><div class="buff-fill" id="shieldFill"></div></div>
+          <span class="buff-tag">护盾</span>
+        </div>
+        <div class="buff-bar douzhi-bar" id="douzhiBar">
+          <div class="buff-track"><div class="buff-fill" id="douzhiFill"></div></div>
+          <span class="buff-tag">斗志昂扬</span>
         </div>
       </div>
 
@@ -85,11 +89,14 @@
             <div class="plane-select-title">选择僚机</div>
             <div class="plane-grid" id="wingmanGrid"></div>
           </div>
-          <button id="startBtn">开始游戏</button>
+          <!-- 再次挑战置于上方：BOSS 试炼 / 图鉴挑战胜利页与「返回主界面」同时可见，挑战按钮在上 -->
           <button id="retrialBtn" class="hidden">再次挑战</button>
+          <button id="startBtn">开始游戏</button>
           <button id="pauseRetryBtn" class="hidden">重新挑战</button>
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <div class="boss-test-row" id="bossTestRow"></div>
+          <!-- 数值与机制图鉴入口（开始界面右下角） -->
+          <button class="info-entry-btn" id="infoEntryBtn" title="数值与机制图鉴">i</button>
         </div>
       </div>
       <!-- 怪物图鉴 -->
@@ -107,6 +114,17 @@
             </div>
           </div>
         </div>
+      </div>
+      <!-- 数值与机制图鉴 -->
+      <div class="info-modal hidden" id="infoModal">
+        <div class="info-header">
+          <h2>数值与机制图鉴</h2>
+          <button class="info-close" id="infoClose">✕</button>
+        </div>
+        <div class="info-tabs" id="infoTabs"></div>
+        <div class="info-body" id="infoBody"></div>
+      </div>
+      </div>
       </div>
     </div>
   </div>

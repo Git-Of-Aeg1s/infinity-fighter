@@ -43,6 +43,8 @@
       drawAnvilBody(e);       // 自带填充与描边（菱形黑灰框架 + 中央灰黑正方形 + 上下左右横杠 + 中心朝下凸出白杠 + 正方形青绿治疗光环）
     } else if (e.type === 'fashiA1') {
       drawFashiA1Body(e);     // 自带填充与描边（四角风扇圆 + 灰黑矩形1:3:1紫光条 + 底部深紫炮管）
+    } else if (e.type === 'fashiA2') {
+      drawFashiA2Body(e);     // 自带填充与描边（A1 强化版：炫紫更白亮 + 紫心风扇圆 + 更粗更长炮管）
     } else if (e.type === 'popian') {
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
     } else if (e.type === 'jiaoxiang') {
@@ -50,7 +52,30 @@
     } else if (e.type === 'striker' && e.skill === 'dusk') {
       drawDuskStrikerBody(e); // 自带填充与描边（暗黑渐变菱形 + 微亮描边 + 中央白色发光核心；渐显/渐隐透明度内含）
     } else {
-    if (e.type === 'side' || e.type === 'prolifera') {
+    if (e.type === 'side' && e.behavior === 'moon') {
+      // 赤月侧翼艇：红色箭镖，造型与其他 1类完全一致，仅将顶角精确旋转到当前航向（= 子弹发射方向）
+      // 自带填充与描边（分支内完整绘制），末尾清空路径让尾部公共 fill/stroke 空跑
+      const v = e._sideVel || { vx: 0, vy: 60 };
+      ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);   // 造型默认顶角朝下（+y），旋转到航向
+      ctx.beginPath();
+      ctx.moveTo(0, 11);
+      ctx.lineTo(11, -7);
+      ctx.lineTo(0, -3);
+      ctx.lineTo(-11, -7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // 赤色月核：中央淡红小月牙（点明"赤月"之名，不影响轮廓）
+      ctx.fillStyle = 'rgba(255, 224, 224, 0.9)';
+      ctx.beginPath();
+      ctx.arc(0, 1.5, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      ctx.arc(-1, 0.7, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
+    } else if (e.type === 'side' || e.type === 'prolifera') {
       // 1类/增生侧翼艇：小型三角箭镖，朝飞行方向倾斜
       const tilt = e._sideVel ? (e._sideVel.vx > 0 ? -0.35 : 0.35) : 0;
       ctx.rotate(tilt);
@@ -61,7 +86,7 @@
       ctx.lineTo(-11, -7);
       ctx.closePath();
     } else if (e.type === 'escort') {
-      // 卫护飞船：单纯的等腰三角形（指向飞行方向、高大于宽、无内凹箭头造型），较初版缩小 40%
+      // 卫护飞船：深蓝紫渐变等腰三角（指向飞行方向）+ 紫色边缘光芒（与浅蓝水晶明确区分）
       const tilt = e._sideVel ? (e._sideVel.vx > 0 ? -0.35 : 0.35) : 0;
       ctx.rotate(tilt);
       ctx.beginPath();
@@ -69,6 +94,19 @@
       ctx.lineTo(3.75, -5.5);
       ctx.lineTo(-3.75, -5.5);
       ctx.closePath();
+      const escG = ctx.createLinearGradient(0, 5.5, 0, -5.5);   // 尾深顶亮的蓝紫渐变
+      escG.addColorStop(0, '#2b2f77');    // 深蓝紫（尾部）
+      escG.addColorStop(0.55, '#4a49b8'); // 蓝紫
+      escG.addColorStop(1, '#8a63ff');    // 亮紫（顶角）
+      ctx.fillStyle = escG;
+      ctx.shadowColor = '#9a6bff';        // 边缘紫色光芒
+      ctx.shadowBlur = 7;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(196, 160, 255, 0.95)';   // 紫色发光描边
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑
     } else if (e.type === 'striker') {
       // 2类：菱形战机
       ctx.beginPath();
@@ -267,14 +305,24 @@
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
       ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, 30); ctx.stroke();          // 中央龙骨
-      // 横向装甲缝：去掉穿过核心的 y=2；蓝4 再去掉靠近中心的 y=-14（仅留 y=18）
-      const seams = e.variant === 'azure' ? [18] : [-14, 18];
+      // 横向装甲缝：去掉穿过核心的 y=2；蓝4 去掉 y=-14（仅留 y=18）；赤金去掉靠近核心的上下两条（-14/18 全去）
+      const seams = e.variant === 'azure' ? [18] : e.variant === 'crgold' ? [] : [-14, 18];
       for (const yy of seams) {
         ctx.beginPath(); ctx.moveTo(-17, yy); ctx.lineTo(17, yy); ctx.stroke();
       }
+      // 舰体-机翼接缝竖线（±19）：显式重描——机翼填充会盖掉舰体描边的外半侧，且离屏缩放贴图中
+      // 1.2px 细线易被降采样吞掉（左右相位不同可能只吞一侧）；显式绘制保证左右两条都清晰可见
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (const sx of [-1, 1]) {
+        ctx.moveTo(sx * 19, -21);
+        ctx.lineTo(sx * 19, 25);
+      }
+      ctx.stroke();
       // 两侧斜向分块已移入翼面绘制（随折翼变形）
 
-      // (2) 变体涂装光带：赤红 = 两侧 V 形光带；苍蓝 = 横向甲板灯带
+      // (2) 变体涂装光带：赤红 = 两侧 V 形光带；苍蓝 = 横向甲板灯带；赤金 = 旋转双环（金曜炮艇风格放大版）
       ctx.shadowColor = pal.glow;
       ctx.shadowBlur = 9;
       ctx.globalAlpha = 0.5 + pulse * 0.4;
@@ -283,6 +331,19 @@
         ctx.lineWidth = 2.2;
         for (const yy of [-20, 14]) {
           ctx.beginPath(); ctx.moveTo(-17, yy); ctx.lineTo(17, yy); ctx.stroke();
+        }
+      } else if (e.variant === 'crgold') {
+        // 赤金：环绕舰体的旋转双环（金曜炮艇的双环放大版）——施放「金环扩散」消耗一枚，环数随剩余递减；
+        // 机翼展开完成后才逐渐显现（ringT 渐入）
+        const reveal = clamp((e.ringT || 0) / 0.8, 0, 1);
+        ctx.strokeStyle = pal.accent;
+        ctx.lineWidth = 2.4;
+        ctx.globalAlpha *= reveal;
+        const ringRot = state.time * 1.5 + (e.wobble || 0);
+        for (let i = 0; i < (e.ringsLeft || 0); i++) {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 30 - i * 3, 22 - i * 2.5, ringRot + i * Math.PI / 2, 0, Math.PI * 2);
+          ctx.stroke();
         }
       } else {
         ctx.strokeStyle = pal.accent;
@@ -295,6 +356,34 @@
       }
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
+
+      // 赤金「金环扩散」：扩大中的金色圆环（世界半径 → 局部坐标）——本体随进度逐渐变淡，带旋转虚线外环；
+      // 到达最大范围即刻消散（无停顿阶段）
+      if (e.ringWave) {
+        const w = e.ringWave;
+        const prog = clamp(w.t / w.dur, 0, 1);
+        const fade = 1 - prog * 0.55;   // 扩环期间本体逐渐变淡（结束时已淡至 45%，随即消散）
+        const lwR = w.r / (ENEMY_TYPES.capital.drawScale || 1);
+        ctx.save();
+        ctx.globalAlpha = (0.55 + pulse * 0.45) * fade;
+        ctx.strokeStyle = pal.accent;
+        ctx.shadowColor = pal.glow;
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
+        // 旋转虚线外环（扩散动感）
+        ctx.globalAlpha = 0.5 * fade;
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([10, 14]);
+        ctx.lineDashOffset = -state.time * 40;
+        ctx.beginPath(); ctx.arc(0, 0, lwR + 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        // 内侧淡金衬环
+        ctx.globalAlpha = 0.22 * fade;
+        ctx.lineWidth = 7;
+        ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
 
       // (3) 舰桥指挥塔（暗座 + 径向发光核心 + 强调色描边）
       ctx.fillStyle = 'rgba(12, 9, 18, 0.88)';
@@ -525,22 +614,23 @@
         ctx.fill();
       }
       if (b.laser) {
-        // 法术大师A1 紫色激光：尾端锢定于 (b.x, b.y)，头端圆形；
-        // 横向渐变（垂直于长度方向）：两边炫紫 → 中间白，无边框描边
+        // 法术大师A1/A2 紫色激光：尾端锢定于 (b.x, b.y)，头端圆形；
+        // 横向渐变（垂直于长度方向）：两边炫紫 → 中间白，无边框描边；A2（laserBright）更亮更醒目
+        const bright = !!b.laserBright;
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);   // 尾端位置
         ctx.rotate(ang);
         const L = b.len, lr = b.r;
-        ctx.shadowColor = '#a855f7';
-        ctx.shadowBlur = 14;
-        // 横向渐变（y 轴垂直于飞行方向）：上边绚紫 → 中心白亮 → 下边绚紫
+        ctx.shadowColor = bright ? '#d8b4fe' : '#a855f7';
+        ctx.shadowBlur = bright ? 22 : 14;
+        // 横向渐变（y 轴垂直于飞行方向）：上边绚紫 → 中心白亮 → 下边绚紫（A2 边缘更浅更亮）
         const lg = ctx.createLinearGradient(0, -lr, 0, lr);
-        lg.addColorStop(0, '#a855f7');
-        lg.addColorStop(0.28, '#c084fc');
+        lg.addColorStop(0, bright ? '#c084fc' : '#a855f7');
+        lg.addColorStop(0.28, bright ? '#e9d5ff' : '#c084fc');
         lg.addColorStop(0.5, '#ffffff');
-        lg.addColorStop(0.72, '#c084fc');
-        lg.addColorStop(1, '#a855f7');
+        lg.addColorStop(0.72, bright ? '#e9d5ff' : '#c084fc');
+        lg.addColorStop(1, bright ? '#c084fc' : '#a855f7');
         ctx.fillStyle = lg;
         ctx.beginPath();
         // 尾端半圆（左侧）

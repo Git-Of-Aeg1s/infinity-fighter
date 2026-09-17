@@ -76,6 +76,9 @@
     // 自转速度随阶段递增：风聚慢启 → 旋胀加速 → 成形急旋，战斗回归常态 1.4 rad/s
     const spin = e.phase === 'gather' ? 0.5 : e.phase === 'swirl' ? 1.2 : e.phase === 'form' ? 2.6 : 1.4;
     e.rot -= spin * dt;   // 逆时针旋转（canvas y 轴向下，角度递减为逆时针视觉）
+    // 小风流层（12 道射入气流 + 白色风痕）自转：恒速 0.5 rad/s，不随阶段转速提升——
+    // 避免旋胀阶段小风流转速突然变大造成的不协调（本体旋臂仍按 spin 正常加速）
+    if (e.phase === 'gather' || e.phase === 'swirl') e.windRot = (e.windRot || 0) - 0.5 * dt;
     // 血条登场计时 + 残血余像：仅战斗阶段推进（若从汇聚阶段就累加，进战斗时登场动画已被跳过）
     if (e.phase === 'combat') {
       e.barT = (e.barT || 0) + dt;
@@ -176,6 +179,24 @@
     return roll < 0.05 ? 2.0 : roll < 0.20 ? 1.5 : 1.0;
   }
 
+  // 技能1 波次生成：从 side 侧（1 = 右侧向左 / -1 = 左侧向右）射入 n 道风波标记——
+  // 带体横贯全屏（两端出界），下弯随机（弯在下方、可不对称），在下方 60% 区域分布
+  function pushWaveMarks(side, n) {
+    const bandH = CANVAS_H * 0.60;
+    const L = CANVAS_W + 130;   // 带长：超出屏宽，两端出界
+    const x0 = side > 0 ? CANVAS_W + 40 : -40 - L;   // 起点：入射侧外
+    const dirX = side > 0 ? -1 : 1;
+    for (let k = 0; k < n; k++) {
+      zoneMarks.push({
+        kind: 'wave',
+        x0, dirX, L,
+        y0: CANVAS_H * 0.40 + (k + rand(0.1, 0.7)) * (bandH / n),   // 下方 60% 区域分布
+        sag: rand(STORM.waveSagMin, STORM.waveSagMax),   // 下弯幅度（弯在下面，可不对称）
+        t: 0, dur: STORM.warnTime * 0.85,   // 标记约 1.1s
+      });
+    }
+  }
+
   function startStormSkill(e) {
     // 全局机制：本局内从未释放过的技能，在其他技能被释放时权重 ×1.5
     if (!e.skillWeights) e.skillWeights = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 };
@@ -207,23 +228,14 @@
 
     switch (id) {
       case 0: {
-        // 技能1：屏幕右侧射出 3~4 道风流（仅下方 60% 区域），从右贯穿至屏幕左侧
-        // 白色区域标记约 1.1s（原 1.3s 缩短 15%）后风流呼啸而至（30 伤害 + 击退）
+        // 技能1：风波呼啸——从一侧射入 3~4 道横向弯曲风波（弯在下方，形似"（"逆时针旋转 90°，可不对称），
+        // 白色标记约 1.1s 后整条瞬时显现（无行进过程），共两轮（第二轮换另一侧）；
+        // 本技能结束后：距下一次技能释放的间隔减少至 25%（覆盖普适的连发规则）
         const n = 3 + Math.floor(Math.random() * 2);
-        const bandH = CANVAS_H * 0.60;   // 风流仅出现在下方 60% 区域
-        for (let k = 0; k < n; k++) {
-          zoneMarks.push({
-            kind: 'flow',
-            x0: CANVAS_W + 40,
-            y0: CANVAS_H * 0.40 + (k + rand(0.1, 0.7)) * (bandH / n),   // 起点 40% → 仅下方 60% 区域
-            ang0: Math.PI + rand(-0.06, 0.06),   // 几乎水平向左，从右到左横穿全屏
-            curve: -rand(0.10, 0.22),   // 弯曲方向固定为“凹”（中段下垂，与 BOSS 逆时针旋向一致），曲率放大
-            len: (CANVAS_W + 130) * 6,   // 长度 +500%：风流远超屏宽，呼啸贯穿感更强
-            speed: rand(320, 400) * 5.2 * spMul,   // 风流速度 +30%（基准 400% × 1.3）
-            t: 0, dur: STORM.warnTime * 0.85,   // 风流预警缩短 15%（风柱仍用完整 warnTime）
-          });
-        }
-        e.skill = { id: 0, t: 0, dur: 0.9 };
+        const side = Math.random() < 0.5 ? 1 : -1;   // 首轮入射侧（1 = 右侧向左，-1 = 左侧向右）
+        pushWaveMarks(side, n);
+        e.skill = { id: 0, t: 0, dur: 1.7, side, round2Pushed: false };
+        e.skillCd = STORM.skillCd * 0.25;
         break;
       }
       case 1:
@@ -261,7 +273,13 @@
     s.t += dt;
     const sm = s.spMul || 1;
 
-    if (s.id === 1) {
+    if (s.id === 0) {
+      // 技能1：第二轮——0.85s 后从另一侧再射入一波（标记独立计时，两轮错峰降临）
+      if (!s.round2Pushed && s.t >= 0.85) {
+        s.round2Pushed = true;
+        pushWaveMarks(-s.side, 3 + Math.floor(Math.random() * 2));
+      }
+    } else if (s.id === 1) {
       // 技能2：蓄力完成后向正前方推出大型龙卷
       if (!s.charged && s.t >= 0.7) {
         s.charged = true;
@@ -331,7 +349,8 @@
       }
     } else if (s.id === 5) {
       // 技能6：3 条臂漩涡弹幕，方向固定（顺/逆时针随机），转速随时间越来越快
-      s.spin += 0.7 * dt;              // 角速度线性递增（越转越快）
+      // 角速度线性递增：初速 0.65 不变、斜率 0.617（原 0.7）→ 5s 末最大转速 4.15→3.735 rad/s（-10%），持续时长不变
+      s.spin += 0.617 * dt;
       s.armAng += s.dir * s.spin * dt;
       s.fire -= dt;
       if (s.fire <= 0) {
@@ -361,7 +380,13 @@
         const ease = mp < 0.5 ? 4 * mp * mp * mp : 1 - Math.pow(-2 * mp + 2, 3) / 2;
         v.x = e.x + (v.tx - e.x) * ease;
         v.y = e.y + (v.ty - e.y) * ease;
-        if (mp >= 1) { v.phase = 'spin'; v.t = 0; }
+        v.ang += v.dir * 2.2 * dt;   // 飞行途中旋臂同步自转（衔接悬停段的自转）
+        if (mp >= 1) {
+          v.phase = 'spin'; v.t = 0;
+          // 到位过渡：风屑迸散 + 柔和白雾，衔接「飞抵」与「悬停喷射」
+          spawnParticles(v.x, v.y, '#ffffff', 14, 150);
+          spawnParticles(v.x, v.y, '#eaf6ff', 10, 110);
+        }
       } else if (v.phase === 'spin') {
         v.x = v.tx; v.y = v.ty;
         v.ang += v.dir * (1.1 + (v.t / 5) * 1.525) * dt;   // 自转由慢渐快（1.1 → 2.625 rad/s，最大转速较原值 -25%）
@@ -398,6 +423,12 @@
     if (s.t >= s.dur) e.skill = null;
   }
 
+  // 区域打击可视度（与绘制层透明度曲线一致：rise 段亮起、随后线性衰减）。
+  // 命中判定按此门控——渐隐至 35% 以下即不再构成威胁，杜绝"风带看不见了却被命中"的莫名受击
+  function strikeVis(life, rise) {
+    return life < rise ? life / rise : 1 - (life - rise) / (1 - rise);
+  }
+
   // 风暴风流/风柱命中的击退：短暂推开玩家（速度指数衰减）
   function knockbackPlayer(dirX, dirY, power) {
     const len = Math.hypot(dirX, dirY) || 1;
@@ -406,8 +437,8 @@
     player.kbT = 0.32;
   }
 
-  // ---------- 暴风之眼：区域标记与打击（风流 / 风柱） ----------
-  // 白色区域标记倒计时（风流约 1.1s / 风柱 1.3s）→ 风流沿曲线呼啸而过 / 风柱降下
+  // ---------- 暴风之眼：区域标记与打击（风波 / 风柱） ----------
+  // 白色区域标记倒计时（风波约 1.1s / 风柱 1.3s）→ 风波瞬时降临 / 风柱降下
   function updateZoneMarks(dt) {
     // 标记倒计时
     for (let i = zoneMarks.length - 1; i >= 0; i--) {
@@ -415,54 +446,90 @@
       z.t += dt;
       if (z.t < z.dur) continue;
       zoneMarks.splice(i, 1);
-      if (z.kind === 'flow') {
-        windFlows.push(z);   // 风流呼啸而至
-        shake(3, 0.2);
+      if (z.kind === 'wave') {
+        windFlows.push({ wave: true, x0: z.x0, dirX: z.dirX, L: z.L, y0: z.y0, sag: z.sag, t: 0, dur: STORM.waveDur, hit: false });   // 风波整条瞬时显现（无行进过程）
+        for (let p = 0; p < 3; p++) {
+          const pp = stormWavePoint(z, z.x0 + z.dirX * z.L * (0.3 + p * 0.2));
+          spawnParticles(pp.x, pp.y, '#dff3ff', 8, 190);
+        }
+        shake(4, 0.25);
       } else {
         pillarStrikes.push({ x: z.x, t: 0, dur: 0.45, hit: false });   // 风柱打击降下
         shake(4, 0.25);
       }
     }
-    // 风流：沿曲线移动的宽风带
+    // 风波：横向弯曲风带整条瞬时显现（快速亮起后渐隐），按玩家横坐标采样中心线做纵向命中判定（每道一次）
     for (let i = windFlows.length - 1; i >= 0; i--) {
       const f = windFlows[i];
-      f.prog = (f.prog || 0) + f.speed * dt / f.len;
-      const pt = stormFlowPoint(f, Math.min(f.prog, 1));
-      f.px = pt.x; f.py = pt.y;
-      if (player.alive && player.invuln <= 0 &&
-          Math.hypot(f.px - player.x, f.py - (player.y + PLAYER.hitOffsetY)) < STORM.flowR + PLAYER.hitRadius) {
-        damagePlayer(STORM.windDmg);
-        knockbackPlayer(player.x - f.px, player.y - f.py, 520);
+      f.t += dt;
+      if (!f.hit && player.alive && strikeVis(f.t / f.dur, 0.18) >= 0.35) {
+        const px = clamp(player.x, Math.min(f.x0, f.x0 + f.dirX * f.L), Math.max(f.x0, f.x0 + f.dirX * f.L));
+        const c = stormWavePoint(f, px);
+        if (Math.abs((player.y + PLAYER.hitOffsetY) - c.y) < STORM.waveHalfW + PLAYER.hitRadius) {
+          f.hit = true;   // 无敌期间处于带内同样消耗本次判定：风波掠过，不结算也不补判——
+          // （否则无敌结束时会被"迟到"的风波命中：出现时无敌跳过判定、静止玩家在无敌结束后被判中）
+          if (player.invuln <= 0) {
+            damagePlayer(STORM.windDmg);
+            // 击退：竖直推离风波带（玩家在带下方则下推、上方则上推）+ 向入射侧回推的固定分量
+            // （不能用 player - 采样点：c.x 恒等于 player.x，会导致 dx=0、方向退化）
+            const vdir = ((player.y + PLAYER.hitOffsetY) - c.y) >= 0 ? 1 : -1;
+            knockbackPlayer(-f.dirX * 0.30, vdir * 0.95, 520);
+          }
+        }
       }
-      if (f.prog >= 1.2) windFlows.splice(i, 1);
+      if (f.t >= f.dur) windFlows.splice(i, 1);
     }
     // 风柱：短暂存在的垂直打击光柱（每根命中一次）
     for (let i = pillarStrikes.length - 1; i >= 0; i--) {
       const p = pillarStrikes[i];
       p.t += dt;
-      if (!p.hit && player.alive && player.invuln <= 0 &&
-          Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER.hitRadius) {
-        p.hit = true;
-        damagePlayer(STORM.pillarDmg);
-        knockbackPlayer(player.x - p.x, 0, 420);
+      if (!p.hit && player.alive && strikeVis(p.t / p.dur, 0.25) >= 0.35) {
+        if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER.hitRadius) {
+          p.hit = true;   // 无敌期间处于柱内同样消耗本次判定：光柱掠过，不结算也不补判
+          if (player.invuln <= 0) {
+            damagePlayer(STORM.pillarDmg);
+            knockbackPlayer(player.x - p.x, 0, 420);
+          }
+        }
       }
       if (p.t >= p.dur) pillarStrikes.splice(i, 1);
     }
   }
 
-  // 风流曲线：二次贝塞尔（起点屏幕右侧外，控制点沿法线偏移形成极轻微的弧度）
-  function stormFlowPoint(f, p) {
-    const mx = f.x0 + Math.cos(f.ang0) * f.len * 0.5;
-    const my = f.y0 + Math.sin(f.ang0) * f.len * 0.5;
-    const cx = mx - Math.sin(f.ang0) * f.curve * f.len * 0.22;
-    const cy = my + Math.cos(f.ang0) * f.curve * f.len * 0.22;
-    const ex = f.x0 + Math.cos(f.ang0) * f.len;
-    const ey = f.y0 + Math.sin(f.ang0) * f.len;
-    const u = 1 - p;
+  // 风波中心线：三次贝塞尔——横向风带，弯在下方（形似"（"逆时针旋转 90° = "⌣"下拱，可不对称）：
+  // 入射端平直、中后段下弯、远端略回勾；控制点 x 沿 dirX 单调，粗采样按目标 x 反解即可精确对位
+  function stormWavePoint(w, xTarget) {
+    const p0x = w.x0, p0y = w.y0;
+    const p1x = w.x0 + w.dirX * w.L * 0.35, p1y = w.y0 + w.sag * 0.45;
+    const p2x = w.x0 + w.dirX * w.L * 0.72, p2y = w.y0 + w.sag * 1.05;
+    const p3x = w.x0 + w.dirX * w.L, p3y = w.y0 + w.sag * 0.5;
+    let best = 0, bestDx = 1e9;
+    for (let k = 0; k <= 32; k++) {
+      const t = k / 32, u = 1 - t;
+      const x = u * u * u * p0x + 3 * u * u * t * p1x + 3 * u * t * t * p2x + t * t * t * p3x;
+      const d = Math.abs(x - xTarget);
+      if (d < bestDx) { bestDx = d; best = t; }
+    }
+    const t = best, u = 1 - t;
     return {
-      x: u * u * f.x0 + 2 * u * p * cx + p * p * ex,
-      y: u * u * f.y0 + 2 * u * p * cy + p * p * ey,
+      x: u * u * u * p0x + 3 * u * u * t * p1x + 3 * u * t * t * p2x + t * t * t * p3x,
+      y: u * u * u * p0y + 3 * u * u * t * p1y + 3 * u * t * t * p2y + t * t * t * p3y,
     };
+  }
+
+  // 风波带多边形：沿中心线按竖直半厚展开（波带近水平，竖直偏移 ≈ 法向厚度）
+  function stormWaveBand(w, halfW) {
+    const N = 20;
+    ctx.beginPath();
+    for (let k = 0; k <= N; k++) {
+      const p = stormWavePoint(w, w.x0 + w.dirX * w.L * (k / N));
+      k === 0 ? ctx.moveTo(p.x, p.y - halfW) : ctx.lineTo(p.x, p.y - halfW);
+    }
+    for (let k = N; k >= 0; k--) {
+      const p = stormWavePoint(w, w.x0 + w.dirX * w.L * (k / N));
+      ctx.lineTo(p.x, p.y + halfW);
+    }
+    ctx.closePath();
   }
 
   function pushBossBullet(x, y, ang, speed, opts = {}) {

@@ -28,8 +28,12 @@
               Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) dmg *= 1 + BAOLING.vuln;
           if (e.type === 'harbinger' && b.wing) dmg *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
           if (e.type === 'tornado') dmg *= b.wing ? (1 + STORM.tornadoWingVuln) : (1 - STORM.tornadoMainDR);   // 风团：主武器减伤 50%、僚机伤害 +150%
+          // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
+          if (e.type === 'capital' && !e.arrived && (e.hoverY - e.y) >= 90) dmg *= (1 - CAPITAL_DESCEND_DR);
           if (e.type === 'capital' && player.weapon >= 4) dmg *= (1 - CAPITAL_HIGHFIRE_DR);
           else if (e.type === 'boss' && player.weapon === 1) dmg *= (1 + BOSS_LOWFIRE_BONUS);
+          // 破片：火力 Lv1 / Lv2 时受到 30% / 10% 易伤（低火力补偿，主武器与僚机弹均生效；高能爆弹为真实伤害不加成）
+          if (e.type === 'popian' && player.weapon <= 2) dmg *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
           e.hp -= dmg;
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           pBullets.splice(i, 1);
@@ -146,11 +150,30 @@
     powerups.push({ x, y, kind, r, vy: rand(72, 99), vx: rand(-46, 46) });   // 1.8x 原速(40~55)
   }
 
+  // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
+  function applyPowerupPickup(p) {
+    if (p.kind === 'hp') {
+      player.hp = clamp(player.hp + 40, 0, PLAYER.maxHp);
+      spawnParticles(p.x, p.y, '#66e39a', 12, 160);
+    } else if (p.kind === 'bomb') {
+      state.bombs = Math.min(state.bombs + 1, MAX_BOMBS);
+      spawnParticles(p.x, p.y, '#ffb545', 12, 160);
+    } else if (p.kind === 'shield') {
+      // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
+      player.shield = SHIELD_DURATION;
+      spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
+    } else if (p.kind === 'berserk') {
+      pickupBerserk();
+    } else {
+      pickupKit();
+    }
+  }
+
   function updatePowerups(dt) {
     for (let i = powerups.length - 1; i >= 0; i--) {
       const p = powerups[i];
       // 磁吸：比水晶更易被吸引（半径更大、拉力更强），吸附后直奔机身
-      // BOSS 掉落道具（absorbDelay）：先自由下落一小段，随后无视距离被战机吸收（同水晶）
+      // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
       let magnetized = false;
       if (p.absorbDelay != null && p.absorbDelay > 0) {
         p.absorbDelay -= dt;   // 下坠阶段：保持初始 vx/vy 飘落
@@ -158,12 +181,18 @@
         const dx = player.x - p.x;
         const dy = player.y - p.y;
         const dist = Math.hypot(dx, dy);
-        const bossPull = p.absorbDelay != null;   // BOSS 掉落道具下坠结束后强制吸收
+        const bossPull = p.absorbDelay != null;   // 下坠结束后强制吸收
         if (dist > 1 && (bossPull || dist < POWERUP_MAGNET_RADIUS)) {
           magnetized = true;
-          const pull = bossPull ? 1150 : 520 + 640 * (1 - dist / POWERUP_MAGNET_RADIUS);
+          const pull = bossPull ? (p.pullSpeed || 1150) : 520 + 640 * (1 - dist / POWERUP_MAGNET_RADIUS);
           p.vx = (dx / dist) * pull;
           p.vy = (dy / dist) * pull;
+          // 近距直吸：本帧位移即可抵达玩家时直接结算（高速拉取一帧可能越过拾取窗口）
+          if (bossPull && dist <= pull * dt + 8) {
+            applyPowerupPickup(p);
+            powerups.splice(i, 1);
+            continue;
+          }
         }
       }
       p.x += p.vx * dt;
@@ -177,21 +206,7 @@
       if (player.alive &&
           Math.abs(p.x - player.x) < player.w / 2 + p.r &&
           Math.abs(p.y - player.y) < player.h / 2 + p.r) {
-        if (p.kind === 'hp') {
-          player.hp = clamp(player.hp + 40, 0, PLAYER.maxHp);
-          spawnParticles(p.x, p.y, '#66e39a', 12, 160);
-        } else if (p.kind === 'bomb') {
-          state.bombs = Math.min(state.bombs + 1, MAX_BOMBS);
-          spawnParticles(p.x, p.y, '#ffb545', 12, 160);
-        } else if (p.kind === 'shield') {
-          // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
-          player.shield = SHIELD_DURATION;
-          spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
-        } else if (p.kind === 'berserk') {
-          pickupBerserk();
-        } else {
-          pickupKit();
-        }
+        applyPowerupPickup(p);
         powerups.splice(i, 1);
       }
     }
@@ -199,24 +214,31 @@
 
   // ---------- 水晶 ----------
   function updateCrystals(dt) {
-    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.35（110 → 148.5）
+    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 132 → 198）
     const magR = PLAYER.magnetRadius * (state.crystalMagnetMul || 1);
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
       // 磁吸：靠近玩家时被吸附（吸附后直奔机身中心判定点）
-      // BOSS 水晶（absorbDelay）：先自由下落一小段，随后无视距离被战机全部吸收
+      // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
       if (c.absorbDelay != null && c.absorbDelay > 0) {
         c.absorbDelay -= dt;   // 下坠阶段：保持初始 vx/vy 四散飘落
       } else if (player.alive) {
         const dx = player.x - c.x;
         const dy = player.y - c.y;
         const dist = Math.hypot(dx, dy);
-        const bossPull = c.absorbDelay != null;   // BOSS 水晶下坠结束后强制吸收
+        const bossPull = c.absorbDelay != null;   // 下坠结束后强制吸收
         if (dist > 1 && (bossPull || dist < magR)) {
-          const pull = bossPull ? 1150 : 900 + 700 * (1 - dist / magR);
+          const pull = bossPull ? (c.pullSpeed || 1150) : 900 + 700 * (1 - dist / magR);
           c.vx = (dx / dist) * pull;
           c.vy = (dy / dist) * pull;
+          // 近距直吸：本帧位移即可抵达玩家时直接结算（高速拉取一帧可能越过拾取窗口）
+          if (bossPull && dist <= pull * dt + 8) {
+            state.score += c.val;
+            spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
+            crystals.splice(i, 1);
+            continue;
+          }
         }
       }
       c.x += c.vx * dt;
@@ -232,28 +254,17 @@
     }
   }
 
-  // BOSS警报时立即收集场上所有水晶和道具
+  // BOSS 警报触发：场上所有水晶 / 道具进入「快速吸收」——0.35s 飘落后无视距离高速飞向战机
+  // （拉速 1800 > BOSS 阵亡吸收的 1150）；拾取判定照常逐个结算，不再瞬间清空全场
   function collectAllItems() {
     for (const c of crystals) {
-      state.score += c.val;
-      spawnParticles(c.x, c.y, '#9be7ff', 4, 100);
+      if (c.absorbDelay == null) c.absorbDelay = 0.35;   // 飘落阶段：保留可感知的「飞向战机」过程
+      c.pullSpeed = 1800;
     }
-    crystals.length = 0;
     for (const p of powerups) {
-      if (p.kind === 'hp') {
-        player.hp = clamp(player.hp + 40, 0, PLAYER.maxHp);
-      } else if (p.kind === 'bomb') {
-        state.bombs = Math.min(state.bombs + 1, MAX_BOMBS);
-      } else if (p.kind === 'shield') {
-        player.shield = SHIELD_DURATION;
-      } else if (p.kind === 'berserk') {
-        pickupBerserk();
-      } else {
-        pickupKit();
-      }
-      spawnParticles(p.x, p.y, '#ffffff', 6, 130);
+      if (p.absorbDelay == null) p.absorbDelay = 0.35;
+      p.pullSpeed = 1800;
     }
-    powerups.length = 0;
   }
 
   // ---------- 粒子 ----------

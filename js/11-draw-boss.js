@@ -1,54 +1,56 @@
 // 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
 'use strict';
 
-    // ---------- 暴风之眼：绘制（区域标记 / 风流 / 风柱 / 风暴本体 / 大型龙卷） ----------
+    // ---------- 暴风之眼：绘制（区域标记 / 风波 / 风柱 / 风暴本体 / 大型龙卷） ----------
     function drawZoneMarks() {
-      // 白色区域标记：风流（曲线带）/ 风柱（垂直带），倒计时闪烁 + 白色风流特效
-      // 等宽风带路径：沿曲线 [p0, p1] 采样，全程同宽、两端平切（无圆头、不收窄）
-      const spindle = (f, p0, p1, R) => {
-        const N = 26;
-        const pts = [];
-        for (let k = 0; k <= N; k++) pts.push(stormFlowPoint(f, p0 + (p1 - p0) * (k / N)));
-        const hw = () => R;   // 等宽：全程同宽
-        const nrm = (k) => {
-          const a = pts[Math.max(0, k - 1)], b = pts[Math.min(N, k + 1)];
-          const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
-          return [-dy / L, dx / L];
-        };
-        ctx.beginPath();
-        for (let k = 0; k <= N; k++) {          // 上缘：尾→头
-          const [nx, ny] = nrm(k), h = hw(k);
-          k === 0 ? ctx.moveTo(pts[k].x + nx * h, pts[k].y + ny * h) : ctx.lineTo(pts[k].x + nx * h, pts[k].y + ny * h);
-        }
-        for (let k = N; k >= 0; k--) {          // 下缘反向回描
-          const [nx, ny] = nrm(k), h = hw(k);
-          ctx.lineTo(pts[k].x - nx * h, pts[k].y - ny * h);
-        }
-        ctx.closePath();
-      };
+      // 白色区域标记：风波（竖向弯曲带）/ 风柱（垂直带），倒计时闪烁 + 白色风流特效
       for (const z of zoneMarks) {
         const prog = clamp(z.t / z.dur, 0, 1);
         const pulse = clamp(0.5 + Math.sin(state.time * 14) * 0.22 + prog * 0.35, 0, 0.92);   // 越接近落下越亮
         ctx.save();
         ctx.globalAlpha = pulse;
-        if (z.kind === 'flow') {
-          // 风流标记：整条纺锤形风带预览（两端收尖、无圆头）+ 流动的白色风流短线
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.30)';
-          spindle(z, 0, 1, STORM.flowR);
+        if (z.kind === 'wave') {
+          // 风波标记（仿风柱预警风格）：柔和平弯风带 + 入射侧蓄能光楔（随倒计时向内压） +
+          // 沿带入射方向涌动的风痕 + 入射侧蓄光，亮度随倒计时攀升
+          const fromRight = z.dirX < 0;   // 入射侧：dirX=-1 → 从右向左
+          const edgeX = fromRight ? CANVAS_W : 0;
+          // ① 柔和平弯风带（同打击带形，透明度随进度上升）
+          ctx.fillStyle = `rgba(223, 243, 255, ${(0.20 + prog * 0.20).toFixed(3)})`;
+          stormWaveBand(z, STORM.waveHalfW);
           ctx.fill();
-          // 流动风纹：沿曲线滑动的细短线
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-          ctx.lineWidth = 2;
-          for (let s = 0; s < 5; s++) {
-            const base = (state.time * 0.9 + s * 0.23) % 1;
+          // ② 入射侧蓄能光楔：亮区自入射边缘向内压进（裁剪在风波带内、随带弯曲），预示风自该侧灌入
+          const wedgeW = CANVAS_W * (0.10 + prog * 0.32);
+          const wedge = ctx.createLinearGradient(
+            fromRight ? CANVAS_W : 0, 0,
+            fromRight ? CANVAS_W - wedgeW : wedgeW, 0);
+          wedge.addColorStop(0, `rgba(240, 251, 255, ${(0.55 + prog * 0.35).toFixed(3)})`);
+          wedge.addColorStop(1, 'rgba(240, 251, 255, 0)');
+          ctx.save();
+          stormWaveBand(z, STORM.waveHalfW);
+          ctx.clip();
+          ctx.fillStyle = wedge;
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          ctx.restore();
+          // ③ 入射方向涌动的风痕：短亮线沿带从入射侧涌入，速度随进度加快
+          ctx.lineCap = 'round';
+          ctx.lineWidth = 1.6;
+          for (let s = 0; s < 6; s++) {
+            const head = (state.time * (0.55 + prog * 0.75) + s * 0.19) % 1;
+            const bx = z.x0 + z.dirX * z.L * head;
+            const p1 = stormWavePoint(z, bx);
+            const p2 = stormWavePoint(z, bx + z.dirX * 18);
+            ctx.strokeStyle = `rgba(255, 255, 255, ${(0.32 + prog * 0.45).toFixed(3)})`;
             ctx.beginPath();
-            for (let k = 0; k <= 6; k++) {
-              const p = clamp(base + k * 0.015, 0, 1);
-              const pt = stormFlowPoint(z, p);
-              k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
-            }
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
           }
+          // ④ 入射侧蓄光：入射边缘光斑随倒计时渐亮（打击即将到来）
+          const gl = ctx.createRadialGradient(edgeX, z.y0, 0, edgeX, z.y0, 140);
+          gl.addColorStop(0, `rgba(240, 251, 255, ${(0.22 + prog * 0.45).toFixed(3)})`);
+          gl.addColorStop(1, 'rgba(240, 251, 255, 0)');
+          ctx.fillStyle = gl;
+          ctx.fillRect(edgeX - 140, z.y0 - 140, 280, 280);
         } else {
           // 风柱标记：自天而降的风柱预兆——柔和风带 + 顶部蓄能光楔（随倒计时下压） +
           // 弯曲上升风痕（越近落下越快越亮）+ 落点地面渐亮，充满“风正在聚集”的动势
@@ -97,46 +99,35 @@
         }
         ctx.restore();
       }
-      // 风流打击：浓白等宽风带呼啸而过——实体感填充 + 内部奔流亮线 + 风头亮核与辉光
+      // 风波打击：横向弯曲风带整条瞬时显现——浓白实体填充 + 内核亮带 + 三条纵向流线，快速亮起后渐隐
       for (const f of windFlows) {
+        const life = f.t / f.dur;
+        const a = life < 0.18 ? life / 0.18 : 1 - (life - 0.18) / 0.82;   // 快速亮起 → 渐隐消散
         ctx.save();
-        const tail = Math.max(0, f.prog - 0.3);
-        const head = Math.min(f.prog, 1);
-        // ① 风带主体：高不透明度风白填充（不再是淡影），带青辉光
+        ctx.globalAlpha = clamp(a, 0, 1);
+        // ① 风带主体：高不透明度风白填充，带青辉光
         ctx.fillStyle = 'rgba(223, 243, 255, 0.82)';
         ctx.shadowColor = '#bfe6ff';
         ctx.shadowBlur = 16;
-        spindle(f, tail, head, STORM.flowR);
+        stormWaveBand(f, STORM.waveHalfW);
         ctx.fill();
         ctx.shadowBlur = 0;
-        // ② 内部奔流亮线：3 条沿曲线快速滑动的白色流线（风在带内奔涌，流速感）
-        ctx.lineCap = 'round';
-        const span = head - tail;
-        if (span > 0.01) {
-          for (let s = 0; s < 3; s++) {
-            const ph = ((state.time * 1.4 + s * 0.37) % 1);
-            const p0 = tail + ph * span * 0.62;
-            const p1 = Math.min(head, p0 + span * 0.24);
-            if (p1 <= p0) continue;
-            ctx.strokeStyle = `rgba(255, 255, 255, ${(0.38 + s * 0.16).toFixed(3)})`;
-            ctx.lineWidth = 1.6 + s * 0.5;
-            ctx.beginPath();
-            for (let k = 0; k <= 6; k++) {
-              const pt = stormFlowPoint(f, p0 + (p1 - p0) * (k / 6));
-              k === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
-            }
-            ctx.stroke();
-          }
-        }
-        // ③ 风头亮核：跟随尖端的大亮团（核心纯白 + 青色外晕，风头最亮最实）
-        const hg = ctx.createRadialGradient(f.px, f.py, 0, f.px, f.py, STORM.flowR * 1.1);
-        hg.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        hg.addColorStop(0.4, 'rgba(240, 251, 255, 0.78)');
-        hg.addColorStop(1, 'rgba(223, 243, 255, 0)');
-        ctx.fillStyle = hg;
-        ctx.beginPath();
-        ctx.arc(f.px, f.py, STORM.flowR * 1.1, 0, Math.PI * 2);
+        // ② 内核亮带：更窄的纯白核心（风波最实的中脊）
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        stormWaveBand(f, STORM.waveHalfW * 0.45);
         ctx.fill();
+        // ③ 纵向流线：三条沿带走向的白色流线（风在带内奔涌）
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 1.6;
+        for (const s of [-0.55, 0, 0.55]) {
+          ctx.beginPath();
+          for (let k = 0; k <= 16; k++) {
+            const pt = stormWavePoint(f, f.x0 + f.dirX * f.L * (k / 16));
+            k === 0 ? ctx.moveTo(pt.x, pt.y + s * STORM.waveHalfW) : ctx.lineTo(pt.x, pt.y + s * STORM.waveHalfW);
+          }
+          ctx.stroke();
+        }
         ctx.restore();
       }
       // 风柱打击：垂直白色光柱（迅速变亮后消散）
@@ -167,15 +158,107 @@
       }
       const v = stormVortex;
       ctx.save();
+
+      // 风旋本体绘制（飞行段 / 悬停段 / 消散段共用）：alphaMul × scaleMul 供飞行渐入过渡使用
+      function drawVortexBody(alphaMul, scaleMul) {
+        ctx.save();
+        ctx.translate(v.x, v.y);
+        let w = 1, scale = 1;
+        if (v.phase === 'spin') w = 1 - (v.t / 5) * 0.15;
+        else if (v.phase === 'fade') { const fp = clamp(v.t / 0.35, 0, 1); w = 0.85 * (1 - fp); scale = 1 - fp * 0.4; }
+        w *= alphaMul; scale *= scaleMul;
+        ctx.scale(scale, scale);
+        const R = v.r;
+        // 底盘：浓白风旋径向渐变（核心纯白）
+        const bg = ctx.createRadialGradient(0, 0, R * 0.08, 0, 0, R);
+        bg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
+        bg.addColorStop(0.55, `rgba(223, 243, 255, ${(0.65 * w).toFixed(3)})`);
+        bg.addColorStop(1, 'rgba(223, 243, 255, 0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+        // 最外层强白光环：贴涡旋外缘的高亮风环（宽光带 + 亮环描边 + 两段旋转高亮弧），粗而略淡，强度随白量 w 衰减
+        const rim = ctx.createRadialGradient(0, 0, R * 0.68, 0, 0, R * 1.22);
+        rim.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        rim.addColorStop(0.55, `rgba(255, 255, 255, ${(0.34 * w).toFixed(3)})`);
+        rim.addColorStop(0.80, `rgba(255, 255, 255, ${(0.68 * w).toFixed(3)})`);
+        rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = rim;
+        ctx.beginPath(); ctx.arc(0, 0, R * 1.22, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.rotate(v.ang * 0.5);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.72 * w).toFixed(3)})`;
+        ctx.lineWidth = R * 0.16;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.99, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        for (let a = 0; a < 2; a++) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${(0.60 * w).toFixed(3)})`;
+          ctx.lineWidth = R * 0.09;
+          ctx.beginPath();
+          ctx.arc(0, 0, R * 1.08, a * Math.PI + 0.25, a * Math.PI + Math.PI - 0.25);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // 外缘漂浮白光：环绕涡旋最外侧的淡淡光效——极淡外层光晕 + 6 团柔光沿轨道绕行（呼吸明灭）
+        const halo = ctx.createRadialGradient(0, 0, R * 1.10, 0, 0, R * 1.58);
+        halo.addColorStop(0, `rgba(255, 255, 255, ${(0.10 * w).toFixed(3)})`);
+        halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(0, 0, R * 1.58, 0, Math.PI * 2); ctx.fill();
+        for (let k = 0; k < 6; k++) {
+          const oa = v.ang * 0.8 + k * Math.PI / 3 + state.time * 0.35;
+          const orad = R * (1.18 + 0.16 * Math.sin(state.time * 1.3 + k * 1.9));
+          const ox = Math.cos(oa) * orad * 1.06, oy = Math.sin(oa) * orad * 0.92;   // 略扁轨道
+          const orr = R * (0.10 + 0.035 * Math.sin(state.time * 2.2 + k * 2.4));
+          const oa2 = Math.max(0, 0.15 + 0.09 * Math.sin(state.time * 1.7 + k * 1.3)) * w;
+          const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, orr);
+          og.addColorStop(0, `rgba(255, 255, 255, ${oa2.toFixed(3)})`);
+          og.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = og;
+          ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2); ctx.fill();
+        }
+        // 2 条内卷旋臂（对称双臂，随发射角同步自转，与风条旋向一致）——粗而略淡
+        ctx.rotate(v.ang);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, 0.72 * w).toFixed(3)})`;
+        ctx.lineWidth = R * 0.24;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 10;
+        for (let a = 0; a < 2; a++) {
+          ctx.beginPath();
+          for (let k = 0; k <= 14; k++) {
+            const q = k / 14;
+            const aa = a * Math.PI + q * 2.8;
+            const rad = R * (0.95 - q * 0.65);
+            const px = Math.cos(aa) * rad, py = Math.sin(aa) * rad;
+            k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        // 风眼亮核
+        const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
+        cg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
+        cg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.32, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
       if (v.phase === 'warn' || v.phase === 'move') {
         // 落点预警：持续到风旋真正飞抵才消失（warn+move 共 1.9s）——
-        // 落点微光渐亮 + 内卷汇聚风痕（风正在此汇聚，转速渐快）+ 旋转虚线落位环，替代旧的双环脉动
+        // 落点微光渐亮 + 内卷汇聚风痕（风正在此汇聚，转速渐快）+ 旋转虚线落位环 + 快速收缩淡红圈；
+        // move 后段（70%~100%）预警层整体渐淡，让位给飞抵的风旋本体（到达瞬间无硬切换）
+        const mp = v.phase === 'move' ? clamp(v.t / 1.4, 0, 1) : 0;
+        const telFade = 1 - 0.65 * clamp((mp - 0.7) / 0.3, 0, 1);
         const p = clamp((v.t + (v.phase === 'move' ? 0.5 : 0)) / 1.9, 0, 1);
         // 浮现渐入：预警前 0.5s 各层特效从 0 淡入（用累计时间，避免 warn→move 重置 v.t 时二次闪烁）
         const born = clamp((v.t + (v.phase === 'move' ? 0.5 : 0)) / 0.5, 0, 1);
         const R = v.r;
         ctx.save();
         ctx.translate(v.tx, v.ty);
+        ctx.globalAlpha = telFade;   // ① 落点微光：整体淡出随 telFade（渐变本身含 born 渐入）
         // ① 落点微光：风旋正在逼近落位，光随进度渐亮（浅红警示色调，更醒目）
         const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.6);
         gg.addColorStop(0, `rgba(255, 150, 128, ${((0.30 + p * 0.42) * born).toFixed(3)})`);
@@ -190,7 +273,7 @@
         ctx.shadowBlur = 10;
         const swp = state.time * (1.6 + p * 2.6);
         for (let a = 0; a < 4; a++) {
-          ctx.globalAlpha = (0.50 + p * 0.48) * born;
+          ctx.globalAlpha = telFade * (0.50 + p * 0.48) * born;
           ctx.lineWidth = 2.4;
           ctx.beginPath();
           for (let k = 0; k <= 10; k++) {
@@ -204,56 +287,33 @@
         }
         ctx.shadowBlur = 0;
         // ③ 落位虚线环：缓慢旋转的浅红虚线圆，随进度收拢、增亮
-        ctx.globalAlpha = (0.75 + p * 0.25) * born;
+        ctx.globalAlpha = telFade * (0.75 + p * 0.25) * born;
         ctx.setLineDash([9, 7]);
         ctx.lineDashOffset = -state.time * 26;
         ctx.strokeStyle = '#ff9f8a';
         ctx.lineWidth = 2.6;
         ctx.beginPath(); ctx.arc(0, 0, R * (1.5 - p * 0.35), 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
+        // ④ 快速收缩预警圈：淡红色圆环自大范围周期性急速收缩至落点（每 0.6s 一轮，收得越拢越亮越粗），
+        //    与既有微光 / 风痕 / 虚线环叠加，强化“风旋即将在此成形”的紧迫感
+        const cyc = ((v.t + (v.phase === 'move' ? 0.5 : 0)) % 0.6) / 0.6;   // 0→1 循环（累计时间，warn→move 不跳变）
+        const scp = 1 - Math.pow(1 - cyc, 3);                               // easeOutCubic：起步极快、收尾略缓
+        const shrinkR = R * (16 - 14.95 * scp);                             // 约 307px → 21px 收缩到落点半径
+        ctx.globalAlpha = telFade * born * (0.15 + 0.42 * scp);
+        ctx.strokeStyle = '#ff9f8a';
+        ctx.lineWidth = 1.8 + 1.8 * scp;
+        ctx.beginPath(); ctx.arc(0, 0, shrinkR, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        // 飞行中的风旋本体：自 BOSS 位置平滑飞向落点，尺寸 / 透明度随行程长大（到位即满，无突现）
+        if (v.phase === 'move') {
+          const ease = mp < 0.5 ? 4 * mp * mp * mp : 1 - Math.pow(-2 * mp + 2, 3) / 2;
+          drawVortexBody(0.30 + 0.70 * mp, 0.35 + 0.65 * ease);
+        }
         ctx.restore();
         return;
       }
-      ctx.translate(v.x, v.y);
-      // 白色浓度：喷射期缓慢变淡（1.0 → 0.85，速率很低，几乎全程浓白）；消散期 0.35s 快速衰减并缩小
-      let w = 1, scale = 1;
-      if (v.phase === 'spin') w = 1 - (v.t / 5) * 0.15;
-      else if (v.phase === 'fade') { const fp = clamp(v.t / 0.35, 0, 1); w = 0.85 * (1 - fp); scale = 1 - fp * 0.4; }
-      ctx.scale(scale, scale);
-      const R = v.r;
-      // 底盘：浓白风旋径向渐变（核心纯白）
-      const bg = ctx.createRadialGradient(0, 0, R * 0.08, 0, 0, R);
-      bg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
-      bg.addColorStop(0.55, `rgba(223, 243, 255, ${(0.65 * w).toFixed(3)})`);
-      bg.addColorStop(1, 'rgba(223, 243, 255, 0)');
-      ctx.fillStyle = bg;
-      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
-      // 2 条内卷旋臂（对称双臂，随发射角同步自转，与风条旋向一致）
-      ctx.rotate(v.ang);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, 1.0 * w).toFixed(3)})`;
-      ctx.lineWidth = R * 0.16;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 10;
-      for (let a = 0; a < 2; a++) {
-        ctx.beginPath();
-        for (let k = 0; k <= 14; k++) {
-          const q = k / 14;
-          const aa = a * Math.PI + q * 2.8;
-          const rad = R * (0.95 - q * 0.65);
-          const px = Math.cos(aa) * rad, py = Math.sin(aa) * rad;
-          k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
-      // 风眼亮核
-      const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
-      cg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
-      cg.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = cg;
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.32, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+      // 悬停喷射 / 快速消散：本体照常绘制
+      drawVortexBody(1, 1);
     }
   
     // BOSS：暴风之眼（第一阶段）—— 白色龙卷风暴（俯视旋涡：多层旋臂 + 风暴眼），逆时针旋转
@@ -291,7 +351,7 @@
           for (let k = 0; k <= SEGS; k++) {
             const q = qTail + (k / SEGS) * (qHead - qTail);   // 窗口整体随时间滑向中心
             const rad = R * (3.1 - q * 2.95);       // 路径：屏幕边缘 3.1R → 中心 0.15R
-            const ang = a0 + rot * 2 - q * 2.1;     // 逆时针螺旋（与风暴自转同向）
+            const ang = a0 + (e.windRot || 0) * 2 - q * 2.1;   // 逆时针螺旋（恒速自转，不随阶段加速）
             const wob = Math.sin(q * 8 - gt * 7 + i * 1.3) * R * 0.035;   // 风的横向摆动
             const px = Math.cos(ang) * rad - Math.sin(ang) * wob;
             const py = Math.sin(ang) * rad + Math.cos(ang) * wob;
@@ -309,7 +369,7 @@
           // 风头亮点：气流「射入」的运动焦点（抵达中心汇入后不再绘制）
           if (raw < 1) {
             const hrad = R * (3.1 - raw * 2.95);
-            const hang = a0 + rot * 2 - raw * 2.1;
+            const hang = a0 + (e.windRot || 0) * 2 - raw * 2.1;
             ctx.fillStyle = `rgba(255, 255, 255, ${(0.9 * born).toFixed(3)})`;
             ctx.beginPath();
             ctx.arc(Math.cos(hang) * hrad, Math.sin(hang) * hrad, 2.6, 0, Math.PI * 2);
@@ -321,7 +381,7 @@
           const seed = i * 2.399963;                        // 黄金角均匀散布
           const cyc = (gt * 0.6 + i * 0.137) % 1;           // 各风痕错峰循环
           const rad = R * (3.2 - cyc * 2.9);                // 自屏幕边缘向中心收缩
-          const ang = seed + rot * 2.2 - cyc * 2.6;         // 边飞边逆时针螺旋偏转
+          const ang = seed + (e.windRot || 0) * 2.2 - cyc * 2.6;   // 边飞边逆时针螺旋偏转（恒速自转）
           const a = Math.sin(cyc * Math.PI) * clamp((3.85 - gt) / 0.6, 0, 1) * born;   // 起止淡入淡出（开场渐入 + 末段渐隐）
           const len = R * (0.14 + 0.10 * Math.abs(Math.sin(i * 1.7 + 3)));
           const nx = Math.cos(ang), ny = Math.sin(ang);
@@ -379,13 +439,15 @@
       if (e.phase === 'form') {
         const fp = clamp(e.phaseT / 1.0, 0, 1);
         ctx.shadowColor = '#7cd8ff';
+        // 双圈聚能光环：收缩速度放缓 30%（到达时间不变 → 初始半径由 1.9R 缩至 1.63R），整体更淡；
+        // 随后的成形震荡波（白圈爆发）保持不变
         for (const cfg of [{ sp: 1.0, w: 4.5, blur: 16 }, { sp: 0.72, w: 2.5, blur: 9 }]) {
           const p = clamp(fp / cfg.sp, 0, 1);
-          ctx.strokeStyle = `rgba(223, 243, 255, ${(0.65 * (1 - p)).toFixed(3)})`;
+          ctx.strokeStyle = `rgba(223, 243, 255, ${(0.42 * (1 - p)).toFixed(3)})`;
           ctx.lineWidth = cfg.w;
           ctx.shadowBlur = cfg.blur;
           ctx.beginPath();
-          ctx.arc(0, 0, R * (1.9 - p * 0.9), 0, Math.PI * 2);
+          ctx.arc(0, 0, R * (1.63 - p * 0.63), 0, Math.PI * 2);
           ctx.stroke();
         }
         ctx.shadowBlur = 0;

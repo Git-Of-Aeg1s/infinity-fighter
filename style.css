@@ -29,8 +29,20 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 16px 40px;
+  justify-content: center;   /* 视口内垂直居中：大屏时整体（标题 + 舞台）位于适中位置 */
+  padding: 20px 16px 32px;
   gap: 16px;
+}
+
+/* 自适应缩放容器：game-sizer 由 JS 按视口尺寸设定实际占位，
+   game-wrap 以固定 480 宽布局、整体 transform 等比缩放（HUD/遮罩/画布同步缩放） */
+.game-sizer {
+  position: relative;
+  margin: 0 auto;
+}
+
+.game-wrap {
+  transform-origin: top left;
 }
 
 .title-bar {
@@ -124,7 +136,7 @@ canvas#game {
   margin-bottom: 4px;   /* 位于血条上方 */
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .lives-text {
@@ -201,6 +213,21 @@ canvas#game {
   to   { box-shadow: 0 0 14px rgba(111, 227, 255, 1); }
 }
 
+/* 斗志昂扬：白色状态条 */
+.douzhi-bar .buff-tag {
+  color: #ffffff;
+}
+
+.douzhi-bar .buff-fill {
+  background: linear-gradient(90deg, #c9d6e8, #ffffff);
+  animation: douzhi-pulse 0.55s ease-in-out infinite alternate;
+}
+
+@keyframes douzhi-pulse {
+  from { box-shadow: 0 0 4px rgba(255, 255, 255, 0.5); }
+  to   { box-shadow: 0 0 13px rgba(255, 255, 255, 0.95); }
+}
+
 /* ---------- 左下角：HP 条与生命 ---------- */
 .hud-bl {
   position: absolute;
@@ -216,10 +243,7 @@ canvas#game {
   to   { box-shadow: 0 0 12px rgba(255, 181, 69, 0.9); }
 }
 
-.hp-label {
-  color: var(--muted);
-  letter-spacing: 2px;
-}
+/* HP 标签与数值已移除（左下角仅保留心心 + 血条） */
 
 .hp-bar {
   width: 180px;
@@ -239,12 +263,6 @@ canvas#game {
 
 .hp-fill.warn { background: linear-gradient(90deg, var(--accent-warm), #ffd98a); }
 .hp-fill.danger { background: linear-gradient(90deg, var(--danger), #ff9aa8); }
-
-.hp-text {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;   /* 数值 + 心图标推到行末靠右 */
-}
 
 .hud-right {
   display: flex;
@@ -353,6 +371,7 @@ canvas#game {
 }
 
 .overlay-card {
+  position: relative;   /* ⓘ 按钮锚定卡片右下角（而非整页） */
   padding: 16px 24px;
   background: var(--bg-panel);
   border: 1px solid rgba(120, 180, 255, 0.25);
@@ -474,6 +493,8 @@ kbd {
 }
 
 #startBtn {
+  display: block;
+  margin: 14px auto 0;   /* 与上方按钮（再次挑战 / 说明文字）拉开间距 */
   padding: 8px 28px;
   border-radius: 6px;
   border: 1px solid rgba(120, 200, 255, 0.5);
@@ -868,3 +889,217 @@ kbd {
 }
 
 .ency-entry-btn:active { transform: translateY(0); }
+
+/* ---------- 数值与机制图鉴 ---------- */
+/* 入口按钮：开始界面右下角的小圆钮（圈中 i） */
+.info-entry-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(124, 231, 255, 0.55);
+  background: rgba(10, 20, 38, 0.8);
+  color: var(--accent);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: bold;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 6;
+  transition: transform 0.1s ease, box-shadow 0.2s ease, border-color 0.15s;
+}
+
+.info-entry-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(124, 231, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.info-entry-btn:active { transform: translateY(0); }
+
+.info-entry-btn.hidden { display: none; }
+
+/* 弹窗：与怪物图鉴同款全屏遮罩结构 */
+.info-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  background: rgba(5, 8, 18, 0.95);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.info-modal.hidden { display: none; }
+
+.info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.15);
+}
+
+.info-header h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+
+.info-close {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.info-close:hover { color: var(--danger); border-color: var(--danger); }
+
+.info-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.12);
+  padding: 0 8px;
+}
+
+.info-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 2px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.info-tab:hover { color: var(--text); }
+
+.info-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.info-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px 20px;
+}
+
+.info-body::-webkit-scrollbar { width: 8px; }
+.info-body::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); }
+.info-body::-webkit-scrollbar-thumb { background: rgba(120, 180, 255, 0.25); border-radius: 4px; }
+
+/* 权重页的子类型切换 chips */
+.info-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.info-chip {
+  background: rgba(124, 231, 255, 0.05);
+  border: 1px solid rgba(124, 231, 255, 0.25);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.info-chip:hover { color: var(--text); }
+
+.info-chip.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(124, 231, 255, 0.12);
+}
+
+/* 权重表：行=飞船预览，列=等级，格=权重 */
+.info-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.info-table th,
+.info-table td {
+  border: 1px solid rgba(120, 180, 255, 0.16);
+  padding: 4px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.info-table th {
+  color: var(--accent);
+  background: rgba(124, 231, 255, 0.07);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.info-table td.wlocked { color: rgba(255, 255, 255, 0.22); }
+
+/* 权重增大箭头（天蓝色） */
+.info-up {
+  color: #6fd3ff;
+  font-weight: bold;
+  margin-left: 3px;
+}
+
+.info-ship-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.info-ship-cell canvas {
+  width: 40px;
+  height: 28px;
+  flex: none;
+}
+
+.info-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+  margin-top: 10px;
+}
+
+/* 特殊怪物波次：卡片式说明 */
+.info-wave-card {
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: rgba(124, 231, 255, 0.03);
+}
+
+.info-wave-card h4 {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.info-wave-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text);
+}
+
+.info-wave-card p b { color: var(--accent-warm); }

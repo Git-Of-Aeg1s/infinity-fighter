@@ -29,7 +29,7 @@
       ctx.closePath();
       ctx.fill();
       // 机体
-      paintWingman(ctx, w.side);
+      paintWingman(ctx, w.side, wkBerserk);
       // 暴走：机体辉光脉动（星核过载）+ 翼尖微光
       if (wkBerserk) {
         const pulse = 0.35 + Math.sin(state.time * 14) * 0.15;
@@ -55,7 +55,8 @@
   // 蓝色机身 + 底部两个稍高的粉色(#FFC0CB)尾翼三角，粉与蓝之间做渐变衔接
   // berserk=true 时机体展开变形（翼展加宽、尾翼延伸）
     // 僚机造型（随 side 镜像：尾翼只在外侧）：飞行武器/悬浮炮台——朝上双叉炮口 + 装甲弹体 + 大型后掠双尾翼 + 星核；主绘制与选僚机缩略图共用
-  function paintWingman(g, side = 1) {
+    // berserk=true：追加外侧纵向两片透明白紫三角机翼延伸（上小下大，顶角 120°、一腰竖直）
+  function paintWingman(g, side = 1, berserk = false) {
     // 飞行武器（悬浮炮台/能量弹舱）：朝上双叉炮口 + 棱角装甲弹体 + 大型后掠双尾翼(一边两片、只在外侧) + 中央星核 + 底部推进环
     // —— 刻意去除机翼/座舱/尾翼等飞机语言，读作“一门会悬浮飞行的炮”
     // side：僚机所处侧（-1=左僚机→尾翼全在左；+1=右僚机→尾翼全在右；缩略图默认 +1）
@@ -106,6 +107,30 @@
     g.arc(out * 15.5, 6.5, 1.0, 0, Math.PI * 2);
     g.fill();
     g.restore();
+
+    // (0.5) 暴走机翼延伸：外侧纵向排列两片透明白紫三角（上小下大），读作能量机翼展开；
+    // 等腰三角形、顶角 120°：一条腰竖直（贴机身外缘为根边、竖直向上），另一腰向外下方展开 120°
+    // 带呼吸动画：透明度与微光随时间脉动（与机体辉光同频），呈现能量流动感
+    if (berserk) {
+      g.save();
+      const breathe = Math.sin(state.time * 6);
+      g.fillStyle = `rgba(226, 218, 255, ${(0.26 + breathe * 0.09).toFixed(3)})`;
+      g.strokeStyle = `rgba(238, 232, 255, ${(0.35 + breathe * 0.12).toFixed(3)})`;
+      g.lineWidth = 0.8;
+      g.shadowColor = 'rgba(186, 160, 255, 0.8)';
+      g.shadowBlur = 4 + breathe * 3;
+      for (const [vy, L] of [[0, 7], [9, 11]]) {    // 上片小、下片大，纵向排列
+        const vx = out * 8;   // 竖直腰贴机身外缘（舱体随后压住衔接处）
+        g.beginPath();
+        g.moveTo(vx, vy);                              // 顶角（两腰夹角 120°，位于下端）
+        g.lineTo(vx, vy - L);                          // 竖直腰：沿机身外侧竖直向上
+        g.lineTo(vx + out * 0.866 * L, vy + 0.5 * L);  // 另一腰：向外下方展开
+        g.closePath();
+        g.fill();
+        g.stroke();
+      }
+      g.restore();
+    }
 
     // (1) 主炮：朝上的双叉能量炮管（子弹自 y≈-8 出膛，炮口辉光在顶端）
     const barrelGrd = g.createLinearGradient(0, -16, 0, -3);
@@ -232,6 +257,51 @@ function paintShip(g, spreadT = 0) {
       g.moveTo(sx * 9, 4);
       g.lineTo(sx * 14 * wingSpread, 7);
       g.stroke();
+    }
+
+    // 机头上缘 + 机翼上缘平行光效：沿“机头尖端 → 翼肩 → 翼尖”整条上轮廓略偏外侧的一道淡淡光带
+    // （两端渐隐的能量巡光；暴走翼展加宽时光带随之保持平行）
+    for (const sx of [-1, 1]) {
+      // 上轮廓折线：起点前伸越过机头尖端；末端沿翼上缘方向再延伸 6px（下端更长、越过翼尖）
+      const wdx = 22 * wingSpread - 6, wdy = 16, wl = Math.hypot(wdx, wdy);   // 翼上缘方向
+      const extX = sx * 22 * wingSpread + wdx / wl * 6, extY = 10 + wdy / wl * 6;
+      const pts = [[0, -28], [sx * 6, -6], [sx * 22 * wingSpread, 10], [extX, extY]];
+      // 各段外法线（朝机外上方）：由段方向取 y 分量为负（向上）的那条
+      const norms = pts.slice(0, -1).map((p, i) => {
+        const q = pts[i + 1];
+        const dx = q[0] - p[0], dy = q[1] - p[1];
+        const l = Math.hypot(dx, dy);
+        return [sx * dy / l, -sx * dx / l];
+      });
+      const off = 3;   // 向外侧偏移量
+      // 顶点偏移：起点（中线上）两侧共用同一法线 (0,-1) → 左右光带在机头上方完全重合相接；
+      // 翼肩拐点用相邻两段法线的平均 → 光带圆滑折过
+      const op = pts.map((p, i) => {
+        let n;
+        if (i === 0) n = [0, -1];
+        else if (i === pts.length - 1) n = norms[norms.length - 1];
+        else {
+          const mx = norms[i - 1][0] + norms[i][0], my = norms[i - 1][1] + norms[i][1];
+          const ml = Math.hypot(mx, my);
+          n = [mx / ml, my / ml];
+        }
+        return [p[0] + n[0] * off, p[1] + n[1] * off];
+      });
+      const last = op[op.length - 1];
+      const lg = g.createLinearGradient(op[0][0], op[0][1], last[0], last[1]);
+      lg.addColorStop(0, 'rgba(200, 240, 255, 0.28)');   // 起端保留可见亮度 → 机头尖有光
+      lg.addColorStop(0.4, 'rgba(200, 240, 255, 0.4)');
+      lg.addColorStop(0.8, 'rgba(200, 240, 255, 0.22)'); // 翼尖段仍保持亮度
+      lg.addColorStop(1, 'rgba(200, 240, 255, 0)');
+      g.strokeStyle = lg;
+      g.lineWidth = 1.6;
+      g.shadowColor = '#9fdcff';
+      g.shadowBlur = 4;
+      g.beginPath();
+      g.moveTo(op[0][0], op[0][1]);
+      for (let k = 1; k < op.length; k++) g.lineTo(op[k][0], op[k][1]);
+      g.stroke();
+      g.shadowBlur = 0;
     }
 
     // 引擎喷口（左右各一个，深蓝色椭圆 + 内发光）
@@ -446,6 +516,54 @@ function paintShip(g, spreadT = 0) {
   function drawPlayer() {
     if (!player.alive) return;
     const { x, y } = player;
+
+    // 斗志昂扬：我方周身白色光辉——加亮光核 + 上升光粒 + 扩散光环 + 环绕光点（最后 1.2s 渐弱）
+    if (state.hasteT > 0) {
+      const fade = clamp(state.hasteT / 1.2, 0, 1);
+      const gp = 0.5 + Math.sin(state.time * 5) * 0.5;
+
+      // ① 光核 + 光晕（加亮）
+      const gr = 34 + gp * 7;
+      const gg = ctx.createRadialGradient(x, y, 4, x, y, gr);
+      gg.addColorStop(0, `rgba(255, 255, 255, ${(0.55 * fade).toFixed(3)})`);
+      gg.addColorStop(0.4, `rgba(235, 245, 255, ${(0.22 * fade).toFixed(3)})`);
+      gg.addColorStop(1, 'rgba(235, 245, 255, 0)');
+      ctx.fillStyle = gg;
+      ctx.beginPath(); ctx.arc(x, y, gr, 0, Math.PI * 2); ctx.fill();
+
+      // ② 上升光粒：周身不断升起消散的白色小光条（错峰循环）
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 7; i++) {
+        const sd = i * 47.3;
+        const cyc = (state.time * 0.55 + i * 0.147) % 1;
+        const px = x + Math.sin(sd) * (16 + (i % 3) * 7);
+        const py = y + 16 - cyc * 34;
+        const a = Math.sin(cyc * Math.PI) * 0.5 * fade;
+        const ln = 3.5 + Math.sin(sd * 2) * 1.6;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(px, py + ln); ctx.lineTo(px, py - ln * 0.4); ctx.stroke();
+      }
+
+      // ③ 扩散光环：每 1.3s 一道白环自机体向外扩散淡出
+      const ringCyc = (state.time % 1.3) / 1.3;
+      const rr = 16 + ringCyc * 26;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.3 * (1 - ringCyc) * fade).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke();
+
+      // ④ 环绕光点：两颗白色光点绕机体公转（带上下浮沉）
+      for (const dir of [0, Math.PI]) {
+        const oa = state.time * 2.6 + dir;
+        const ox = x + Math.cos(oa) * 25;
+        const oy = y + Math.sin(oa) * 12 + Math.sin(state.time * 7 + dir) * 3;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.85 * fade).toFixed(3)})`;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(ox, oy, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
 
     // 量子护盾气泡
     if (player.shield > 0) {
@@ -941,7 +1059,7 @@ function paintShip(g, spreadT = 0) {
   }
 
   // 破片机体：类铁砧但更小、宽-15%（横向伸缩）、上下半高均较原收窄 30%；灰白金属主导（边框+核心）；
-  // 中心两条黑杠（远离中心的下端红、其余黑）；图层最底两根金属灰炮管（前部加粗、位于横杠下方靠外）；飞行时按 faceAng 倾斜朝向
+  // 中心两条黑杠（仅下端边缘裹微微一截细红边）；图层最底两根金属灰炮管（前部加粗、位于横杠下方靠外）；飞行时按 faceAng 倾斜朝向
   function drawPopianBody(e) {
     const TAU = Math.PI * 2;
     const Dx = 22, DyT = 13.3;               // 菱形半宽 / 上半高（较原 19 收窄 30%）
@@ -951,8 +1069,25 @@ function paintShip(g, spreadT = 0) {
     const pulse = 0.6 + Math.sin(state.time * 3.0 + (e.wobble || 0)) * 0.4;
 
     ctx.save();
-    ctx.rotate(e.faceAng || 0);   // 飞行时机身倾斜对齐飞行方向（停稳后回正为 0）
+    ctx.rotate(e.faceAng || 0);   // 飞行时机身倾斜对齐飞行方向（就位后头部平滑转向玩家方向）
     ctx.scale(0.85, 1);   // 宽度减小 15%（横向伸缩）
+
+    // ---- 机尾小尾焰（图层最底）：随飞行速度显现，减速/急停后熄灭；暖橙小水滴焰带脉动抖动 ----
+    const spdF = clamp(Math.hypot(e.vx || 0, e.vy || 0) / POPIAN.speed, 0, 1);
+    if (spdF > 0.05) {
+      const fl = (8 + pulse * 4) * spdF;            // 焰长随速度与脉动变化
+      const fg2 = ctx.createLinearGradient(0, -DyT, 0, -DyT - fl);
+      fg2.addColorStop(0, `rgba(255, 170, 80, ${(0.75 * spdF).toFixed(3)})`);
+      fg2.addColorStop(0.5, `rgba(255, 120, 50, ${(0.4 * spdF).toFixed(3)})`);
+      fg2.addColorStop(1, 'rgba(255, 90, 40, 0)');
+      ctx.fillStyle = fg2;
+      ctx.beginPath();
+      ctx.moveTo(-2.6, -DyT + 1);
+      ctx.lineTo(2.6, -DyT + 1);
+      ctx.lineTo(0, -DyT - fl);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // ---- 图层最底：两根炮管（提亮为可见金属灰，前部加粗，位于横杠下方靠外一点）----
     for (const sx of [-1, 1]) {
@@ -1029,25 +1164,29 @@ function paintShip(g, spreadT = 0) {
     ctx.moveTo(0, -DyT); ctx.lineTo(Dx, 0); ctx.lineTo(0, DyB); ctx.lineTo(-Dx, 0); ctx.closePath();
     ctx.stroke();
 
-    // ---- 中心朝下两条杠：整条黑色，仅“远离中心的边界”（下端外缘）为红色 ----
+    // ---- 中心朝下两条杠：通体黑色，外侧（下端）透出微微红光 ----
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    // 黑色：顶部向内侧 45° 斜段（头部现为黑）+ 竖直杠身（下方缩短、止于 DyB-3）
+    // 先铺一层红色辉光垫底：略长于棍身外端、晕开（较淡）
+    ctx.save();
+    ctx.globalAlpha = 0.62;
+    ctx.strokeStyle = RED;
+    ctx.shadowColor = RED;
+    ctx.shadowBlur = 4 + pulse * 3;
+    ctx.lineWidth = 3.4;
+    ctx.beginPath();
+    ctx.moveTo(-2.4, DyB - 8); ctx.lineTo(-2.4, DyB - 1.5);
+    ctx.moveTo(2.4, DyB - 8);  ctx.lineTo(2.4, DyB - 1.5);
+    ctx.stroke();
+    ctx.restore();
+    ctx.shadowBlur = 0;
+    // 再覆盖通体黑色棍身（顶部 45° 斜段 + 竖直杠身，止于 DyB-3）——红光仅从外端边缘微微透出
     ctx.strokeStyle = '#15181e';
     ctx.lineWidth = 2.8;
     ctx.beginPath();
     ctx.moveTo(-4.2, 2); ctx.lineTo(-2.4, 3.8); ctx.lineTo(-2.4, DyB - 3);
     ctx.moveTo(4.2, 2);  ctx.lineTo(2.4, 3.8);  ctx.lineTo(2.4, DyB - 3);
-    ctx.stroke();
-    // 远离中心的边界（下端外缘）：红色
-    ctx.strokeStyle = RED;
-    ctx.shadowColor = RED;
-    ctx.shadowBlur = 3 + pulse * 3;
-    ctx.lineWidth = 2.8;
-    ctx.beginPath();
-    ctx.moveTo(-2.4, DyB - 6.5); ctx.lineTo(-2.4, DyB - 3);
-    ctx.moveTo(2.4, DyB - 6.5);  ctx.lineTo(2.4, DyB - 3);
     ctx.stroke();
     ctx.restore();
 
@@ -1226,6 +1365,10 @@ function paintShip(g, spreadT = 0) {
       ctx.closePath();
     };
 
+    // 整机旋转：炮管（局部 +y）始终朝向玩家（faceAng 由移动状态机以最大角速度平滑追踪）
+    ctx.save();
+    ctx.rotate(e.faceAng || 0);
+
     // ---- 图层最底：炮管（深紫，较细，从矩形下方中心伸出）----
     const bw = 2.8, bt = 5, bb = 14;
     ctx.save();
@@ -1331,6 +1474,139 @@ function paintShip(g, spreadT = 0) {
       ctx.lineWidth = 0.8;
       ctx.stroke();
     }
+    ctx.restore();   // 结束整机旋转
+  }
+
+  // 法术大师A2：A1 强化版 —— 炫紫更发光白亮 + 四角风扇圆心紫色（A1 为黑色）+ 更粗更长的炮管
+  function drawFashiA2Body(e) {
+    const TAU = Math.PI * 2;
+    const pulse = 0.6 + Math.sin(state.time * 3.6 + (e.wobble || 0)) * 0.4;
+    // 圆角矩形辅助（arcTo）
+    const rrect = (x, y, w, h, rad) => {
+      ctx.beginPath();
+      ctx.moveTo(x + rad, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rad);
+      ctx.arcTo(x + w, y + h, x, y + h, rad);
+      ctx.arcTo(x, y + h, x, y, rad);
+      ctx.arcTo(x, y, x + w, y, rad);
+      ctx.closePath();
+    };
+
+    // 整机旋转：炮管（局部 +y）始终朝向玩家（faceAng 由移动状态机以最大角速度平滑追踪）
+    ctx.save();
+    ctx.rotate(e.faceAng || 0);
+
+    // ---- 图层最底：炮管（深紫，更粗更长：A1 2.8×[5,14] → 3.8×[5,18]）----
+    const bw = 3.8, bt = 5, bb = 18;
+    ctx.save();
+    ctx.shadowColor = '#8b5cf6';
+    ctx.shadowBlur = 7 + pulse * 4;
+    ctx.fillStyle = '#6b21a8';
+    rrect(-bw / 2, bt, bw, bb - bt, 1.6);
+    ctx.fill();
+    // 炮管口高光（更亮）
+    ctx.fillStyle = `rgba(216, 180, 254, ${0.65 + pulse * 0.3})`;
+    ctx.fillRect(-bw / 2 + 0.6, bb - 2.8, bw - 1.2, 2.4);
+    ctx.restore();
+
+    // ---- 中心矩形机身（磨平棱角灰黑色，灰色偏多）----
+    const rw = 20, rh = 13, rr = 3;
+    const rx = -rw / 2, ry = -rh / 2 - 0.5;
+    const bg = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh);
+    bg.addColorStop(0, '#5c6270');
+    bg.addColorStop(0.5, '#4b5060');
+    bg.addColorStop(1, '#3d4250');
+    rrect(rx, ry, rw, rh, rr);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    // 白色渐变边框（上下亮、左右深→透明）：不要明显的深色框
+    ctx.save();
+    rrect(rx, ry, rw, rh, rr);
+    ctx.clip();
+    const edge = ctx.createLinearGradient(rx, ry, rx, ry + rh);
+    edge.addColorStop(0, 'rgba(255,255,255,0.85)');
+    edge.addColorStop(0.35, 'rgba(255,255,255,0.35)');
+    edge.addColorStop(0.65, 'rgba(255,255,255,0.20)');
+    edge.addColorStop(1, 'rgba(255,255,255,0.55)');
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.1;
+    rrect(rx + 0.55, ry + 0.55, rw - 1.1, rh - 1.1, rr - 0.4);
+    ctx.stroke();
+    ctx.restore();
+
+    // ---- 1:3:1 分割：左右"1"充满炫紫发光长条——A2 更白亮（近白紫芯 + 更强辉光）----
+    const secW = rw / 5;   // 每份 "1" 宽度 = 4.8
+    const pad = 0.9;       // 内边距
+    const lw = secW - pad * 1.2, lh = rh - pad * 2.2;
+    const ly = ry + pad * 1.1;
+    const drawStrip = (sx) => {
+      ctx.save();
+      ctx.shadowColor = '#d8b4fe';
+      ctx.shadowBlur = 15 + pulse * 9;   // 辉光更强（A1 10+7）
+      // 更白亮的紫渐变：近白紫芯 → 白亮 → 绚紫边缘
+      const g = ctx.createLinearGradient(sx, ly, sx, ly + lh);
+      g.addColorStop(0, `rgba(250, 243, 255, ${(0.96 + pulse * 0.04).toFixed(2)})`);
+      g.addColorStop(0.4, `rgba(233, 213, 255, ${(0.98).toFixed(2)})`);
+      g.addColorStop(0.7, `rgba(192, 132, 252, ${(0.96).toFixed(2)})`);
+      g.addColorStop(1, `rgba(168, 85, 247, ${(0.94).toFixed(2)})`);
+      ctx.fillStyle = g;
+      rrect(sx, ly, lw, lh, 1.4);
+      ctx.fill();
+      // 白色渐变细边（不要明显的深色框）
+      ctx.shadowBlur = 0;
+      const eg = ctx.createLinearGradient(sx, ly, sx + lw, ly);
+      eg.addColorStop(0, 'rgba(255,255,255,0.85)');
+      eg.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+      eg.addColorStop(1, 'rgba(255,255,255,0.85)');
+      ctx.strokeStyle = eg;
+      ctx.lineWidth = 0.7;
+      rrect(sx + 0.35, ly + 0.35, lw - 0.7, lh - 0.7, 1.2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    drawStrip(rx + pad);                       // 左側
+    drawStrip(rx + rw - secW + pad * 0.2);     // 右側
+
+    // ---- 中心炫紫光芒圆点（更白亮）----
+    const dotR = 2.8, dotY = -0.5;
+    ctx.save();
+    ctx.shadowColor = '#d8b4fe';
+    ctx.shadowBlur = 12 + pulse * 8;
+    const dg = ctx.createRadialGradient(0, dotY, 0, 0, dotY, dotR);
+    dg.addColorStop(0, '#ffffff');
+    dg.addColorStop(0.35, '#f3e8ff');
+    dg.addColorStop(0.7, '#c084fc');
+    dg.addColorStop(1, '#8b5cf6');
+    ctx.beginPath();
+    ctx.arc(0, dotY, dotR, 0, TAU);
+    ctx.fillStyle = dg;
+    ctx.fill();
+    ctx.restore();
+
+    // ---- 图层最顶：四角风扇圆（白灰渐变 + 亮紫小圆心——A2 专属，比 A1 黑心更亮；无转动特效）----
+    const fanR = 5.8, fcx = 10, fcy = 6.8;
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    for (const [sx, sy] of corners) {
+      const fx = sx * fcx, fy = sy * fcy;
+      const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, fanR);
+      fg.addColorStop(0, '#e9d5ff');      // 圆心亮紫（较 A1 黑心更亮、更醒目）
+      fg.addColorStop(0.28, '#c084fc');   // 紫色小圆边界
+      fg.addColorStop(0.34, '#b8bfc8');   // 突变到白灰
+      fg.addColorStop(0.65, '#dfe4ea');   // 白灰渐变
+      fg.addColorStop(1, '#8b929c');      // 边缘略暗
+      ctx.save();
+      ctx.shadowColor = '#d8b4fe';
+      ctx.shadowBlur = 4 + pulse * 3;   // 紫心微光
+      ctx.beginPath();
+      ctx.arc(fx, fy, fanR, 0, TAU);
+      ctx.fillStyle = fg;
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.restore();   // 结束整机旋转
   }
 
   function drawYu4Body(e) {
@@ -1770,11 +2046,11 @@ function paintShip(g, spreadT = 0) {
       ctx.moveTo(-m.r * 0.4, 0); ctx.lineTo(m.r * 0.4, 0);
       ctx.lineTo(m.r * 0.18, m.r * 3.4); ctx.lineTo(-m.r * 0.18, m.r * 3.4);
       ctx.closePath(); ctx.fill();
-      // 弹体：暗金属细长三角镖（破片专用，不复用炮火先兆者导弹、不发光）
+      // 弹体：金属细长三角镖（破片专用，不复用炮火先兆者导弹、不发光；整体提亮一档）
       const bg = ctx.createLinearGradient(-m.r, 0, m.r, 0);
-      bg.addColorStop(0, '#343941');
-      bg.addColorStop(0.5, '#6b7280');
-      bg.addColorStop(1, '#343941');
+      bg.addColorStop(0, '#4a515c');
+      bg.addColorStop(0.5, '#8b95a3');
+      bg.addColorStop(1, '#4a515c');
       ctx.fillStyle = bg;
       ctx.beginPath();
       ctx.moveTo(0, -m.r * 1.9);          // 弹头（朝飞行方向）
@@ -1784,10 +2060,10 @@ function paintShip(g, spreadT = 0) {
       ctx.lineTo(-m.r * 0.72, m.r * 0.9);
       ctx.closePath();
       ctx.fill();
-      // 暗红弹尖（微光，不刺眼）
-      ctx.fillStyle = '#9e3226';
-      ctx.shadowColor = 'rgba(158, 50, 38, 0.45)';
-      ctx.shadowBlur = 4;
+      // 红弹尖（提亮 + 微光）
+      ctx.fillStyle = '#c2473a';
+      ctx.shadowColor = 'rgba(220, 80, 62, 0.6)';
+      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(0, -m.r * 1.9);
       ctx.lineTo(m.r * 0.34, -m.r * 0.6);

@@ -12,7 +12,6 @@
   ctx.scale(DPR, DPR);
 
   const hpFill = document.getElementById('hpFill');
-  const hpText = document.getElementById('hpText');
   const scoreText = document.getElementById('scoreText');
   const bombIcons = document.getElementById('bombIcons');
   const livesText = document.getElementById('livesText');
@@ -20,6 +19,8 @@
   const berserkFill = document.getElementById('berserkFill');
   const shieldBar = document.getElementById('shieldBar');
   const shieldFill = document.getElementById('shieldFill');
+  const douzhiBar = document.getElementById('douzhiBar');
+  const douzhiFill = document.getElementById('douzhiFill');
 
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
@@ -42,6 +43,13 @@
   const encyDetail = document.getElementById('encyDetail');
   const encyClose = document.getElementById('encyClose');
 
+  // 数值与机制图鉴 DOM
+  const infoEntryBtn = document.getElementById('infoEntryBtn');
+  const infoModal = document.getElementById('infoModal');
+  const infoTabs = document.getElementById('infoTabs');
+  const infoBody = document.getElementById('infoBody');
+  const infoClose = document.getElementById('infoClose');
+
   // ---------- 状态 ----------
   const state = {
     mode: 'idle',      // idle | playing | gameover
@@ -59,8 +67,9 @@
     specialIdleT: 0,   // 3类槽位空闲累计时长（高于压力阈值时超过上限仍会强制刷新特殊3类）
     capitalIdleT: 0,   // 4类槽位空闲累计时长（同上，上限更长）
     harbingerIntro: false, // 本局是否已首次出场炮火先兆者（仅第一轮首出必是；第二轮无强制）
+    jiaoxiang13Done: false, // 本局是否已触发 Lv13 后首次刷新必出焦香螺旋桨（一次性）
     orangeBombUsed: false, // 本场战斗橙色敌人 1% 爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
-    crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.35，重开归 1）
+    crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     bossTimer: 0,      // BOSS 登场倒计时（累计战斗时长）
     bossStage: 'none', // BOSS 流程：none | wait(等清场) | warn(警报演出) | fight(BOSS战)
     bossVictoryDelay: 0, // BOSS 击杀后延迟返回主界面
@@ -74,6 +83,7 @@
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我血量无限、仅单个敌人
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     prevLevel: 1,      // 上一帧关卡等级：检测「关卡提升」以触发斗志昂扬 5% 出现
+    douzhiSkipOnce: false, // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬（killEnemy 置位）
   };
 
   const player = {

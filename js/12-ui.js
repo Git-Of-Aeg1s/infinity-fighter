@@ -1,4 +1,4 @@
-// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
+﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 'use strict';
 
 
@@ -8,7 +8,6 @@
     hpFill.style.width = (ratio * 100) + '%';
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
     hpFill.classList.toggle('danger', ratio <= 0.25);
-    hpText.textContent = `${Math.ceil(player.hp)} / ${PLAYER.maxHp}`;
     // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
     scoreText.parentElement.style.display = state.challenge ? 'none' : '';
     scoreText.textContent = state.score;
@@ -32,6 +31,10 @@
     // 护盾读条（右下角）
     shieldBar.classList.toggle('active', shieldOn);
     shieldFill.style.width = shieldOn ? (player.shield / SHIELD_DURATION * 100) + '%' : '0%';
+    // 斗志昂扬读条（右下角，白色）
+    const douzhiOn = state.hasteT > 0;
+    douzhiBar.classList.toggle('active', douzhiOn);
+    douzhiFill.style.width = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
   }
   // ---------- 流程控制 ----------
   function resetGame(autoStart = false, opts = {}) {
@@ -43,6 +46,7 @@
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
     state.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
+    state.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
     pauseHomeBtn.classList.add('hidden');
     pauseRetryBtn.classList.add('hidden');
@@ -53,8 +57,9 @@
     state.specialIdleT = 0;
     state.capitalIdleT = 0;
     state.harbingerIntro = false;
+    state.jiaoxiang13Done = false;   // Lv13 首波必出焦香螺旋桨：每局重置
     state.orangeBombUsed = false;
-    state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.35）
+    state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
     state.bossTimer = 0;
     state.bossPhase = 0;
     state.bossStage = 'none';
@@ -129,6 +134,15 @@
         encyBtn.style.display = '';
       }
     }
+    syncInfoEntryBtn();
+  }
+
+  // 数值与机制图鉴入口按钮（ⓘ）：仅开始界面显示（遮罩可见 + 选机页可见 + 非暂停 + 非胜利结算）
+  function syncInfoEntryBtn() {
+    const show = !overlay.classList.contains('hidden') &&
+                 !planeSelect.classList.contains('hidden') &&
+                 state.mode === 'idle' && !state.paused && !victoryOverlayActive;
+    infoEntryBtn.classList.toggle('hidden', !show);
   }
 
   function defaultDesc() {
@@ -159,7 +173,31 @@
         const c = cvs.getContext('2d');
         c.scale(DPR, DPR);
         c.translate(28, 32);
-        paintWingman(c, 1);   // 与游戏内僚机同一造型
+        c.scale(-1, 1);   // 左右反转预览图
+        // 暴走星焰尾（静态帧）：白紫亮焰，较常规更长更亮（与游戏内 wkBerserk 焰一致）
+        const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
+        fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
+        fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
+        fg.addColorStop(1, 'rgba(118, 88, 240, 0)');
+        c.fillStyle = fg;
+        c.beginPath();
+        c.moveTo(-3, 8);
+        c.lineTo(0, 8 + 15 + 5);
+        c.lineTo(3, 8);
+        c.closePath();
+        c.fill();
+        paintWingman(c, 1, true);   // 与游戏内僚机同一造型（暴走：含机翼延伸三角）
+        // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（星核过载）+ 翼尖微光
+        const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+        aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
+        aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
+        c.fillStyle = aura;
+        c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+        c.save();
+        c.globalAlpha = 0.55; c.shadowColor = '#b49bff'; c.shadowBlur = 12;
+        c.fillStyle = '#cbb8ff';
+        c.beginPath(); c.arc(12.3, 11.4, 2.2, 0, Math.PI * 2); c.fill();
+        c.restore();
         card.appendChild(cvs);
       } else {
         card.classList.add('wingman-none');
@@ -188,14 +226,23 @@ function buildPlaneCards() {
       card.className = 'plane-card' + (p.id === currentPlane.id ? ' selected' : '');
       card.dataset.plane = p.id;
 
-      // 缩略图：复用玩家战机造型（高 DPI 适配）
+      // 缩略图：复用玩家战机造型（高 DPI 适配）；暴走状态造型（翼片全展开 + 翼尖微光）
       const cvs = document.createElement('canvas');
-      cvs.width = 56 * DPR; cvs.height = 60 * DPR;
-      cvs.style.width = '56px'; cvs.style.height = '60px';
+      cvs.width = 92 * DPR; cvs.height = 76 * DPR;
+      cvs.style.width = '92px'; cvs.style.height = '76px';
       const c = cvs.getContext('2d');
       c.scale(DPR, DPR);
-      c.translate(28, 30);
-      paintShip(c);   // 与游戏内战机同一造型，选机页同步更新
+      c.translate(46, 38);
+      c.scale(0.9, 0.9);   // 暴走翼片外扩至 ±42：画布加宽到 92 并以 0.9 缩放，机身尽量大且不裁切
+      paintShip(c, 1);   // 暴走状态（与游戏内 spreadT=1 一致：翼展加宽 + 粉色能量翼片展开）
+      // 暴走翼尖微光（静态帧，位置取翼尖展开后的实际坐标）
+      c.save();
+      c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
+      c.fillStyle = '#ff69b4';
+      for (const sx of [-1, 1]) {
+        c.beginPath(); c.arc(sx * 22 * 1.2, 10, 2.5, 0, Math.PI * 2); c.fill();
+      }
+      c.restore();
 
       const name = document.createElement('div');
       name.className = 'plane-card-name';
@@ -238,6 +285,7 @@ function buildPlaneCards() {
       pauseRetryBtn.classList.add('hidden');
       retrialBtn.classList.add('hidden');
     }
+    syncInfoEntryBtn();
   }
 
   function endGame() {
@@ -253,6 +301,7 @@ function buildPlaneCards() {
        按 <kbd>R</kbd> 或点击下方按钮再次出击`,
       '再来一局'
     );
+    syncInfoEntryBtn();
   }
 
   let victoryOverlayActive = false;
