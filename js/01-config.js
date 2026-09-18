@@ -106,7 +106,7 @@
   let stormEyeImg = null;
   const stormEyeLoader = new Image();
   stormEyeLoader.onload = () => { stormEyeImg = stormEyeLoader; };
-  stormEyeLoader.src = 'assets/storm-eye.png';
+  stormEyeLoader.src = 'assets/storm-eye.webp';
 
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   const BOSSES = {
