@@ -3,6 +3,22 @@
 
   // ---------- 输入 ----------
   const keys = Object.create(null);
+  // 武器等级切换作弊开关：true=需先按 0 武装再用 1~5 切换；false=默认可直接切换（当前测试期）
+  const WEAPON_CHEAT_REQUIRE_ARM = false;
+  // 直接设定武器等级（调试/作弊）：Lv5 视为暴走，需同时给予暴走倒计时，否则下一帧会回落 Lv4
+  function debugSetWeapon(n) {
+    if (!player.alive) return;
+    if (n === 5) {
+      player.weapon = 5;
+      player.berserk = BERSERK.duration;
+      player.berserkBanner = Math.max(player.berserkBanner || 0, 1.5);
+      spawnParticles(player.x, player.y, currentPlane.berserkColor || '#ffb545', 20, 240);
+    } else {
+      player.weapon = n;
+      player.berserk = 0;
+    }
+    player.cooldown = 0;
+  }
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
     keys[k] = true;
@@ -12,6 +28,12 @@
     if (k === 'p' && state.mode === 'playing') togglePause();
     if (k === 'r') resetGame(true, { keepTest: true });
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
+    // 作弊：切换武器等级（测试用）。预留“按 0 武装”门控——WEAPON_CHEAT_REQUIRE_ARM 改为 true 后需先按 0 才能用 1~5 切换。
+    if (state.mode === 'playing' && !state.paused) {
+      if (k === '0') state.cheatArm = true;
+      const lv = '12345'.indexOf(k);
+      if (lv >= 0 && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) debugSetWeapon(lv + 1);
+    }
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -190,7 +212,9 @@
       updateMissiles(dt);
       updateBaolingBombs(dt);   // 暴鸰：炸弹下坠 / 加速冲向预警区中心 / 爆炸
       updatePopianMissiles(dt); // 破片：三连发导弹飞行 / 命中结算（条件性无视无敌）
+      updateSpellCubes(dt);     // 法术矩阵：发光正方体飞行 / 限程减速黯淡 / 停留 / 渐隐 / 命中结算
       updateDouzhiFx(dt);       // 斗志昂扬：死亡演出推进 + 增益时长衰减
+      updateSlashFx(dt);        // 群星之杀：空间斩击特效存留时长推进 / 到期移除
             updateZoneMarks(dt);   // 暴风之眼：区域标记倒计时 / 风流 / 风柱
       updatePowerups(dt);
       updateCrystals(dt);
@@ -226,6 +250,7 @@
       updateStars(dt * 0.4);
       updateNebulae(dt * 0.4);
       updateParticles(dt);
+      updateWingmen(dt);   // idle 模式也平滑 lerp 僚机位置（开火已被 state.mode 门控抑制）
     }
 
     // 全屏特效衰减（震屏 / 白闪 / 护盾·暴走冲击波）：只要未暂停就执行——

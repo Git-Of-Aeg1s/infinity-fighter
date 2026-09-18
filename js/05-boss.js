@@ -184,7 +184,7 @@
   function pushWaveMarks(side, n) {
     const bandH = CANVAS_H * 0.60;
     const L = CANVAS_W + 130;   // 带长：超出屏宽，两端出界
-    const x0 = side > 0 ? CANVAS_W + 40 : -40 - L;   // 起点：入射侧外
+    const x0 = side > 0 ? CANVAS_W + 40 : -40;   // 起点：入射侧外（左侧起点在屏左外 -40，向 +x 延伸 L 覆盖全屏；旧 -40-L 会使整条带落在屏左外而不可见）
     const dirX = side > 0 ? -1 : 1;
     for (let k = 0; k < n; k++) {
       zoneMarks.push({

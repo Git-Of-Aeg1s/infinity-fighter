@@ -47,6 +47,8 @@
       drawFashiA2Body(e);     // 自带填充与描边（A1 强化版：炫紫更白亮 + 紫心风扇圆 + 更粗更长炮管）
     } else if (e.type === 'popian') {
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
+    } else if (e.type === 'fashiMatrix') {
+      drawFashiMatrixBody(e); // 自带填充与描边（竖菱形白红渐变外体 + 细黑菱形环 + 白红核心）
     } else if (e.type === 'jiaoxiang') {
       drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
@@ -516,7 +518,8 @@
   function drawBullets() {
     for (const b of pBullets) {
       if (b.wing) {
-        // 僚机长条弹幕：沿飞行方向，橙黄(尾)→蓝紫(头)渐变；暴走时额外发光描边
+        // 僚机长条弹幕：沿飞行方向，尾→头渐变；暴走时额外发光描边 + 尾焰
+        //   群星允诺：旋转胶囊体（暖色尾焰）；钢铁壁垒(oval)：椭圆体（冷色尾焰）
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);
@@ -533,8 +536,13 @@
           // 暴走尾焰：弹尾（-x）延伸的金橙渐变火舌，与主机暴走弹同主题
           const L = b.len * 0.85 + 16;
           const fg = ctx.createLinearGradient(-hl, 0, -hl - L, 0);
-          fg.addColorStop(0, 'rgba(255, 205, 120, 0.7)');
-          fg.addColorStop(1, 'rgba(255, 110, 199, 0)');
+          if (b.oval) {   // 钢铁壁垒：冷蓝尾焰
+            fg.addColorStop(0, 'rgba(190, 230, 255, 0.75)');
+            fg.addColorStop(1, 'rgba(60, 150, 255, 0)');
+          } else {        // 群星允诺：金橙尾焰
+            fg.addColorStop(0, 'rgba(255, 205, 120, 0.7)');
+            fg.addColorStop(1, 'rgba(255, 110, 199, 0)');
+          }
           ctx.fillStyle = fg;
           ctx.beginPath();
           ctx.moveTo(-hl + rr * 0.6, -rr * 0.75);
@@ -545,12 +553,18 @@
           ctx.fillStyle = wg;   // 恢复胶囊体填充色
         }
         ctx.beginPath();
-        ctx.moveTo(-hl + rr, -rr);
-        ctx.lineTo(hl - rr, -rr);
-        ctx.arc(hl - rr, 0, rr, -Math.PI / 2, Math.PI / 2);
-        ctx.lineTo(-hl + rr, rr);
-        ctx.arc(-hl + rr, 0, rr, Math.PI / 2, -Math.PI / 2);
-        ctx.closePath();
+        if (b.oval) {
+          // 椭圆体（钢铁壁垒）：沿飞行方向的椭圆轮廓
+          ctx.ellipse(0, 0, hl, rr, 0, 0, Math.PI * 2);
+        } else {
+          // 旋转胶囊体（群星允诺）
+          ctx.moveTo(-hl + rr, -rr);
+          ctx.lineTo(hl - rr, -rr);
+          ctx.arc(hl - rr, 0, rr, -Math.PI / 2, Math.PI / 2);
+          ctx.lineTo(-hl + rr, rr);
+          ctx.arc(-hl + rr, 0, rr, Math.PI / 2, -Math.PI / 2);
+          ctx.closePath();
+        }
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.strokeStyle = b.glow ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)';
@@ -621,7 +635,7 @@
         ctx.save();
         ctx.translate(b.x, b.y);   // 尾端位置
         ctx.rotate(ang);
-        const L = b.len, lr = b.r;
+        const L = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len, lr = b.r;   // 钢铁壁垒白盾截断：只画尾端→盾交点
         ctx.shadowColor = bright ? '#d8b4fe' : '#a855f7';
         ctx.shadowBlur = bright ? 22 : 14;
         // 横向渐变（y 轴垂直于飞行方向）：上边绚紫 → 中心白亮 → 下边绚紫（A2 边缘更浅更亮）
@@ -842,6 +856,7 @@
       if (e.type === 'boss') drawBoss(e);
       else drawEnemy(e);
     }
+    drawStarslayerBeam();   // 群星之杀：机头淡白锁定光束（敌机之上、玩家之下）
     drawPlayer();
     drawWingmen();
     drawTrailGhosts();
@@ -849,7 +864,10 @@
     drawMissiles();
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
+    drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）
+    drawCubeHitFx();      // 法术矩阵：正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
     drawDouzhiFx();       // 斗志昂扬死亡演出：脱离渐隐蓝盒 + 淡黄扩大光环 + 渐隐本体
+    drawSlashFx();        // 群星之杀：空间斩击特效（交叉斩痕 + 冲击环，渐隐）
     drawParticles();
 
     // BOSS 警报演出（全屏覆盖层）

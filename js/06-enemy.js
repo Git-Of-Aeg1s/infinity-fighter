@@ -493,16 +493,16 @@
       e.jxSpinC += e.jxSpdC * dt;
       let wantVx, wantVy;
       if (e.jxPhase === 0) {
-        // 入场阶段：朝目标点直线逼近（顶部带 180% 加速衰减）
-        let boost = 1;
-        if (!e.jxFlank) {
-          e.jxEntryT += dt;
-          boost = e.jxEntryT < JIAOXIANG.entryBoostTime
-            ? 1 + (JIAOXIANG.entryBoost - 1) * (1 - e.jxEntryT / JIAOXIANG.entryBoostTime)
-            : 1;
-        }
+        // 入场阶段：朝目标点直线逼近。非侧翼（顶部）入场就位前带 150% 移速加成；
+        // 加成在距目标点 entryBoostDecayDist 以内按剩余距离线性衰减，到位（entryReach）降回 100%；侧翼入场无加成
         const dx = e.jxTargetX - e.x, dy = e.jxTargetY - e.y;
         const dist = Math.hypot(dx, dy) || 1;
+        let boost = 1;
+        if (!e.jxFlank) {
+          const d0 = JIAOXIANG.entryBoostDecayDist, d1 = JIAOXIANG.entryReach;
+          const k = dist >= d0 ? 1 : Math.max(0, (dist - d1) / (d0 - d1));   // 远处满加成(1)→到位无加成(0)
+          boost = 1 + (JIAOXIANG.entryBoost - 1) * k;
+        }
         const s = spd * boost;
         wantVx = dx / dist * s; wantVy = dy / dist * s;
         // 逼近目标点 → 切入绕圈（速度向量原样保留，天然连贯，无任何位置重置）
@@ -570,6 +570,56 @@
         e.faceAng += clamp(df, -POPIAN.maxTurn * dt, POPIAN.maxTurn * dt);
       }
       // 已锁停：不再移动（攻击由 updateEnemyFire 处理）
+      return;
+    }
+    // 法术矩阵：入场下降（初速 2× 快速衰减）→ 到 20%~40% 屏高目标区后 OU 相干随机游走「胡乱移动」（不脱离战场）→ 18s 后加速向下离场
+    if (e.type === 'fashiMatrix') {
+      e.entryT += dt;
+      e.rot = (e.rot || 0) + (e.bodySpin || 0) * dt;   // 机体本体自旋（菱形绕中心旋转，全阶段持续）
+      const spd = FASHI_MATRIX.speed * e.speedMul;
+      const acc = FASHI_MATRIX.accel;
+      if (e.mxPhase === 0) {
+        // 入场下降：初速 entrySpeed(2×) 在 entryDecay 内快速衰减到 spd，之后匀速直下（不减速），到达目标高度即切入胡乱移动
+        const t = Math.min(1, e.entryT / FASHI_MATRIX.entryDecay);
+        const fall = FASHI_MATRIX.entrySpeed + (spd - FASHI_MATRIX.entrySpeed) * t;
+        e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+        e.vy += (fall - e.vy) * Math.min(1, dt * acc);
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        if (e.y >= e.hoverY) {
+          // 不清零速度：保留下降动量，由胡乱移动的速度平滑(turnRate)自然接管 → 轨迹连贯，无「停一下再走」的卡顿
+          e.mxPhase = 1; e.arrived = true; e.wanderT = 0;
+          e.wanderX = rand(-1, 1) * FASHI_MATRIX.jitter; e.wanderY = rand(-1, 1) * FASHI_MATRIX.jitter;
+        }
+        return;
+      }
+      if (e.mxPhase === 1) {
+        // 胡乱移动：OU 相干随机游走（漂移向量朝随机目标缓变，非逐帧白噪声 → 穿过速度平滑滤波仍连贯可见，不卡顿）
+        e.wanderT += dt;
+        const jr = Math.min(1, dt * FASHI_MATRIX.jitterRate);
+        e.wanderX += (rand(-1, 1) * FASHI_MATRIX.jitter - e.wanderX) * jr;
+        e.wanderY += (rand(-1, 1) * FASHI_MATRIX.jitter - e.wanderY) * jr;
+        let wantVx = e.wanderX, wantVy = e.wanderY;
+        // 软边界回拉：越接近活动区边缘越叠加朝内速度（避免硬 clamp 贴边卡顿）
+        const minX = e.w / 2 + 12, maxX = CANVAS_W - e.w / 2 - 12;
+        const minY = CANVAS_H * 0.10, maxY = CANVAS_H * 0.58;
+        const m = 46, pull = FASHI_MATRIX.edgePull;
+        if (e.x < minX + m) wantVx += pull * (1 - (e.x - minX) / m);
+        else if (e.x > maxX - m) wantVx -= pull * (1 - (maxX - e.x) / m);
+        if (e.y < minY + m) wantVy += pull * (1 - (e.y - minY) / m);
+        else if (e.y > maxY - m) wantVy -= pull * (1 - (maxY - e.y) / m);
+        const turn = Math.min(1, dt * FASHI_MATRIX.turnRate);
+        e.vx += (wantVx - e.vx) * turn;
+        e.vy += (wantVy - e.vy) * turn;
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        e.x = clamp(e.x, minX, maxX);
+        e.y = clamp(e.y, minY, maxY);
+        if (e.wanderT >= e.holdTimer) { e.mxPhase = 2; e.leaving = true; }   // 18s 后开走（挑战模式 holdTimer=1e9 永驻）
+        return;
+      }
+      // mxPhase 2：离场——加速向下飞离战场（出屏后由通用检测移除）
+      e.vx += (0 - e.vx) * Math.min(1, dt * acc);
+      e.vy += (spd * FASHI_MATRIX.exitMul - e.vy) * Math.min(1, dt * acc);
+      e.x += e.vx * dt; e.y += e.vy * dt;
       return;
     }
     // gunship / capital / harbinger / yu4：下降到悬停高度 → 停留开火 → 停止攻击、以进场同速前开走（可能撞击玩家）
@@ -763,6 +813,16 @@
       }
       return;
     }
+    // 法术矩阵：到达目标区胡乱移动期间，朝玩家左右 ±15° 发射发光正方体（独立 spellCubes 弹道；法术阵列在场时偏移角/速度增强，见 fireMatrixCube）
+    if (e.type === 'fashiMatrix') {
+      if (!e.arrived || e.leaving) return;   // 入场下降未就位 / 离场中不攻击
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        e.fireTimer = rand(FASHI_MATRIX.fireInterval[0], FASHI_MATRIX.fireInterval[1]);
+        fireMatrixCube(e);
+      }
+      return;
+    }
     // 其余悬停型：停留结束、前开走阶段停止攻击
     if (e.leaving) return;
 
@@ -951,7 +1011,7 @@
             const t0 = g * 0.5;
             for (let i = 0; i < 3; i++) {
               e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 + halfA, 0.5, cfg, { accel, maxSpeed }) });
-              e.scheduled.push({ t: t0 + i * 0.07 + 0.035, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed }) });
+              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed }) });   // 左右同帧发射（原 +0.035 错开致两侧不同时）
             }
           }
           break;
@@ -1171,6 +1231,8 @@
     missileWarns.length = 0;
     missiles.length = 0;
     popianMissiles.length = 0;   // 破片三连发导弹一并清除
+    spellCubes.length = 0;       // 法术矩阵发光正方体一并清除
+    cubeHitFx.length = 0;        // 正方体击中特效一并清除
     zoneMarks.length = 0;
     windFlows.length = 0;
     pillarStrikes.length = 0;
@@ -1242,6 +1304,91 @@
     spawnParticles(m.x, m.y, '#ffb545', 14, 260);
     spawnParticles(m.x, m.y, '#ffffff', 8, 200);
     shake(5, 0.25);
+  }
+
+  // ---------- 法术矩阵：发光正方体（独立 spellCubes 弹道）----------
+  // 朝玩家左右 ±offsetDeg 发射；射程 = rand(0.7,1.4)×到玩家距离 + 15%屏高；
+  // 场上存在 3 类「法术阵列」(fashiArray) 时偏移角增至 ±25°、正方体速度 +25%（向前兼容：fashiArray 尚未实装时恒 false）
+  function fireMatrixCube(e) {
+    if (!player.alive) return;
+    const arr = enemies.some(t => t.type === 'fashiArray' && t !== e);
+    const offDeg = arr ? FASHI_MATRIX.offsetDegArray : FASHI_MATRIX.offsetDeg;
+    const baseAng = Math.atan2(player.y - e.y, player.x - e.x);
+    const ang = baseAng + rand(-offDeg, offDeg) * Math.PI / 180;
+    const dist0 = Math.hypot(player.x - e.x, player.y - e.y);
+    const maxRange = rand(FASHI_MATRIX.rangeMin, FASHI_MATRIX.rangeMax) * dist0 + CANVAS_H * FASHI_MATRIX.rangeScreen;
+    const cruise = FASHI_MATRIX.cubeSpeed * (arr ? FASHI_MATRIX.cubeSpeedMulArray : 1);
+    spellCubes.push({
+      x: e.x, y: e.y, ux: Math.cos(ang), uy: Math.sin(ang),
+      spd: cruise * 0.35, cruise,   // 初速 35% → 平滑加速到 cruise（平滑速度曲线）
+      dmg: FASHI_MATRIX.cubeDmg,
+      traveled: 0, maxRange, phase: 'fly', glow: 1, alpha: 1,
+      lingerT: 0,
+      // 生长：发射瞬间为最大尺寸的 50%，cubeGrowTime 内成长到最大（scale/r 每帧在 updateSpellCubes 更新）
+      growT: 0, scale: FASHI_MATRIX.cubeGrowFrom, r: FASHI_MATRIX.cubeR * FASHI_MATRIX.cubeGrowFrom,
+    });
+    spawnParticles(e.x, e.y, '#ffd9d9', 4, 90);
+  }
+
+  // 正方体生命周期：fly（平滑加速巡航）→ brake（临近射程快速减速 + 缓慢黯淡）→ linger（原位置停留 0.4~0.8s，仍可伤害）→ fade（快速渐隐）
+  function updateSpellCubes(dt) {
+    for (let i = spellCubes.length - 1; i >= 0; i--) {
+      const c = spellCubes[i];
+      const px = c.x, py = c.y;   // 钢铁壁垒白盾扫掠相交用上一帧位置
+      // 生长：cubeGrowTime 内从 50% 平滑成长到最大尺寸（碰撞半径 r 同步跟随，保证判定与视觉一致）
+      c.growT += dt;
+      c.scale = FASHI_MATRIX.cubeGrowFrom + (1 - FASHI_MATRIX.cubeGrowFrom) * Math.min(1, c.growT / FASHI_MATRIX.cubeGrowTime);
+      c.r = FASHI_MATRIX.cubeR * c.scale;
+      if (c.phase === 'fly') {
+        c.spd += (c.cruise - c.spd) * Math.min(1, dt * FASHI_MATRIX.cubeAccel);   // 平滑加速
+        const step = c.spd * dt;
+        c.x += c.ux * step; c.y += c.uy * step; c.traveled += step;
+        if (c.traveled >= c.maxRange - FASHI_MATRIX.brakeDist) c.phase = 'brake';
+      } else if (c.phase === 'brake') {
+        c.spd += (0 - c.spd) * Math.min(1, dt * FASHI_MATRIX.brakeRate);   // 快速减速
+        const step = c.spd * dt;
+        c.x += c.ux * step; c.y += c.uy * step; c.traveled += step;
+        c.glow = Math.max(FASHI_MATRIX.glowFloor, c.glow - dt * FASHI_MATRIX.dimRate);   // 缓慢黯淡
+        if (c.spd < 10) { c.spd = 0; c.phase = 'linger'; c.lingerT = rand(FASHI_MATRIX.lingerMin, FASHI_MATRIX.lingerMax); }
+      } else if (c.phase === 'linger') {
+        c.lingerT -= dt;   // 原位置停留（不动但仍可伤害）
+        c.glow = Math.max(FASHI_MATRIX.glowFloor, c.glow - dt * FASHI_MATRIX.dimRate);
+        if (c.lingerT <= 0) c.phase = 'fade';
+      } else {   // fade：快速渐隐
+        c.alpha -= dt / FASHI_MATRIX.fadeTime;
+        if (c.alpha <= 0) { spellCubes.splice(i, 1); continue; }
+      }
+      // 白红光效拖尾在绘制层实现（drawSpellCubes 沿运动反方向画渐变光带，非粒子），此处不再生成拖尾粒子
+      // 钢铁壁垒白盾：正方体碰盾消解（扫掠线段 prev→cur 与盾折线相交；非导弹直射弹）
+      if (bulwarkActive()) {
+        const hit = shieldSweepHit(px, py, c.x, c.y);
+        if (hit) { spawnParticles(hit.x, hit.y, '#eaf6ff', 8, 160); spellCubes.splice(i, 1); continue; }
+      }
+      // 护盾消解（正方体不可被击毁，但护盾仍免疫）
+      if (player.shield > 0 && player.alive && Math.hypot(c.x - player.x, c.y - player.y) < 36 + c.r) {
+        spawnParticles(c.x, c.y, '#6fe3ff', 10, 180);
+        spellCubes.splice(i, 1);
+        continue;
+      }
+      // 命中玩家判定点（fade 阶段不再造成伤害）
+      if (c.phase !== 'fade' && player.alive &&
+          Math.hypot(c.x - player.x, c.y - (player.y + PLAYER.hitOffsetY)) < PLAYER.hitRadius + c.r) {
+        damagePlayer(c.dmg);
+        // 击中特效：白热内芯火花 + 红色外扩火花 + 冲击波环（drawCubeHitFx）
+        spawnParticles(c.x, c.y, '#fff2f2', 8, 260);
+        spawnParticles(c.x, c.y, '#ff5a6e', 14, 200);
+        cubeHitFx.push({ x: c.x, y: c.y, t: 0.42, max: 0.42, r: c.r });
+        spellCubes.splice(i, 1);
+        continue;
+      }
+      // 出界移除
+      if (c.y > CANVAS_H + 40 || c.y < -40 || c.x < -40 || c.x > CANVAS_W + 40) { spellCubes.splice(i, 1); continue; }
+    }
+    // 击中特效推进：扩散渐隐，寿命尽即移除（独立于 spellCubes，命中后本体已删仍继续播放）
+    for (let i = cubeHitFx.length - 1; i >= 0; i--) {
+      cubeHitFx[i].t -= dt;
+      if (cubeHitFx[i].t <= 0) cubeHitFx.splice(i, 1);
+    }
   }
 
   // ---------- 暴鸰炸弹 ----------
@@ -1643,6 +1790,11 @@
       spawnParticles(e.x, e.y, '#c084fc', 26, 300);
       spawnParticles(e.x, e.y, '#f3e8ff', 16, 240);
       shake(8, 0.3);
+    }
+    // 法术矩阵击毁：白红碎裂演出（菱形法师无人机，贴合白红主题）
+    if (e.type === 'fashiMatrix') {
+      spawnParticles(e.x, e.y, '#ff5566', 18, 260);
+      spawnParticles(e.x, e.y, '#fff0f0', 10, 200);
     }
     // 水晶掉落：大概率，数量随体型增加；直接垂直下坠，不乱飘
     // 幽暮突击艇：必定掉落 2~3 个水晶

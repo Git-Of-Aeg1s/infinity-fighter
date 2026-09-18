@@ -34,13 +34,16 @@
 
   // 火力 5 级：直射窄弹道，射线数递增；Lv4 为 5 射线 + 半拍后于中间补射 2 发（视觉错开，不增宽）
   // Lv5 即暴走：限时 6s，攻速同 Lv4、弹速大幅提升，十射线（5 个位置各双发）、伤害 ×2
+  // dmgMul：每发子弹伤害倍率（乘 PLAYER.bulletDamage）。用于把各级“每秒平均伤害(DPS)”压成等比链——
+  //   Lv3 = Lv4×80%、Lv2 = Lv3×80%、Lv1 = Lv2×80%（以 Lv4 为基准，暴走 Lv5 独立走 BERSERK.dmgMul）。
+  //   低级弹少且慢，故靠“单发更重”补足 DPS：主炮 DPS ≈ Lv1 358 / Lv2 448 / Lv3 560 / Lv4 700 / Lv5 2000。
   const WEAPON_LEVELS = [
     null,
-    { name: 'Lv1', interval: 0.24 },   // 3 射线，射速稍慢
-    { name: 'Lv2', interval: 0.19 },   // 4 射线
-    { name: 'Lv3', interval: 0.14 },   // 5 射线，射速正常
-    { name: 'Lv4', interval: 0.12 },   // 5 射线 + 半拍后中间补射 2 发
-    { name: 'Lv5', interval: 0.12 },   // 暴走：限时 6s，攻速同 Lv4，弹速提升
+    { name: 'Lv1', interval: 0.24, dmgMul: 2.3893 },   // 3 射线，射速稍慢；单发 ≈28.67
+    { name: 'Lv2', interval: 0.19, dmgMul: 1.7733 },   // 4 射线；单发 ≈21.28
+    { name: 'Lv3', interval: 0.14, dmgMul: 1.3067 },   // 5 射线，射速正常；单发 ≈15.68
+    { name: 'Lv4', interval: 0.12, dmgMul: 1 },        // 5 射线 + 半拍补射 2 发；单发 12（基准）
+    { name: 'Lv5', interval: 0.12 },                   // 暴走：限时 6s，攻速同 Lv4，弹速提升，伤害走 BERSERK.dmgMul
   ];
   const BERSERK = { interval: 0.12, dmgMul: 2, rMul: 1.4, duration: 6, spdMul: 1.6 };
   const SHIELD_DURATION = 6;   // 量子护盾持续时间
@@ -127,8 +130,47 @@
       berserkColor: '#ffb545',
       berserkTrail: '#8a6230',
     },
+    starslayer: {
+      id: 'starslayer',
+      name: '群星之杀',
+      desc: '空间斩击，高额爆发',
+      startWeapon: 1,
+      bulletColor: '#eaf2ff',   // 淡白锁定光束 / 斩击主色
+      trailColor: '#9fb4d8',
+      berserkColor: '#c9b6ff',  // 暴走：紫白能量
+      berserkTrail: '#6a5a99',
+      slashWeapon: true,        // 走斩击模型（不发射普通子弹）
+      wingmanHaste: 1.2,        // 非 boss 战时僚机射速 ×1.2（补偿清杂弱）
+    },
   };
-  let currentPlane = PLANES.chaos;
+  let currentPlane = PLANES.starslayer;
+
+  // ---------- 群星之杀：空间斩击参数 ----------
+  // 机头直射一条较细淡白锁定光束（不造成伤害），选中最靠近玩家的主目标；
+  // 每隔 interval 秒召唤一道空间斩击：以主目标为中心的矩形判定区（沿斩击方向），
+  // 主目标受全额伤害、区域内其余敌人降至 splashMul（80%）。
+  // 斩击方向：与竖直方向夹角 5~20° 随机，左下→右上 / 右下→左上 逐次交替。
+  // 暴走（Lv5）：每次连续斩击 slashes 次（间隔 slashGap），攻击间隔略微降低。
+  // DPS 配平（主目标）：Lv1 300 / Lv2 400 / Lv3 600 / Lv4 900 / Lv5 2500。
+  const STARSLAYER = {
+    beamHalfW: 4.4,          // 锁定光束半宽（稍宽）
+    beamColor: '#eaf2ff',    // 淡白色
+    selectHalfW: 26,         // 光束选中判定的水平半宽（机头正上方走廊）
+    slashFxTime: 0.45,       // 单次斩击特效存留时长（扫 cut + 渐隐）
+    slashGapBase: 0.10,      // 暴走三连斩每击间隔
+    slashAngleMin: 5,        // 斩击与竖直方向夹角（度）随机下限
+    slashAngleMax: 20,       // 夹角上限
+    slashLenMul: 2.3,        // 矩形半长 = slashR × 此系数（沿斩击方向）
+    slashWMul: 0.70,         // 矩形半宽 = slashR × 此系数（垂直斩击方向，“宽度较宽”）
+    splashMul: 0.8,          // 非主目标伤害降至 80%
+    levels: {
+      1: { interval: 1.36, dmg: 408, slashR: 46 },
+      2: { interval: 1.22, dmg: 488, slashR: 50 },
+      3: { interval: 1.09, dmg: 654, slashR: 54 },
+      4: { interval: 0.95, dmg: 855, slashR: 58 },
+      5: { interval: 0.90, dmg: 750, slashR: 64, slashes: 3 },   // 3×750/0.90 ≈ 2500
+    },
+  };
 
   // ---------- 僚机系统：注册表与参数 ----------
   // 僚机成对出现（主机左右各一），不可被击中，拥有独立武器；两僚机合计伤害约为主机 30~40%
@@ -142,10 +184,38 @@
       desc: '多发散射，火力覆盖',
       barTail: '#ffbf47', barMid: '#ffd9a0', barHead: '#8a6bff',   // 尾橙黄 → 头蓝紫
       flame: '#9b7bff',
-      dmgMulByLevel: { 4: 1.4 },   // 群星允诺专属：Lv4 每发子弹伤害 ×1.4（其余等级缺省 1）
+      // dmgMulByLevel：群星允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
+      //   双僚机合计 DPS = Lv1 140 / Lv2 170 / Lv3 200 / Lv4 230 / Lv5 550。
+      dmgMulByLevel: { 1: 2.6542, 2: 2.0683, 3: 1.75, 4: 1.3964, 5: 1.0313 },
+      offsetX: 46, offsetY: 16,    // 后侧站位（沿用通用参数值）
+      weapon: { kind: 'volley' },  // 对称双 volley 模型（走 WINGMAN_LEVELS + dmgMulByLevel）
+    },
+    bulwark: {
+      id: 'bulwark', name: '钢铁壁垒',
+      desc: '坚盾护体，侧向打击',
+      barTail: '#3b7de8', barMid: '#6dc4f8', barHead: '#b0e8ff',   // 尾中蓝 → 头浅天蓝（天蓝占比更大）
+      flame: '#8fd8ff',
+      offsetX: 41, offsetY: -20,   // 前侧站位（稍微靠近主机，本体+盾整体往右上移动）
+      // 防御辅助型：前方连体白盾消解非导弹直射弹（详见 BULWARK 与挡弹系统）
+      // 武器：一侧扇形（0→spreadMax 度）错序发射（最前方先发）
+      //   双僚机合计 DPS = Lv1 160 / Lv2 200 / Lv3 240 / Lv4 300 / Lv5 500
+      weapon: {
+        kind: 'fan',
+        spreadMax: 120,          // 相对竖直向上、朝外侧的最大夹角（度）
+        staggerGap: 0.05,        // 错序发射每发间隔（秒）
+        bulletSpeed: 600,        // 常规弹速；Lv5 ×speedMul
+        barLen: 32, barR: 5.4,   // 椭圆长条弹尺寸（加长加大）
+        levels: {
+          1: { count: 5, interval: 0.96, dmg: 30.72 },
+          2: { count: 6, interval: 0.84, dmg: 28.0 },
+          3: { count: 7, interval: 0.72, dmg: 24.69 },
+          4: { count: 8, interval: 0.60, dmg: 22.5 },   // 相邻夹角 120/7≈17.14°
+          5: { count: 9, interval: 0.60, dmg: 33.33, speedMul: 2.5, flame: true, leadExtra: true },   // 暴走：+1发(领头17.14°)、弹速×2.5、加尾焰、间隔同 Lv4
+        },
+      },
     },
   };
-  let currentWingman = WINGMEN.stars;
+  let currentWingman = WINGMEN.bulwark;
 
   // 僚机通用参数（伤害/射速均可调；总体占主机 30~40%）
   const WINGMAN = {
@@ -155,14 +225,22 @@
     volleyGap: 0.11,                            // 一轮内两 volley 间隔（连续发射两次）
   };
 
+  // 钢铁壁垒白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
+  //   arcFrom/arcTo 为相对“竖直向上”朝外侧扫过的角度（度）；segments 为折线逼近段数（供扫掠相交/裁切）
+  const BULWARK = {
+    radius: 30, arcFrom: -10, arcTo: 100, thickness: 6, segments: 12,
+    color: '#eaf6ff', glow: '#bfe4ff',
+  };
+
   // 各火力等级僚机弹幕：volleys=[第一轮发数, 第二轮发数]，interval=启动连射的冷却
   // 夹角不再按等级固定，而是由“单轮发数”决定（见 WINGMAN_SPREAD）；level.spread 仅作缺省回退
+  // 每级每发伤害倍率见各僚机自身的 dmgMulByLevel
   const WINGMAN_LEVELS = {
     1: { volleys: [2, 2], spread: 10, interval: 0.80 },   // Lv1：2+2 发、射速慢
     2: { volleys: [3, 2], spread: 10, interval: 0.62 },   // Lv2：3+2 发
     3: { volleys: [3, 3], spread: 10, interval: 0.52 },   // Lv3：3+3 发
     4: { volleys: [3, 4], spread: 10, interval: 0.40 },   // Lv4：3+4 发（第二轮 4 发、6°）、恢复正常射速
-    5: { volleys: [5, 5], spread: 8, interval: 0.34 },    // 暴走：5+5 发、发光
+    5: { volleys: [5, 5], spread: 8, interval: 0.34 },    // 暴走：5+5 发、发光，伤害走 ×2
   };
 
   // 僚机单轮弹幕夹角(度)按“该轮发数”取值：2发20° / 3发10° / 4发6° / 5发8°（发数越多相邻夹角越小、弹幕更聚拢）
@@ -282,7 +360,7 @@
     // 下方两根黑色炮管（前部加粗、图层最底）；只沿直线飞到选定点后急停锁停（除非被击毁不再移动），停稳后才攻击；
     // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv10 前低权重
     popian: {
-      w: 46, h: 40, hp: 200, score: 200, color: '#cfd6e0', drawScale: 1.0,   // 体型同常规 2 类突击艇
+      w: 55, h: 48, hp: 200, score: 200, color: '#cfd6e0', drawScale: 1.2,   // 体型同常规 2 类突击艇 ×1.2
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,   // 碰撞伤害按登场时间分段覆盖（见 updateEnemies）：0.5s 内 0 / 0.5~2s 2类×80% / 2s 后 2类×150%
       fireInterval: [1e9, 1e9],   // 攻击逻辑在移动/开火状态机内处理，不走通用开火
     },
@@ -294,6 +372,15 @@
       w: 99, h: 91, hp: 900, score: 450, color: '#c084fc', drawScale: 3.0,   // 体型 = 威龙(76×70) × 1.3；局部造型沿用 A1 小坐标 → drawScale 3.0 使视觉尺寸与碰撞盒匹配（A1 为 1.4/盒46）
       bulletSpeed: 472.5, bulletR: 6, bulletDmg: 32, crashDmg: 35,   // 激光弹速与 FASHI_A2.laserSpeed 一致；碰撞伤害与威龙一致
       fireInterval: [1e9, 1e9],   // 攻击逻辑在移动状态机内处理，不走通用开火
+    },
+    // 特殊2类：法术矩阵（白红菱形法师无人机）—— 竖菱形机体（高为宽 1.8 倍）+ 白红渐变核心 + 一圈很细的黑色菱形环 + 环外仍白红；
+    // 慢速下降到悬停带（约常规 2 类入位速一半），停稳后朝玩家左右 ±15° 发射「发白光的正方体」（每条边发红光，走独立 spellCubes 弹道）；
+    // 正方体限程（自身→玩家距离 70%~140% + 15% 屏高）：到射程前快速减速、缓慢黯淡，在末端原位置停留 0.4~0.8s（仍可伤害）后快速渐隐；
+    // 受主战机（非僚机）伤害 -30%；场上存在 3 类「法术阵列」(fashiArray) 时偏移角增至 ±25°、正方体速度 +25%（见 FASHI_MATRIX）
+    fashiMatrix: {
+      w: 27, h: 48, hp: 80, score: 180, color: '#ff5566', drawScale: 1.02,   // 竖菱形碰撞盒 h≈1.8w；整体缩小 30%（原 38×68 / drawScale 1.45）
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 18,   // 碰撞伤害 18；正方体走独立 spellCubes 弹道，不用通用子弹字段
+      fireInterval: [1e9, 1e9],   // 攻击逻辑在专属状态机内处理，不走通用开火
     },
     // 特殊敌机：暴风之眼技能2 召唤的大型龙卷（可击毁、缓慢下移直至脱离战场、随机 360° 射风弹）
     tornado: {
@@ -393,8 +480,8 @@
   // 焦香螺旋桨参数（特殊3类火焰灼烧无人机）：登场后绕大圈巡航，火焰光环持续灼烧我方战机
   const JIAOXIANG = {
     speed: 108,            // 巡航速度（原 180 降低 40%）
-    entryBoost: 1.8,       // 顶部入场瞬间最大速度倍率（180%），0.5s 内衰减至 100%
-    entryBoostTime: 0.5,   // 入场加速衰减时长
+    entryBoost: 1.5,       // 就位前（非侧翼入场）移速加成倍率（150%）；侧翼入场无此加成
+    entryBoostDecayDist: 140,   // 距目标点小于此值时，加成按剩余距离线性衰减，到位（entryReach）降回 100%
     turnRate: 3.0,         // 转向速率（速度向量朝期望方向插值速率；越大转弯越急，保证速度曲线连贯无突变）
     entryReach: 26,        // 入场到达判定距离（距目标点小于此值即切入绕圈；速度向量保留，无位置重置）
     leadAngle: 1.0,        // 绕圈引导点领先角度（rad）：追踪圆周上领先此角度的点，形成大致圆形轨迹
@@ -407,7 +494,7 @@
     auraR: 98,             // 火焰光环半径（世界坐标；原 85 扩大 15%）
     nearR: 55,             // 近本体判定半径（圈内灼烧翻倍）
     burnDps: 15,           // 光环内每秒灼烧伤害（近本体 ×2 = 30）
-    flankChance: 0.20,     // 侧翼出场概率
+    flankChance: 0.35,     // 侧翼出场概率
     orbitRMin: 150,        // 绕圈半径随机下限（逐次出场随机；受屏宽约束，半径越大圆心 X 越贴近中线）
     orbitRMax: 200,        // 绕圈半径随机上限
     orbitBottomMin: 0.84,  // 圈底位置随机下限（占屏高比——决定火焰光环可灼烧的最低区域）
@@ -519,6 +606,51 @@
     spawnHighLv: 0.08,     // lv10 后替换概率
   };
 
+  // 法术矩阵参数（特殊2类白红菱形法师无人机）：慢速下降到悬停带停稳 → 朝玩家左右 ±15° 发射发光正方体（独立 spellCubes 弹道）
+  // 正方体限程后快速减速、缓慢黯淡，末端原位置停留 0.4~0.8s（仍可伤害）再快速渐隐；受主战机伤害 -30%；法术阵列在场时偏移角/速度增强
+  const FASHI_MATRIX = {
+    speed: 158,          // 常规移动速度（原 126 再 +25%）
+    entrySpeed: 316,     // 入场初速 = speed × 2，随后在 entryDecay 内快速衰减到 speed
+    entryDecay: 0.5,     // 入场初速衰减时长（s）
+    accel: 12,           // 速度积分收敛率（下降/离场）
+    dwell: 18,           // 到达目标区后「胡乱移动」持续时长，18s 后离场（挑战模式传 1e9 永驻）
+    hoverTopPct: 0.20,   // 目标停留区上界 = 屏高 × 0.20（从上往下 20%）
+    hoverBotPct: 0.40,   // 目标停留区下界 = 屏高 × 0.40（从上往下 40%）
+    jitter: 110,         // OU 相干随机游走幅度（胡乱移动的期望速度量级）
+    jitterRate: 2.0,     // OU 漂移目标变化频率（控晃动节奏）
+    turnRate: 3.0,       // 速度平滑转向率（低通滤波 → 轨迹连贯不卡顿）
+    edgePull: 260,       // 软边界回拉强度（接近活动区边缘时叠加朝内速度，避免贴边卡顿）
+    exitMul: 1.5,        // 离场向下加速倍率
+    firstDelay: 0.9,     // 就位后首次攻击延迟
+    fireInterval: [1.56, 2.4],   // 攻击间隔（原 [2.08, 3.2] 减少 25%）
+    cubeDmg: 16,         // 正方体伤害
+    cubeSpeed: 608,      // 正方体巡航速度（最大速度；原 434 再提高 40%）
+    cubeAccel: 6,        // 平滑加速率（spd 向 cruise 收敛，形成平滑速度曲线）
+    cubeR: 17,           // 正方体碰撞半径（最大尺寸；原 24 缩小 30%）
+    cubeHalf: 15,        // 正方体绘制半边长（最大尺寸；原 21 缩小 30%）
+    cubeGrowFrom: 0.5,   // 发射瞬间尺寸 = 最大 × 0.5
+    cubeGrowTime: 0.5,   // 从 50% 成长到最大尺寸的时长（s）
+    cubeTrailLen: 136,   // 光效拖尾长度（原 68 变长一倍；沿运动反方向的渐变光带）
+    bodySpinMin: 0.5,    // 机体本体自旋角速度下限（rad/s，方向随机）
+    bodySpinMax: 2.0,    // 机体本体自旋角速度上限（rad/s）
+    offsetDeg: 15,       // 常规发射左右偏移角上限（度）
+    offsetDegArray: 25,  // 法术阵列在场时偏移角上限（度）
+    cubeSpeedMulArray: 1.25,   // 法术阵列在场时正方体速度倍率（+25%）
+    rangeMin: 0.7,       // 射程下限 = 到玩家距离 × 0.7
+    rangeMax: 1.4,       // 射程上限 = 到玩家距离 × 1.4
+    rangeScreen: 0.15,   // 额外 + 15% 屏高
+    brakeDist: 46,       // 到达「最大射程 - brakeDist」时进入减速段
+    brakeRate: 8,        // 减速段收敛率（快速减慢）
+    lingerMin: 0.4,      // 末端原位置停留时长下限
+    lingerMax: 0.8,      // 末端原位置停留时长上限
+    dimRate: 0.55,       // 黯淡速率（较慢：保证停留期间仍清晰可见）
+    glowFloor: 0.35,     // 黯淡下限（不至于全黑）
+    fadeTime: 0.18,      // 停留结束后快速渐隐时长
+    mainDR: 0.3,         // 受主战机（非僚机）伤害 -30%
+    spawnLowLv: 0,       // lv10 前不出现（0 = 不替换，仅图鉴挑战可生成；同 POPIAN）
+    spawnHighLv: 0.15,   // lv10 后替换概率
+  };
+
   /* ---------- 场面压力权重刷新系统（替代固定冷却：gunshipCd / capitalCd / 清场门槛） ----------
    * 场上每种敌人有一个"压力权重"（仅用于刷新节流判定，与得分/难度无关）；
    * 压力比 = 场上敌人权重和 / 满场基准（PRESSURE_CAPACITY）。
@@ -538,6 +670,7 @@
     fashiA1: 2,                             // 法术大师A1（同 2类突击艇权重）
     popian: 2,                              // 破片（同 2类突击艇权重）
     fashiA2: 4,                             // 法术大师A2（高血量激光无人机，介于威龙与暴鸰之间）
+    fashiMatrix: 2,                         // 法术矩阵（同 2类突击艇权重）
   };
   const PRESSURE_CAPACITY = 25;   // 满场压力基准（权重和 ÷ 25 = 压力比）
   const SPAWN_SLOW_MUL = 2.5;     // 高于压力阈值时的波次刷新间隔倍率（较慢）

@@ -94,7 +94,10 @@
     missiles = [];
     blBombs = [];
     popianMissiles = [];
+    spellCubes = [];
+    cubeHitFx = [];
     douzhiFx = [];
+    slashFx = [];   // 群星之杀：斩击特效随重开清空
     zoneMarks = [];
     windFlows = [];
     pillarStrikes = [];
@@ -111,6 +114,7 @@
     player.shield = 0;
     player.respawnTimer = 0;
     player.hitCount = 0;
+    player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
     initWingmen();
 
     if (autoStart) {
@@ -172,32 +176,50 @@
         cvs.style.width = '56px'; cvs.style.height = '60px';
         const c = cvs.getContext('2d');
         c.scale(DPR, DPR);
-        c.translate(28, 32);
+        c.translate(31, 34);   // 补偿本体偏移(side*3,-3)在镜像后的左上偏移
         c.scale(-1, 1);   // 左右反转预览图
         // 暴走星焰尾（静态帧）：白紫亮焰，较常规更长更亮（与游戏内 wkBerserk 焰一致）
-        const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
-        fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
-        fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
-        fg.addColorStop(1, 'rgba(118, 88, 240, 0)');
-        c.fillStyle = fg;
-        c.beginPath();
-        c.moveTo(-3, 8);
-        c.lineTo(0, 8 + 15 + 5);
-        c.lineTo(3, 8);
-        c.closePath();
-        c.fill();
-        paintWingman(c, 1, true);   // 与游戏内僚机同一造型（暴走：含机翼延伸三角）
-        // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（星核过载）+ 翼尖微光
-        const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
-        aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
-        aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
-        c.fillStyle = aura;
-        c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
-        c.save();
-        c.globalAlpha = 0.55; c.shadowColor = '#b49bff'; c.shadowBlur = 12;
-        c.fillStyle = '#cbb8ff';
-        c.beginPath(); c.arc(12.3, 11.4, 2.2, 0, Math.PI * 2); c.fill();
-        c.restore();
+        const isBulwark = wm.weapon && wm.weapon.kind === 'fan';
+        if (isBulwark) {
+          c.scale(0.82, 0.82);   // 缩小以容纳前方装甲板
+          // 冷蓝暴走尾焰（静态帧）
+          const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
+          fg.addColorStop(0, 'rgba(234, 248, 255, 0.95)');
+          fg.addColorStop(0.5, 'rgba(150, 210, 255, 0.65)');
+          fg.addColorStop(1, 'rgba(60, 140, 240, 0)');
+          c.fillStyle = fg;
+          c.beginPath();
+          c.moveTo(-3, 8);
+          c.lineTo(0, 8 + 15 + 5);
+          c.lineTo(3, 8);
+          c.closePath();
+          c.fill();
+          paintWingmanBulwark(c, 1, true, 0.35);   // 重甲堡垒机体（暴走过热状态，静态帧）
+        } else {
+          const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
+          fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
+          fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
+          fg.addColorStop(1, 'rgba(118, 88, 240, 0)');
+          c.fillStyle = fg;
+          c.beginPath();
+          c.moveTo(-3, 8);
+          c.lineTo(0, 8 + 15 + 5);
+          c.lineTo(3, 8);
+          c.closePath();
+          c.fill();
+          paintWingman(c, 1, true);   // 与游戏内僚机同一造型（暴走：含机翼延伸三角）
+          // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（星核过载）+ 翼尖微光
+          const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+          aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
+          aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
+          c.fillStyle = aura;
+          c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+          c.save();
+          c.globalAlpha = 0.55; c.shadowColor = '#b49bff'; c.shadowBlur = 12;
+          c.fillStyle = '#cbb8ff';
+          c.beginPath(); c.arc(12.3, 11.4, 2.2, 0, Math.PI * 2); c.fill();
+          c.restore();
+        }
         card.appendChild(cvs);
       } else {
         card.classList.add('wingman-none');
@@ -213,6 +235,7 @@
         currentWingman = wm;
         wingmanGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.wingman === wm.id));
+        initWingmen();   // 同步重建僚机，避免 idle 预览与开局位置不一致（壁垒前侧 vs 群星后侧）
       });
       wingmanGrid.appendChild(card);
     }
@@ -234,15 +257,17 @@ function buildPlaneCards() {
       c.scale(DPR, DPR);
       c.translate(46, 38);
       c.scale(0.9, 0.9);   // 暴走翼片外扩至 ±42：画布加宽到 92 并以 0.9 缩放，机身尽量大且不裁切
-      paintShip(c, 1);   // 暴走状态（与游戏内 spreadT=1 一致：翼展加宽 + 粉色能量翼片展开）
-      // 暴走翼尖微光（静态帧，位置取翼尖展开后的实际坐标）
-      c.save();
-      c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
-      c.fillStyle = '#ff69b4';
-      for (const sx of [-1, 1]) {
-        c.beginPath(); c.arc(sx * 22 * 1.2, 10, 2.5, 0, Math.PI * 2); c.fill();
+      paintShip(c, 1, p);   // 暴走状态（与游戏内 spreadT=1 一致）；传入当前卡片机型 p
+      // 暴走翼尖微光（静态帧）——仅 chaos；群星之杀的侧角光已在 paintStarslayer 内绘制
+      if (p.id === 'chaos') {
+        c.save();
+        c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
+        c.fillStyle = '#ff69b4';
+        for (const sx of [-1, 1]) {
+          c.beginPath(); c.arc(sx * 22 * 1.2, 10, 2.5, 0, Math.PI * 2); c.fill();
+        }
+        c.restore();
       }
-      c.restore();
 
       const name = document.createElement('div');
       name.className = 'plane-card-name';
@@ -259,11 +284,6 @@ function buildPlaneCards() {
       });
       planeGrid.appendChild(card);
     }
-    // 占位：后续新机
-    const soon = document.createElement('div');
-    soon.className = 'plane-card plane-card-soon';
-    soon.textContent = '更多战机 · 敬请期待';
-    planeGrid.appendChild(soon);
   }
 
   function togglePause() {

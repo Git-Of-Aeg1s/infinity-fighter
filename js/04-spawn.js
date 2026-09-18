@@ -177,10 +177,13 @@
         x = edgeX - dirX * k * 18;
         y = baseY - k * 44;
       } else {
-        // V 字/箭头：中间领先，两侧后掠
-        const off = Math.abs(k - mid);
-        x = edgeX - dirX * off * 46;
-        y = baseY - off * 38;
+        // V 字/箭头：中间领先（顶点在最前），两侧沿竖直方向对称后掠张开——
+        // 用有符号偏移让中心对称的两架分到上(-)/下(+)两臂，避免旧 |k-mid| 使二者 x、y 完全相同而像素级重叠
+        const rel = k - mid;                 // 有符号：前半为负、后半为正
+        const d = Math.abs(rel);             // 距中心档数（越大越靠后）
+        const sgn = rel < 0 ? -1 : 1;        // 分到上(-)/下(+)两臂
+        x = edgeX - dirX * d * 46;           // 沿行进反方向后掠
+        y = baseY + sgn * d * 38;            // 两臂上下张开，形成 V/箭头
       }
       const r = Math.random();
       const behavior = pickSideSpawn();
@@ -199,6 +202,7 @@
       const y = vShape ? -50 - Math.abs(k - (n - 1) / 2) * 40 : -50 - k * 16;
       if (rollFashiA1()) spawnFashiA1(x, y);
       else if (rollPopian()) spawnPopian(x, y);
+      else if (rollFashiMatrix()) spawnFashiMatrix(x, y);
       else makeEnemy('striker', x, y, {
         behavior: Math.random() < 0.25 ? 'track' : 'straight',
         holdTimer: 8,   // 停留8s后再冲锋
@@ -218,6 +222,7 @@
       if (seq[k] === 2) {
         if (rollFashiA1()) spawnFashiA1(x, -50);
         else if (rollPopian()) spawnPopian(x, -50);
+        else if (rollFashiMatrix()) spawnFashiMatrix(x, -50);
         else makeEnemy('striker', x, -50, {
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
           holdTimer: rand(0.4, 0.8),
@@ -283,6 +288,7 @@
     const cx = CANVAS_W / 2;
     if (rollFashiA1()) spawnFashiA1(cx, -46);
     else if (rollPopian()) spawnPopian(cx, -46);
+    else if (rollFashiMatrix()) spawnFashiMatrix(cx, -46);
     else makeEnemy('striker', cx, -46, { behavior: 'track', holdTimer: rand(0.4, 0.7) });   // 顶点
     const pairs = 3;
     for (let k = 1; k <= pairs; k++) {
@@ -291,6 +297,7 @@
       for (const sx of [-1, 1]) {
         if (rollFashiA1()) spawnFashiA1(cx + sx * dx, y);
         else if (rollPopian()) spawnPopian(cx + sx * dx, y);
+        else if (rollFashiMatrix()) spawnFashiMatrix(cx + sx * dx, y);
         else makeEnemy('striker', cx + sx * dx, y, {
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
           holdTimer: rand(0.4, 0.8),
@@ -313,6 +320,7 @@
       const sx = CANVAS_W / 2 + k * 60;
       if (rollFashiA1()) spawnFashiA1(sx, -50);
       else if (rollPopian()) spawnPopian(sx, -50);
+      else if (rollFashiMatrix()) spawnFashiMatrix(sx, -50);
       else makeEnemy('striker', sx, -50, {
         behavior: Math.random() < 0.3 ? 'track' : 'straight',
         holdTimer: rand(0.5, 1.0),
@@ -338,6 +346,7 @@
       } else {
         if (rollFashiA1()) spawnFashiA1(x, y);
         else if (rollPopian()) spawnPopian(x, y);
+        else if (rollFashiMatrix()) spawnFashiMatrix(x, y);
         else makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: rand(0.4, 0.9) });
       }
     }
@@ -592,6 +601,34 @@
     return e;
   }
 
+  // 2类突击艇替换判定：lv10 前不出现（spawnLowLv=0），lv10 后以 spawnHighLv 概率替换（权重见 PRESSURE_W.fashiMatrix）
+  function rollFashiMatrix() {
+    const chance = state.level < 10 ? FASHI_MATRIX.spawnLowLv : FASHI_MATRIX.spawnHighLv;
+    return Math.random() < chance;
+  }
+
+  // 特殊2类：法术矩阵 —— 白红菱形法师无人机：入场下降（初速 2.3× 快速衰减）到 20%~40% 屏高目标区 →
+  // OU 相干随机游走「胡乱移动」（不脱离战场）→ 18s 后加速向下离场；移动期间朝玩家左右 ±15° 发射发光正方体
+  // （独立 spellCubes 弹道，见 updateSpellCubes）；受主战机伤害 -30%；法术阵列在场时偏移角/速度增强
+  function spawnFashiMatrix(x, y, o) {
+    o = o || {};
+    const e = makeEnemy('fashiMatrix', x != null ? x : rand(110, CANVAS_W - 110), y != null ? y : -60, {
+      hoverY: o.hoverY != null ? o.hoverY : rand(CANVAS_H * FASHI_MATRIX.hoverTopPct, CANVAS_H * FASHI_MATRIX.hoverBotPct),
+      holdTimer: o.holdTimer != null ? o.holdTimer : FASHI_MATRIX.dwell,   // 胡乱移动持续时长（挑战模式传 1e9 永驻）
+      fireTimer: FASHI_MATRIX.firstDelay,   // 就位后首攻延迟（覆盖注册表 fireInterval[1e9,1e9] 天文默认）
+    });
+    // 独立移动状态机（见 updateEnemyMovement 的 fashiMatrix 分支）：0=入场下降 1=胡乱移动 2=离场
+    e.mxPhase = 0;
+    e.entryT = 0;
+    e.wanderT = 0;
+    e.wanderX = 0; e.wanderY = 0;             // OU 相干随机游走漂移向量
+    e.vx = 0; e.vy = FASHI_MATRIX.entrySpeed; // 入场初速 2×（随后在 entryDecay 内快速衰减到 speed）
+    // 机体本体自旋（菱形绕中心旋转）：方向随机、转速「有的慢有的一般」
+    e.rot = Math.random() * Math.PI * 2;
+    e.bodySpin = (Math.random() < 0.5 ? -1 : 1) * rand(FASHI_MATRIX.bodySpinMin, FASHI_MATRIX.bodySpinMax);
+    return e;
+  }
+
   // 特殊3类：暴鸰 —— 自爆无人机：不悬停、以炮艇 40% 速度径直下压；登场 0.8s 后进入玩家距离内即
   // 停车锁定（玩家位置浮现红色预警区）→ 炸弹向下脱离（火星四溅）→ 1s 后极速加速冲向预警区中心爆炸（仅伤玩家）；
   // 投弹后以炮艇 110% 速度继续俯冲离场；被击毁时若炸弹尚未投出 → 原地爆炸（敌我通杀）
@@ -721,7 +758,7 @@
     return e;
   }
 
-  // 焦香螺旋桨：火焰灼烧无人机，登场后移动到场地 40% 以下位置绕大圈巡航；20% 概率从侧翼出场
+  // 焦香螺旋桨：火焰灼烧无人机，登场后移动到场地 40% 以下位置绕大圈巡航；35% 概率从侧翼出场
   function spawnJiaoxiang() {
     // 圆心/半径逐次随机：半径 150~200、圈底 84%~94% 屏高（圈底越低，光环越接近乃至烧到屏幕最下方）；
     // 圆心 X 在屏中心附近随机（受边框余量收缩：半径越大越贴中线）；轨迹由绕圈阶段出界硬 clamp 兜底，绝不出边框
@@ -746,16 +783,15 @@
       e.vx = e.jxDir * JIAOXIANG.speed;   // 初始速度：水平朝内（无加速）
       e.vy = 0;
     } else {
-      // 顶部出场：180% 加速 0.5s 衰减，光环延迟 0.8s
+      // 顶部出场：就位前 150% 移速加成（到位前一段距离按剩余距离衰减），光环延迟 0.8s
       const sx = rand(80, CANVAS_W - 80);
       e = makeEnemy('jiaoxiang', sx, -60, {});
       e.jxFlank = false;
       e.jxPhase = 0;
-      e.jxEntryT = 0;        // 入场计时（用于加速衰减）
       e.jxTargetX = cx;      // 入场目标点：圈顶
       e.jxTargetY = cy - R;
       e.jxOrbitDir = Math.random() < 0.5 ? 1 : -1;   // 绕圈方向随机
-      // 初始速度：朝目标点方向，带 180% 入场加速
+      // 初始速度：朝目标点方向，带 150% 入场加成（满值起步，随后按剩余距离衰减）
       const idx = e.jxTargetX - sx, idy = e.jxTargetY - (-60);
       const il = Math.hypot(idx, idy) || 1;
       const iv = JIAOXIANG.speed * JIAOXIANG.entryBoost;
@@ -856,6 +892,9 @@
         break;
       case 'popian':
         spawnPopian(cx, -50);   // 直线急停锁停后持续红圈预警三连发导弹；停稳后永驻场
+        break;
+      case 'fashiMatrix':
+        spawnFashiMatrix(rand(60, CANVAS_W - 60), -50, { holdTimer: 1e9 });   // 随机水平位置入场（测试页可观察左/右不同发射角度下的立体面）→ 目标区胡乱移动 + 持续发射发光正方体；挑战模式永驻场
         break;
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });

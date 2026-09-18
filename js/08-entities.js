@@ -1,6 +1,28 @@
 // 08-entities：子弹 / 道具 / 水晶 / 粒子更新 + 全屏特效状态（flash / 冲击波）
 'use strict';
 
+  // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
+  // 返回对敌人 e 的伤害倍率；isWing 标识该伤害是否来自僚机弹幕。
+  function enemyDamageMul(e, isWing) {
+    let mul = 1;
+    // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
+    mul *= yu4AuraMul(e);
+    // 暴鸰：玩家处于其炸弹爆圈内时对暴鸰增伤 35%（无论炸弹是否已投出）
+    if (e.type === 'baoling' && player.alive &&
+        Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) mul *= 1 + BAOLING.vuln;
+    if (e.type === 'harbinger' && isWing) mul *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
+    if (e.type === 'tornado') mul *= isWing ? (1 + STORM.tornadoWingVuln) : (1 - STORM.tornadoMainDR);   // 风团：主武器减伤 50%、僚机伤害 +150%
+    // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
+    if (e.type === 'capital' && !e.arrived && (e.hoverY - e.y) >= 90) mul *= (1 - CAPITAL_DESCEND_DR);
+    if (e.type === 'capital' && player.weapon >= 4) mul *= (1 - CAPITAL_HIGHFIRE_DR);
+    else if (e.type === 'boss' && player.weapon === 1) mul *= (1 + BOSS_LOWFIRE_BONUS);
+    // 破片：火力 Lv1 / Lv2 时受到 30% / 10% 易伤（低火力补偿，主武器与僚机弹均生效；高能爆弹为真实伤害不加成）
+    if (e.type === 'popian' && player.weapon <= 2) mul *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
+    // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
+    if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
+    return mul;
+  }
+
   // ---------- 子弹 ----------
   function updateBullets(dt) {
     // 暗紫轨迹残影：留存一段时间后渐隐消失
@@ -20,20 +42,8 @@
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (Math.abs(b.x - e.x) < e.w / 2 + b.r && Math.abs(b.y - e.y) < e.h / 2 + b.r) {
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
-          let dmg = b.dmg;
-          // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
-          dmg *= yu4AuraMul(e);
-          // 暴鸰：玩家处于其炸弹爆圈内时对暴鸰增伤 35%（无论炸弹是否已投出）
-          if (e.type === 'baoling' && player.alive &&
-              Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) dmg *= 1 + BAOLING.vuln;
-          if (e.type === 'harbinger' && b.wing) dmg *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
-          if (e.type === 'tornado') dmg *= b.wing ? (1 + STORM.tornadoWingVuln) : (1 - STORM.tornadoMainDR);   // 风团：主武器减伤 50%、僚机伤害 +150%
-          // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
-          if (e.type === 'capital' && !e.arrived && (e.hoverY - e.y) >= 90) dmg *= (1 - CAPITAL_DESCEND_DR);
-          if (e.type === 'capital' && player.weapon >= 4) dmg *= (1 - CAPITAL_HIGHFIRE_DR);
-          else if (e.type === 'boss' && player.weapon === 1) dmg *= (1 + BOSS_LOWFIRE_BONUS);
-          // 破片：火力 Lv1 / Lv2 时受到 30% / 10% 易伤（低火力补偿，主武器与僚机弹均生效；高能爆弹为真实伤害不加成）
-          if (e.type === 'popian' && player.weapon <= 2) dmg *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
+          // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
+          const dmg = b.dmg * enemyDamageMul(e, b.wing);
           e.hp -= dmg;
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           pBullets.splice(i, 1);
@@ -108,6 +118,37 @@
       if (b.y > CANVAS_H + 20 || b.y < -40 || b.x < -20 || b.x > CANVAS_W + 20) {
         eBullets.splice(i, 1); continue;
       }
+      // 钢铁壁垒白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效
+      if (bulwarkActive()) {
+        if (b.laser) {
+          // 激光：截断裁切——不 splice，继续按原逻辑生长/推进；本帧计算 clipLen（无相交置 null），渲染与命中判定按此截断
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const ux = b.vx / sp, uy = b.vy / sp;
+          const clip = clipAgainstShield(b.x, b.y, ux, uy, b.len);
+          b.clipLen = clip ? clip.d : null;
+          if (clip && Math.random() < 0.6) spawnParticles(clip.x, clip.y, '#eaf6ff', 2, 90);   // 交点节流迸火花
+        } else if (b.len && b.oval) {
+          // 椭圆风条：head 端先触盾，逐帧“磨短”（裁掉越盾部分、头端钉在盾面），尾端越盾（有效长度≤0）即消解
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const ux = b.vx / sp, uy = b.vy / sp;
+          const halfL = b.len / 2;
+          const tx = b.x - ux * halfL, ty = b.y - uy * halfL;   // 尾端
+          const clip = clipAgainstShield(tx, ty, ux, uy, b.len);
+          if (clip) {
+            spawnParticles(clip.x, clip.y, '#eaf6ff', 3, 110);
+            if (clip.d <= 0.5) { eBullets.splice(i, 1); continue; }   // 被吃完
+            b.len = clip.d;                                   // 收缩到盾面
+            b.x = tx + ux * clip.d / 2; b.y = ty + uy * clip.d / 2;   // 尾端不动、中心回移
+          }
+        } else {
+          // 普通直射弹：扫掠线段(prev→cur)与盾相交则吸收
+          const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y);
+          if (hit) {
+            spawnParticles(hit.x, hit.y, '#eaf6ff', 6, 150);
+            eBullets.splice(i, 1); continue;
+          }
+        }
+      }
       // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
       if (!b.laser && player.shield > 0 && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r) {
@@ -123,7 +164,9 @@
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const ux = b.vx / sp, uy = b.vy / sp;
           const py = player.y + PLAYER.hitOffsetY;
-          const tproj = clamp((player.x - b.x) * ux + (py - b.y) * uy, 0, b.len);
+          // 钢铁壁垒白盾截断：命中判定仅到 clipLen（盾前段），越盾部分不伤人
+          const effLen = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len;
+          const tproj = clamp((player.x - b.x) * ux + (py - b.y) * uy, 0, effLen);
           hitPlayer = Math.hypot(player.x - (b.x + ux * tproj), py - (b.y + uy * tproj)) < PLAYER.hitRadius + b.r;
         } else if (b.len) {
           const sp = Math.hypot(b.vx, b.vy) || 1;

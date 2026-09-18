@@ -103,6 +103,11 @@
     shield: 0,         // 量子护盾剩余时间
     respawnTimer: 0,   // 掉命后重生倒计时
     hitCount: 0,       // 受击计数：累计两次才掉一层火力
+    // 群星之杀（斩击武器）运行态：
+    slashCd: 0,        // 距下次斩击的冷却（s）
+    slashTarget: null, // 当前锁定光束选中的敌人引用（每帧刷新）
+    slashQueued: 0,    // 暴走三连斩：待释放的剩余斩击次数
+    slashGapT: 0,      // 暴走三连斩：距下一击的间隔计时
   };
 
   /** @type {Array} */ let enemies = [];
@@ -116,6 +121,8 @@
   /** @type {Array} */ let missiles = [];       // 预警结束后从上方下落的导弹
   /** @type {Array} */ let blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
   /** @type {Array} */ let popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
+  /** @type {Array} */ let spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
+  /** @type {Array} */ let cubeHitFx = [];       // 法术矩阵正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
   /** @type {Array} */ let zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警：风流约 1.1s / 风柱 1.3s）
   /** @type {Array} */ let windFlows = [];      // 标记到期后沿曲线呼啸而至的风流
   /** @type {Array} */ let pillarStrikes = [];  // 标记到期后降下的垂直风柱打击
@@ -123,6 +130,7 @@
   /** @type {Array} */ let stars = [];
   /** @type {Array} */ let wingmen = [];   // 僚机（成对，跟随主机两侧，不可被击中）
   /** @type {Array} */ let douzhiFx = [];  // 斗志昂扬死亡演出（脱离渐隐的蓝盒 / 淡黄扩大光环 / 快速渐隐的本体）
+  /** @type {Array} */ let slashFx = [];   // 群星之杀：空间斩击特效（选中目标处展开的紫白斩痕，短暂存留渐隐）
 
   // ---------- 星空 ----------
   // 星星着色：多数蓝白，少量粉(#FFC0CB)/青(#39C5BB)，与星云雾霭共同营造"青粉丝域"

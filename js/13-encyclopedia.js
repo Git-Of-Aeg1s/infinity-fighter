@@ -5,7 +5,7 @@
   // ---------- 怪物图鉴 ----------
   const ENCY_GRADES = [
     { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_moon', 'prolifera'] },
-    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian'] },
+    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix'] },
     { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2'] },
     { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold'] },
     { name: '长歌级', entries: ['boss', 'boss_storm'] },
@@ -94,7 +94,7 @@
 
     jiaoxiang: {
       name: '焦香螺旋桨', type: 'jiaoxiang', color: '#ff7a18', hp: 900, score: 600,
-      desc: '<b>无碰撞伤害、不攻击</b>：登场后<b>绕大圈巡航</b>——<b>圆心与半径逐次随机</b>（半径 150~200、圈底位于场地 <b>84%~94%</b> 高度、圆心 X 屏中心附近随机），轨迹含轻微漂移且<b>不出场边</b>；圈底最低时光环<b>可灼烧到屏幕最下方</b>。<b>20%</b> 概率从<b>侧翼</b>出现。登场 <b>0.8s</b>（侧翼 <b>1.2s</b>）后展开<b>火焰光环</b>：光环内我方战机<b>每秒 -15 血量</b>，接近本体（半径 55 内）<b>伤害翻倍（-30/s）</b>。<b>Lv10 前不出场</b>，击毁后掉落大量水晶。',
+      desc: '<b>无碰撞伤害、不攻击</b>：登场后<b>绕大圈巡航</b>——<b>圆心与半径逐次随机</b>（半径 150~200、圈底位于场地 <b>84%~94%</b> 高度、圆心 X 屏中心附近随机），轨迹含轻微漂移且<b>不出场边</b>；圈底最低时光环<b>可灼烧到屏幕最下方</b>。<b>35%</b> 概率从<b>侧翼</b>出现。登场 <b>0.8s</b>（侧翼 <b>1.2s</b>）后展开<b>火焰光环</b>：光环内我方战机<b>每秒 -15 血量</b>，接近本体（半径 55 内）<b>伤害翻倍（-30/s）</b>。<b>Lv10 前不出场</b>，击毁后掉落大量水晶。',
     },
 
     fashiA2: {
@@ -115,6 +115,11 @@
     popian: {
       name: '破片', type: 'popian', color: '#cfd6e0', hp: 200, score: 200,
       desc: '三连发炮弹无人机：<b>只沿直线飞行</b>——出场选定一个随机点（停留于 <b>30%~80%</b> 屏高、<b>不进入两侧 15% 边缘区</b>，离自身近的高度概率更高），直飞到点后<b>急停锁停</b>，除非被击毁不再移动；停稳后才能攻击。<b>20%</b> 概率从<b>侧翼</b>入场。<b>索敌范围 30% 屏高、每秒 +5%</b>；玩家进入范围后在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）：<b>首发 8 伤害</b>、后两发各 <b>5</b>；<b>若首发命中，则后两发炮弹无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。<b>碰撞伤害分段</b>：入场 0.5s 内无伤害、0.5~2s 为 20、2s 后为 37.5。<b>火力 Lv1 / Lv2 时受到 30% / 10% 易伤</b>。<b>Lv10 前出现权重极低，Lv10 后正常出现</b>。',
+    },
+
+    fashiMatrix: {
+      name: '法术矩阵', type: 'fashiMatrix', color: '#ff5566', hp: 80, score: 180,
+      desc: '白红菱形法师无人机：<b>竖菱形机体（高为宽 1.8 倍、本体自旋）</b>，入场<b>高速俯冲</b>（初速为常态 2 倍并快速衰减）降到<b>屏幕上方 20%~40% 区域</b>，随后<b>不规则地胡乱漂移</b>（不脱离战场），<b>约 18s 后加速离场</b>。移动期间朝玩家位置<b>左右 ±15° 以内</b>发射<b>通体白光的大正方体</b>（一个面恒朝玩家、边缘泛淡红光、带白光拖尾、发射后 0.5s 内由小长大）：正方体伤害 <b>16</b>、速度<b>略高于普通子弹</b>且平滑加速。<b>正方体射程有限</b>（随机为自身到玩家距离的 <b>70%~140% + 15% 屏高</b>）：抵达最大射程前<b>快速减速、光芒黯淡</b>，随后在<b>原位置停留 0.4~0.8s</b>（不动但仍能造成伤害），最后<b>快速渐隐</b>。碰撞伤害 <b>18</b>。生命值 <b>80</b>，<b>受到来自主战机的伤害降低 30%</b>（僚机弹幕正常）。<b>Lv10 后才会出现</b>。',
     },
 
     capital_crimson: {
@@ -653,12 +658,134 @@ boss_storm: {
     }
   }
 
+  // ---------- 战机 & 僚机：每秒平均伤害（DPS）表 ----------
+  // 火力等级列（1~4 常规 + 5 暴走）；值 = 该等级持续输出 10s 的理论总伤 ÷ 10（即每秒平均伤害）
+  const INFO_FIRE_LEVELS = [1, 2, 3, 4, 5];
+
+  // 每秒平均伤害格式化（取整）
+  function fmtDps(v) { return String(Math.round(v)); }
+
+  // 战机主炮 DPS：暴走(Lv5) 十射线×双倍伤害；Lv4 含半拍补射 2 发；plane 可选（预留按机型倍率）
+  function planeDps(level, plane) {
+    // 群星之杀（斩击模型）：单目标 DPS = 每周期斩击次数 × 单击伤害 / 攻击间隔
+    if (plane && plane.slashWeapon) {
+      const sl = STARSLAYER.levels[level] || STARSLAYER.levels[1];
+      return (sl.slashes || 1) * sl.dmg / sl.interval;
+    }
+    const lvl = WEAPON_LEVELS[level] || WEAPON_LEVELS[1];
+    const interval = level === 5 ? BERSERK.interval : lvl.interval;
+    let bullets;
+    if (level === 5) bullets = 10;                                   // 暴走：十射线双连发
+    else {
+      bullets = (WEAPON_LINES[level] || WEAPON_LINES[1]).length;
+      if (level === 4) bullets += 2;                                 // Lv4：半拍补射 2 发中间弹
+    }
+    // 单发伤害：常规级走 WEAPON_LEVELS.dmgMul（构成 80% 等比 DPS 链），暴走走 BERSERK.dmgMul
+    const dmgPerBullet = PLAYER.bulletDamage * (level === 5 ? BERSERK.dmgMul : (lvl.dmgMul || 1));
+    const mul = (plane && plane.dmgMulByLevel && plane.dmgMulByLevel[level]) || (plane && plane.dmgMul) || 1;
+    return bullets * dmgPerBullet * mul / interval;
+  }
+
+  // 僚机 DPS（左右两架合计）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
+  function wingmanDps(level, wingman) {
+    if (!wingman || wingman.empty) return 0;
+    // fan 模型（钢铁壁垒）：错序扇形，周期=interval、周期内发 count 发；DPS = count*dmg/interval
+    if (wingman.weapon && wingman.weapon.kind === 'fan') {
+      const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
+      return cfg.count * cfg.dmg / cfg.interval;
+    }
+    // volley 模型（群星允诺）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
+    const lv = WINGMAN_LEVELS[level] || WINGMAN_LEVELS[1];
+    const perCycle = lv.volleys.reduce((a, b) => a + b, 0);
+    const cycleTime = (lv.volleys.length - 1) * WINGMAN.volleyGap + lv.interval;
+    const lvMul = (wingman.dmgMulByLevel && wingman.dmgMulByLevel[level]) || 1;   // 机型专属等级倍率（构成 80% 等比 DPS 链）
+    const dmgPerBullet = WINGMAN.bulletDmg * (level === 5 ? 2 : 1) * lvMul;   // 暴走双倍
+    return 2 * perCycle * dmgPerBullet / cycleTime;
+  }
+
+  // 行首小预览图：战机复用 paintShip、僚机复用 paintWingman / paintWingmanBulwark（与选机卡同一造型）
+  function infoFighterCanvas(kind, wingman, plane) {
+    const S = 40;
+    const cvs = document.createElement('canvas');
+    cvs.width = S * DPR; cvs.height = S * DPR;
+    cvs.style.width = S + 'px'; cvs.style.height = S + 'px';
+    const c = cvs.getContext('2d');
+    c.scale(DPR, DPR);
+    c.translate(S / 2, S / 2);
+    if (kind === 'plane') { c.scale(0.5, 0.5); paintShip(c, 0, plane || currentPlane); }
+    else if (wingman && wingman.weapon && wingman.weapon.kind === 'fan') {
+      // 钢铁壁垒：冷蓝机体 + 前方白盾（缩小以容纳盾）；左右反转与选机卡一致
+      c.scale(-0.62, 0.62); paintWingmanBulwark(c, 1, false, 0.25);
+    }
+    else { c.scale(-0.95, 0.95); paintWingman(c, 1, false); }   // 左右反转，与选机卡一致
+    return cvs;
+  }
+
+  // DPS 表构建（行首预览 + 名称，列为火力等级）
+  function buildDpsTable(headers, rows) {
+    const table = document.createElement('table');
+    table.className = 'info-table';
+    const thead = document.createElement('tr');
+    for (const h of headers) {
+      const th = document.createElement('th');
+      th.textContent = h;
+      thead.appendChild(th);
+    }
+    table.appendChild(thead);
+    for (const r of rows) {
+      const fmt = r.fmt || fmtDps;
+      const tr = document.createElement('tr');
+      const td0 = document.createElement('td');
+      td0.className = 'info-ship-cell';
+      td0.appendChild(r.canvas);
+      const span = document.createElement('span');
+      span.textContent = r.label;
+      td0.appendChild(span);
+      tr.appendChild(td0);
+      for (const v of r.vals) {
+        const td = document.createElement('td');
+        td.textContent = v == null ? '—' : fmt(v);
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    return table;
+  }
+
+  function renderInfoPlanes() {
+    infoBody.innerHTML = '';
+    const headers = ['战机 / 僚机', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5 暴走' : 'Lv' + lv)];
+    const rows = [];
+    // 战机（主炮）：注册表驱动，新增机型自动追加行
+    for (const id in PLANES) {
+      const p = PLANES[id];
+      rows.push({
+        canvas: infoFighterCanvas('plane', null, p),
+        label: p.name + '（主炮）',
+        vals: INFO_FIRE_LEVELS.map(lv => planeDps(lv, p)),
+      });
+    }
+    // 僚机（左右两架合计）：注册表驱动，新增僚机自动追加行
+    for (const id in WINGMEN) {
+      const wm = WINGMEN[id];
+      if (wm.empty) continue;
+      rows.push({
+        canvas: infoFighterCanvas('wingman', wm),
+        label: wm.name + '（双僚机）',
+        vals: INFO_FIRE_LEVELS.map(lv => wingmanDps(lv, wm)),
+      });
+    }
+    infoBody.appendChild(buildDpsTable(headers, rows));
+    infoAppendNote('表中数值为<b>每秒平均伤害（DPS）</b> = 该火力等级下持续输出 10s 的理论总伤 ÷ 10。<b>战机</b>行为主炮单独输出，<b>僚机</b>行为左右两架合计；均为<b>裸伤</b>（不含敌方减伤 / 易伤、御4 力场、斗志昂扬攻速翻倍等战斗修正）。暴走（Lv5）为限时 6s 强化形态，此处按其伤害 / 射速持续计算。');
+  }
+
   function buildInfoTabs() {
     infoTabs.innerHTML = '';
     const defs = [
-      { id: 'weights', name: '怪物权重' },
-      { id: 'waves',   name: '特殊怪物波次' },
-      { id: 'mods',    name: '特殊修正' },
+      { id: 'weights',  name: '怪物权重' },
+      { id: 'waves',    name: '特殊怪物波次' },
+      { id: 'mods',     name: '特殊修正' },
+      { id: 'fighters', name: '战机&僚机' },
     ];
     for (const d of defs) {
       const b = document.createElement('button');
@@ -669,6 +796,7 @@ boss_storm: {
     }
     if (infoTab === 'weights') renderInfoWeights();
     else if (infoTab === 'waves') renderInfoWaves();
+    else if (infoTab === 'fighters') renderInfoPlanes();
     else renderInfoMods();
   }
 
