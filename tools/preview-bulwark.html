@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>守愿者暴走帧排查预览（临时）</title>
+<style>
+  body { background: #0a0e1c; color: #cfe8ff; font: 14px/1.6 sans-serif; margin: 24px; }
+  canvas { background: #101632; border: 1px solid #2a3a6a; margin: 8px 16px 8px 0; image-rendering: auto; }
+  h3 { margin: 18px 0 4px; }
+</style>
+</head>
+<body>
+<h3>左：常态　中：暴走（4× 放大）　右：暴走（8× 超放大，看六边形内部）</h3>
+<canvas id="c1" width="220" height="240"></canvas>
+<canvas id="c2" width="220" height="240"></canvas>
+<canvas id="c3" width="440" height="480"></canvas>
+<script type="module">
+import { paintWingmanBulwark } from './js/09-draw-ships.js';
+
+function draw(id, berserk, scale) {
+  const cvs = document.getElementById(id);
+  const g = cvs.getContext('2d');
+  g.fillStyle = '#101632';
+  g.fillRect(0, 0, cvs.width, cvs.height);
+  g.save();
+  g.translate(cvs.width / 2, cvs.height / 2 + 10);
+  g.scale(scale, scale);
+  if (berserk) {
+    // 复刻游戏内层级：金色背光在机体之下（drawWingmen 同款）
+    const aura = g.createRadialGradient(0, -1, 6, 0, -1, 36);
+    aura.addColorStop(0, 'rgba(255, 224, 150, 0.45)');
+    aura.addColorStop(0.55, 'rgba(255, 205, 110, 0.2)');
+    aura.addColorStop(1, 'rgba(255, 205, 110, 0)');
+    g.fillStyle = aura;
+    g.beginPath(); g.arc(0, -1, 36, 0, Math.PI * 2); g.fill();
+  }
+  g.translate(-3, 3);   // 抵消本体偏移(side*3,-3)，让本体居中
+  paintWingmanBulwark(g, 1, berserk, 0);
+  g.restore();
+}
+draw('c1', false, 2);
+draw('c2', true, 2);
+draw('c3', true, 4);
+</script>
+</body>
+</html>

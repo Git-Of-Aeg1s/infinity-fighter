@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>群星之杀 · 造型预览（真实渲染）</title>
+<style>
+  body { margin: 0; background: #060918; color: #9fb4d8; font: 13px/1.6 Consolas, monospace;
+         display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; }
+  h1 { color: #c084fc; font-size: 18px; margin: 0; }
+  .row { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; justify-content: center; }
+  .cell { text-align: center; }
+  canvas { background: radial-gradient(circle at 50% 42%, #101838 0%, #060918 72%); border: 1px solid #1d2b57; border-radius: 6px; }
+  #game { display: none; }
+</style>
+</head>
+<body>
+  <h1>群星之杀 · 造型预览（真实 canvas + 真实模块渲染）</h1>
+  <div class="row">
+    <div class="cell"><canvas id="c0" width="200" height="200"></canvas><div>常态收拢</div></div>
+    <div class="cell"><canvas id="c1" width="200" height="200"></canvas><div>常态全展开</div></div>
+    <div class="cell"><canvas id="c2" width="200" height="200"></canvas><div>展开动画循环</div></div>
+    <div class="cell"><canvas id="c4" width="200" height="200"></canvas><div>暴走形态（berserkT=1）</div></div>
+    <div class="cell"><canvas id="c5" width="200" height="200"></canvas><div>暴走变形动画</div></div>
+    <div class="cell"><canvas id="c3" width="120" height="120"></canvas><div>1:1 游戏内比例（常态）</div></div>
+  </div>
+  <!-- 02-core 顶层需要 #game 画布（页面内隐藏即可） -->
+  <canvas id="game"></canvas>
+
+  <script type="module">
+    import { paintStarslayer } from '../js/09-draw-ships.js';
+
+    function drawOn(id, spreadT, scale, opts = {}) {
+      const cvs = document.getElementById(id);
+      const g = cvs.getContext('2d');
+      const cx = cvs.width / 2, cy = cvs.height / 2;
+      function frame(t) {
+        g.clearRect(0, 0, cvs.width, cvs.height);
+        g.save();
+        g.translate(cx, cy);
+        g.scale(scale, scale);
+        paintStarslayer(g, opts.animateSpread ? (0.5 + 0.5 * Math.sin(t / 700)) : spreadT, undefined, opts.berserk);
+        g.restore();
+      }
+      if (opts.animate) {
+        (function loop(t) { frame(t); requestAnimationFrame(loop); })(0);
+      } else {
+        frame(0);
+      }
+    }
+    drawOn('c0', 0, 2.6);
+    drawOn('c1', 1, 2.6);
+    drawOn('c2', 0, 2.6, { animate: true, animateSpread: true });
+    drawOn('c4', 1, 1.6, { berserk: 1 });
+    (function loopBerserk() {
+      const t = performance.now();
+      drawOn('c5', 1, 1.6, { berserk: 0.5 + 0.5 * Math.sin(t / 900) });
+      requestAnimationFrame(loopBerserk);
+    })();
+    drawOn('c3', 1, 1);
+  </script>
+</body>
+</html>

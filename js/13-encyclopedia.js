@@ -1,5 +1,17 @@
 ﻿// 13-encyclopedia：怪物图鉴数据 / UI / 形态预览绘制
-'use strict';
+
+  // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
+  // 被依赖：12-ui(1 名) 14-main(1 名)
+  //
+  import { BERSERK, BOSS, CANVAS_H, CANVAS_W, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentPlane } from './01-config.js';
+  import { DPR, canvas, clamp, ctx, encyDetail, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx } from './02-core.js';
+  import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
+  import { WEAPON_LINES } from './07-player.js';
+  import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
+  import { drawEnemy } from './10-draw-world.js';
+  import { drawBoss } from './11-draw-boss.js';
+  import { resetGame } from './12-ui.js';
+
 
 
   // ---------- 怪物图鉴 ----------
@@ -7,33 +19,34 @@
     { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_moon', 'prolifera'] },
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix'] },
     { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2'] },
-    { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold'] },
-    { name: '长歌级', entries: ['boss', 'boss_storm'] },
+    { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray'] },
+
+    { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2'] },
   ];
   
   // 每种颜色变体独立成条目；type 用于绘制/生成，variant/behavior 用于强制指定变体/行为
   const ENCY_DATA = {
     side_pass: {
-      name: '白影侧翼艇', type: 'side', behavior: 'pass', color: '#f0f0f5', hp: 1, score: 60,
-      desc: '从侧上方斜插穿越战场，血量极低、一碰即碎。<b>无攻击</b>。1类编队权重 <b>65</b>（约 70%）。',
+      name: '白影侧翼艇', type: 'side', behavior: 'pass', color: '#f0f0f5', hp: 1, score: 50,
+      desc: '从侧上方斜插穿越战场，血量极低、一碰即碎。<b>无攻击</b>。1类编队权重 <b>70</b>（约 61%；Lv11 起 60）。',
     },
     side_shoot: {
-      name: '黄芒侧翼艇', type: 'side', behavior: 'shoot', color: '#ffd166', hp: 1, score: 60,
-      desc: '从侧上方斜插穿越战场。<b>整场仅攻击一次</b>：追踪玩家方向射出一发子弹（弹速 230、伤害 6），首次攻击间隔较长。1类编队权重 <b>10</b>（约 10.8%）。',
+      name: '黄芒侧翼艇', type: 'side', behavior: 'shoot', color: '#ffd166', hp: 10, score: 50,
+      desc: '从侧上方斜插穿越战场。<b>整场仅攻击一次</b>：入场 <b>1.2~2.8s</b> 后追踪玩家方向射出一发子弹（弹速 230、伤害 6）。1类编队权重 <b>15</b>（约 13%；Lv11 起 20）。',
     },
     side_kamikaze: {
-      name: '紫电侧翼艇', type: 'side', behavior: 'kamikaze', color: '#c084fc', hp: 1, score: 60,
-      desc: '从侧上方斜插穿越战场。<b>亡语：阵亡时向下垂直射出一发子弹</b>（弹速 ×1.1）。1类编队权重 <b>5</b>（约 5.4%）。',
+      name: '紫电侧翼艇', type: 'side', behavior: 'kamikaze', color: '#c084fc', hp: 1, score: 80,
+      desc: '从侧上方斜插穿越战场。<b>亡语：阵亡时向下垂直射出一发子弹</b>（弹速 ×1.1）。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。',
     },
     side_moon: {
-      name: '赤月侧翼艇', type: 'side', behavior: 'moon', color: '#ff3b30', hp: 1, score: 60,
-      desc: '从侧上方斜插穿越战场。入场 <b>1.8~2.8s</b> 后的随机时刻朝航向正前方发射一枚子弹（仅此一次，弹速 230、伤害 6）；<b>到死未发射则有 12% 概率在阵亡时补射</b>。1类编队权重 <b>5</b>（约 5.4%）；掉落按红色标记结算（升级套件 ×1.5）。',
+      name: '赤月侧翼艇', type: 'side', behavior: 'moon', color: '#ff3b30', hp: 1, score: 50,
+      desc: '从侧上方斜插穿越战场。入场 <b>1~2.5s</b> 后的随机时刻朝航向正前方发射一枚子弹（仅此一次，弹速 230、伤害 6）；<b>到死未发射则有 12% 概率在阵亡时补射</b>。1类编队权重 <b>20</b>（约 17.4%；Lv11 起 25）；掉落按红色标记结算（升级套件 ×1.5）。',
     },
     prolifera: {
-      name: '增生侧翼艇', type: 'prolifera', color: '#7fe8c9', hp: 1, score: 60,
+      name: '增生侧翼艇', type: 'prolifera', color: '#7fe8c9', hp: 1, score: 50,
       // 衍生敌人无独立条目：卫护飞船连同图像一并在本条目中展示（详情大图右侧）
       child: { type: 'escort', color: '#6a5ce0' },
-      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 2~3 个卫护飞船</b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>8</b>（约 8.6%）。<hr /><b>衍生 · 卫护飞船</b>：<b>深蓝紫渐变机体、边缘泛紫色光芒</b>（与水晶的浅蓝明显区分）；<b>无攻击</b>，随母舰航向漂移；碰撞 4.8、造成无敌时间 0.48s。<b>出厂必带虚化护盾：75% 概率 0.1s / 22% 概率 0.16s / 2% 概率 0.2s / 1% 概率 0.4s</b>（虚化期间不受伤害、我方炮弹穿过）。击毁后 <b>80% 掉 1 个水晶、20% 掉 2 个</b>。',
+      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 2~3 个卫护飞船</b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。<hr /><b>衍生 · 卫护飞船</b>：<b>深蓝紫渐变机体、边缘泛紫色光芒</b>（与水晶的浅蓝明显区分）；<b>无攻击</b>，随母舰航向漂移；碰撞 4.8、造成无敌时间 0.48s。<b>出厂随机虚化护盾：80% 不带盾 / 15% 概率 0.1s / 4% 概率 0.15s / 1% 概率 0.25s</b>（虚化期间不受伤害、我方炮弹穿过）。击毁后 <b>80% 掉 1 个水晶、20% 掉 2 个</b>。',
     },
     striker_crimson: {
       name: '赤红突击艇', type: 'striker', variant: 'crimson', color: '#ff3b30', hp: 48, score: 150,
@@ -56,86 +69,103 @@
       desc: '在场地 30%~80% 高度的随机位置上方<b>渐显浮现</b>，下移停驻 <b>0.2s</b>（白环从核心掠过机体至边缘消失作预警），<b>白环散尽的同时</b>以随机方向为基准向四周<b>正六边形或正八边形（随机）</b>的均匀方向各射 1 发，随即下移同距<b>渐隐离场</b>。<b>无法碰撞</b>：与玩家互相穿过、不受撞机反伤。<b>击毁必定掉落 2~3 个水晶</b>。出现概率：Lv10 前 <b>1.2%</b>、Lv10 起 <b>4.8%</b>。',
     },
     gunship_violet: {
-      name: '紫晶炮艇', type: 'gunship', variant: 'violet', color: '#c084fc', hp: 300, score: 400,
+      name: '紫晶炮艇', type: 'gunship', variant: 'violet', color: '#c084fc', hp: 350, score: 400,
       desc: '技能循环：<b>正下方同向双连射</b>（不锁定玩家）→ <b>8 发环形爆发</b> → <b>追踪±5°双弹</b>（一次同时两发）→ <b>瞄准单发高速狙击</b>。',
     },
     gunship_crimson: {
-      name: '赤红炮艇', type: 'gunship', variant: 'crimson', color: '#ff5a5a', hp: 300, score: 400,
+      name: '赤红炮艇', type: 'gunship', variant: 'crimson', color: '#ff5a5a', hp: 350, score: 400,
       desc: '火力最猛的炮艇。技能循环：<b>瞄准三连射 + 左右双曲线弹流</b>（同时发射，弹流向两侧大幅外扩）→ <b>反向双曲线弹流</b>（右侧弹往左扫、左侧弹往右扫、向内交叉）→ <b>三方向三段齐射</b>（垂直向下与下±20°，每方向 2 发 ×3 段，第三段射完才重计攻击间隔）。',
     },
     gunship_amber: {
-      name: '金曜炮艇', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 300, score: 400,
+      name: '金曜炮艇', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 400, score: 400,
       desc: '技能交替：<b>“八”字形斜弹幕</b>（左右各一组对称斜弹、与竖直夹角 10°，快速连发两次、短暂间隔后再两次）→ <b>瞄准单发巨型弹</b>（伤害更高）。',
     },
     harbinger: {
-      name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 777, score: 450,
+      name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 900, score: 600,
+      lore: '炮舰术师操作的无人战舰，装甲厚重，材质坚实。正是他们引导了炮舰猛烈的导弹袭击。',
       desc: '较慢入场，悬停于后排。<b>不直接开火</b>：核心充能 <b>3s</b> 后召唤垂直落下的导弹（<b>最多导引 4 次</b>），随后循环；就位约 <b>18s</b> 后停火开走。<br />导弹命中：<b>HP&lt;60 直接击杀</b>；HP≥60 损失 80% 当前血量且武器等级 -1。装甲对<b>僚机弹幕减伤 25%</b>，碰撞 12.5。',
     },
     weilong: {
-      name: '威龙', type: 'weilong', color: '#ff9a1a', hp: 4567, score: 1200,
+      name: '威龙', type: 'weilong', color: '#ff9a1a', hp: 4500, score: 1200,
+      lore: '敌方人员操纵的无人战舰，某太空游戏的粉丝制作的外观，因此被称为威龙。装备有高射速的速射铳和远程操控施术单元，可能是由术师远程操作。优秀的攻击性能让其会对战机构成较大威胁。',
       desc: '从偏左/偏右半场出场，沿<b>蛇形路径</b>巡航（下降与横向靠边交替，途中停顿 2s 后向下离场），方向随出场侧镜像。每隔一段时间朝玩家射 <b>5 枚无偏转快弹</b>，<b>攻击时停止移动</b>。<b>血量 &lt;60% 后不计入场面压力</b>（≥60% 时拖慢敌方刷新）。<b>Lv10 起作为特殊 3 类槽位出场</b>。',
     },
     hanshuang: {
-      name: '寒霜', type: 'hanshuang', color: '#8fd8ff', hp: 555, score: 450,
-      desc: '<b>不攻击</b>：下移到场地 <b>72%~82%</b> 随机高度停留 <b>20s</b> 后离场。登场 1s 后展开<b>大范围冰蓝寒霜光圈</b>：圈内我方战机<b>射速 -35%、移速 -35%</b>（以核心位置判定）。<b>出厂随机携带虚化护盾</b>：30% 概率 1.5s / 20% 概率 2s / 10% 概率 2.5s / 5% 概率 5s。<b>Lv10 起作为特殊 3 类槽位出场</b>。优先击毁或撤离其光圈再输出。',
+      name: '寒霜', type: 'hanshuang', color: '#8fd8ff', hp: 600, score: 500,
+      lore: '敌方人员操纵的无人战舰，配备了额外护甲以致较难被击毁，其最初的原型由一个图像引擎工作室设计。能通过特殊的装置造成周围温度急剧下降，在此范围内我方战舰的攻速和移速会大幅度削减。',
+      desc: '<b>不攻击</b>：<b>50% 概率顶部入场</b>（初速 +100%、1s 内衰减完毕）/<b>50% 概率从侧翼 25%~50% 高度入场</b>（斜向下飞向同半场落点、入场移速 -30%，左翼不越中线、右翼同理），到达 <b>72%~82%</b> 随机高度停留 <b>20s</b> 后离场。<b>入场未减速阶段判定箱略缩、受伤 -20%</b>。登场 1s 后展开<b>大范围冰蓝寒霜光圈</b>：圈内我方战机<b>顶部入场射速/移速 -35%、侧翼入场 -25%</b>（以核心位置判定）。<b>出厂随机携带虚化护盾</b>：顶部 30% 概率 1.5s / 20% 概率 2s / 10% 概率 2.5s / 5% 概率 5s；侧翼 35% 概率 1.5s / 20% 概率 2s / 10% 概率 2.5s（无 5s 档）。<b>Lv10 起作为特殊 3 类槽位出场</b>。优先击毁或撤离其光圈再输出。',
     },
     yu4: {
-      name: '御4', type: 'yu4', color: '#d6c078', hp: 500, score: 450,
+      name: '御4', type: 'yu4', color: '#d6c078', hp: 700, score: 500,
+      lore: '敌方人员操纵的无人战舰，型号标记为御4。虽然本身不具有攻击能力，却能对敌方战舰进行支援，需要注意。',
       desc: '<b>不攻击</b>：登场 <b>0.5s</b> 后展开<b>金色六边力场</b>，力场内<b>所有敌人受到的非真实伤害降低 30%</b>（<b>高能爆弹为真实伤害</b>，无视力场）。下降较慢，停留 <b>25s</b> 后离场；碰撞 15。<b>Lv10 前不出场</b>。优先击毁以免其庇护友军。',
     },
     anvil: {
-      name: '铁砧', type: 'anvil', color: '#8ce36b', hp: 600, score: 450,
+      name: '铁砧', type: 'anvil', color: '#8ce36b', hp: 500, score: 500,
+      lore: '敌方的防御型空援无人战舰，将使范围内敌方单位的生命值缓慢恢复。',
       desc: '<b>不攻击</b>：登场 <b>0.5s</b> 后展开<b>正方形治疗光环</b>，光环内<b>所有敌人（含自身）每秒回复 1% 最大生命 + 60 生命</b>。悬停于炮火先兆者前方，停留 <b>25s</b> 后离场。<b>Lv10 前不出场</b>。优先击毁以免其持续治疗敌军。',
     },
     baoling: {
-      name: '暴鸰', type: 'baoling', color: '#e3e6ec', hp: 500, score: 400,
+      name: '暴鸰', type: 'baoling', color: '#e3e6ec', hp: 500, score: 500,
+      lore: '敌方人员操纵的无人战舰，飞行速度缓慢。携带有爆破弹头，将会在接近我方战机时投掷，并造成范围物理伤害。据说设计灵感来自某种幻想生物。虽然在投弹之后不再具有任何攻击性，但是因重量减轻而得以更快速地移动。',
       desc: '自爆无人机：<b>不悬停</b>、径直下压，进入<b>索敌半径（1/3 屏幕长度）</b>即<b>停车锁定</b>——玩家位置浮现红色预警区，炸弹脱离后经 0.8s 低速下坠再<b>极速加速</b>冲向预警区中心爆炸：<b>玩家 40 伤害</b>（不伤敌人）。<b>预警区形成前被击毁则炸弹原地爆炸</b>，对圈内<b>所有单位</b>造成伤害（玩家 40 / 敌人 600 + 20% 最大生命、封顶 2600，可连锁殉爆）；<b>预警区一旦形成，炸弹即视为脱离——击毁暴鸰也无法终止，炸弹仍将抵达目标位置并爆炸</b>。投弹后<b>停留 1.2s</b> 再俯冲离场；碰撞 12。<b>玩家处于爆圈内时对暴鸰增伤 35%</b>（无论是否已投弹）。普通炮艇 <b>1.5%</b> 概率替换出现（成对编队则两架均为暴鸰）；<b>Lv10 起也占特殊 3 类槽位权重</b>。',
     },
 
     jiaoxiang: {
-      name: '焦香螺旋桨', type: 'jiaoxiang', color: '#ff7a18', hp: 900, score: 600,
-      desc: '<b>无碰撞伤害、不攻击</b>：登场后<b>绕大圈巡航</b>——<b>圆心与半径逐次随机</b>（半径 150~200、圈底位于场地 <b>84%~94%</b> 高度、圆心 X 屏中心附近随机），轨迹含轻微漂移且<b>不出场边</b>；圈底最低时光环<b>可灼烧到屏幕最下方</b>。<b>35%</b> 概率从<b>侧翼</b>出现。登场 <b>0.8s</b>（侧翼 <b>1.2s</b>）后展开<b>火焰光环</b>：光环内我方战机<b>每秒 -15 血量</b>，接近本体（半径 55 内）<b>伤害翻倍（-30/s）</b>。<b>Lv10 前不出场</b>，击毁后掉落大量水晶。',
+      name: '焦香螺旋桨', type: 'jiaoxiang', color: '#ff7a18', hp: 1000, score: 600,
+      lore: '“螺旋桨天堂”大量采用的升级版浮空动力装置，动力强劲，浮空稳定，甚至还额外附带了驱羽兽功能，堪称完美。<br />但它的散热问题反而更严重了。装载了它的浮空平台，一年四季都弥漫着恼人的焦香。',
+      desc: '<b>无碰撞伤害、不攻击</b>：登场后<b>绕大圈巡航</b>——<b>圆心与半径逐次随机</b>（半径 150~200、圈底位于场地 <b>84%~94%</b> 高度、圆心 X 屏中心附近随机），轨迹含轻微漂移且<b>不出场边</b>；圈底最低时光环<b>可灼烧到屏幕最下方</b>。<b>35%</b> 概率从<b>侧翼</b>出现。登场 <b>0.8s</b>（侧翼 <b>1.2s</b>）后展开<b>火焰光环</b>：光环内我方战机<b>每秒 -22.5 血量</b>，接近本体（半径 55 内）<b>伤害翻倍（-45/s）</b>。<b>Lv10 前不出场</b>，击毁后掉落大量水晶。',
     },
 
     fashiA2: {
-      name: '法术大师A2', type: 'fashiA2', color: '#c084fc', hp: 900, score: 450,
-      desc: 'A1 的<b>强化版</b>：不停留、直接下压（可左右斜移），登场 <b>1.8~2.3s</b> 后进入攻击周期——<b>停移</b> → 朝玩家发射<b>紫色激光</b>（伤害 <b>32</b>，持续生长至出界）→ 攻击后 <b>50%</b> 概率朝<b>斜下方（45°）</b>移动（攻击间隔 <b>1.22~1.83s</b>）。斜移常在下一次攻击前未走完——照常刹停射击后<b>放弃剩余斜移、径直下降</b>。碰撞 35。<b>替换权重：Lv10 前 0% / Lv10 起 3 类槽位 20</b>。',
+      name: '法术大师A2', type: 'fashiA2', color: '#c084fc', hp: 900, score: 600,
+      lore: '敌方人员操纵的无人战舰，去掉部分飞行辅助模块，牺牲了飞行速度以换取装备更大型法术武器的空间。能进行远程法术攻击，需要特别小心。',
+      desc: 'A1 的<b>强化版</b>：不停留、直接下压（可左右斜移），登场 <b>1.8~2.3s</b> 后进入攻击周期——<b>停移</b> → 朝玩家发射<b>紫色激光</b>（伤害 <b>32</b>，持续生长至出界）→ 攻击后 <b>50%</b> 概率朝<b>斜下方（45°）</b>移动（攻击间隔 <b>1.22~1.83s</b>）。斜移常在下一次攻击前未走完——照常刹停射击后<b>放弃剩余斜移、径直下降</b>。碰撞 35。<b>替换权重：Lv10 前 0% / Lv10 起 3 类槽位 30</b>。',
     },
 
     douzhi: {
-      name: '斗志昂扬', type: 'douzhi', color: '#c9d8ea', hp: 250, score: 300,
-      desc: '增益无人机：<b>无碰撞伤害、不攻击</b>（与玩家互相穿过）。<b>每次关卡提升时有 5% 概率</b>从屏幕<b>左侧或右侧</b>出现，朝另一侧横穿（沿余弦曲线小幅上下浮动）。<b>击毁时</b>：我方战机与僚机的<b>攻击速度、弹道飞行速度翻倍，持续 8s</b>（伴随蓝盒脱离、光环演出后本体渐隐）。',
+      name: '斗志昂扬', type: 'douzhi', color: '#c9d8ea', hp: 250, score: 100,
+      lore: '艾伦精选科技公司感谢您别出心裁的赞助！这架无人战舰将时刻为场上战舰播报商业联合会精选广告段落，刺激大家的神经，让竞赛现场更加燥热！',
+      desc: '增益无人机：<b>无碰撞伤害、不攻击</b>（与玩家互相穿过）。<b>每次关卡提升时有 4% 概率</b>从屏幕<b>左侧或右侧</b>出现，朝另一侧横穿（沿余弦曲线小幅上下浮动）。<b>击毁时</b>：我方战机与僚机的<b>攻击速度、弹道飞行速度翻倍，持续 8s</b>（伴随蓝盒脱离、光环演出后本体渐隐）。',
     },
 
     fashiA1: {
-      name: '法术大师A1', type: 'fashiA1', color: '#a855f7', hp: 99, score: 180,
-      desc: '紫光激光无人机：<b>不停留</b>、匀速下降，出场 <b>1s</b> 后进入攻击周期——<b>停移</b> → 朝玩家发射<b>紫色激光</b>（伤害 16，逐渐生长）→ 攻击后 <b>50%</b> 概率<b>左右横移</b>一段随机距离（不飞出屏幕）→ 恢复下降。碰撞为普通 2 类的 80%。<b>Lv10 前出现权重低，Lv10 后较多出现</b>（2 类替换 30%）。',
+      name: '法术大师A1', type: 'fashiA1', color: '#a855f7', hp: 70, score: 180,
+      lore: '敌方人员操纵的无人战舰，飞行速度非常快，由某法术教育竞赛用无人战舰改装而来。其模块化设计使其能装备法术武器进行远程法术攻击，需要特别小心。',
+      desc: '紫光激光无人机：<b>不停留</b>、匀速下降，入场 <b>1.2~3s</b> 后（每架独立随机）进入首次攻击周期——<b>停移</b> → 朝玩家发射<b>紫色激光</b>（伤害 16，逐渐生长）→ 攻击后 <b>50%</b> 概率<b>左右横移</b>一段随机距离（不飞出屏幕）→ 恢复下降。碰撞为普通 2 类的 80%。<b>Lv10 前出现权重低，Lv10 后较多出现</b>（2 类替换 60）。',
     },
     
     popian: {
-      name: '破片', type: 'popian', color: '#cfd6e0', hp: 200, score: 200,
+      name: '破片', type: 'popian', color: '#cfd6e0', hp: 200, score: 180,
+      lore: '敌方的攻击型空援无人战舰，攻击造成范围性物理伤害。',
       desc: '三连发炮弹无人机：<b>只沿直线飞行</b>——出场选定一个随机点（停留于 <b>30%~80%</b> 屏高、<b>不进入两侧 15% 边缘区</b>，离自身近的高度概率更高），直飞到点后<b>急停锁停</b>，除非被击毁不再移动；停稳后才能攻击。<b>20%</b> 概率从<b>侧翼</b>入场。<b>索敌范围 30% 屏高、每秒 +5%</b>；玩家进入范围后在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）：<b>首发 8 伤害</b>、后两发各 <b>5</b>；<b>若首发命中，则后两发炮弹无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。<b>碰撞伤害分段</b>：入场 0.5s 内无伤害、0.5~2s 为 20、2s 后为 37.5。<b>火力 Lv1 / Lv2 时受到 30% / 10% 易伤</b>。<b>Lv10 前出现权重极低，Lv10 后正常出现</b>。',
     },
 
     fashiMatrix: {
       name: '法术矩阵', type: 'fashiMatrix', color: '#ff5566', hp: 80, score: 180,
-      desc: '白红菱形法师无人机：<b>竖菱形机体（高为宽 1.8 倍、本体自旋）</b>，入场<b>高速俯冲</b>（初速为常态 2 倍并快速衰减）降到<b>屏幕上方 20%~40% 区域</b>，随后<b>不规则地胡乱漂移</b>（不脱离战场），<b>约 18s 后加速离场</b>。移动期间朝玩家位置<b>左右 ±15° 以内</b>发射<b>通体白光的大正方体</b>（一个面恒朝玩家、边缘泛淡红光、带白光拖尾、发射后 0.5s 内由小长大）：正方体伤害 <b>16</b>、速度<b>略高于普通子弹</b>且平滑加速。<b>正方体射程有限</b>（随机为自身到玩家距离的 <b>70%~140% + 15% 屏高</b>）：抵达最大射程前<b>快速减速、光芒黯淡</b>，随后在<b>原位置停留 0.4~0.8s</b>（不动但仍能造成伤害），最后<b>快速渐隐</b>。碰撞伤害 <b>18</b>。生命值 <b>80</b>，<b>受到来自主战机的伤害降低 30%</b>（僚机弹幕正常）。<b>Lv10 后才会出现</b>。',
+      desc: '白红菱形法师无人机：<b>竖菱形机体（高为宽 1.8 倍、本体自旋）</b>，入场<b>高速俯冲</b>（初速为常态 2 倍并快速衰减）降到<b>屏幕上方 20%~40% 区域</b>，随后<b>不规则地胡乱漂移</b>（不脱离战场），<b>约 18s 后加速离场</b>。移动期间朝玩家位置<b>左右 ±15° 以内</b>发射<b>通体白光的大正方体</b>（一个面恒朝玩家、边缘泛淡红光、带白光拖尾、发射后 0.5s 内由小长大）：正方体伤害 <b>20</b>、速度<b>略高于普通子弹</b>且平滑加速。<b>正方体射程有限</b>（随机为自身到玩家距离的 <b>70%~140% + 15% 屏高</b>）：抵达最大射程前<b>快速减速、光芒黯淡</b>（尾焰随减速迅速收短），末段<b>提前渐隐、速度归零时恰好消失</b>；<b>撞上守愿者白盾</b>会被阻挡：撞击特效后快速消散。<b>法术阵列在场时</b>：偏移角增至 <b>±25°</b>、正方体速度 <b>+25%</b>。碰撞伤害 <b>18</b>。生命值 <b>80</b>，<b>受到来自主战机的伤害降低 30%</b>（僚机弹幕正常）。<b>Lv10 后才会出现</b>。',
+    },
+
+    fashiArray: {
+      name: '法术阵列', type: 'fashiArray', color: '#c22b3d', hp: 3000, score: 1500,
+      pvZoom: 1.45,   // 详情预览放大：三菱形+底座的视觉尺寸紧凑，按碰撞盒适配会显得偏小
+      desc: '血红三菱法师母机（<b>4 类</b>）：三座<b>法术矩阵样式的菱形</b>架设在<b>灰黑底座</b>上——中央菱形较大、呈<b>血红色</b>并带<b>血红流动特效</b>，两侧菱形与中央成一定夹角。<b>入场与退场阶段</b>：底座散发出<b>诡异的浓厚黑雾</b>，机体伴有<b>极轻微的颤动</b>，到位后黑雾逐渐消散。体型、<b>碰撞伤害（12.5）等同炮火先兆者</b>，<b>整体移速为其 65%</b>：匀速下降到<b>屏幕上方 20%~30% 区域</b>后<b>像法术矩阵一样胡乱移动</b>（不脱离屏幕），并<b>周身散发血红雾气</b>；<b>30s 后向上飞离战场</b>。就位后 <b>0~1s</b> 内发起首次攻击：朝玩家发射<b>法术矩阵同款但大一号的红色正方体</b>（伤害 <b>26</b>、周围红光更明显），飞行至 <b>30%~60% 射程</b>时<b>分裂为 3 枚常规正方体</b>——1 枚沿原方向、另 2 枚垂直于原方向；<b>分裂前 0.5s</b> 正方体周围出现<b>红色收缩圈</b>预警，分裂瞬间伴随<b>微弱冲击波</b>。就位 <b>4s</b> 后首次召唤、其后<b>每 5s</b> 一次：<b>周身闪动红光</b>，并在周围一定范围<b>召唤一个法术矩阵</b>——生成位置光效闪动、<b>1s 后开始攻击并随机移动</b>，<b>该召唤体死亡不加分、不掉水晶</b>；<b>飞离期间不再召唤</b>。<b>在场时为法术矩阵提供加成：偏移角增至 ±25°、正方体速度 +25%</b>。<b>死亡时</b>：死亡爆发<b>震出一个法术矩阵</b>——<b>无盾</b>，<b>0.4s 内高速旋转随机 1~2 圈</b>（转速逐渐衰减），<b>1s 后开始攻击</b>，其余与常规法术矩阵一致。<b>Lv10 前不出场</b>（Lv10 起占 4 类槽位，出场时 <b>25%</b> 概率替换主力舰）。',
     },
 
     capital_crimson: {
-      name: '赤红主力舰', type: 'capital', variant: 'crimson', color: '#ff4d6d', hp: 3939, score: 1500,
+      name: '赤红主力舰', type: 'capital', variant: 'crimson', color: '#ff4d6d', hp: 4000, score: 1500,
       desc: '技能循环：<b>双翼交叉矛</b>（左右翼各 3 发向内交叉成 X）→ <b>双曲线宽扇</b>（一侧 6 发弯向斜下、覆盖面极广，左右交替）→ <b>加速弹幕</b>（“/||\\”→“/|\\”，初速极低、加速到常规弹速 2 倍）。<b>对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%</b>。居中快速入场，由 1/2 类护航。',
     },
     capital_azure: {
-      name: '苍蓝主力舰', type: 'capital', variant: 'azure', color: '#4d9fff', hp: 3939, score: 1500,
+      name: '苍蓝主力舰', type: 'capital', variant: 'azure', color: '#4d9fff', hp: 4000, score: 1500,
       desc: '技能循环：<b>瞄准六连齐射</b>（±20° 偏差）→ <b>分裂橙红弹</b>（大弹减速到 0 后裂成 6 个小子弹、60° 散开）→ <b>双臂螺旋 12 发</b>。出场时 <b>20% 概率带护盾</b>：前 5s 虚化不受伤害、我方炮弹穿过。<b>对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%</b>。',
     },
     capital_crgold: {
-      name: '赤金主力舰', type: 'capital', variant: 'crgold', color: '#ff9a1a', hp: 3939, score: 1500,
-      desc: '自带<b>两枚旋转环</b>。技能循环：<b>锁定玩家坐标的扇形连射</b>（首轮 5 发、随后 2/2 两轮，每次均为紧凑两连发）→ <b>金环扩散</b>：消耗一枚旋转环，<b>环带上所有子弹（敌我）瞬间消散</b>，<b>最多两次</b>（耗尽后退化为瞄准双发）→ <b>停移</b>发射四组「左3右3」加速长条弹（夹角依次 <b>75°/55°/35°/15°</b> 收窄）。<b>对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%</b>。',
+      name: '赤金主力舰', type: 'capital', variant: 'crgold', color: '#ff9a1a', hp: 4000, score: 1500,
+      desc: '自带<b>两枚旋转环</b>。技能循环：<b>锁定玩家坐标的扇形连射</b>（首轮 5 发、随后 2/2 两轮，每次均为紧凑两连发）→ <b>金环扩散</b>：消耗一枚旋转环，<b>环带上所有子弹（敌我）瞬间消散</b>，<b>最多两次</b>（耗尽后退化为瞄准双发；<b>圆环被群星之杀斩击切断时立即失去清弹效果、从断口碎裂消散</b>）→ <b>停移</b>发射四组「左3右3」加速长条弹（夹角依次 <b>75°/55°/35°/15°</b> 收窄）。<b>对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%</b>。',
     },
     boss: {
-      name: '旧日之歌', type: 'boss', color: '#e6d5ff', hp: 32200, score: 5000, bossId: 'song',
+      name: '旧日之歌', type: 'boss', color: '#e6d5ff', hp: 32000, score: 6000, bossId: 'song',
       quote: '自往昔中浮现的梦魇',   // 图鉴引言（颜色与标题一致）
       desc: '宽约 60% 屏宽，小幅左右巡航。拥有 4 种技能乱序释放：<br />' +
         '<b>技能1</b> 双管极快连发长条弹 + 双曲线弹流（血量≤50% 时双管同时向内 / 向外双向发射）<br />' +
@@ -146,7 +176,7 @@
         '<b>击败掉落</b>：48 颗水晶 + 20% 高能爆弹 + 必掉暴走道具，并参与通用道具掉落池（黑色标记：套件 / 护盾按基础值；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。',
     },
 boss_storm: {
-      name: '暴风之眼 · I', type: 'boss', color: '#dff3ff', hp: 45678, score: 8000, bossId: 'storm',
+      name: '暴风之眼', type: 'boss', color: '#dff3ff', hp: 45000, score: 9000, bossId: 'storm',
       quote: '天秀忧郁之风',   // 图鉴引言（颜色与标题一致）
       desc: '第二波 BOSS。第一阶段为占屏宽 80% 的白色龙卷风暴，逆时针旋转、小幅漂移，整个风暴区域均可受击。7 种技能乱序释放：<br />' +
         '<b>技能1</b> 风波呼啸：从一侧射入 3~4 道横向弯曲风波（弯在下方、可不对称，宽度较风流稍宽），标记约 1.1s 后<b>整条瞬时显现</b>，共两轮（第二轮换另一侧）；技能结束后下一次技能间隔 ×0.25。<b>28 伤害 + 击退</b><br />' +
@@ -157,7 +187,16 @@ boss_storm: {
         '<b>技能6</b> 三旋臂漩涡弹幕：3 条旋臂风弹，随机顺 / 逆时针且全程不变，转速随时间越来越快，持续 5s<br />' +
         '<b>技能7</b> 涡流风旋：落点预警后自机体飞抵屏幕下方 80% 高度处，悬停自转 5s、双旋臂喷出密集风条后快速消散；风旋机体碰撞 12 伤害。预警期间落点处有<b>大范围快速收缩的淡红色圆圈</b>（周期性）反复提示。<br />' +
         '血量 70%：在最侧边召唤一位炮火先兆者并掉落暴走道具（各一次）。<br />' +
-        '<b>击败掉落</b>：48 颗水晶 + 20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池（蓝标记：护盾 6%；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。',
+        '<b>击败后</b>：不掉落水晶、得分 6000；风暴轰然消散，直接召唤二阶段「风暴编织者」（20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池照常）。',
+    },
+    boss_storm2: {
+      name: '风暴编织者', type: 'boss', color: '#8fd4ff', hp: 25000, score: 6000, bossId: 'storm2',
+      quote: '雷霆织就的风暴之心',   // 图鉴引言（颜色与标题一致）
+      desc: '一阶段「暴风之眼」的风暴血量归零后<b>轰然消散</b>，其中隐藏的雷电飞舰从中现身——此即二阶段本体。<br />' +
+        '<b>造型</b>：X 形四臂——左上-右上、右下-左下夹角 <b>120°</b>，同侧上下臂夹角 <b>60°</b>，上臂较短、下臂较长；中央为<b>灰色装甲机体</b>，中下方镶嵌<b>白蓝 → 深蓝的电弧能量球</b>，雷电沿机体导管泵向四臂端头的发射缝隙。<br />' +
+        '<b>数值</b>：HP <b>25000</b>，尺寸约 <b>30% 屏宽</b>，碰撞伤害 <b>40</b>（接触一次性）；悬停移速显著高于旧日之歌，并伴有一定程度的上下浮动。<br />' +
+        '<b>击败掉落</b>：80 颗水晶（继承一阶段）+ 20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池（灰 + 蓝标记：护盾 6%；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。击败后通关。<br />' +
+        '概念：操纵雷电的飞舰搅动宇宙能量，卷起第一阶段的风暴。<b>技能与登场动画设计中。</b>',
     },
   };
 
@@ -206,14 +245,15 @@ boss_storm: {
     const d = ENCY_DATA[entryId];
     const gradeName = ENCY_GRADES[encyCurrentGrade].name;
     const isBoss = d.type === 'boss';
-    // BOSS 页面：试炼（正常战斗、双方不无敌）+ 测试该敌人（双方无敌、爆弹无限）
-    // 普通敌人页面：仅测试该敌人（双方无敌）
+    // BOSS 页面：试炼（正常战斗）+ 测试该敌人（爆弹无限）；普通敌人页面：仅测试该敌人
+    // previewOnly（风暴编织者，二阶段设计中）：仅展示机体预览，不提供试炼 / 测试入口
     const actionHtml = isBoss
-      ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
-         <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
-         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：双方无敌 · 高能爆弹无限 · 每枚爆弹削减 BOSS 20% 最大生命</div>`
-      : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
-         <div class="ency-challenge-hint">测试模式：我方血量无限 · 敌方血量无限 · 仅单个敌人</div>`;
+      ? (d.previewOnly
+          ? `<div class="ency-challenge-hint">二阶段设计中：技能与数值待定，当前仅展示机体预览</div>`
+          : `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
+             <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
+             <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（每枚炸掉 60% 最大血量）</div>`)
+      : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
     encyDetail.innerHTML = `
       <div class="ency-detail-name" style="color:${d.color}">${d.name}</div>
       ${d.quote ? `<div class="ency-detail-quote" style="color:${d.color}">${d.quote}</div>` : ''}
@@ -223,18 +263,22 @@ boss_storm: {
         <div class="ency-stat">HP<b>${d.hp}</b></div>
         <div class="ency-stat">分数<b>${d.score}</b></div>
       </div>
-      <div class="ency-detail-desc">${d.desc}</div>
+      <div class="ency-detail-desc">${d.lore ? `<div class="ency-detail-lore">${d.lore}</div><div class="ency-lore-divider"></div>` : ''}${d.desc}</div>
       ${actionHtml}
     `;
     // 绘制预览（220×140 大图）
     drawEncyPreview(d, document.getElementById('encyPreview'));
-    if (isBoss) {
-      document.getElementById('encyTrialBtn').addEventListener('click', () => startBossTrial(entryId));
+    const trialBtn = document.getElementById('encyTrialBtn');
+    if (isBoss && !d.previewOnly && trialBtn) {
+      trialBtn.addEventListener('click', () => startBossTrial(entryId));
     }
-    document.getElementById('encyChallengeBtn').addEventListener('click', () => startChallenge(entryId));
+    const challengeBtn = document.getElementById('encyChallengeBtn');
+    if (challengeBtn) {
+      challengeBtn.addEventListener('click', () => startChallenge(entryId));
+    }
   }
 
-  // 从图鉴发起测试：敌我血量无限，仅生成单个目标敌人（BOSS 测试附带爆弹无限）
+  // 从图鉴发起测试：单个目标敌人（BOSS 测试附带爆弹无限）
   function startChallenge(entryId) {
     const d = ENCY_DATA[entryId];
     const challenge = d.type === 'boss'
@@ -252,15 +296,22 @@ boss_storm: {
     resetGame(true, { testBoss: (d && d.bossId) || entryId || 'song' });
   }
 
-  // 全局 ctx 临时切换：游戏内绘制函数均直接读写模块级 ctx，预览渲染时将其短暂重指到目标画布，
+  // 全局 ctx 临时切换：游戏内绘制函数均直接读写全局 ctx，预览渲染时将其短暂重指到目标画布，
   // 结束后必定还原。仅限同步的绘制调用（渲染主循环不会在切换期间插入执行）。
+  // 写操作经由 02-core 的 setCtx 入口（modules 下导入绑定只读，且写权限收敛到所有者文件）。
+  // 嵌套支持：drawEncyPreview 外层切到预览画布后，离屏渲染会嵌套二次切换（pctx → octx），
+  // 内层还原时恢复的是外层的 ctx——同步嵌套是合法用法，用深度计数跟踪而非拦截。
+  // （若预览路径混入异步/事件回调，破坏的是「同步完成」前提，须靠代码评审与 smoke 把关。）
+  let previewCtxDepth = 0;
   function withPreviewCtx(pctx, fn) {
+    previewCtxDepth++;
     const realCtx = ctx;
-    ctx = pctx;
+    setCtx(pctx);
     try {
       fn();
     } finally {
-      ctx = realCtx;
+      setCtx(realCtx);
+      previewCtxDepth--;
     }
   }
 
@@ -278,16 +329,56 @@ boss_storm: {
     pctx.clearRect(0, 0, LW, LH);
     withPreviewCtx(pctx, () => {
       if (d.type === 'boss') {
-        const isStorm = d.bossId === 'storm';
-        const bw = isStorm ? STORM.w : BOSS.w;
-        const bh = isStorm ? STORM.h : BOSS.h;
-        const bhp = isStorm ? STORM.hp : BOSS.hp;
-        const scale = Math.min(LW * 0.72 / bw, LH * 0.72 / (bh * 1.15));
+        // BOSS 预览：先按世界比例画到离屏画布，扫描不透明像素得到真实包围盒，
+        // 再按包围盒居中并尽量放大贴入目标画布 —— 避免手工估算中心/缩放造成的偏移与偏小
+        //（机体绘制中心与碰撞盒中心普遍不重合，且各 BOSS 视觉占比差异大；实测包围盒对所有 BOSS 通用，含今后新增）
+        const spec = d.bossId === 'storm2'
+          ? { bossId: 'storm2', w: 175, h: 78, fitMul: 0.7 }   // 风暴编织者本体较前两位 BOSS 小：预览在包围盒适配基础上整体再缩 30%
+          : (d.bossId === 'storm' ? { bossId: 'storm', w: STORM.w, h: STORM.h } : { bossId: 'song', w: BOSS.w, h: BOSS.h });
+        const gl = 1.7;   // 离屏覆盖的世界边长系数：max(w,h) × 1.7，为辉光外溢留边距
+        const world = Math.max(spec.w, spec.h) * gl;
+        const dim = Math.ceil(world * DPR);
+        const off = document.createElement('canvas');
+        off.width = dim; off.height = dim;
+        const octx = off.getContext('2d');
+        withPreviewCtx(octx, () => {
+          octx.scale(DPR, DPR);
+          octx.translate(dim / (2 * DPR), dim / (2 * DPR));
+          if (spec.bossId === 'storm2') {
+            drawBoss({ type: 'boss', bossId: 'storm2', x: 0, y: 0, w: spec.w, phase: 'preview', ency: true });
+          } else {
+            // phase:'preview' 跳过血条和黑洞特效，直接展示完整机体
+            drawBoss({ type: 'boss', bossId: spec.bossId, x: 0, y: 0, w: spec.w, h: spec.h, hp: spec.w, maxHp: spec.w, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [], rot: 0, ency: true });
+          }
+        });
+        // 扫描 alpha 包围盒（设备像素）
+        const img = octx.getImageData(0, 0, dim, dim).data;
+        let minX = dim, minY = dim, maxX = -1, maxY = -1;
+        for (let y = 0; y < dim; y++) {
+          for (let x = 0; x < dim; x++) {
+            if (img[(y * dim + x) * 4 + 3] > 8) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX < 0) return;   // 离屏无内容（异常兜底）
+        // 包围盒换算为 CSS 像素（相对画布中心的世界坐标）
+        const bx0 = minX / DPR - world / 2, bx1 = (maxX + 1) / DPR - world / 2;
+        const by0 = minY / DPR - world / 2, by1 = (maxY + 1) / DPR - world / 2;
+        const bw = bx1 - bx0, bh = by1 - by0;
+        const bcx = (bx0 + bx1) / 2, bcy = (by0 + by1) / 2;
+        // 目标缩放：包围盒尽量占满画布（留 6% 边距），宽高取小者；缩略图同规则自动适配
+        // fitMul：条目级二次缩放（风暴编织者本体较小，预览不再撑满，与前两位 BOSS 保持体量差）
+        const s = Math.min(LW * 0.88 / bw, LH * 0.88 / bh) * (spec.fitMul || 1);
         pctx.save();
-        pctx.translate(LW / 2, LH / 2 + 6);
-        pctx.scale(scale, scale);
-        // phase:'preview' 跳过血条和黑洞特效，直接展示完整机体
-        drawBoss({ type: 'boss', bossId: d.bossId || 'song', x: 0, y: 0, w: bw, h: bh, hp: bhp, maxHp: bhp, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [], rot: 0, ency: true });
+        pctx.imageSmoothingEnabled = true;
+        pctx.imageSmoothingQuality = 'high';
+        pctx.translate(LW / 2 - bcx * s, LH / 2 - bcy * s);
+        pctx.scale(s, s);
+        pctx.drawImage(off, -world / 2, -world / 2, world, world);
         pctx.restore();
       } else {
         const et = ENEMY_TYPES[d.type];
@@ -331,7 +422,8 @@ boss_storm: {
           blit(drawOffscreen(d), LW * 0.35, LH * 0.46, s1);
           blit(drawOffscreen(d.child), LW * 0.75, LH * 0.60, s2);
         } else {
-          const scale = small ? fit : clamp(fit, 0.4, 1.7);   // 缩略图不设缩放上下限，保证 4 类等大体型完整入图
+          const z = d.pvZoom || 1;   // 条目级预览缩放（法术阵列等视觉紧凑的敌机放大展示，缩略图不放大）
+          const scale = small ? fit : clamp(fit * z, 0.4, 1.7 * z);   // 缩略图不设缩放上下限，保证 4 类等大体型完整入图
           blit(drawOffscreen(d), LW / 2, LH / 2, scale);
         }
       }
@@ -369,19 +461,110 @@ boss_storm: {
   const tierMask = cells => cells.map((c, i) => i >= INFO_TIERS_LIVE ? null : c);
 
   // 波次编队展示配置：name 展示名，ency 代表性图鉴条目（预览图）；权重数据取自 WAVE_FORMATIONS（单一数据源）
+  //   sim 为编队演示数据（悬停弹出 mini 战场动画用）：返回代表性实例的单位列表（世界坐标，速度 px/s）——
+  //   holdY 悬停高度（到达后停驻；holdDur 为停留时长，null=悬停不离场，数值=停留后以 chargeVy 冲锋）；
+  //   note 构成说明；period 演示循环时长（s）。演示为代表性队形，实际入场侧 / 构成按权重随机
+  const fu = (ency, x, y, vx, vy, extra) => ({ ency, x, y, vx, vy, ...(extra || {}) });
   const INFO_FORMATIONS = [
-    { fn: spawnSideGroup,          name: '1类小组',            ency: 'side_pass' },
-    { fn: spawnStrikerGroup,       name: '2类小组',            ency: 'striker_crimson' },
-    { fn: spawnSideColumn,         name: '1类长队',            ency: 'side_pass' },
-    { fn: spawnMirrorRow,          name: '回文对称横排',       ency: 'striker_crimson' },
-    { fn: spawnSideSweep,          name: '双侧对称斜扫',       ency: 'side_pass' },
-    { fn: spawnStrikerVee,         name: '2类V字俯冲',         ency: 'striker_crimson' },
-    { fn: spawnSideKamikazeStream, name: '紫自爆流',           ency: 'side_kamikaze' },
-    { fn: spawnDiagonalRaid,       name: '对角奇袭（含炮艇）', ency: 'gunship_violet' },
-    { fn: spawnGunshipWings,       name: '双炮艇压阵',         ency: 'gunship_violet' },
+    {
+      fn: spawnSideGroup, name: '1类小组', ency: 'side_pass', period: 6.5,
+      note: '3~5 架 1类自单侧斜插穿越（队形随机：纵队 / 斜线 / 横排梯队 / V 字——图中为斜线队）',
+      sim: () => {
+        const y0 = CANVAS_H * 0.41;
+        return [0, 1, 2, 3].map(k => fu('side_pass', -36 - k * 46, y0 - k * 30, 105, 69));
+      },
+    },
+    {
+      fn: spawnStrikerGroup, name: '22', ency: 'striker_crimson', period: 5.6,
+      note: '「22」：固定 2 架 2类自上而下入场 → 停留 4~8s → 向下冲锋（演示中停留压缩为 1.2s）',
+      sim: () => [
+        fu('striker_crimson', CANVAS_W / 2 - 36, -50, 0, 120, { holdY: 110, holdDur: 1.2, chargeVy: 460 }),
+        fu('striker_crimson', CANVAS_W / 2 + 36, -50, 0, 120, { holdY: 110, holdDur: 1.2, chargeVy: 460 }),
+      ],
+    },
+    {
+      fn: spawnSideColumn, name: '1类长队', ency: 'side_pass', period: 6.5,
+      note: '4~7 架 1类排成长队自单侧斜插穿越（队尾依次靠外、靠上）',
+      sim: () => {
+        const y0 = CANVAS_H * 0.41;
+        return [0, 1, 2, 3, 4, 5].map(k => fu('side_pass', -36 - k * 54, y0 - k * 27, 105, 69));
+      },
+    },
+    {
+      fn: spawnMirrorRow, name: '232232', ency: 'striker_crimson', period: 5.6,
+      note: '「232232」对称横排：4 架 2类（短停留后冲锋）+ 2 架 3类炮艇（稍慢、悬停压阵）',
+      sim: () => {
+        const x0 = (CANVAS_W - 5 * 70) / 2, out = [];
+        for (let k = 0; k < 6; k++) {
+          if (k === 1 || k === 4) out.push(fu('gunship_violet', x0 + k * 70, -60, 0, 62, { holdY: 140 }));   // 3类：悬停不离场（「232232」的第 2/5 位）
+          else out.push(fu('striker_crimson', x0 + k * 70, -50, 0, 120, { holdY: 100, holdDur: 0.9, chargeVy: 460 }));
+        }
+        return out;
+      },
+    },
+    {
+      fn: spawnSideSweep, name: '双侧对称斜扫', ency: 'side_pass', period: 6.5,
+      note: '两队 1类（各 6~8 架）自左右两侧相向斜扫、交叉穿越',
+      sim: () => {
+        const y0 = CANVAS_H * 0.40, out = [];
+        for (let k = 0; k < 7; k++) {
+          out.push(fu('side_pass', -30 - k * 46, y0 - k * 25, 108, 61));
+          out.push(fu('side_pass', CANVAS_W + 30 + k * 46, y0 - k * 25, -108, 61));
+        }
+        return out;
+      },
+    },
+    {
+      fn: spawnStrikerVee, name: '2*7', ency: 'striker_crimson', period: 5.6,
+      note: '「2*7」：7 架 2类组成 V 字队形自上而下俯冲（顶点先行，两翼逐级滞后）',
+      sim: () => {
+        const cx = CANVAS_W / 2;
+        const out = [fu('striker_crimson', cx, -46, 0, 120, { holdY: 105, holdDur: 0.7, chargeVy: 460 })];
+        for (let k = 1; k <= 3; k++) {
+          for (const sx of [-1, 1]) out.push(fu('striker_crimson', cx + sx * k * 56, -46 - k * 42, 0, 120, { holdY: 105, holdDur: 0.7, chargeVy: 460 }));
+        }
+        return out;
+      },
+    },
+    {
+      fn: spawnSideKamikazeStream, name: '紫自爆流', ency: 'side_kamikaze', period: 6.5,
+      note: '两队各 7 架 1类纵列相向斜扫：紫电（亡语向下射一发）为主，本波 30%~60% 替换为白影',
+      sim: () => {
+        const y0 = CANVAS_H * 0.40, out = [];
+        for (let k = 0; k < 7; k++) {
+          out.push(fu(k % 2 ? 'side_pass' : 'side_kamikaze', -30 - k * 64, y0 - k * 35, 108, 61));
+          out.push(fu(k % 2 ? 'side_pass' : 'side_kamikaze', CANVAS_W + 30 + k * 64, y0 - k * 35, -108, 61));
+        }
+        return out;
+      },
+    },
+    {
+      fn: spawnDiagonalRaid, name: '232111', ency: 'gunship_violet', period: 11,
+      note: '「232111」：6 架混编沿对角线自上角斜插——2类领头、3类炮艇第二、2类第三、三个 1类殿后（1类近竖直下落、2类停留后冲锋、炮艇悬停）',
+      sim: () => {
+        const out = [];
+        for (let k = 0; k < 6; k++) {
+          const x = 60 + k * 62, y = -40 - k * 40;
+          if (k === 3) out.push(fu('gunship_violet', x, y - 20, 0, 62, { holdY: 130 }));
+          else if (k % 2 === 0) out.push(fu('side_pass', x, y, 24, 100));
+          else out.push(fu('striker_crimson', x, y, 0, 120, { holdY: 110, holdDur: 0.8, chargeVy: 460 }));
+        }
+        return out;
+      },
+    },
+    {
+      fn: spawnGunshipWings, name: '32223', ency: 'gunship_violet', period: 5.6,
+      note: '「32223」：左右各 1 艘 3类炮艇压阵（悬停）+ 中央 3 架 2类护航（短停留后冲锋）',
+      sim: () => {
+        const cx = CANVAS_W / 2, out = [];
+        for (const sx of [-1, 1]) out.push(fu('gunship_violet', cx + sx * 150, -60, 0, 62, { holdY: 140 }));
+        for (const k of [-1, 0, 1]) out.push(fu('striker_crimson', cx + k * 60, -50, 0, 120, { holdY: 105, holdDur: 0.9, chargeVy: 460 }));
+        return out;
+      },
+    },
   ];
 
-  // 虚象级（1类）展示配置（SIDE_SPAWN_W 权重恒定，不随等级变化）
+  // 虚象级（1类）展示配置（SIDE_SPAWN_W 分档权重：Lv1~10 / Lv11~20）
   const INFO_SIDE_KINDS = [
     { kind: 'pass',      name: '白影侧翼艇', ency: 'side_pass' },
     { kind: 'prolifera', name: '增生侧翼艇', ency: 'prolifera' },
@@ -400,12 +583,6 @@ boss_storm: {
   // 权重格式化：整数不带小数、小数保留 1 位
   function fmtInfoW(w) { return Number.isInteger(w) ? String(w) : w.toFixed(1); }
 
-  // 概率（0~1）转百分比字符串：29.2% / 30%（末位 .0 去掉）
-  function fmtInfoPct(p) {
-    const v = Math.round(p * 1000) / 10;
-    return (Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)) + '%';
-  }
-
   // 行首小预览图（复用怪物图鉴绘制，small 模式按比例完整显示）
   function infoShipCanvas(encyId) {
     const cvs = document.createElement('canvas');
@@ -414,9 +591,180 @@ boss_storm: {
     return cvs;
   }
 
-  // 权重表构建：rows = [{ canvas, label, vals, fmt? }]，vals 为数值数组（null = 未解锁/未生效，显示「—」）
-  // fmt 为该行数值格式化函数（默认 fmtInfoW，概率类可传 fmtInfoPct）；
-  // 数值高于上一档时在数字后标注天蓝色向上箭头（表示权重在此区间变大）
+  // ---------- 波次编队悬停演示（怪物权重 → 波次）----------
+  // 悬停编队行：弹出 mini 战场动画浮层，按编队 sim 数据回放代表性入场 / 走位（虚线为路线，呼吸圈为悬停点）
+  //   浮层挂载于 .info-modal 内（position:fixed 的包含块即 info-modal——其 backdrop-filter 建立），随 game-wrap
+  //   整体 transform 一致缩放：鼠标视口坐标需除以整体缩放比换算回 modal 本地坐标后再定位
+  const FORMATION_CW = 204, FORMATION_CH = Math.round(204 * CANVAS_H / CANVAS_W);   // mini 战场画布（全场地等比缩放）
+  const formationSprites = new Map();   // encyId → { off, world }：离屏机体图（与怪物图鉴同源绘制，world 为覆盖的世界边长）
+  const fPrev = {
+    popup: null, titleEl: null, subEl: null, cvs: null, pctx: null,
+    units: [], period: 6, t: 0, raf: 0, last: 0, hideTimer: null,
+  };
+
+  // 编队演示单位离屏图：同 drawEncyPreview 的离屏方案（先按实战比例大图绘制再整体 blit，保证辉光比例一致）
+  function infoSprite(encyId) {
+    if (formationSprites.has(encyId)) return formationSprites.get(encyId);
+    const d = ENCY_DATA[encyId];
+    const t = ENEMY_TYPES[d.type];
+    const gl = 1.9;
+    const dim = Math.ceil(Math.max(t.w, t.h) * gl * DPR);
+    const off = document.createElement('canvas');
+    off.width = dim; off.height = dim;
+    const octx = off.getContext('2d');
+    const sk = (d.variant && VARIANTS[d.type]) ? ((VARIANTS[d.type].find(v => v.id === d.variant) || {}).skill || null) : null;
+    withPreviewCtx(octx, () => {
+      octx.scale(DPR, DPR);
+      octx.translate(dim / (2 * DPR), dim / (2 * DPR));
+      drawEnemy({
+        type: d.type, x: 0, y: 0, w: t.w, h: t.h,
+        color: d.color, variant: d.variant || null, behavior: d.behavior || null, skill: sk,
+        hp: t.hp, maxHp: t.hp, phase: 0, shielded: false,
+        arrived: true, chargeT: HARBINGER.chargeFirst * 0.75, _sideVel: null,
+      });
+    });
+    const s = { off, world: Math.max(t.w, t.h) * gl };
+    formationSprites.set(encyId, s);
+    return s;
+  }
+
+  function ensureFormationPopup() {
+    if (fPrev.popup) return;
+    const pop = document.createElement('div');
+    pop.className = 'info-fpop hidden';
+    const title = document.createElement('div');
+    title.className = 'info-fpop-title';
+    const cvs = document.createElement('canvas');
+    cvs.width = FORMATION_CW * DPR; cvs.height = FORMATION_CH * DPR;
+    cvs.style.width = FORMATION_CW + 'px'; cvs.style.height = FORMATION_CH + 'px';
+    const sub = document.createElement('div');
+    sub.className = 'info-fpop-sub';
+    pop.append(title, cvs, sub);
+    infoModal.appendChild(pop);
+    pop.addEventListener('mouseenter', () => { if (fPrev.hideTimer) { clearTimeout(fPrev.hideTimer); fPrev.hideTimer = null; } });
+    pop.addEventListener('mouseleave', hideFormationPreview);
+    fPrev.popup = pop; fPrev.titleEl = title; fPrev.subEl = sub; fPrev.cvs = cvs;
+    fPrev.pctx = cvs.getContext('2d');
+    fPrev.pctx.scale(DPR, DPR);
+  }
+
+  // 浮层定位：跟随鼠标（视口坐标 → modal 本地坐标 ÷ 整体缩放比），优先右侧、放不下换左侧，双向夹紧不出 modal
+  function moveFormationPopup(ev) {
+    if (!fPrev.popup || fPrev.popup.classList.contains('hidden')) return;
+    const mr = infoModal.getBoundingClientRect();
+    const k = mr.width / (infoModal.offsetWidth || 1);   // game-wrap 整体 transform 缩放比
+    const lx = (ev.clientX - mr.left) / k, ly = (ev.clientY - mr.top) / k;
+    const pw = fPrev.popup.offsetWidth, ph = fPrev.popup.offsetHeight;
+    let x = lx + 22;
+    if (x + pw > infoModal.offsetWidth - 6) x = lx - pw - 22;
+    x = clamp(x, 6, Math.max(6, infoModal.offsetWidth - pw - 6));
+    const y = clamp(ly - ph / 2, 6, Math.max(6, infoModal.offsetHeight - ph - 6));
+    fPrev.popup.style.left = x + 'px';
+    fPrev.popup.style.top = y + 'px';
+  }
+
+  // 演示单位在时刻 t 的位置：直线飞行；holdY 到达后悬停（holdDur null=常驻 / 数值=停留后 chargeVy 冲锋）
+  function formationUnitPos(u, t) {
+    const tt = t - (u.t0 || 0);
+    if (tt < 0) return null;
+    if (u.holdY == null) return { x: u.x + u.vx * tt, y: u.y + u.vy * tt };
+    const tHold = (u.holdY - u.y) / u.vy;
+    if (tt < tHold) return { x: u.x + u.vx * tt, y: u.y + u.vy * tt };
+    const xh = u.x + u.vx * tHold;
+    if (u.holdDur == null || tt < tHold + u.holdDur) return { x: xh, y: u.holdY, hold: true };
+    return { x: xh, y: u.holdY + (tt - tHold - u.holdDur) * (u.chargeVy || 460) };
+  }
+
+  function drawFormationFrame(ts) {
+    fPrev.raf = 0;
+    if (fPrev.popup.classList.contains('hidden')) return;
+    fPrev.raf = requestAnimationFrame(drawFormationFrame);
+    const dt = fPrev.last ? Math.min(0.05, (ts - fPrev.last) / 1000) : 0;
+    fPrev.last = ts;
+    fPrev.t = (fPrev.t + dt) % fPrev.period;
+    const pctx = fPrev.pctx, W = CANVAS_W, H = CANVAS_H, s = FORMATION_CW / W;
+    // mini 战场：底色 + 网格
+    pctx.clearRect(0, 0, FORMATION_CW, FORMATION_CH);
+    pctx.fillStyle = 'rgba(9, 13, 28, 0.92)';
+    pctx.fillRect(0, 0, FORMATION_CW, FORMATION_CH);
+    pctx.strokeStyle = 'rgba(120, 180, 255, 0.08)';
+    pctx.lineWidth = 1;
+    pctx.beginPath();
+    for (let gx = 60; gx < W; gx += 60) { pctx.moveTo(gx * s, 0); pctx.lineTo(gx * s, FORMATION_CH); }
+    for (let gy = 60; gy < H; gy += 60) { pctx.moveTo(0, gy * s); pctx.lineTo(FORMATION_CW, gy * s); }
+    pctx.stroke();
+    // 路线（虚线）：直线队画沿飞行方向的长线；悬停队画 下落→悬停点→冲锋方向
+    pctx.strokeStyle = 'rgba(124, 231, 255, 0.30)';
+    pctx.setLineDash([3, 5]);
+    pctx.beginPath();
+    for (const u of fPrev.units) {
+      pctx.moveTo(u.x * s, u.y * s);
+      if (u.holdY != null) {
+        pctx.lineTo(u.x * s, u.holdY * s);
+        pctx.lineTo(u.x * s, (u.holdY + 260) * s);   // 悬停型同样向下示意（离场方向）
+      } else {
+        pctx.lineTo((u.x + u.vx * 12) * s, (u.y + u.vy * 12) * s);
+      }
+    }
+    pctx.stroke();
+    pctx.setLineDash([]);
+    // 玩家参考点（底部中央小三角）
+    const px = W / 2 * s, py = (H - 90) * s;
+    pctx.fillStyle = 'rgba(234, 246, 255, 0.45)';
+    pctx.beginPath();
+    pctx.moveTo(px, py - 7); pctx.lineTo(px - 5, py + 5); pctx.lineTo(px + 5, py + 5);
+    pctx.closePath(); pctx.fill();
+    // 单位：入场前不画、出界不画；悬停中画呼吸圈
+    for (const u of fPrev.units) {
+      const p = formationUnitPos(u, fPrev.t);
+      if (!p || p.y < -46 || p.y > H + 46 || p.x < -60 || p.x > W + 60) continue;
+      const dw = u.spr.world * s;
+      if (p.hold) {
+        pctx.strokeStyle = 'rgba(124, 231, 255, 0.4)';
+        pctx.lineWidth = 1;
+        pctx.beginPath();
+        pctx.arc(p.x * s, p.y * s, (dw / 2 + 3) * (1 + 0.12 * Math.sin(fPrev.t * 5)), 0, Math.PI * 2);
+        pctx.stroke();
+      }
+      pctx.drawImage(u.spr.off, p.x * s - dw / 2, p.y * s - dw / 2, dw, dw);
+    }
+  }
+
+  function showFormationPreview(f, ev) {
+    ensureFormationPopup();
+    if (fPrev.hideTimer) { clearTimeout(fPrev.hideTimer); fPrev.hideTimer = null; }
+    fPrev.units = f.sim().map(u => ({ ...u, spr: infoSprite(u.ency) }));
+    fPrev.period = f.period;
+    fPrev.t = 0; fPrev.last = 0;
+    fPrev.titleEl.textContent = f.name + ' · 编队演示';
+    fPrev.subEl.textContent = f.note;
+    fPrev.popup.classList.remove('hidden');
+    moveFormationPopup(ev);
+    if (!fPrev.raf) fPrev.raf = requestAnimationFrame(drawFormationFrame);
+  }
+
+  // 延迟隐藏：留 120ms 缓冲供鼠标移入浮层（浮层 mouseenter 取消隐藏，可驻留观察）
+  function hideFormationPreview() {
+    if (!fPrev.popup || fPrev.popup.classList.contains('hidden')) return;
+    if (fPrev.hideTimer) clearTimeout(fPrev.hideTimer);
+    fPrev.hideTimer = setTimeout(() => {
+      fPrev.hideTimer = null;
+      fPrev.popup.classList.add('hidden');
+      if (fPrev.raf) { cancelAnimationFrame(fPrev.raf); fPrev.raf = 0; }
+    }, 120);
+  }
+
+  // 编队行悬停钩子（infoFormationRows → buildWeightTable 绑定）
+  function formationHover(f) {
+    return {
+      enter: ev => showFormationPreview(f, ev),
+      move: ev => moveFormationPopup(ev),
+      leave: () => hideFormationPreview(),
+    };
+  }
+
+  // 权重表构建：rows = [{ canvas, label, vals, fmt?, disp? }]，vals 为数值数组（null = 未解锁/未生效，显示「—」）
+  // fmt 为该行数值格式化函数（默认 fmtInfoW）；disp 为可选自定义展示文本（波次行 a~b 区间）
   function buildWeightTable(headers, rows) {
     const table = document.createElement('table');
     table.className = 'info-table';
@@ -430,6 +778,13 @@ boss_storm: {
     for (const r of rows) {
       const fmt = r.fmt || fmtInfoW;
       const tr = document.createElement('tr');
+      if (r.hover) {
+        // 编队行悬停演示：进场弹出 / 移动跟随 / 离场延迟隐藏
+        tr.classList.add('hoverable');
+        tr.addEventListener('mouseenter', ev => r.hover.enter(ev, tr));
+        tr.addEventListener('mousemove', ev => r.hover.move(ev, tr));
+        tr.addEventListener('mouseleave', ev => r.hover.leave(ev, tr));
+      }
       const td0 = document.createElement('td');
       td0.className = 'info-ship-cell';
       td0.appendChild(r.canvas);
@@ -442,14 +797,7 @@ boss_storm: {
         const v = r.vals[i];
         if (v == null) { td.textContent = '—'; td.className = 'wlocked'; }
         else {
-          td.textContent = fmt(v);
-          if (i > 0 && r.vals[i - 1] != null && v > r.vals[i - 1]) {
-            const up = document.createElement('span');
-            up.className = 'info-up';
-            up.textContent = '↑';
-            up.title = '该档权重较上一档增大';
-            td.appendChild(up);
-          }
+          td.textContent = (r.disp && r.disp[i] != null) ? r.disp[i] : fmt(v);   // disp：自定义展示文本（波次行 a~b 区间）
         }
         tr.appendChild(td);
       }
@@ -465,20 +813,20 @@ boss_storm: {
     infoBody.appendChild(note);
   }
 
-  // 档位脚注公共段：列含义 + 箭头图例
-  const INFO_TIER_NOTE = '各档代表 10 级区间（表头 Lv11 即 Lv11~20，取档首等级计算）；天蓝色 <span class="info-up">↑</span> 表示该档权重较上一档增大。';
+  // 档位脚注公共段：列含义
+  const INFO_TIER_NOTE = '各档代表 10 级区间（表头 Lv11 即 Lv11~20）。';
 
-  // 虚象级（1类）行：权重恒定，各档同值
+  // 虚象级（1类）行：权重按关卡分档（SIDE_SPAWN_W.low / high，Lv1~10 / Lv11~20）
   function infoSideRows() {
     return INFO_SIDE_KINDS.map(k => ({
       canvas: infoShipCanvas(k.ency),
       label: k.name,
-      vals: tierMask(INFO_TIERS.map(() => SIDE_SPAWN_W[k.kind])),
+      vals: tierMask(INFO_TIERS.map(t => sideSpawnWeights(t.lv)[k.kind])),
     }));
   }
 
-  // 具象级（2类）行：变体权重（幽暮按档起始等级经 strikerVariantWeights 调整，权重和恒为 100）
-  // + 法术大师A1 / 破片（2类突击艇的出场替换概率，0 = 不替换）+ 斗志昂扬（升级触发的横穿概率）——此三行为概率
+  // 具象级（2类）行：变体权重（按关卡分档直接取值，Lv1~10 / Lv11~20）
+  // + 法术大师A1 / 破片 / 法术矩阵（2类突击艇的出场替换概率）+ 斗志昂扬（升级触发概率）——此四行为概率
   function infoStrikerRows() {
     const rows = [];
     const nameOf = { crimson: '赤红突击艇', amber: '烈橙突击艇', azure: '幽蓝突击艇', white: '霜白突击艇', dusk: '幽暮突击艇' };
@@ -488,85 +836,80 @@ boss_storm: {
       rows.push({
         canvas: infoShipCanvas(encyOf[v.id]),
         label: nameOf[v.id],
-        vals: tierMask(weights.map(ws => Math.round(ws.find(x => x.id === v.id).w * 1000) / 10)),
+        vals: tierMask(weights.map(ws => ws.find(x => x.id === v.id).w)),
       });
     }
-    const pctFmt = p => fmtInfoPct(p);
+    // 替换/触发概率行：展示值与 Excel 一致（概率 ×100 显示为权重数字，去掉百分号）
+    const rawFmt = v => String(v);
     rows.push({
       canvas: infoShipCanvas('fashiA1'),
       label: '法术大师A1（替换2类）',
-      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? 0 : FASHI_A1.spawnHighLv)),
-      fmt: pctFmt,
+      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? Math.round(FASHI_A1.spawnLowLv * 100) : Math.round(FASHI_A1.spawnHighLv * 100))),
     });
     rows.push({
       canvas: infoShipCanvas('popian'),
       label: '破片（替换2类）',
-      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? POPIAN.spawnLowLv : POPIAN.spawnHighLv)),
-      fmt: pctFmt,
+      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? Math.round(POPIAN.spawnLowLv * 100) : Math.round(POPIAN.spawnHighLv * 100))),
+    });
+    rows.push({
+      canvas: infoShipCanvas('fashiMatrix'),
+      label: '法术矩阵（替换2类）',
+      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? Math.round(FASHI_MATRIX.spawnLowLv * 100) : Math.round(FASHI_MATRIX.spawnHighLv * 100))),
     });
     rows.push({
       canvas: infoShipCanvas('douzhi'),
       label: '斗志昂扬（升级触发）',
       vals: tierMask(INFO_TIERS.map(() => DOUZHI.spawnChance)),
-      fmt: pctFmt,
+      fmt: rawFmt,   // Excel 原值为小数（0.04），原样展示
     });
     return rows;
   }
 
-  // 真我级（3类）行：槽位权重（普通炮艇三色变体共享权重拆行展示）；0 = 该阶段不出场
+  // 真我级（3类）行：槽位权重（普通炮艇三色为独立条目，槽位抽取直接决定涂装）；0 = 该阶段不出场
   function infoSpecial3Rows() {
-    const rows = [];
-    for (const it of SPECIAL3_POOL) {
-      if (it.fn === spawnGunship) {
-        // 普通炮艇拆分：三色变体共享同一槽位权重（†），出场时随机选取涂装
-        for (const g of [
-          { ency: 'gunship_violet', name: '紫晶炮艇' },
-          { ency: 'gunship_crimson', name: '赤红炮艇' },
-          { ency: 'gunship_amber', name: '金曜炮艇' },
-        ]) {
-          rows.push({
-            canvas: infoShipCanvas(g.ency),
-            label: g.name + ' †',
-            vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? it.wLow : it.wHigh)),
-          });
-        }
-      } else {
-        rows.push({
-          canvas: infoShipCanvas(it.ency),
-          label: it.name,
-          vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? it.wLow : it.wHigh)),
-        });
-      }
-    }
-    return rows;
+    return SPECIAL3_POOL.map(it => ({
+      canvas: infoShipCanvas(it.ency),
+      label: it.name,
+      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? it.wLow : it.wHigh)),
+    }));
   }
 
-  // 诗篇级（4类）行：出场时的变体选取概率（恒定）
+  // 诗篇级（4类）行：出场时的变体选取权重（按关卡分档，Lv1~10 wLow / Lv11~20 wHigh）+ 法术阵列的槽位替换权重（Lv10 前 0）
+  //   展示值与 Excel 一致（权重数字，无百分号）
   function infoCapitalRows() {
-    return INFO_CAPITAL_KINDS.map(k => {
+    const rows = INFO_CAPITAL_KINDS.map(k => {
       const v = VARIANTS.capital.find(x => x.id === k.id);
       return {
         canvas: infoShipCanvas(k.ency),
         label: k.name,
-        vals: tierMask(INFO_TIERS.map(() => Math.round(v.weight * 100))),
-        fmt: fmtInfoPct,
+        vals: tierMask(INFO_TIERS.map(t => Math.round((t.lv < 11 ? v.wLow : v.wHigh) * 100))),
       };
     });
+    rows.push({
+      canvas: infoShipCanvas('fashiArray'),
+      label: '法术阵列（替换主力舰）',
+      vals: tierMask(INFO_TIERS.map(t => t.lv < 10 ? 0 : Math.round(FASHI_ARRAY.slotChance * 100))),
+    });
+    return rows;
   }
 
-  // 波次编队行：weight = min(cap, w0 + growth ×（等级 − 解锁等级）)，按各档起始等级计算，未解锁显示「—」
+  // 波次编队行：Lv1~10 由 w1→w10 线性过渡（B 档显示 a~b 区间），Lv11~20 恒定 wHigh
+  //   disp 存单元格展示文本；hover：悬停行弹出编队演示（mini 战场动画回放入场 / 走位）
   function infoFormationRows() {
     return INFO_FORMATIONS.map(f => {
       const cfg = WAVE_FORMATIONS.find(w => w.fn === f.fn);
-      const vals = tierMask(INFO_TIERS.map(t => {
-        if (t.lv < cfg.unlockLv) return null;
-        return Math.min(cfg.cap, cfg.w0 + cfg.growth * (t.lv - cfg.unlockLv));
+      const vals = tierMask(INFO_TIERS.map((t, i) => i === 0 ? cfg.w1 : i === 1 ? cfg.wHigh : null));
+      const disp = tierMask(INFO_TIERS.map((t, i) => {
+        if (i === 0) return cfg.w1 === cfg.w10 ? fmtInfoW(cfg.w1) : fmtInfoW(cfg.w1) + '~' + fmtInfoW(cfg.w10);
+        if (i === 1) return fmtInfoW(cfg.wHigh);
+        return null;
       }));
-      return { canvas: infoShipCanvas(f.ency), label: f.name + (cfg.slotGunship ? ' *' : ''), vals };
+      return { canvas: infoShipCanvas(f.ency), label: f.name, vals, disp, hover: formationHover(f) };
     });
   }
 
   function renderInfoWeights() {
+    hideFormationPreview();
     infoBody.innerHTML = '';
     const chips = document.createElement('div');
     chips.className = 'info-subtabs';
@@ -589,32 +932,34 @@ boss_storm: {
 
     if (infoWeightKind === 'side') {
       infoBody.appendChild(buildWeightTable(headers, infoSideRows()));
-      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成（总和 93）；权重恒定不随等级变化。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电，其余按权重混入。');
+      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电，其余按权重混入。');
     } else if (infoWeightKind === 'striker') {
       infoBody.appendChild(buildWeightTable(headers, infoStrikerRows()));
-      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，其中幽暮与等级挂钩：<b>幽暮 = 12 × 0.1（Lv10 前）/ 12 × 0.4（Lv10 起）</b>；<b>其余变体 = 基础权重 ×（100 − 幽暮权重）÷ 88</b>（等比缩放补足，权重和恒为 100）。法术大师A1 / 破片为 2类突击艇的<b>出场替换概率</b>（0 = 不替换；A1 优先于破片判定）；斗志昂扬为<b>每次关卡提升</b>时的出现概率（非波次权重，击败 BOSS 的跳变升级不触发）。');
+      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/霜白20/幽暮2；Lv11~20：10/10/10/5/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；斗志昂扬为<b>每次关卡提升</b>时的出现概率（非波次权重，击败 BOSS 的跳变升级不触发）。');
     } else if (infoWeightKind === 'special3') {
       infoBody.appendChild(buildWeightTable(headers, infoSpecial3Rows()));
-      infoAppendNote(INFO_TIER_NOTE + '特殊3类同屏限 1，仅槽位出场者占用槽位（编队自带的炮艇不占）。<b>0 表示该阶段不出场</b>；Lv10 以下仅炮艇 / 先兆者出场，Lv10 起按高权重列抽取（实际仅第二轮达到）。<b>本局首次槽位出场（仅第一轮）必定为炮火先兆者</b>。带 † 的紫晶 / 赤红 / 金曜炮艇<b>共享同一槽位权重</b>，出场时随机选取涂装。');
+      infoAppendNote(INFO_TIER_NOTE + '特殊3类<b>随常规波次登场</b>（每波 25% 概率附带一台，按表中权重抽取）。<b>0 表示该阶段不出场</b>；Lv10 以下仅三色炮艇（合计 260） / 先兆者出场，Lv10 起按高权重列抽取。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>（场上已有同种则该次不生成），其余特殊3类不限数量。紫晶 / 赤红 / 金曜炮艇为<b>独立条目</b>（紫80 / 赤100 / 金80），抽取直接决定涂装。');
     } else if (infoWeightKind === 'capital') {
       infoBody.appendChild(buildWeightTable(headers, infoCapitalRows()));
-      infoAppendNote(INFO_TIER_NOTE + '4类主力舰<b>同屏限 1</b>，由场面压力系统驱动出场（无权重列差异），表中为出场时的<b>变体选取权重</b>。苍蓝主力舰 20% 概率带护盾（前 5s 虚化不受伤害、炮弹穿过）。');
+      infoAppendNote(INFO_TIER_NOTE + '4类主力舰<b>同屏限 1</b>，由场面压力系统驱动出场，表中为出场时的<b>变体选取权重</b>（按关卡分两档）。苍蓝主力舰 20% 概率带护盾（前 5s 虚化不受伤害、炮弹穿过）。');
     } else {
       infoBody.appendChild(buildWeightTable(['编队', ...INFO_TIERS.map(t => t.label)], infoFormationRows()));
-      infoAppendNote(INFO_TIER_NOTE + '权重随等级线性增长的编队按公式计算：<b>权重 = min(上限, 基础值 + 增量 ×（等级 − 解锁等级）)</b>（各档取起始等级代入）；未解锁显示 —。带 * 的编队（对角奇袭 / 双炮艇压阵）占用 3 类槽位，<b>第二轮权重 ×0.5</b>。Lv3 起每波有概率追加一个编队（组合波，追加位不占槽），详见「特殊怪物波次」。');
+      infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含炮艇编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。');
     }
   }
 
   function renderInfoWaves() {
     infoBody.innerHTML = '';
     const cards = [
-      { h: '双编队组合波', p: '<b>Lv3 起</b>有概率在同一波内追加一个编队（追加位不占用 3 类槽），基础概率 15%、每级 +4%，<b>Lv7+ 封顶 30%</b>。' },
+      { h: '双编队组合波', p: '<b>Lv5 起</b>有概率在同一波内追加一个编队（追加位不含炮艇编队）：<b>Lv5~10 概率由 10% 线性升至 30%、Lv11~20 由 10% 线性升至 40%</b>。' },
+      { h: '特殊3类随波登场', p: '每波有 <b>25%</b> 概率按「怪物权重 → 真我级」权重附带一台特殊3类（炮艇三色 / 先兆者 / 寒霜 / 威龙 / 御4 / 铁砧 / 暴鸰 / 焦香 / 法术大师A2）。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>，其余不限；场上已有同种则该次不生成。' },
+      { h: '法术阵列不限台', p: '4类槽位中<b>主力舰同屏限 1</b>；<b>法术阵列不受限</b>——场上已有法术阵列时仍可继续生成 4 类，但只能生成法术阵列（最多同时 2 台，经慢速强制刷新 + 低概率补出，双阵列较少出现）。' },
       { h: 'BOSS 击败后固定首波', p: '击败 BOSS 后先缓冲 <b>2s</b>，随后固定刷出一波 <b>1类长队</b>——自左或右入场、横穿战场自另一侧离场，本波不含紫电；自首波刷新起 <b>4s</b> 观察期后恢复正常刷怪。2s 与 4s 均不计入关卡推进。' },
       { h: '紫自爆流', p: '左右两侧各 7 架纵列斜扫穿越，以紫电（亡语向下垂直射一发）为主，<b>每波 30%~60% 替换为白影</b>（无攻击）。' },
-      { h: '暴鸰替换', p: '所有<b>普通炮艇</b>每架 1.5% 概率被替换为暴鸰（自爆无人机）——Lv10 前暴鸰的唯一出场途径，Lv10 起另占 3 类槽权重。' },
-      { h: '法术大师A1 替换', p: '2类突击艇按关卡替换为法术大师A1（紫光激光无人机）：Lv10 前 0%（仅图鉴挑战可生成）、<b>Lv10 起 30%</b>。' },
-      { h: '3类槽位首出', p: '本局首次 3 类槽位出场（仅第一轮）必定为<b>炮火先兆者</b>；第二轮起删除强制，按「怪物权重 → 真我级」权重抽取。' },
-      { h: '斗志昂扬横穿', p: '每次<b>关卡提升</b>时 5% 概率自屏幕左/右侧横穿一架斗志昂扬（增益无人机，余弦上下浮动）；击毁后我方攻速/弹速翻倍 8s。击败 BOSS 引发的跳变升级不触发。' },
+      { h: '暴鸰替换', p: '所有<b>普通炮艇</b>每架 1.5% 概率被替换为暴鸰（自爆无人机）——Lv10 前暴鸰的唯一出场途径，Lv10 起另随特殊3类权重出场。' },
+      { h: '法术大师A1 替换', p: '2类突击艇按关卡替换为法术大师A1（紫光激光无人机）：Lv10 前 0%（仅图鉴挑战可生成）、<b>Lv10 起 60%</b>。' },
+      { h: '法术矩阵替换', p: '2类突击艇按关卡替换为法术矩阵（白红菱形法师无人机）：Lv10 前 <b>2%</b>、<b>Lv10 起 30%</b>。' },
+      { h: '斗志昂扬横穿', p: '每次<b>关卡提升</b>时 4% 概率自屏幕左/右侧横穿一架斗志昂扬（增益无人机，余弦上下浮动）；击毁后我方攻速/弹速翻倍 8s。击败 BOSS 引发的跳变升级不触发。' },
     ];
     for (const c of cards) {
       const div = document.createElement('div');
@@ -632,8 +977,9 @@ boss_storm: {
   function renderInfoMods() {
     infoBody.innerHTML = '';
     const cards = [
-      { h: '大型龙卷（暴风之眼召唤）', p: '受到<b>战机主武器伤害 -50%</b>、<b>僚机伤害 +150%</b>（弱点：僚机火力）。' },
+      { h: '大型龙卷（暴风之眼召唤）', p: '受到<b>战机主武器伤害 -50%</b>、<b>僚机伤害 +150%</b>（弱点：僚机火力）。<b>守愿者弹每次命中判定两次伤害</b>。' },
       { h: '破片', p: '玩家火力 <b>Lv1 / Lv2 时受到 30% / 10% 易伤</b>（受到伤害 ×1.30 / ×1.10，低火力补偿）；主武器与僚机弹均生效，<b>高能爆弹为真实伤害不加成</b>。' },
+      { h: '焦香螺旋桨', p: '登场 <b>2s 内受到伤害 -30%</b>（入场保护，主武器与僚机弹幕均生效；高能爆弹为真实伤害不减免）。' },
       { h: '4类主力舰', p: '玩家火力 <b>Lv4 / 暴走(Lv5)</b> 时受到伤害 <b>-15%</b>；俯冲阶段（距悬停高度 ≥90px、速度未明显衰减）额外 <b>-20%</b>。' },
       { h: 'BOSS', p: '玩家火力 <b>Lv1</b> 时对 BOSS 的武器伤害 <b>+20%</b>（逆境补偿）。' },
       { h: '炮火先兆者', p: '装甲对<b>僚机弹幕 -25%</b>（僚机输出打在其身上大打折扣）。' },
@@ -681,7 +1027,7 @@ boss_storm: {
       if (level === 4) bullets += 2;                                 // Lv4：半拍补射 2 发中间弹
     }
     // 单发伤害：常规级走 WEAPON_LEVELS.dmgMul（构成 80% 等比 DPS 链），暴走走 BERSERK.dmgMul
-    const dmgPerBullet = PLAYER.bulletDamage * (level === 5 ? BERSERK.dmgMul : (lvl.dmgMul || 1));
+    const dmgPerBullet = PLAYER_CFG.bulletDamage * (level === 5 ? BERSERK.dmgMul : (lvl.dmgMul || 1));
     const mul = (plane && plane.dmgMulByLevel && plane.dmgMulByLevel[level]) || (plane && plane.dmgMul) || 1;
     return bullets * dmgPerBullet * mul / interval;
   }
@@ -689,7 +1035,7 @@ boss_storm: {
   // 僚机 DPS（左右两架合计）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
   function wingmanDps(level, wingman) {
     if (!wingman || wingman.empty) return 0;
-    // fan 模型（钢铁壁垒）：错序扇形，周期=interval、周期内发 count 发；DPS = count*dmg/interval
+    // fan 模型（守愿者）：错序扇形，周期=interval、周期内发 count 发；DPS = count*dmg/interval
     if (wingman.weapon && wingman.weapon.kind === 'fan') {
       const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
       return cfg.count * cfg.dmg / cfg.interval;
@@ -714,8 +1060,9 @@ boss_storm: {
     c.translate(S / 2, S / 2);
     if (kind === 'plane') { c.scale(0.5, 0.5); paintShip(c, 0, plane || currentPlane); }
     else if (wingman && wingman.weapon && wingman.weapon.kind === 'fan') {
-      // 钢铁壁垒：冷蓝机体 + 前方白盾（缩小以容纳盾）；左右反转与选机卡一致
-      c.scale(-0.62, 0.62); paintWingmanBulwark(c, 1, false, 0.25);
+      // 守愿者：冷蓝机体 + 前方白盾（缩小以容纳盾）；左右反转与选机卡一致
+      // 盾弧向外侧扫 110°（镜像后甩向一边），按盾+本体 bbox 平移回画布中心
+      c.scale(-0.62, 0.62); c.translate(-13.6, 12.75); paintWingmanBulwark(c, 1, false, 0.25);
     }
     else { c.scale(-0.95, 0.95); paintWingman(c, 1, false); }   // 左右反转，与选机卡一致
     return cvs;
@@ -766,8 +1113,8 @@ boss_storm: {
       });
     }
     // 僚机（左右两架合计）：注册表驱动，新增僚机自动追加行
-    for (const id in WINGMEN) {
-      const wm = WINGMEN[id];
+    for (const id in WINGMEN_CFG) {
+      const wm = WINGMEN_CFG[id];
       if (wm.empty) continue;
       rows.push({
         canvas: infoFighterCanvas('wingman', wm),
@@ -791,7 +1138,7 @@ boss_storm: {
       const b = document.createElement('button');
       b.className = 'info-tab' + (infoTab === d.id ? ' active' : '');
       b.textContent = d.name;
-      b.addEventListener('click', () => { infoTab = d.id; buildInfoTabs(); });
+      b.addEventListener('click', () => { infoTab = d.id; hideFormationPreview(); buildInfoTabs(); });
       infoTabs.appendChild(b);
     }
     if (infoTab === 'weights') renderInfoWeights();
@@ -806,9 +1153,20 @@ boss_storm: {
   }
 
   function closeInfoModal() {
+    hideFormationPreview();
     infoModal.classList.add('hidden');
   }
 
   infoEntryBtn.addEventListener('click', openInfoModal);
   infoClose.addEventListener('click', closeInfoModal);
 
+  export {
+    ENCY_GRADES, ENCY_DATA, encyCurrentGrade, buildEncyclopedia, selectEncGrade, showEncyDetail,
+    startChallenge, startBossTrial, previewCtxDepth, withPreviewCtx, drawEncyPreview, openEncyclopedia,
+    closeEncyclopedia, infoTab, infoWeightKind, INFO_TIERS, INFO_TIERS_LIVE, tierMask,
+    INFO_FORMATIONS, INFO_SIDE_KINDS, INFO_CAPITAL_KINDS, fmtInfoW, infoShipCanvas,
+    buildWeightTable, infoAppendNote, INFO_TIER_NOTE, infoSideRows, infoStrikerRows, infoSpecial3Rows,
+    infoCapitalRows, infoFormationRows, renderInfoWeights, renderInfoWaves, renderInfoMods, INFO_FIRE_LEVELS,
+    fmtDps, planeDps, wingmanDps, infoFighterCanvas, buildDpsTable, renderInfoPlanes,
+    buildInfoTabs, openInfoModal, closeInfoModal,
+  };

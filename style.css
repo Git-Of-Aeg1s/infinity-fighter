@@ -261,6 +261,9 @@ canvas#game {
   transition: width 0.18s ease, background 0.3s ease;
 }
 
+/* 测试模式血量回满：血条动画速度 ×300%（0.18s → 0.06s），由回满瞬间临时挂 fast 类 */
+.hp-fill.fast { transition: width 0.06s ease, background 0.1s ease; }
+
 .hp-fill.warn { background: linear-gradient(90deg, var(--accent-warm), #ffd98a); }
 .hp-fill.danger { background: linear-gradient(90deg, var(--danger), #ff9aa8); }
 
@@ -513,7 +516,8 @@ kbd {
 
 #startBtn:active { transform: translateY(0); }
 
-#pauseHomeBtn {
+#pauseHomeBtn,
+#gameoverHomeBtn {
   display: block;
   margin: 10px auto 0;
   padding: 8px 28px;
@@ -527,14 +531,17 @@ kbd {
   transition: transform 0.1s ease, box-shadow 0.2s ease;
 }
 
-#pauseHomeBtn:hover {
+#pauseHomeBtn:hover,
+#gameoverHomeBtn:hover {
   box-shadow: 0 0 20px rgba(255, 181, 69, 0.45);
   transform: translateY(-1px);
 }
 
-#pauseHomeBtn:active { transform: translateY(0); }
+#pauseHomeBtn:active,
+#gameoverHomeBtn:active { transform: translateY(0); }
 
-#pauseHomeBtn.hidden { display: none; }
+#pauseHomeBtn.hidden,
+#gameoverHomeBtn.hidden { display: none; }
 
 #pauseRetryBtn,
 #retrialBtn {
@@ -827,6 +834,23 @@ kbd {
 
 .ency-detail-desc b { color: var(--accent-warm); }
 
+/* 图鉴故事档案（致敬玩梗背景）：位于机体介绍之前，以分隔线隔开 */
+.ency-detail-lore {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #c7d3e8;
+  background: rgba(120, 180, 255, 0.05);
+  border: 1px solid rgba(120, 180, 255, 0.14);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ency-lore-divider {
+  height: 1px;
+  margin: 10px 0;
+  background: linear-gradient(90deg, rgba(120, 180, 255, 0.35), rgba(120, 180, 255, 0.05));
+}
+
 /* 图鉴挑战按钮 */
 .ency-challenge-btn {
   display: block;
@@ -1052,13 +1076,6 @@ kbd {
 
 .info-table td.wlocked { color: rgba(255, 255, 255, 0.22); }
 
-/* 权重增大箭头（天蓝色） */
-.info-up {
-  color: #6fd3ff;
-  font-weight: bold;
-  margin-left: 3px;
-}
-
 .info-ship-cell {
   display: flex;
   align-items: center;
@@ -1077,6 +1094,46 @@ kbd {
   font-size: 11px;
   line-height: 1.8;
   margin-top: 10px;
+}
+
+/* 波次编队行：可悬停查看编队演示 */
+.info-table tr.hoverable { cursor: help; }
+.info-table tr.hoverable:hover td { background: rgba(124, 231, 255, 0.08); }
+
+/* 编队演示浮层：跟随鼠标的 mini 战场动画（挂载于 .info-modal 内——其 backdrop-filter
+   使 position:fixed 以 modal 为包含块，随 game-wrap 整体缩放一致缩放） */
+.info-fpop {
+  position: fixed;
+  z-index: 30;
+  padding: 8px 10px 10px;
+  background: rgba(8, 12, 26, 0.96);
+  border: 1px solid rgba(124, 231, 255, 0.35);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+.info-fpop.hidden { display: none; }
+
+.info-fpop-title {
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+
+.info-fpop canvas {
+  display: block;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  border-radius: 3px;
+}
+
+.info-fpop-sub {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 6px;
+  width: 204px;
 }
 
 /* 特殊怪物波次：卡片式说明 */

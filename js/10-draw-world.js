@@ -1,5 +1,14 @@
 // 10-draw-world：敌机绘制分发 / 双 BOSS 绘制与血条 / 警报演出 / render()
-'use strict';
+
+  // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
+  // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
+  //
+  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, ENEMY_TYPES, GUNSHIP_PALETTE } from './01-config.js';
+  import { bossFlow, clamp, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts } from './02-core.js';
+  import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
+  import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
+
 
 
   // 渐变缓存：渐变对象仅取决于颜色/半径等关键参数、与坐标无关，按 key 复用，
@@ -49,6 +58,8 @@
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
     } else if (e.type === 'fashiMatrix') {
       drawFashiMatrixBody(e); // 自带填充与描边（竖菱形白红渐变外体 + 细黑菱形环 + 白红核心）
+    } else if (e.type === 'fashiArray') {
+      drawFashiArrayBody(e);  // 自带填充与描边（三座法术矩阵样式菱形 + 灰黑底座；中央血红色带流动特效）
     } else if (e.type === 'jiaoxiang') {
       drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
@@ -360,31 +371,47 @@
       ctx.shadowBlur = 0;
 
       // 赤金「金环扩散」：扩大中的金色圆环（世界半径 → 局部坐标）——本体随进度逐渐变淡，带旋转虚线外环；
-      // 到达最大范围即刻消散（无停顿阶段）
+      // 到达最大范围即刻消散（无停顿阶段）；被斩断（broken）后分裂为两段弧、断口张开 + 外飘快速淡出
       if (e.ringWave) {
         const w = e.ringWave;
-        const prog = clamp(w.t / w.dur, 0, 1);
-        const fade = 1 - prog * 0.55;   // 扩环期间本体逐渐变淡（结束时已淡至 45%，随即消散）
         const lwR = w.r / (ENEMY_TYPES.capital.drawScale || 1);
-        ctx.save();
-        ctx.globalAlpha = (0.55 + pulse * 0.45) * fade;
-        ctx.strokeStyle = pal.accent;
-        ctx.shadowColor = pal.glow;
-        ctx.shadowBlur = 16;
-        ctx.lineWidth = 3.2;
-        ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
-        // 旋转虚线外环（扩散动感）
-        ctx.globalAlpha = 0.5 * fade;
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([10, 14]);
-        ctx.lineDashOffset = -state.time * 40;
-        ctx.beginPath(); ctx.arc(0, 0, lwR + 9, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-        // 内侧淡金衬环
-        ctx.globalAlpha = 0.22 * fade;
-        ctx.lineWidth = 7;
-        ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
+        if (w.broken) {
+          const k = clamp(w.fadeT / w.fadeDur, 0, 1);
+          const gap = 0.3 + k * 1.1;   // 断口随消散张开（敌机绘制无旋转，doSlash 记录的世界角可直接使用）
+          const rr = lwR + k * 16;
+          ctx.save();
+          ctx.strokeStyle = pal.accent;
+          ctx.shadowColor = pal.glow;
+          ctx.shadowBlur = 14 * (1 - k);
+          ctx.lineWidth = Math.max(0.5, 3.2 * (1 - k));
+          ctx.globalAlpha = (0.55 + pulse * 0.45) * (1 - k);
+          const span1 = w.span - gap * 2, span2 = Math.PI * 2 - w.span - gap * 2;
+          if (span1 > 0.05) { ctx.beginPath(); ctx.arc(0, 0, rr, w.angA + gap, w.angA + gap + span1); ctx.stroke(); }
+          if (span2 > 0.05) { ctx.beginPath(); ctx.arc(0, 0, rr, w.angA + w.span + gap, w.angA + w.span + gap + span2); ctx.stroke(); }
+          ctx.restore();
+        } else {
+          const prog = clamp(w.t / w.dur, 0, 1);
+          const fade = 1 - prog * 0.55;   // 扩环期间本体逐渐变淡（结束时已淡至 45%，随即消散）
+          ctx.save();
+          ctx.globalAlpha = (0.55 + pulse * 0.45) * fade;
+          ctx.strokeStyle = pal.accent;
+          ctx.shadowColor = pal.glow;
+          ctx.shadowBlur = 16;
+          ctx.lineWidth = 3.2;
+          ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
+          // 旋转虚线外环（扩散动感）
+          ctx.globalAlpha = 0.5 * fade;
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([10, 14]);
+          ctx.lineDashOffset = -state.time * 40;
+          ctx.beginPath(); ctx.arc(0, 0, lwR + 9, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+          // 内侧淡金衬环
+          ctx.globalAlpha = 0.22 * fade;
+          ctx.lineWidth = 7;
+          ctx.beginPath(); ctx.arc(0, 0, lwR, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // (3) 舰桥指挥塔（暗座 + 径向发光核心 + 强调色描边）
@@ -465,13 +492,22 @@
       ctx.globalAlpha = 1;
     }
 
-    // 血条（测试环境 state.challenge 下敌人每帧回满血、受击时血条会抖动，故不显示；BOSS 血条在 drawBoss 中单独绘制，不受影响）
-    if (e.hp < e.maxHp && !state.challenge) {
+    // 血条：受伤后 0.15s 渐显、回满后渐隐（barT 由 updateEnemies 推进）；
+    // 白色残量为受击追踪余像（hpTrail 缓慢追赶 hp，同 BOSS 血条实现）；BOSS 血条在 drawBoss 中单独绘制
+    if ((e.barT || 0) > 0.01) {
       const w = e.w;
+      const hpR = clamp(e.hp / e.maxHp, 0, 1);
+      const trailR = clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1);
+      ctx.globalAlpha = e.barT;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillRect(-w / 2, -e.h / 2 - 8, w, 3);
+      if (trailR > hpR) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-w / 2 + w * hpR, -e.h / 2 - 8, w * (trailR - hpR), 3);
+      }
       ctx.fillStyle = '#ff9500';
-      ctx.fillRect(-w / 2, -e.h / 2 - 8, w * (e.hp / e.maxHp), 3);
+      ctx.fillRect(-w / 2, -e.h / 2 - 8, w * hpR, 3);
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -518,8 +554,8 @@
   function drawBullets() {
     for (const b of pBullets) {
       if (b.wing) {
-        // 僚机长条弹幕：沿飞行方向，尾→头渐变；暴走时额外发光描边 + 尾焰
-        //   群星允诺：旋转胶囊体（暖色尾焰）；钢铁壁垒(oval)：椭圆体（冷色尾焰）
+        // 僚机长条弹幕：沿飞行方向，尾→头渐变；尾焰长度/亮度随 flameMul（0~1）增长，暴走（=1）最强
+        //   群星允诺：旋转胶囊体（暖色尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);
@@ -528,19 +564,29 @@
         wg.addColorStop(0, b.colorTail);
         wg.addColorStop(0.5, b.colorMid);
         wg.addColorStop(1, b.colorHead);
+        const fm0 = b.flameMul != null ? b.flameMul : (b.glow ? 1 : 0);   // 未标 flameMul 的弹沿用 glow 语义（暴走=1 / 常规=0）
+        // 出膛渐入：尾焰/辉光随离舱距离展开（前 60px 线性）——避免新射出的弹把金红尾焰扫在僚机盾面与本体上
+        const fm = b.sy != null ? fm0 * clamp(Math.hypot(b.x - b.sx, b.y - b.sy) / 60, 0, 1) : fm0;
         ctx.fillStyle = wg;
         ctx.shadowColor = b.colorHead;
-        ctx.shadowBlur = b.glow ? 16 : 8;
+        ctx.shadowBlur = 8 + 8 * fm;
         const rr = b.r, hl = b.len / 2;
-        if (b.glow) {
-          // 暴走尾焰：弹尾（-x）延伸的金橙渐变火舌，与主机暴走弹同主题
-          const L = b.len * 0.85 + 16;
+        if (fm > 0) {
+          // 尾焰：弹尾（-x）延伸的渐变火舌，长度与根部亮度随 flameMul 增长（Lv5 暴走 1.0 = 原暴走尾焰）
+          //   flameLenMul：仅长度的额外系数（群星允诺 Lv1~4 收短 35%，暴走弹为 1）
+          const L = (b.len * 0.85 + 16) * fm * (b.flameLenMul || 1);
+          const fa = 0.4 + 0.6 * fm;
           const fg = ctx.createLinearGradient(-hl, 0, -hl - L, 0);
-          if (b.oval) {   // 钢铁壁垒：冷蓝尾焰
-            fg.addColorStop(0, 'rgba(190, 230, 255, 0.75)');
-            fg.addColorStop(1, 'rgba(60, 150, 255, 0)');
+          if (b.oval) {   // 守愿者：冷蓝尾焰（暴走金红弹随配色金红化）
+            if (b.berserkFire) {
+              fg.addColorStop(0, `rgba(255, 214, 130, ${(0.8 * fa).toFixed(3)})`);
+              fg.addColorStop(1, 'rgba(230, 57, 42, 0)');
+            } else {
+              fg.addColorStop(0, `rgba(190, 230, 255, ${(0.75 * fa).toFixed(3)})`);
+              fg.addColorStop(1, 'rgba(60, 150, 255, 0)');
+            }
           } else {        // 群星允诺：金橙尾焰
-            fg.addColorStop(0, 'rgba(255, 205, 120, 0.7)');
+            fg.addColorStop(0, `rgba(255, 205, 120, ${(0.7 * fa).toFixed(3)})`);
             fg.addColorStop(1, 'rgba(255, 110, 199, 0)');
           }
           ctx.fillStyle = fg;
@@ -554,7 +600,7 @@
         }
         ctx.beginPath();
         if (b.oval) {
-          // 椭圆体（钢铁壁垒）：沿飞行方向的椭圆轮廓
+          // 椭圆体（守愿者）：沿飞行方向的椭圆轮廓
           ctx.ellipse(0, 0, hl, rr, 0, 0, Math.PI * 2);
         } else {
           // 旋转胶囊体（群星允诺）
@@ -567,8 +613,8 @@
         }
         ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.strokeStyle = b.glow ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = b.glow ? 1.4 : 0.8;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.5 + 0.4 * fm).toFixed(3)})`;
+        ctx.lineWidth = 0.8 + 0.6 * fm;
         ctx.stroke();
         ctx.restore();
         continue;
@@ -576,9 +622,10 @@
       // 弹体渐变与坐标无关（仅颜色/半径），缓存复用；平移到弹位置后按局部坐标绘制
       const top = b.y - b.r * 3;
       const h = b.r * 6;
-      if (b.berserk) {
+      { // 子弹尾焰：金橙火舌 + 暖光晕，长度随发射时武器等级增长（Lv1~5，暴走弹最长）
         // 暴走尾焰：弹体后方（飞行反方向）的金橙渐变火舌 + 外围暖光晕（仅暴走期发射的弹携带）
-        const L = b.r * 9;
+        const lv = b.lv || (b.berserk ? 5 : 1);
+      const L = b.r * (2.6 + lv * 2.1) * (lv >= 5 ? 1 : 0.85);   // Lv1~4 尾焰 -15%，Lv5 暴走弹保持原长
         const fg = ctx.createLinearGradient(b.x, b.y + b.r, b.x, b.y + b.r + L);
         fg.addColorStop(0, 'rgba(255, 236, 175, 0.85)');   // 根部暖白金
         fg.addColorStop(0.4, 'rgba(255, 172, 84, 0.5)');   // 中段金橙
@@ -635,7 +682,7 @@
         ctx.save();
         ctx.translate(b.x, b.y);   // 尾端位置
         ctx.rotate(ang);
-        const L = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len, lr = b.r;   // 钢铁壁垒白盾截断：只画尾端→盾交点
+        const L = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len, lr = b.r;   // 守愿者白盾截断：只画尾端→盾交点
         ctx.shadowColor = bright ? '#d8b4fe' : '#a855f7';
         ctx.shadowBlur = bright ? 22 : 14;
         // 横向渐变（y 轴垂直于飞行方向）：上边绚紫 → 中心白亮 → 下边绚紫（A2 边缘更浅更亮）
@@ -763,6 +810,52 @@
     ctx.shadowBlur = 0;
   }
 
+  // 碎盾特效（群星之杀斩碎虚化护盾）：白热闪核 + 三角碎片自机体中心加速迸射（带自旋）
+  function drawPhaseFx() {
+    for (const f of phaseFx) {
+      const p = 1 - f.t / f.max;
+      const a = 1 - p;
+      const age = f.max - f.t;   // 特效已播时长（供位移/自旋积分）
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // 起始白热闪核（前 40% 快速衰减）
+      if (p < 0.4) {
+        const q = p / 0.4;
+        const fr = f.r * (1.4 + 1.1 * q);
+        const cg = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, fr);
+        cg.addColorStop(0, `rgba(240, 250, 255, ${(0.95 * (1 - q)).toFixed(3)})`);
+        cg.addColorStop(0.5, `rgba(170, 220, 255, ${(0.55 * (1 - q)).toFixed(3)})`);
+        cg.addColorStop(1, 'rgba(140, 200, 255, 0)');
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.arc(f.x, f.y, fr, 0, Math.PI * 2); ctx.fill();
+      }
+      // 三角碎片：v0·age + ½·acc·age² 加速外飞，尖端朝外、随机方向自旋
+      const tl = 4 + f.r * 0.22, tw = 1.8 + f.r * 0.09;   // 碎片长 / 半宽（随目标体型）
+      ctx.fillStyle = 'rgba(210, 238, 255, 0.6)';
+      ctx.strokeStyle = 'rgba(240, 250, 255, 0.72)';
+      ctx.shadowColor = 'rgba(140, 205, 255, 1)';
+      ctx.shadowBlur = 8 * a;
+      ctx.lineWidth = Math.max(0.6, 1.4 * a);
+      for (const s of f.shards) {
+        const dist = s.v0 * age + 0.5 * s.acc * age * age;
+        const sx = f.x + Math.cos(s.a) * dist, sy = f.y + Math.sin(s.a) * dist;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(s.a + s.w * age);
+        ctx.globalAlpha = a * 0.82;
+        ctx.beginPath();
+        ctx.moveTo(tl, 0);
+        ctx.lineTo(-tl * 0.45, tw);
+        ctx.lineTo(-tl * 0.45, -tw);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+  }
+
   function drawParticles() {
     for (const p of particles) {
       const t = 1 - p.age / p.life;
@@ -773,37 +866,190 @@
     ctx.globalAlpha = 1;
   }
 
+  // ---------- 掉落道具形象（矢量图标版）----------
+  // kit=粉色徽章·双箭头 / berserk=透明徽章·红橙流动渐变边框+大"S" / shield=青色六边护徽·◇ / hp=绿色圆徽·医疗十字 / bomb=橙色圆球·引信火花
+  // 共通：呼吸扩散光环 + 个体相位（按位置区分，免加字段）；道具本体静止不晃
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function powerupColors(kind) {
+    switch (kind) {
+      case 'berserk': return { base: '#ff4d1a', hi: '#ff9a3d', dark: '#d41d0f', glow: '#ff4d1a' };
+      case 'shield':  return { base: '#6fe3ff', hi: '#d6f7ff', dark: '#2bb5dd', glow: '#6fe3ff' };
+      case 'hp':      return { base: '#66e39a', hi: '#d2ffe6', dark: '#2ea86a', glow: '#66e39a' };
+      case 'bomb':    return { base: '#ffb545', hi: '#ffe3ad', dark: '#e07800', glow: '#ff9a2e' };
+      default:        return { base: '#ff5ea8', hi: '#ffc0dd', dark: '#e0256f', glow: '#ff5ea8' };   // kit
+    }
+  }
+
   function drawPowerups() {
     for (const p of powerups) {
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(state.time * 2);
+      const t = state.time;
+      const ph = p.x * 0.07 + p.y * 0.11;
+      const col = powerupColors(p.kind);
       const isBerserk = p.kind === 'berserk';
-      if (isBerserk) {
-        // 暴走道具：红橙渐变 + 脉动强光，格外显眼
-        const pulse = 16 + Math.sin(state.time * 10) * 8;
-        const g = ctx.createLinearGradient(-p.r, -p.r, p.r, p.r);
-        g.addColorStop(0, '#ff2d2d');
-        g.addColorStop(1, '#ff8a00');
+      ctx.save();
+      ctx.translate(p.x, p.y);   // 本体静止：不做浮沉/摆动
+
+      // ① 呼吸扩散光环：每 1.4s 一圈自 r+2 扩至 r+10 淡出
+      const rp = (t * 0.7 + ph * 0.31) % 1;
+      ctx.strokeStyle = col.glow;
+      ctx.globalAlpha = (1 - rp) * (isBerserk ? 0.5 : 0.32);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.r + 2 + rp * 9, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.shadowColor = col.glow;
+      ctx.shadowBlur = isBerserk ? 14 + Math.sin(t * 10) * 6 : 11;
+
+      if (p.kind === 'kit') {
+        // 升级套件：粉色圆角徽章 + 白色双上箭头
+        const g = ctx.createLinearGradient(0, -p.r, 0, p.r);
+        g.addColorStop(0, col.hi);
+        g.addColorStop(0.55, col.base);
+        g.addColorStop(1, col.dark);
         ctx.fillStyle = g;
+        roundRectPath(ctx, -p.r, -p.r, p.r * 2, p.r * 2, p.r * 0.38);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1;
+        roundRectPath(ctx, -p.r + 1.5, -p.r + 1.5, p.r * 2 - 3, p.r * 2 - 3, p.r * 0.3);
+        ctx.stroke();
+        // 双箭头（上小下大，向上的动势）
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = p.r * 0.26;
+        for (let i = 0; i < 2; i++) {
+          const cy = i === 0 ? -p.r * 0.34 : p.r * 0.26;
+          const w = i === 0 ? p.r * 0.4 : p.r * 0.52;
+          ctx.beginPath();
+          ctx.moveTo(-w, cy + p.r * 0.26);
+          ctx.lineTo(0, cy - p.r * 0.26);
+          ctx.lineTo(w, cy + p.r * 0.26);
+          ctx.stroke();
+        }
+      } else if (isBerserk) {
+        // 暴走：透明圆角徽章——红橙流动渐变细边框 + 同色大 "S"（内部透明、本体静止）
+        const ang = t * 0.6 + ph;
+        const L = p.r * 1.6;
+        const g = ctx.createLinearGradient(-Math.cos(ang) * L, -Math.sin(ang) * L, Math.cos(ang) * L, Math.sin(ang) * L);
+        g.addColorStop(0, '#ff3b2d');
+        g.addColorStop(0.5, '#ff7a1a');
+        g.addColorStop(1, '#ffb340');
+        // 边框：同款流动渐变细描边，颜色更淡（半透明）
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1.5;
         ctx.shadowColor = '#ff4d1a';
-        ctx.shadowBlur = pulse;
+        ctx.shadowBlur = 8;
+        roundRectPath(ctx, -p.r, -p.r, p.r * 2, p.r * 2, p.r * 0.38);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        // 大 "S"：同款流动渐变填充，按实际字形包围盒精确居中
+        ctx.fillStyle = g;
+        ctx.font = `bold ${Math.round(p.r * 1.5)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        const m = ctx.measureText('S');
+        const dx = (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2;
+        const dy = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+        ctx.fillText('S', dx, dy);
+      } else if (p.kind === 'shield') {
+        // 量子护盾：青色六边护徽 + 白色◇核心 + 旋转虚线环（科技感）
+        const g = ctx.createLinearGradient(0, -p.r * 1.15, 0, p.r * 1.15);
+        g.addColorStop(0, col.hi);
+        g.addColorStop(0.55, col.base);
+        g.addColorStop(1, col.dark);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const ang = Math.PI / 3 * i - Math.PI / 2;
+          const px = Math.cos(ang) * p.r * 1.15, py = Math.sin(ang) * p.r * 1.15;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        const d = p.r * 0.48;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(0, -d);
+        ctx.lineTo(d * 0.7, 0);
+        ctx.lineTo(0, d);
+        ctx.lineTo(-d * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(111,227,255,0.6)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 5]);
+        ctx.lineDashOffset = -t * 22;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (p.kind === 'hp') {
+        // 加血：绿色光泽圆徽 + 白色医疗十字
+        const g = ctx.createRadialGradient(-p.r * 0.35, -p.r * 0.35, p.r * 0.2, 0, 0, p.r * 1.1);
+        g.addColorStop(0, col.hi);
+        g.addColorStop(0.6, col.base);
+        g.addColorStop(1, col.dark);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 1.08, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 0.86, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        const cw = p.r * 0.34, cl = p.r * 0.62;
+        roundRectPath(ctx, -cw / 2, -cl, cw, cl * 2, cw * 0.4);
+        ctx.fill();
+        roundRectPath(ctx, -cl, -cw / 2, cl * 2, cw, cw * 0.4);
+        ctx.fill();
       } else {
-        ctx.fillStyle = p.kind === 'hp' ? '#66e39a' : p.kind === 'bomb' ? '#ffb545' : p.kind === 'shield' ? '#6fe3ff' : '#ff5ea8';
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = 12;
+        // 高能爆弹：橙色圆角徽章 + 白色描边 + 中央大 "B"（与套件/暴走徽章同风格，去掉旧炸弹造型）
+        const g = ctx.createLinearGradient(0, -p.r, 0, p.r);
+        g.addColorStop(0, col.hi);
+        g.addColorStop(0.55, col.base);
+        g.addColorStop(1, col.dark);
+        ctx.fillStyle = g;
+        roundRectPath(ctx, -p.r, -p.r, p.r * 2, p.r * 2, p.r * 0.38);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1;
+        roundRectPath(ctx, -p.r + 1.5, -p.r + 1.5, p.r * 2 - 3, p.r * 2 - 3, p.r * 0.3);
+        ctx.stroke();
+        // 大 "B"：白色，按实际字形包围盒精确居中，带轻微呼吸缩放
+        const pulse = 1 + Math.sin(t * 4 + ph) * 0.05;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.round(p.r * 1.45 * pulse)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        const m = ctx.measureText('B');
+        const dx = (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2;
+        const dy = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+        ctx.fillText('B', dx, dy);
       }
-      ctx.fillRect(-p.r, -p.r, p.r * 2, p.r * 2);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = isBerserk ? '#fff3e0' : '#0b1224';
-      ctx.font = isBerserk ? 'bold 20px sans-serif' : 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.rotate(-state.time * 2);
-      const label = isBerserk ? 'S' : p.kind === 'hp' ? '+' : p.kind === 'bomb' ? 'B' : p.kind === 'shield' ? '◇' : '↑';
-      ctx.fillText(label, 0, 1);
+
       ctx.restore();
     }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
   }
 
   function drawCrystals() {
@@ -825,6 +1071,46 @@
       ctx.restore();
     }
     ctx.shadowBlur = 0;
+  }
+
+  // 测试模式（图鉴挑战·敌人测试）顶部血条：仅当场上恰好 1 个测试目标时显示（多目标时渐隐），
+  // 出现/消失各 0.15s 渐显渐隐；白色残量为受击追踪余像（同 BOSS 血条 hpTrail 实现）。
+  // BOSS 测试不画此条（BOSS 在 drawBoss 中已有专属顶部血条）
+  let cbLastT = null, cbAlpha = 0, cbTrail = null, cbRef = null;
+  function drawChallengeBar() {
+    const active = !!(state.challenge && state.challenge.kind === 'enemy' && enemies.length === 1);
+    const now = state.time;
+    const dt = cbLastT == null ? 0 : Math.max(0, Math.min(0.1, now - cbLastT));
+    cbLastT = now;
+    cbAlpha = clamp(cbAlpha + (active ? dt : -dt) / 0.15, 0, 1);
+    if (cbAlpha <= 0.01) { cbTrail = null; cbRef = null; return; }
+    const e = enemies[0];
+    if (!e) return;
+    if (e !== cbRef) { cbRef = e; cbTrail = e.hp; }   // 目标更替（被击杀后重生/按 + 召唤）：残量重置
+    cbTrail += (e.hp - cbTrail) * Math.min(1, dt * 2.2);
+    const w = 300, h = 9, x = (CANVAS_W - w) / 2, y = 10;
+    const hpR = clamp(e.hp / e.maxHp, 0, 1);
+    const trailR = clamp(cbTrail / e.maxHp, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = cbAlpha;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.fillRect(x, y, w, h);
+    if (trailR > hpR) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + w * hpR, y, w * (trailR - hpR), h);
+    }
+    ctx.fillStyle = '#ff9500';
+    ctx.fillRect(x, y, w * hpR, h);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+    ctx.fillStyle = '#eaf2ff';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('测试目标 ' + Math.ceil(e.hp) + ' / ' + e.maxHp, CANVAS_W / 2, y + h + 12);
+    ctx.restore();
   }
 
   function render() {
@@ -866,16 +1152,30 @@
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
     drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）
     drawCubeHitFx();      // 法术矩阵：正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
+    drawPhaseFx();        // 碎盾特效（群星之杀斩碎虚化护盾）：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片
+    drawPlayerHitFx();    // 命中玩家特效（白热闪核 + 红橙冲击环 + 迸溅火花线）
     drawDouzhiFx();       // 斗志昂扬死亡演出：脱离渐隐蓝盒 + 淡黄扩大光环 + 渐隐本体
     drawSlashFx();        // 群星之杀：空间斩击特效（交叉斩痕 + 冲击环，渐隐）
     drawParticles();
+    drawChallengeBar();   // 测试模式：顶部测试目标血条（图鉴挑战·敌人测试）
 
     // BOSS 警报演出（全屏覆盖层）
-    if (state.bossStage === 'warn') drawBossWarning(state.warnT);
+    if (bossFlow.stage === 'warn') drawBossWarning(bossFlow.warnT);
 
     // 炸弹白闪
-    if (flash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${clamp(flash, 0, 1) * 0.7})`;
+    if (state.flash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${clamp(state.flash, 0, 1) * 0.7})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+
+    // 受击红晕：屏幕四周泛红（命中玩家时叠加，14-main 随时间衰减）
+    if (state.hurt > 0) {
+      const k = clamp(state.hurt, 0, 1);
+      const hg = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.34, CANVAS_W / 2, CANVAS_H / 2, Math.max(CANVAS_W, CANVAS_H) * 0.62);
+      hg.addColorStop(0, 'rgba(255, 36, 58, 0)');
+      hg.addColorStop(0.75, `rgba(255, 30, 52, ${(0.16 * k).toFixed(3)})`);
+      hg.addColorStop(1, `rgba(255, 26, 48, ${(0.45 * k).toFixed(3)})`);
+      ctx.fillStyle = hg;
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
@@ -955,6 +1255,44 @@
       ctx.restore();
     }
 
+    // 高能爆弹火圈（测试模式）：橙黄火环自场地中心急速扩大至全场，同时渐隐
+    if (bombBurst.active) {
+      const p = bombBurst.t / bombBurst.duration;   // 0→1
+      const ease = 1 - Math.pow(1 - p, 2.2);        // easeOut：急速扩张、末段减速
+      const cx = CANVAS_W / 2, cy = CANVAS_H / 2;
+      const maxR = Math.hypot(CANVAS_W, CANVAS_H) / 2 + 40;   // 覆盖全屏对角线
+      const r = 16 + ease * maxR;
+      const alpha = 1 - p;
+      ctx.save();
+      // 火浪内衬：紧贴火环内侧的橙黄径向渐变（跟随火圈推进，火焰余晖感）
+      const fg = ctx.createRadialGradient(cx, cy, r * 0.45, cx, cy, r);
+      fg.addColorStop(0, 'rgba(255,150,40,0)');
+      fg.addColorStop(0.72, `rgba(255,140,40,${(0.10 * alpha).toFixed(3)})`);
+      fg.addColorStop(1, `rgba(255,200,80,${(0.22 * alpha).toFixed(3)})`);
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      // 主火环：橙黄发光粗环（宽度随扩张收窄）
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.strokeStyle = '#ffb340';
+      ctx.shadowColor = '#ff9a2e';
+      ctx.shadowBlur = 26 * alpha;
+      ctx.lineWidth = 20 * (1 - ease) + 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // 内侧亮黄细环（层次）
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.strokeStyle = '#ffe680';
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(1, 6 * (1 - ease) + 1);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.86, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // “暴走”字样：置顶图层（最后绘制，位于所有游戏实体之上）
     if (player.alive && player.berserkBanner > 0) {
       ctx.save();
@@ -972,3 +1310,8 @@
 
     // 暂停遮罩（由 HTML overlay 接管）
   }
+
+  export {
+    gradCache, cachedGrad, drawEnemy, drawTrailGhosts, drawBullets, drawParticles,
+    drawPowerups, drawCrystals, render,
+  };

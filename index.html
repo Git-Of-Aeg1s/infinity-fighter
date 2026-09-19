@@ -92,6 +92,7 @@
           <!-- 再次挑战置于上方：BOSS 试炼 / 图鉴挑战胜利页与「返回主界面」同时可见，挑战按钮在上 -->
           <button id="retrialBtn" class="hidden">再次挑战</button>
           <button id="startBtn">开始游戏</button>
+          <button id="gameoverHomeBtn" class="hidden">返回主界面</button>
           <button id="pauseRetryBtn" class="hidden">重新挑战</button>
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <div class="boss-test-row" id="bossTestRow"></div>
@@ -129,20 +130,21 @@
     </div>
   </div>
 
-  <!-- 游戏脚本：经典 <script> 共享全局词法作用域，必须严格按序号加载（01 常量 → 14 启动入口） -->
-  <script src="./js/01-config.js"></script>
-  <script src="./js/02-core.js"></script>
-  <script src="./js/03-audio.js"></script>
-  <script src="./js/04-spawn.js"></script>
-  <script src="./js/05-boss.js"></script>
-  <script src="./js/06-enemy.js"></script>
-  <script src="./js/07-player.js"></script>
-  <script src="./js/08-entities.js"></script>
-  <script src="./js/09-draw-ships.js"></script>
-  <script src="./js/10-draw-world.js"></script>
-  <script src="./js/11-draw-boss.js"></script>
-  <script src="./js/12-ui.js"></script>
-  <script src="./js/13-encyclopedia.js"></script>
-  <script src="./js/14-main.js"></script>
+  <!-- 游戏脚本：ES modules，显式 import/export 声明依赖；按序号加载保持执行顺序（01 常量 → 14 启动入口），
+       跨模块可变绑定（ctx / currentPlane / currentWingman）的写操作必须经由所有者模块暴露的 setter -->
+  <script type="module" src="./js/01-config.js"></script>
+  <script type="module" src="./js/02-core.js"></script>
+  <script type="module" src="./js/03-audio.js"></script>
+  <script type="module" src="./js/04-spawn.js"></script>
+  <script type="module" src="./js/05-boss.js"></script>
+  <script type="module" src="./js/06-enemy.js"></script>
+  <script type="module" src="./js/07-player.js"></script>
+  <script type="module" src="./js/08-entities.js"></script>
+  <script type="module" src="./js/09-draw-ships.js"></script>
+  <script type="module" src="./js/10-draw-world.js"></script>
+  <script type="module" src="./js/11-draw-boss.js"></script>
+  <script type="module" src="./js/12-ui.js"></script>
+  <script type="module" src="./js/13-encyclopedia.js"></script>
+  <script type="module" src="./js/14-main.js"></script>
 </body>
 </html>

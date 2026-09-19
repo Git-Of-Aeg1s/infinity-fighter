@@ -1,0 +1,12 @@
+{
+  "name": "infinity-fighter",
+  "version": "0.2.6",
+  "private": true,
+  "type": "module",
+  "description": "大无垠战机 · 纯前端 Canvas 纵版射击 Demo（零外部依赖）",
+  "scripts": {
+    "check": "node tools/check-names.js",
+    "check-syntax": "node tools/check-syntax.js",
+    "smoke": "node tools/smoke.js"
+  }
+}

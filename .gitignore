@@ -1,0 +1,8 @@
+# 内部开发记忆（AI 工作区）
+.workbuddy/
+
+# 备份文件
+*.bak
+
+# 系统杂项
+Thumbs.db

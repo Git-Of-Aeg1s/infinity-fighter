@@ -1,9 +1,18 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
-'use strict';
+
+  // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(46 名) 13-encyclopedia(15 名) 14-main(22 名)
+  // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
+  //   state.{shakeMag, shakeTime}
+  //
+  import { CANVAS_H, CANVAS_W, DOUZHI, PLAYER_CFG, STAR_COUNT } from './01-config.js';
+
 
   // ---------- DOM ----------
   const canvas = document.getElementById('game');
   let ctx = canvas.getContext('2d');   // 可在图鉴预览时临时切换到其它 canvas 上下文
+  // 跨文件写 ctx 的唯一入口（图鉴预览 withPreviewCtx 使用）：ES modules 下导入绑定只读，写操作必须留在所有者模块内
+  function setCtx(c) { ctx = c; }
 
   // 高 DPI 适配：按设备像素比放大画布内部分辨率，CSS 显示尺寸不变
   const DPR = window.devicePixelRatio || 1;
@@ -33,6 +42,7 @@
   const wingmanGrid = document.getElementById('wingmanGrid');
   const bossTestRow = document.getElementById('bossTestRow');
   const retrialBtn = document.getElementById('retrialBtn');   // 胜利结算页「再次挑战」（仅试炼/挑战模式显示）
+  const gameoverHomeBtn = document.getElementById('gameoverHomeBtn');   // 失败结算页「返回主界面」
   const pauseHomeBtn = document.getElementById('pauseHomeBtn');
   const pauseRetryBtn = document.getElementById('pauseRetryBtn');
 
@@ -51,47 +61,62 @@
   const infoClose = document.getElementById('infoClose');
 
   // ---------- 状态 ----------
+  // 并行修改约定：共享状态分三个域对象（state / bossFlow / levelFlow）。
+  // 新增状态属性先归域、再在本文件声明；任何文件不得另立顶层 let 充当全局状态。
+  // 属性可被多个文件读写（对象属性赋值在 ES modules 下同样合法），但每个属性应有单一「逻辑所有者」，
+  // 所有者与写方汇总见各文件头部契约注释。
   const state = {
     mode: 'idle',      // idle | playing | gameover
     paused: false,
     score: 0,
-    level: 1,
     bombs: 1,
-    lives: PLAYER.lives,
+    lives: PLAYER_CFG.lives,
     time: 0,
-    spawnTimer: 0,
-    waveSeq: 0,        // 波次序号：标记本波生成的敌人，上一波机动兵力清场后才放下一波
     shakeTime: 0,
     shakeMag: 0,
-    lowPressureT: 0,   // 压力低于阈值累计时长（驱动刷新倒计时加速，回到阈值以上归零）
-    specialIdleT: 0,   // 3类槽位空闲累计时长（高于压力阈值时超过上限仍会强制刷新特殊3类）
-    capitalIdleT: 0,   // 4类槽位空闲累计时长（同上，上限更长）
-    harbingerIntro: false, // 本局是否已首次出场炮火先兆者（仅第一轮首出必是；第二轮无强制）
-    jiaoxiang13Done: false, // 本局是否已触发 Lv13 后首次刷新必出焦香螺旋桨（一次性）
-    orangeBombUsed: false, // 本场战斗橙色敌人 1% 爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
-    crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
-    bossTimer: 0,      // BOSS 登场倒计时（累计战斗时长）
-    bossStage: 'none', // BOSS 流程：none | wait(等清场) | warn(警报演出) | fight(BOSS战)
-    bossVictoryDelay: 0, // BOSS 击杀后延迟返回主界面
-    postBossDelay: 0,    // BOSS 击败后到恢复刷怪的缓冲（2s，不计入关卡推进）
-    postBossWaveT: 0,    // BOSS 后固定首波（1类长队）刷出起 4s 观察期，结束后恢复正常刷怪（不计入关卡推进）
-    defeatedBossName: '', // 被击败的 BOSS 名称
-    warnT: 0,          // 警报演出计时
-    bossPhase: 0,      // 关卡阶段索引：0=首段刷怪(50s)→旧日之歌；1=二段刷怪(40s)→暴风之眼
-        pendingBoss: 'song',   // 即将登场的 BOSS id
-    testBoss: null,    // 测试模式：直接挑战的 BOSS id
-    challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我血量无限、仅单个敌人
+    flash: 0,          // 全屏白闪强度（高能爆弹等触发；原 08-entities 顶层变量并入）
+    hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
-    prevLevel: 1,      // 上一帧关卡等级：检测「关卡提升」以触发斗志昂扬 5% 出现
+    orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
+    crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
+    stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
+    testBoss: null,    // 测试模式：直接挑战的 BOSS id
+    challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
+    cheatArm: false,   // 武器等级作弊武装开关（按 0 置位；原先为运行时动态挂载的隐式属性）
+    victoryOverlay: false, // 胜利结算页激活中（原 12-ui 顶层变量 victoryOverlayActive 并入）
+  };
+
+  // BOSS 流程状态机：stage none → wait(等清场) → warn(警报演出) → fight(BOSS战) → none
+  const bossFlow = {
+    stage: 'none',     // BOSS 流程：none | wait | warn | fight
+    timer: 0,          // BOSS 登场倒计时（累计战斗时长）
+    phase: 0,          // 关卡阶段索引：0=首段刷怪(50s)→旧日之歌；1=二段刷怪(40s)→暴风之眼
+    pending: 'song',   // 即将登场的 BOSS id
+    warnT: 0,          // 警报演出计时
+    victoryDelay: 0,   // BOSS 击杀后延迟返回主界面
+    defeatedName: '',  // 被击败的 BOSS 名称
+    postDelay: 0,      // BOSS 击败后到恢复刷怪的缓冲（2s，不计入关卡推进）
+    postWaveT: 0,      // BOSS 后固定首波（1类长队）刷出起 4s 观察期，结束后恢复正常刷怪（不计入关卡推进）
+  };
+
+  // 关卡与出怪节奏：level 由有效刷怪时间驱动；spawnTimer/waveSeq 驱动波次；capitalIdleT 驱动 4类槽位刷新
+  const levelFlow = {
+    level: 1,          // 当前关卡等级
+    prevLevel: 1,      // 上一帧关卡等级：检测「关卡提升」以触发斗志昂扬 4% 出现
+    spawnTimer: 0,     // 波次刷新倒计时
+    waveSeq: 0,        // 波次序号：标记本波生成的敌人（特殊3类随波生成，同种限 1 见 04-spawn）
+    lowPressureT: 0,   // 压力低于阈值累计时长（驱动刷新倒计时加速，回到阈值以上归零）
+    capitalIdleT: 0,   // 4类槽位空闲累计时长（压力高于阈值时超过上限仍会强制刷新）
+    jiaoxiang13Done: false, // 本局是否已触发 Lv13 后首次刷新必出焦香螺旋桨（一次性）
     douzhiSkipOnce: false, // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬（killEnemy 置位）
   };
 
   const player = {
     x: CANVAS_W / 2,
     y: CANVAS_H - 90,
-    w: PLAYER.w,
-    h: PLAYER.h,
-    hp: PLAYER.maxHp,
+    w: PLAYER_CFG.w,
+    h: PLAYER_CFG.h,
+    hp: PLAYER_CFG.maxHp,
     kbT: 0, kbVx: 0, kbVy: 0,   // 风暴风流/风柱命中的击退（短暂位移、快速衰减）
     cooldown: 0,
     invuln: 0,
@@ -103,34 +128,43 @@
     shield: 0,         // 量子护盾剩余时间
     respawnTimer: 0,   // 掉命后重生倒计时
     hitCount: 0,       // 受击计数：累计两次才掉一层火力
+    hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
     slashCd: 0,        // 距下次斩击的冷却（s）
     slashTarget: null, // 当前锁定光束选中的敌人引用（每帧刷新）
     slashQueued: 0,    // 暴走三连斩：待释放的剩余斩击次数
     slashGapT: 0,      // 暴走三连斩：距下一击的间隔计时
+    bladeFlashT: 0,    // 双刃攻击闪光计时（doSlash 置位，updateStarslayer 衰减，paintStarslayer 读取）
+    berserkSpread: 0,  // 暴走刃帆变形进度 0~1（updateStarslayer 驱动，paintStarslayer 读取）
   };
 
-  /** @type {Array} */ let enemies = [];
-  /** @type {Array} */ let pBullets = [];
-  /** @type {Array} */ let eBullets = [];
-  /** @type {Array} */ let trailGhosts = [];   // 暗紫轨迹残影（部件球弹幕：帧间线段留存渐隐）
-  /** @type {Array} */ let particles = [];
-  /** @type {Array} */ let powerups = [];
-  /** @type {Array} */ let crystals = [];
-  /** @type {Array} */ let missileWarns = [];   // 炮火先兆者导弹垂直预警线
-  /** @type {Array} */ let missiles = [];       // 预警结束后从上方下落的导弹
-  /** @type {Array} */ let blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
-  /** @type {Array} */ let popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
-  /** @type {Array} */ let spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
-  /** @type {Array} */ let cubeHitFx = [];       // 法术矩阵正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
-  /** @type {Array} */ let zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警：风流约 1.1s / 风柱 1.3s）
-  /** @type {Array} */ let windFlows = [];      // 标记到期后沿曲线呼啸而至的风流
-  /** @type {Array} */ let pillarStrikes = [];  // 标记到期后降下的垂直风柱打击
-  /** @type {Object|null} */ let stormVortex = null;   // 暴风之眼：涡流风旋（技能7，自转喷出密集风条）
-  /** @type {Array} */ let stars = [];
-  /** @type {Array} */ let wingmen = [];   // 僚机（成对，跟随主机两侧，不可被击中）
-  /** @type {Array} */ let douzhiFx = [];  // 斗志昂扬死亡演出（脱离渐隐的蓝盒 / 淡黄扩大光环 / 快速渐隐的本体）
-  /** @type {Array} */ let slashFx = [];   // 群星之杀：空间斩击特效（选中目标处展开的紫白斩痕，短暂存留渐隐）
+  /** @type {Array} */ const enemies = [];
+  /** @type {Array} */ const pBullets = [];
+  /** @type {Array} */ const eBullets = [];
+  /** @type {Array} */ const trailGhosts = [];   // 暗紫轨迹残影（部件球弹幕：帧间线段留存渐隐）
+  /** @type {Array} */ const particles = [];
+  /** @type {Array} */ const powerups = [];
+  /** @type {Array} */ const crystals = [];
+  /** @type {Array} */ const missileWarns = [];   // 炮火先兆者导弹垂直预警线
+  /** @type {Array} */ const missiles = [];       // 预警结束后从上方下落的导弹
+  /** @type {Array} */ const blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
+  /** @type {Array} */ const popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
+  /** @type {Array} */ const spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
+  /** @type {Array} */ const cubeHitFx = [];       // 法术矩阵正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
+  /** @type {Array} */ const zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警：风流约 1.1s / 风柱 1.3s）
+  /** @type {Array} */ const windFlows = [];      // 标记到期后沿曲线呼啸而至的风流
+  /** @type {Array} */ const pillarStrikes = [];  // 标记到期后降下的垂直风柱打击
+  /** @type {Array} */ const stars = [];
+  /** @type {Array} */ const wingmen = [];   // 僚机（成对，跟随主机两侧，不可被击中）
+  /** @type {Array} */ const douzhiFx = [];  // 斗志昂扬死亡演出（脱离渐隐的蓝盒 / 淡黄扩大光环 / 快速渐隐的本体）
+  /** @type {Array} */ const slashFx = [];   // 群星之杀：空间斩击特效（选中目标处展开的紫白斩痕，短暂存留渐隐）
+  /** @type {Array} */ const playerHitFx = [];   // 命中玩家特效（白热闪核 + 红橙冲击环 + 迸溅火花线，短存留渐隐）
+  /** @type {Array} */ const phaseFx = [];   // 碎盾特效（群星之杀斩碎虚化护盾：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片）
+
+  // 键盘输入状态：14-main 的监听器写入、07-player 等读取
+  // （原 14-main 顶层变量移入：keys 是跨模块共享的输入状态，留在 14-main 会造成 07↔14 循环依赖，
+  //   且 14-main 含启动期可执行代码，循环窗口内求值会引发 TDZ 运行时错误）
+  const keys = Object.create(null);
 
   // ---------- 星空 ----------
   // 星星着色：多数蓝白，少量粉(#FFC0CB)/青(#39C5BB)，与星云雾霭共同营造"青粉丝域"
@@ -141,7 +175,7 @@
   ];
 
   function initStars() {
-    stars = [];
+    stars.length = 0;
     for (let i = 0; i < STAR_COUNT; i++) {
       const roll = Math.random();
       const tint = roll < 0.76 ? 0 : (roll < 0.88 ? 1 : 2);   // 76% 蓝白 / 12% 粉 / 12% 青
@@ -240,6 +274,14 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+  // 敌机是否与屏幕可见区域相交（碰撞盒 vs 可视画布）——完全在屏幕外的敌人不可被我方武器伤害。
+  // 判定 = 碰撞盒与 [0, CANVAS_W] × [0, CANVAS_H] 有任一交叠（部分入屏即可受击）；
+  // 尺寸一律取 CANVAS_W / CANVAS_H（未来 BOSS 战扩展屏幕时，只需让这两个常量跟随实际屏幕，此处自动生效）
+  function enemyOnScreen(e) {
+    return e.x + e.w / 2 > 0 && e.x - e.w / 2 < CANVAS_W &&
+           e.y + e.h / 2 > 0 && e.y - e.h / 2 < CANVAS_H;
+  }
+
   // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时返回 2，否则 1）
   function hasteMul() { return state.hasteT > 0 ? DOUZHI.buffMul : 1; }
 
@@ -276,3 +318,19 @@
     state.shakeTime = Math.max(state.shakeTime, time);
   }
 
+  export {
+    canvas, ctx, setCtx, DPR, hpFill, scoreText,
+    bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
+    douzhiBar, douzhiFill, overlay, overlayTitle, overlayDesc, startBtn,
+    musicToggle, planeSelect, planeGrid, wingmanSelect, wingmanGrid, bossTestRow,
+    retrialBtn, gameoverHomeBtn, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
+    encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
+    infoClose, state, bossFlow, levelFlow, player, enemies,
+    pBullets, eBullets, trailGhosts, particles, powerups, crystals,
+    missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx,
+    slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
+    NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
+    drawNebulae, rand, clamp, enemyOnScreen, hasteMul, weightedPick, spawnParticles,
+    shake,
+  };

@@ -1,5 +1,16 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
-'use strict';
+
+  // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
+  // 被依赖：04-spawn(1 名) 06-enemy(2 名) 11-draw-boss(2 名) 14-main(2 名)
+  // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
+  //   state.{flash, stormVortex}
+  //
+  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, CANVAS_H, CANVAS_W, PLAYER_CFG, STORM, STORM2, STORM_WIND } from './01-config.js';
+  import { clamp, ctx, eBullets, enemies, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
+  import { makeEnemy, spawnHarbinger } from './04-spawn.js';
+  import { damagePlayer } from './07-player.js';
+  import { spawnPowerup } from './08-entities.js';
+
 
   // ---------- BOSS：旧日之歌 ----------
   function spawnBoss(id) {
@@ -20,6 +31,25 @@
         scale: 0, combatReady: false,
         moveT: 0, t: 0, rot: 0,   // rot：风暴自转角（逆时针）
         skill: null, skillCd: 0.2,   // 进战斗后 0.2s 即释放首个技能（必为技能6）
+        lastSkill: -1, skillStreak: 0, dropBerserk: false,
+      });
+      shake(6, 0.6);
+      return;
+    }
+    // 风暴编织者：风暴消散后现身的雷电飞舰（专属登场动画后续单独设计——当前直接进入战斗）
+    if (B.id === 'storm2') {
+      enemies.push({
+        type: 'boss', bossId: 'storm2', name: B.name, lv: B.lv,
+        x: CANVAS_W / 2, y: STORM2.hoverY,
+        w: STORM2.w, h: STORM2.h,
+        hp: STORM2.hp, maxHp: STORM2.hp,
+        score: STORM2.score,
+        phase: 'combat', phaseT: 0,
+        barT: 0,               // 血条登场动画计时
+        hpTrail: STORM2.hp,    // 血条残像：缓慢追赶 hp，形成受击白色余条
+        scale: 1, combatReady: true,
+        moveT: 0, t: 0,
+        skill: null, skillCd: 1e9,   // 技能尚未设计：保持闲置（碰撞 + 高速悬停为目标靶机形态）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
       });
       shake(6, 0.6);
@@ -69,7 +99,7 @@
     shake(6, 0.6);
   }
 
-  // ---------- BOSS2：暴风之眼 · 第一阶段（白色龙卷风暴） ----------
+  // ---------- BOSS2：暴风之眼（第一阶段：白色龙卷风暴） ----------
   // 出场三阶段（总长 6.0s，与旧日之歌等长）：风聚（2.7s）→ 旋胀（2.3s）→ 成形（1.0s）→ 战斗
   function updateBossStorm(e, dt) {
     e.t += dt;
@@ -135,7 +165,7 @@
         e.combatReady = true;
         spawnParticles(e.x, e.y, '#ffffff', 46, 340);   // 风暴眼点亮：白色爆发
         spawnParticles(e.x, e.y, STORM_WIND, 26, 260);
-        flash = Math.max(flash, 0.18);   // 青白爆闪（轻微，不刷屏）
+        state.flash = Math.max(state.flash, 0.18);   // 青白爆闪（轻微，不刷屏）
         shake(10, 0.5);
         e.shock = { t: 0, dur: 0.55, hit: false };   // 收束后的震荡波：向外急速扩散并击退玩家
       }
@@ -144,8 +174,8 @@
 
     // 战斗阶段：风暴巨大，仅小幅漂移
     e.moveT += dt;
-    e.x = CANVAS_W / 2 + Math.sin(e.moveT * 0.22) * 26;
-    e.y = STORM.hoverY + Math.sin(e.moveT * 0.43) * 14;
+    e.x = CANVAS_W / 2 + Math.sin(e.moveT * 0.22) * 25;
+    e.y = STORM.hoverY + Math.sin(e.moveT * 0.43) * 15;
 
     if (e.skill) runStormSkill(e, e.skill, dt);
     else {
@@ -365,12 +395,12 @@
     } else if (s.id === 6) {
       // 技能7：涡流风旋三阶段：预警（0.5s，原 1.1s 的 45%）→ 自机体飞抵（1.4s，easeInOut 速度曲线更流畅）
       // → 悬停自转喷风条（5s，白色缓慢变淡至 0.85，停射后 0.35s 快速消散）
-      if (!stormVortex) {
-        stormVortex = { x: e.x, y: e.y, tx: CANVAS_W / 2, ty: CANVAS_H * 0.80,
+      if (!state.stormVortex) {
+        state.stormVortex = { x: e.x, y: e.y, tx: CANVAS_W / 2, ty: CANVAS_H * 0.80,
           r: CANVAS_W * 0.04, phase: 'warn', t: 0, ang: Math.random() * Math.PI * 2,
           dir: Math.random() < 0.5 ? 1 : -1, emit: 0 };
       }
-      const v = stormVortex;
+      const v = state.stormVortex;
       v.t += dt;
       if (v.phase === 'warn') {
         if (v.t >= 0.5) { v.phase = 'move'; v.t = 0; }
@@ -410,12 +440,12 @@
         if (v.t >= 0.35) {
           spawnParticles(v.x, v.y, '#eaf6ff', 20, 240);
           spawnParticles(v.x, v.y, '#ffffff', 12, 160);
-          stormVortex = null;
+          state.stormVortex = null;
         }
       }
       // 风旋机体碰撞（预警阶段尚无实体，不判定）
-      if (stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
-          Math.hypot(v.x - player.x, v.y - (player.y + PLAYER.hitOffsetY)) < v.r * 0.9 + PLAYER.hitRadius) {
+      if (state.stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
+          Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + PLAYER_CFG.hitRadius) {
         damagePlayer(STORM.vortexDmg);
       }
     }
@@ -465,14 +495,14 @@
       if (!f.hit && player.alive && strikeVis(f.t / f.dur, 0.18) >= 0.35) {
         const px = clamp(player.x, Math.min(f.x0, f.x0 + f.dirX * f.L), Math.max(f.x0, f.x0 + f.dirX * f.L));
         const c = stormWavePoint(f, px);
-        if (Math.abs((player.y + PLAYER.hitOffsetY) - c.y) < STORM.waveHalfW + PLAYER.hitRadius) {
+        if (Math.abs((player.y + PLAYER_CFG.hitOffsetY) - c.y) < STORM.waveHalfW + PLAYER_CFG.hitRadius) {
           f.hit = true;   // 无敌期间处于带内同样消耗本次判定：风波掠过，不结算也不补判——
           // （否则无敌结束时会被"迟到"的风波命中：出现时无敌跳过判定、静止玩家在无敌结束后被判中）
           if (player.invuln <= 0) {
             damagePlayer(STORM.windDmg);
             // 击退：竖直推离风波带（玩家在带下方则下推、上方则上推）+ 向入射侧回推的固定分量
             // （不能用 player - 采样点：c.x 恒等于 player.x，会导致 dx=0、方向退化）
-            const vdir = ((player.y + PLAYER.hitOffsetY) - c.y) >= 0 ? 1 : -1;
+            const vdir = ((player.y + PLAYER_CFG.hitOffsetY) - c.y) >= 0 ? 1 : -1;
             knockbackPlayer(-f.dirX * 0.30, vdir * 0.95, 520);
           }
         }
@@ -484,7 +514,7 @@
       const p = pillarStrikes[i];
       p.t += dt;
       if (!p.hit && player.alive && strikeVis(p.t / p.dur, 0.25) >= 0.35) {
-        if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER.hitRadius) {
+        if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER_CFG.hitRadius) {
           p.hit = true;   // 无敌期间处于柱内同样消耗本次判定：光柱掠过，不结算也不补判
           if (player.invuln <= 0) {
             damagePlayer(STORM.pillarDmg);
@@ -551,9 +581,45 @@
     });
   }
 
+  // BOSS 血量阶段掉落：每当 BOSS 失去 20% 血量（跨过 80%/60%/40%/20% 线）判定一次，
+  // 互斥三选一：升级套件 / 量子护盾 / 两个全掉（概率见 BOSS_LOOT_*，随火力等级修正：Lv4 减半、Lv5 ×0.3）。
+  // 允许一次伤害跨过多条线（逐线补判）；血量回升不重复判定（lootMark 只增不减）；测试模式不掉落。
+  // 调用点在 06-enemy 的 boss 通用分支（updateEnemies）——所有 BOSS（含今后新增）自动生效，无需各状态机单独接入
+  function updateBossLootMarks(e) {
+    if (state.challenge) return;
+    const marks = Math.min(4, Math.floor((1 - Math.max(0, e.hp) / e.maxHp) / 0.2));
+    if (e.lootMark == null) e.lootMark = 0;
+    if (e.lootMark >= marks) return;
+    const mul = player.weapon >= 5 ? 0.3 : player.weapon === 4 ? 0.5 : 1;
+    const pBoth = BOSS_LOOT_BOTH * mul, pKit = BOSS_LOOT_KIT * mul, pShield = BOSS_LOOT_SHIELD * mul;
+    while (e.lootMark < marks) {
+      e.lootMark++;
+      const r = Math.random();
+      if (r < pBoth) { spawnPowerup(e.x, e.y, 'kit', 12); spawnPowerup(e.x, e.y, 'shield', 13); }
+      else if (r < pBoth + pKit) spawnPowerup(e.x, e.y, 'kit', 12);
+      else if (r < pBoth + pKit + pShield) spawnPowerup(e.x, e.y, 'shield', 13);
+    }
+  }
+
+  // ---------- BOSS3：风暴编织者（雷电飞舰） ----------
+  // 技能尚未设计：当前为高速巡航 + 上下浮动的悬停机体（碰撞 40），作为承接一阶段被击破后的战斗目标
+  function updateBossStorm2(e, dt) {
+    e.t += dt;
+    // 血条登场计时 + 残血余像（hpTrail 缓慢追赶 hp，受击时白色余条缓慢消退）
+    e.barT = (e.barT || 0) + dt;
+    if (e.hpTrail == null) e.hpTrail = e.hp;
+    e.hpTrail += (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
+    if (!e.combatReady) return;
+    // 高速水平巡航（移速显著高于旧日之歌）+ 余弦上下浮动
+    e.moveT += dt;
+    e.x = CANVAS_W / 2 + Math.sin(e.moveT * STORM2.moveSpeed) * STORM2.moveAmp;
+    e.y = STORM2.hoverY + Math.sin(e.moveT * STORM2.bobSpeed) * STORM2.bobAmp;
+  }
+
   function updateBoss(e, dt) {
     e.t += dt;
     if (e.bossId === 'storm') { updateBossStorm(e, dt); return; }   // 暴风之眼走独立状态机
+    if (e.bossId === 'storm2') { updateBossStorm2(e, dt); return; }   // 风暴编织者（雷电飞舰）
 
     // 新出场流程：黑洞形成 → 机体浮现 → 部件组装 → 战斗
     const BLACKHOLE_DUR = 2.7;
@@ -786,3 +852,9 @@
 
     if (s.t >= s.dur) e.skill = null;
   }
+
+  export {
+    spawnBoss, updateBossStorm, stormSkill5Pts, stormSkill5Mul, pushWaveMarks, startStormSkill,
+    runStormSkill, strikeVis, knockbackPlayer, updateZoneMarks, stormWavePoint, stormWaveBand,
+    pushBossBullet, updateBoss, startBossSkill, runBossSkill, updateBossLootMarks,
+  };
