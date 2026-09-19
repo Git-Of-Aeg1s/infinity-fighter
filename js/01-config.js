@@ -112,8 +112,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
 
   // ---------- BOSS3：风暴编织者（风暴消散后现身的雷电飞舰） ----------
   const STORM2 = {
-    name: '暴风之眼 · II',
-    w: 140, h: 78,             // 判定箱（刻意小于模型视觉：视觉宽约 173 ≈ 36% 屏宽，判定箱不应大于模型）
+    name: '风暴编织者',
+    w: 168, h: 94,             // 判定箱（基础 ×1.2 整体扩大；仍刻意小于模型视觉约 208 ≈ 43% 屏宽）
     hp: 25000,                 // 二阶段血量
     score: 6000,
     hoverY: 150,               // 悬停高度（较风暴中心 205 更靠下，凸显机体形态）
@@ -130,7 +130,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   stormEyeLoader.onload = () => { stormEyeImg = stormEyeLoader; };
   stormEyeLoader.src = 'assets/storm-eye.webp';
 
-  // 电弧闪电素材组（透明底）：暴风之眼 · II 专用——
+  // 电弧闪电素材组（透明底）：风暴编织者专用——
   //   lightning-1 主电弧（白热蓝辉纤细大闪电）：能量球表面电弧 / 球外放电
   //   lightning-2 细流光弧（纤细蓝弧）：周身闪电风暴的小闪电
   //   lightning-bolt 备用电弧（粗壮闪电）：与主电弧交替出现，避免重复感
