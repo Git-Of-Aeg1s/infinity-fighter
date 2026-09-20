@@ -9,7 +9,7 @@
   // ---------- BGM ----------
   // 主界面：main_theme / main_theme_2 随机轮播（一首自然播完 → 随机切另一首，不与刚播完的重复）
   // 常规战斗：battle_normal_1；BOSS 战（含警报演出）：旧日之歌 battle_boss_1 / 暴风之眼 battle_boss_2
-  // 结算曲：胜利 victory / 失败 defeat（单次播放；未播完就返回主界面 / 再来一局 → 音量迅速淡出）
+  // 结算曲：胜利 victory / 失败 defeat（单次播放；结算页弹出时才起播；未播完就返回主界面 / 再来一局 → 音量迅速淡出）
   const BGM_TRACKS = {
     main_theme:      './assets/audio/main_theme.mp4',
     main_theme_2:    './assets/audio/main_theme_2.mp3',
@@ -37,6 +37,7 @@
   let audioMuted = false;     // 全局静音：音乐(BGM) + 音效(警报) 总开关，由标题栏右侧按钮切换
   let resultDone = false;     // 结算曲是否已自然播完（播完后结算页转主界面轮播）
   let resultFade = null;      // 结算曲淡出中：{ key, audio, t0, from }
+  let prevResultShown = false;   // 上一帧是否处于结算展示（胜利页 / 失败页）：上升沿重置 resultDone，避免上一局遗留导致本局结算曲不播
 
   function trackVol(key) { return BGM_VOLUME * (BGM_GAIN[key] || 1); }
 
@@ -115,12 +116,16 @@
   // 每帧根据状态决定应播放的曲目，并处理暂停/恢复
   function updateBGM() {
     stepResultFade();
+    // 结算展示上升沿：新一局结算开始 → 允许结算曲重新起播（清掉上一局自然播完遗留的 resultDone，
+    // 否则上一局结算曲播完后 resultDone 恒为 true，下一局胜利页会直接跳主界面轮播、胜利曲不响）
+    const resultShown = state.victoryOverlay || state.mode === 'gameover';
+    if (resultShown && !prevResultShown) resultDone = false;
+    prevResultShown = resultShown;
     let target;
     if (state.mode === 'playing') {
-      if (bossFlow.victoryDelay > 0 && !resultDone) {
-        target = 'victory';   // 最终 BOSS（或试炼/挑战目标）已被击毁：胜利曲即刻起播，持续到结算页之后
-      } else if (bossFlow.victoryDelay > 0) {
-        target = menuTarget(null);   // 胜利曲已自然播完：结算演出剩余时间转主界面轮播（不再重播胜利曲）
+      if (bossFlow.victoryDelay > 0) {
+        // 击坠演出期（结算页尚未弹出）：不提前播胜利曲，维持当前战斗曲直到结算页弹出
+        target = (bgmCurrent && !RESULT_TRACKS.includes(bgmCurrent)) ? bgmCurrent : null;
       } else if (bossFlow.stage === 'warn') {
         target = null;   // 警报演出期间：无BGM，纯警报音效
       } else if (bossFlow.stage === 'fight') {

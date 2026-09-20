@@ -520,6 +520,23 @@
       if (a <= 0) continue;
       // 锥形尾迹：源头最宽（平方衰减，锥形明显），越老的残影段越细；同时随 life 渐隐
       const w = 0.1 + 0.9 * a * a;
+      if (g.col) {
+        // 自定义色拖尾（风暴编织者雷电子弹白蓝短拖尾等）：主色宽线 + 白热内芯
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(${g.col}, ${(0.5 * a).toFixed(3)})`;
+        ctx.lineWidth = g.r * 2.4 * w;
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1);
+        ctx.lineTo(g.x2, g.y2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.75 * a).toFixed(3)})`;
+        ctx.lineWidth = g.r * 0.9 * w;
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1);
+        ctx.lineTo(g.x2, g.y2);
+        ctx.stroke();
+        continue;
+      }
       // 两边紫色（宽线）
       ctx.strokeStyle = `rgba(109, 40, 217, ${(0.55 * a).toFixed(3)})`;
       ctx.lineWidth = g.r * 3.0 * w;
@@ -620,12 +637,15 @@
         continue;
       }
       // 弹体渐变与坐标无关（仅颜色/半径），缓存复用；平移到弹位置后按局部坐标绘制
-      const top = b.y - b.r * 3;
-      const h = b.r * 6;
+      // 混乱将至穿透后的子弹（weakened）：弹体缩短、整体变暗、配色转冷蓝（与满威力弹明显区分）
+      const wk = !!b.weakened;
+      const top = b.y - b.r * (wk ? 1.9 : 3);
+      const h = b.r * (wk ? 3.8 : 6);
+      ctx.globalAlpha = wk ? 0.72 : 1;
       { // 子弹尾焰：金橙火舌 + 暖光晕，长度随发射时武器等级增长（Lv1~5，暴走弹最长）
         // 暴走尾焰：弹体后方（飞行反方向）的金橙渐变火舌 + 外围暖光晕（仅暴走期发射的弹携带）
         const lv = b.lv || (b.berserk ? 5 : 1);
-      const L = b.r * (2.6 + lv * 2.1) * (lv >= 5 ? 1 : 0.85);   // Lv1~4 尾焰 -15%，Lv5 暴走弹保持原长
+      const L = b.r * (2.6 + lv * 2.1) * (lv >= 5 ? 1 : 0.85) * (wk ? 0.45 : 1);   // 穿透后尾焰同步缩短
         const fg = ctx.createLinearGradient(b.x, b.y + b.r, b.x, b.y + b.r + L);
         fg.addColorStop(0, 'rgba(255, 236, 175, 0.85)');   // 根部暖白金
         fg.addColorStop(0.4, 'rgba(255, 172, 84, 0.5)');   // 中段金橙
@@ -638,7 +658,7 @@
         ctx.closePath();
         ctx.fill();
         const halo = ctx.createRadialGradient(b.x, b.y, b.r * 0.5, b.x, b.y, b.r * 3);
-        halo.addColorStop(0, 'rgba(255, 214, 130, 0.38)');
+        halo.addColorStop(0, `rgba(255, 214, 130, ${wk ? 0.22 : 0.38})`);
         halo.addColorStop(1, 'rgba(255, 150, 80, 0)');
         ctx.fillStyle = halo;
         ctx.beginPath();
@@ -647,20 +667,21 @@
       }
       ctx.save();
       ctx.translate(b.x, top);
-      ctx.fillStyle = cachedGrad(`p|${b.color}|${b.r}`, () => {
+      ctx.fillStyle = cachedGrad(`p|${b.color}|${b.r}|${wk ? 'w' : 'n'}`, () => {
         const g = ctx.createLinearGradient(0, 0, 0, h);
-        g.addColorStop(0, '#ff6ec7');   // 上：粉色
+        g.addColorStop(0, wk ? '#9fc6ff' : '#ff6ec7');   // 上：粉色（穿透后转冷蓝）
         g.addColorStop(1, b.color);     // 下：本体色
         return g;
       });
       ctx.shadowColor = b.color;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = wk ? 4 : 8;
       ctx.fillRect(-b.r, 0, b.r * 2, h);
       ctx.restore();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';   // 描边
+      ctx.strokeStyle = `rgba(255, 255, 255, ${wk ? 0.55 : 0.8})`;   // 描边
       ctx.lineWidth = 1;
       ctx.strokeRect(b.x - b.r, top, b.r * 2, h);
+      ctx.globalAlpha = 1;
     }
     for (const b of eBullets) {
       if (b.trail) {
@@ -673,6 +694,91 @@
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r * 2.8, 0, Math.PI * 2);
         ctx.fill();
+      }
+      if (b.bolt) {
+        if (b.path && b.path.length > 1) {
+          // 折线光束（技能3）：沿头部轨迹折线渲染——外辉光 + 锯齿白热内芯 + 头部亮点；
+          // 光束随轨迹从 0 增长，转折处沿折线自然弯折（非整体转向）
+          let sd = ((Math.floor(state.time * 12) * 7 + (b.seed || 1) * 131) * 9973 + 479) % 233280;
+          const rnd = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.shadowColor = '#6fb8ff';
+          ctx.shadowBlur = 12;
+          ctx.strokeStyle = 'rgba(143, 212, 255, 0.45)';
+          ctx.lineWidth = b.r * 2.2;
+          ctx.beginPath();
+          ctx.moveTo(b.path[0].x, b.path[0].y);
+          for (let k = 1; k < b.path.length; k++) ctx.lineTo(b.path[k].x, b.path[k].y);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          // 白热内芯：各顶点沿法向随机抖动（1/12s 步进，电弧噼啪感）
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.lineWidth = b.r * 0.7;
+          ctx.beginPath();
+          for (let k = 0; k < b.path.length; k++) {
+            const px2 = b.path[k].x, py2 = b.path[k].y;
+            let nx = 0, ny = 0;
+            if (k > 0 && k < b.path.length - 1) {
+              const tx2 = b.path[k + 1].x - b.path[k - 1].x, ty2 = b.path[k + 1].y - b.path[k - 1].y;
+              const tl = Math.hypot(tx2, ty2) || 1;
+              const off = (rnd() - 0.5) * b.r * 1.1;
+              nx = -ty2 / tl * off;
+              ny = tx2 / tl * off;
+            }
+            k === 0 ? ctx.moveTo(px2 + nx, py2 + ny) : ctx.lineTo(px2 + nx, py2 + ny);
+          }
+          ctx.stroke();
+          // 头部亮点
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          continue;
+        }
+        // 直线雷电光束弹：粗短胶囊体（蓝辉光）+ 锯齿电弧内芯（1/12s 步进闪频，seed 稳定伪随机）
+        const ang = Math.atan2(b.vy, b.vx);
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(ang);
+        const half = (b.len || 40) / 2;
+        // 外辉光胶囊：尾淡 → 头白蓝
+        ctx.shadowColor = '#6fb8ff';
+        ctx.shadowBlur = 14;
+        const bg = ctx.createLinearGradient(-half, 0, half, 0);
+        bg.addColorStop(0, 'rgba(143, 212, 255, 0.20)');
+        bg.addColorStop(0.55, '#bfe6ff');
+        bg.addColorStop(1, '#ffffff');
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(-half, 0, b.r, Math.PI / 2, -Math.PI / 2);
+        ctx.lineTo(half, -b.r);
+        ctx.arc(half, 0, b.r, -Math.PI / 2, Math.PI / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // 锯齿电弧内芯：蓝晕宽线 + 白热内芯双层描线
+        let sd = ((Math.floor(state.time * 12) * 7 + (b.seed || 1) * 131) * 9973 + 479) % 233280;
+        const rnd = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const [w, col] of [[3, 'rgba(90, 160, 255, 0.8)'], [1.2, 'rgba(255, 255, 255, 0.95)']]) {
+          ctx.strokeStyle = col;
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.moveTo(-half, 0);
+          const SEG = 6;
+          for (let k = 1; k <= SEG; k++) {
+            const px = -half + (k / SEG) * (half * 2);
+            const py = (rnd() - 0.5) * b.r * 1.5 * (k === SEG ? 0.3 : 1);
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
       }
       if (b.laser) {
         // 法术大师A1/A2 紫色激光：尾端锢定于 (b.x, b.y)，头端圆形；
@@ -1075,16 +1181,23 @@
 
   // 测试模式（图鉴挑战·敌人测试）顶部血条：仅当场上恰好 1 个测试目标时显示（多目标时渐隐），
   // 出现/消失各 0.15s 渐显渐隐；白色残量为受击追踪余像（同 BOSS 血条 hpTrail 实现）。
+  // 测试目标按 challenge 目标（类型 + 变体 + 行为）匹配：法术阵列召唤的法术矩阵等衍生体不计入，
+  // 避免召唤后误判"多目标"导致大血条消失。标题显示当前测试目标的图鉴名称。
   // BOSS 测试不画此条（BOSS 在 drawBoss 中已有专属顶部血条）
   let cbLastT = null, cbAlpha = 0, cbTrail = null, cbRef = null;
   function drawChallengeBar() {
-    const active = !!(state.challenge && state.challenge.kind === 'enemy' && enemies.length === 1);
+    const ch = state.challenge;
+    const targets = (ch && ch.kind === 'enemy') ? enemies.filter(e =>
+      e.type === ch.type &&
+      (ch.variant == null || e.variant === ch.variant) &&
+      (ch.behavior == null || e.behavior === ch.behavior)) : [];
+    const active = targets.length === 1;
     const now = state.time;
     const dt = cbLastT == null ? 0 : Math.max(0, Math.min(0.1, now - cbLastT));
     cbLastT = now;
     cbAlpha = clamp(cbAlpha + (active ? dt : -dt) / 0.15, 0, 1);
     if (cbAlpha <= 0.01) { cbTrail = null; cbRef = null; return; }
-    const e = enemies[0];
+    const e = targets[0];
     if (!e) return;
     if (e !== cbRef) { cbRef = e; cbTrail = e.hp; }   // 目标更替（被击杀后重生/按 + 召唤）：残量重置
     cbTrail += (e.hp - cbTrail) * Math.min(1, dt * 2.2);
@@ -1093,23 +1206,30 @@
     const trailR = clamp(cbTrail / e.maxHp, 0, 1);
     ctx.save();
     ctx.globalAlpha = cbAlpha;
+    // 圆角胶囊形血条：底板 / 底槽 / 余像 / 血量 / 描边全部走圆角路径（两头平滑）；分段宽度极窄时收缩半径防 arcTo 走样
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+    roundRectPath(ctx, x - 4, y - 4, w + 8, h + 8, 6.5);
+    ctx.fill();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.fillRect(x, y, w, h);
+    roundRectPath(ctx, x, y, w, h, h / 2);
+    ctx.fill();
     if (trailR > hpR) {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x + w * hpR, y, w * (trailR - hpR), h);
+      roundRectPath(ctx, x + w * hpR, y, w * (trailR - hpR), h, Math.max(1, Math.min(h / 2, w * (trailR - hpR) / 2)));
+      ctx.fill();
     }
     ctx.fillStyle = '#ff9500';
-    ctx.fillRect(x, y, w * hpR, h);
+    roundRectPath(ctx, x, y, w * hpR, h, Math.max(1, Math.min(h / 2, w * hpR / 2)));
+    ctx.fill();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+    roundRectPath(ctx, x - 0.5, y - 0.5, w + 1, h + 1, h / 2 + 0.5);
+    ctx.stroke();
     ctx.fillStyle = '#eaf2ff';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('测试目标 ' + Math.ceil(e.hp) + ' / ' + e.maxHp, CANVAS_W / 2, y + h + 12);
+    ctx.fillText((ch && ch.name) ? ch.name + ' ' + Math.ceil(e.hp) + ' / ' + e.maxHp
+                                 : '测试目标 ' + Math.ceil(e.hp) + ' / ' + e.maxHp, CANVAS_W / 2, y + h + 12);
     ctx.restore();
   }
 
@@ -1255,7 +1375,7 @@
       ctx.restore();
     }
 
-    // 高能爆弹火圈（测试模式）：橙黄火环自场地中心急速扩大至全场，同时渐隐
+    // 高能爆弹火圈：橙黄火环自场地中心急速扩大至全场，同时渐隐（全部模式统一表现）
     if (bombBurst.active) {
       const p = bombBurst.t / bombBurst.duration;   // 0→1
       const ease = 1 - Math.pow(1 - p, 2.2);        // easeOut：急速扩张、末段减速

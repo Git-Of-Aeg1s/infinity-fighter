@@ -5,17 +5,17 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentPlane } from './01-config.js';
-  import { bossFlow, canvas, clamp, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, pauseHomeBtn, pauseRetryBtn, planeSelect, player, playerHitFx, rand, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, wingmanSelect } from './02-core.js';
+  import { BERSERK, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentPlane, diffMods } from './01-config.js';
+  import { bossFlow, canvas, clamp, ctx, diffSelect, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, pauseHomeBtn, pauseRetryBtn, planeSelect, player, playerHitFx, rand, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, wingmanSelect } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, fieldPressureW, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
+  import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
   import { clearEnemyBullets, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildPlaneCards, buildWingmanCards, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
-  import { closeEncyclopedia } from './13-encyclopedia.js';
+  import { buildDiffCards, buildPlaneCards, buildWingmanCards, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
   // ---------- 输入 ----------
@@ -142,6 +142,20 @@
         }
       }
 
+      // BOSS 战斗期间（诗篇）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
+      // 不受压力系统与场上存怪影响；本波敌人道具掉率 ×0.3（见 04-spawn / 06-enemy）
+      if (bossFlow.stage === 'fight') {
+        const mw = diffMods().bossMinionWave;
+        if (mw) {
+          levelFlow.bossMinionT += dt;
+          if (levelFlow.bossMinionT >= levelFlow.bossMinionNext) {
+            levelFlow.bossMinionT = 0;
+            levelFlow.bossMinionNext = rand(mw.min, mw.max);
+            spawnBossMinionWave();
+          }
+        }
+      }
+
       // BOSS 击败后的刷新序列：2s 缓冲 → 固定首波（1类长队横扫、无紫色）→ 4s 观察期 → 恢复正常刷怪
       // 期间压力/槽位通道与 bossTimer 全部冻结（2s 与 4s 均不计入关卡推进）
       if (!state.challenge && bossFlow.stage === 'none' &&
@@ -194,11 +208,11 @@
         // 特殊3类不再有单独生成逻辑——随常规波次登场（见 04-spawn spawnWaveBody）；
         // 同屏同种限 1 仅限 寒霜 / 御4 / 铁砧（在生成处判定）
 
-        // 4类通道：主力舰同屏限 1（与法术阵列互斥）；法术阵列不受限——
+        // 4类通道：Lv5 起 4类（主力舰 / 法术阵列）才会出现；主力舰同屏限 1（与法术阵列互斥），法术阵列不受限——
         //   场上已有法术阵列时仍可继续生成 4 类，但只能生成法术阵列（最多同时 2 台，且仅走慢速强制刷新 + 低概率）
         const fashiArrays = enemies.filter(e => e.type === 'fashiArray').length;
         const hasCapital = enemies.some(e => e.type === 'capital');
-        if (levelFlow.level >= 3 && !hasCapital && fashiArrays < 2) {
+        if (levelFlow.level >= 5 && !hasCapital && fashiArrays < 2) {
           levelFlow.capitalIdleT += dt;
           if (fashiArrays === 0) {
             // 无法术阵列：正常节奏（压力低立即 / 超时强制），50% 概率法术阵列、否则主力舰
@@ -240,6 +254,7 @@
           bossFlow.victoryDelay = 0;
           state.mode = 'idle';
           state.victoryOverlay = true;
+          diffSelect.classList.add('hidden');
           planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');
           const encyBtnV = document.getElementById('encyEntryBtn');
           if (encyBtnV) encyBtnV.style.display = 'none';
@@ -346,6 +361,7 @@
     }
   });
   encyClose.addEventListener('click', closeEncyclopedia);
+  initEncyDiffButtons();   // 图鉴头部三选一难度按钮组：绑定点击并按 DIFFICULTIES 初始化状态
 
   // ---------- 自适应缩放 ----------
   // 视口适配：把「标题栏 + 游戏舞台」作为整体按视口等比缩放（大屏放大、小屏缩小、垂直居中），
@@ -379,6 +395,7 @@
   // ---------- 启动 ----------
   initStars();
   initNebulae();
+  buildDiffCards();
   buildPlaneCards();
   buildWingmanCards();
   resetGame(false);

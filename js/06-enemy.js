@@ -5,11 +5,11 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
   //
-  import { ANVIL, BAOLING, BOSS, BOSS_BULLET, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4 } from './01-config.js';
+  import { ANVIL, BAOLING, BOSS, BOSS_BULLET, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, diffMods } from './01-config.js';
   import { blBombs, bossFlow, clamp, crystals, cubeHitFx, douzhiFx, eBullets, enemies, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
-  import { bulwarkActive, clearEnemyBullets, damagePlayer, shieldSweepHit, testDamagePlayer } from './07-player.js';
+  import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, shieldSweepHit, testDamagePlayer } from './07-player.js';
   import { updateBossLootMarks } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
   import { endGame } from './12-ui.js';
@@ -1340,7 +1340,7 @@
       // 血量低于 60：直接击杀（走标准掉命/结束流程）
       damagePlayer(player.hp + 100);
     } else {
-      // 血量 >= 60：失去 80% 当前血量 + 武器等级 -1
+      // 血量 >= 60：失去 80% 当前血量 + 武器等级 -1（先兆者导弹保留直接降级；不进入受击计数）
       player.hp = player.hp * 0.2;
       if (player.weapon > 1) player.weapon--;
       player.berserk = 0;
@@ -1447,15 +1447,20 @@
 
   // 破片导弹命中结算：首发 8 伤害（正常无敌判定）；首发命中后，后两发无视无敌各 5 伤害；
   // 若首发未命中/玩家无敌，后两发命中则无敌时间 -30%（invulnMul 0.7）
+  // 破片导弹计入武器等级的受击计数，但一轮三连发（无论命中几发）仅计一次（b.counted 门控，经 accumulateWeaponDropHit 显式累加）
   function popianMissileHit(m) {
     const b = m.burst;
+    let hitLanded = false;
     if (m.idx === 0) {
-      if (damagePlayer(POPIAN.firstDmg)) b.firstHit = true;   // 首发成功造成伤害 → 标记，后两发无视无敌
+      if (damagePlayer(POPIAN.firstDmg, 1, false, true)) { b.firstHit = true; hitLanded = true; }   // 首发成功造成伤害 → 标记，后两发无视无敌
     } else if (b.firstHit) {
-      damagePlayer(POPIAN.followDmg, 1, true);   // 无视玩家无敌时间
+      damagePlayer(POPIAN.followDmg, 1, true, true);   // 无视玩家无敌时间
+      hitLanded = true;
     } else {
-      damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul);   // 该次受击无敌时间 -30%
+      damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul, false, true);   // 该次受击无敌时间 -30%
+      hitLanded = true;
     }
+    if (hitLanded && !b.counted) { b.counted = true; accumulateWeaponDropHit(); }   // 整轮仅计一次命中
     // 命中爆炸：三层粒子 + 更强震屏（比落点空爆更明显）
     spawnParticles(m.x, m.y, '#ff5a3c', 22, 320);
     spawnParticles(m.x, m.y, '#ffb545', 14, 260);
@@ -1758,6 +1763,8 @@
     let dropMul = 1;
     if (e.type === 'side' || e.type === 'prolifera') dropMul = 0.5;
     else if (e.type === 'striker') dropMul = 0.75;
+    // 诗篇：BOSS 战期间强制波次的 1类敌人——所有道具掉率 ×0.3（标记见 04-spawn spawnBossMinionWave）
+    if (e.minionDrop) dropMul *= (diffMods().bossMinionWave ? diffMods().bossMinionWave.dropMul : 0.30);
     // 升级套件：基础 9% → 红 ×1.5 / 紫 ×1.2 / 黄（含金）×1.2；
     // 再按「场上已有套件数 + 我方火力等级」统一降率：===4 全体 ×0.5、>=5 全体 ×0.3
     let kitRate = DROP_KIT_RATE;

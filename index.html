@@ -38,6 +38,8 @@
             <span class="score-label">SCORE</span>
             <b id="scoreText">0</b>
           </div>
+          <!-- 当前难度标签（战斗中显示；buildDiffCards 难度注册表驱动） -->
+          <div class="diff-label hidden" id="diffLabel"></div>
         </div>
         <div class="hud-right">
           <!-- 高能爆弹：图标数量代表爆弹数（上限 3，BOSS 测试模式 ∞），由 updateHUD 渲染 -->
@@ -81,6 +83,11 @@
             拾取水晶加分，升级套件提升火力（满级 Lv5 即暴走）<br />
             <kbd>P</kbd> 暂停 · <kbd>R</kbd> 重新开始
           </p>
+          <!-- 难度选择（复用 plane-select 显隐样式）：具象为占位（设计中），真我 / 诗篇可玩 -->
+          <div class="plane-select" id="diffSelect">
+            <div class="plane-select-title">选择难度</div>
+            <div class="diff-grid" id="diffGrid"></div>
+          </div>
           <div class="plane-select" id="planeSelect">
             <div class="plane-select-title">选择战机</div>
             <div class="plane-grid" id="planeGrid"></div>
@@ -104,6 +111,12 @@
       <div class="encyclopedia hidden" id="encyclopedia">
         <div class="ency-header">
           <h2>怪物图鉴</h2>
+          <!-- 快捷切换难度：三选一按钮组（静态标记，保证始终渲染；选中/置灰/提示由 13-encyclopedia 依 DIFFICULTIES 初始化） -->
+          <div class="ency-diff-group" id="encyDiffGroup">
+            <button class="ency-diff-btn" data-diff="juxiang">具象</button>
+            <button class="ency-diff-btn" data-diff="zhenwo">真我</button>
+            <button class="ency-diff-btn" data-diff="shipian">诗篇</button>
+          </div>
           <button class="ency-close" id="encyClose">✕</button>
         </div>
         <div class="ency-body">

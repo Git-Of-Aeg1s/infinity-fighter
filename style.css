@@ -56,6 +56,7 @@ html, body {
   margin: 0;
   font-size: 32px;
   letter-spacing: 6px;
+  text-indent: 6px;   /* 补偿 letter-spacing 在末字后多出的一份间距：否则居中文本整体左偏 spacing/2，缩放越大偏移越明显 */
   background: linear-gradient(90deg, #39C5BB 0%, #FFC0CB 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -68,6 +69,7 @@ html, body {
   margin-top: 6px;
   font-size: 12px;
   color: var(--muted);
+  text-indent: 2px;   /* 同 h1：补偿 letter-spacing 末尾间距的居中偏移 */
   letter-spacing: 2px;
 }
 
@@ -422,6 +424,81 @@ canvas#game {
   justify-content: center;
 }
 
+/* ---------- 难度选择（具象 / 真我 / 诗篇） ---------- */
+.diff-grid {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.diff-card {
+  position: relative;
+  width: 132px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(120, 200, 255, 0.18);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.diff-card:hover {
+  border-color: rgba(120, 200, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+.diff-card.selected {
+  border-color: var(--accent);
+  background: rgba(77, 208, 255, 0.08);
+  box-shadow: 0 0 18px rgba(77, 208, 255, 0.35), inset 0 0 12px rgba(77, 208, 255, 0.1);
+}
+
+/* 未实装难度（具象 / 诗篇）：展示但不可选择 */
+.diff-card.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.diff-card.locked:hover {
+  border-color: rgba(120, 200, 255, 0.18);
+  transform: none;
+}
+
+/* 点击未实装难度的拒绝反馈：左右抖动 */
+.diff-card.deny { animation: diffDeny 0.3s ease; }
+
+@keyframes diffDeny {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.diff-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 9px;
+  color: var(--accent-warm);
+  border: 1px solid rgba(255, 181, 69, 0.45);
+  border-radius: 999px;
+  padding: 1px 6px;
+  letter-spacing: 1px;
+}
+
+/* HUD 左上角当前难度标签（战斗中显示） */
+.diff-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.diff-label.hidden { display: none; }
+
 .plane-card {
   width: 150px;
   padding: 10px 12px 10px;
@@ -640,6 +717,43 @@ kbd {
 }
 
 .ency-close:hover { color: var(--danger); border-color: var(--danger); }
+
+/* 图鉴头部快捷切换难度：三选一分段按钮组，位于关闭按钮左侧 */
+.ency-diff-group {
+  margin-left: auto;
+  margin-right: 10px;
+  display: flex;
+  gap: 4px;
+}
+
+.ency-diff-btn {
+  background: rgba(77, 208, 255, 0.06);
+  border: 1px solid rgba(120, 200, 255, 0.25);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.ency-diff-btn:hover {
+  color: var(--accent);
+  border-color: rgba(120, 200, 255, 0.55);
+}
+
+.ency-diff-btn.selected {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(77, 208, 255, 0.16);
+}
+
+/* 设计中难度：置灰不可点 */
+.ency-diff-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .ency-body {
   flex: 1;

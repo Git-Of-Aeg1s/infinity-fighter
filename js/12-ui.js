@@ -1,12 +1,12 @@
 ﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(7 名)
+  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(8 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, challenge, crystalMagnetMul, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, CANVAS_H, CANVAS_W, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, currentPlane, currentWingman, setPlane, setWingman } from './01-config.js';
-  import { DPR, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, crystals, cubeHitFx, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, planeSelect, player, playerHitFx, popianMissiles, powerups, retrialBtn, scoreText, shieldBar, shieldFill, slashFx, spellCubes, startBtn, state, trailGhosts, windFlows, wingmanGrid, wingmanSelect, zoneMarks } from './02-core.js';
+  import { BERSERK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, currentDifficulty, currentPlane, currentWingman, setDifficulty, setPlane, setWingman } from './01-config.js';
+  import { DPR, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, crystals, cubeHitFx, diffGrid, diffLabel, diffSelect, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, planeSelect, player, playerHitFx, popianMissiles, powerups, rand, retrialBtn, scoreText, shieldBar, shieldFill, slashFx, spellCubes, startBtn, state, trailGhosts, windFlows, wingmanGrid, wingmanSelect, zoneMarks } from './02-core.js';
   import { stopAlarm } from './03-audio.js';
   import { delayedShots, initWingmen } from './07-player.js';
   import { bombBurst, shieldBurst } from './08-entities.js';
@@ -37,6 +37,9 @@
       }
     }
     livesText.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
+    // HUD 当前难度标签：战斗中显示（图鉴挑战 / BOSS 测试不显示，避免与积分器同隐不同现造成混乱）
+    diffLabel.textContent = '难度 · ' + currentDifficulty.name;
+    diffLabel.classList.toggle('hidden', state.mode !== 'playing' || !!state.challenge || !!state.testBoss);
     const berserkOn = player.weapon === 5 && player.berserk > 0;
     const shieldOn = player.shield > 0;
     // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
@@ -71,6 +74,8 @@
     levelFlow.lowPressureT = 0;
     levelFlow.capitalIdleT = 0;
     levelFlow.jiaoxiang13Done = false;   // Lv13 首波必出焦香螺旋桨：每局重置
+    levelFlow.bossMinionT = 0;           // 诗篇：BOSS 战 1类强制波次计时归零
+    levelFlow.bossMinionNext = rand(6, 12);
     state.orangeBombUsed = false;
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
     bossFlow.timer = 0;
@@ -141,6 +146,7 @@
       overlay.classList.add('hidden');
     } else {
       state.mode = 'idle';
+      diffSelect.classList.remove('hidden');   // 标题页：展示难度选择
       planeSelect.classList.remove('hidden'); wingmanSelect.classList.remove('hidden');   // 标题页：展示选机卡片
       bossTestRow.style.display = 'none';   // BOSS 试炼已移入怪物图鉴
       showOverlay('准备起飞~', defaultDesc(), '开始游戏');
@@ -177,6 +183,44 @@
     overlayDesc.innerHTML = html;
     startBtn.textContent = btnText;
     overlay.classList.remove('hidden');
+  }
+
+  // ---------- 难度选择页面 ----------
+  // 三档难度（具象 / 真我 / 诗篇）由 DIFFICULTIES 注册表驱动；wip 难度（具象）展示但不可选（点击抖动拒绝）。
+  // 真我 / 诗篇已实装（数值/行为差异见 01-config 各自 mods 与 SONG_SHIP / STORM_SHIP）。
+  function buildDiffCards() {
+    diffGrid.innerHTML = '';
+    for (const id in DIFFICULTIES) {
+      const d = DIFFICULTIES[id];
+      const card = document.createElement('div');
+      card.className = 'diff-card' + (d.id === currentDifficulty.id ? ' selected' : '') + (d.wip ? ' locked' : '');
+      card.dataset.diff = d.id;
+      const name = document.createElement('div');
+      name.className = 'plane-card-name';
+      name.textContent = d.name;
+      const desc = document.createElement('div');
+      desc.className = 'plane-card-desc';
+      desc.innerHTML = d.desc;
+      card.append(name, desc);
+      if (d.wip) {
+        const badge = document.createElement('span');
+        badge.className = 'diff-badge';
+        badge.textContent = '设计中';
+        card.appendChild(badge);
+      }
+      card.addEventListener('click', () => {
+        if (d.wip) {   // 未实装难度：抖动提示，不可选择
+          card.classList.remove('deny');
+          void card.offsetWidth;   // 强制重排以重启动画
+          card.classList.add('deny');
+          return;
+        }
+        setDifficulty(d);
+        diffGrid.querySelectorAll('.diff-card').forEach(el =>
+          el.classList.toggle('selected', el.dataset.diff === d.id));
+      });
+      diffGrid.appendChild(card);
+    }
   }
 
   // ---------- 选机页面 ----------
@@ -310,6 +354,7 @@
   function togglePause() {
     state.paused = !state.paused;
     if (state.paused) {
+      diffSelect.classList.add('hidden');
       planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');
       bossTestRow.style.display = 'none';
       const encyBtn = document.getElementById('encyEntryBtn');
@@ -331,6 +376,7 @@
 
   function endGame() {
     state.mode = 'gameover';
+    diffSelect.classList.add('hidden');
     planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');   // 结算页：隐藏选机，直接重开
     const encyBtn = document.getElementById('encyEntryBtn');
     if (encyBtn) encyBtn.style.display = 'none';
@@ -347,6 +393,6 @@
   }
 
   export {
-    updateHUD, resetGame, syncInfoEntryBtn, defaultDesc, showOverlay, buildWingmanCards,
-    buildPlaneCards, togglePause, endGame,
+    updateHUD, resetGame, syncInfoEntryBtn, defaultDesc, showOverlay, buildDiffCards,
+    buildWingmanCards, buildPlaneCards, togglePause, endGame,
   };

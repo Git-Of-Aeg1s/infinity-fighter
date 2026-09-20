@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(46 名) 13-encyclopedia(15 名) 14-main(22 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(49 名) 13-encyclopedia(15 名) 14-main(23 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime}
   //
@@ -38,6 +38,9 @@
   const musicToggle = document.getElementById('musicToggle');
   const planeSelect = document.getElementById('planeSelect');
   const planeGrid = document.getElementById('planeGrid');
+  const diffSelect = document.getElementById('diffSelect');   // 难度选择区（复用 plane-select 显隐样式）
+  const diffGrid = document.getElementById('diffGrid');
+  const diffLabel = document.getElementById('diffLabel');     // HUD 左上角当前难度标签
   const wingmanSelect = document.getElementById('wingmanSelect');
   const wingmanGrid = document.getElementById('wingmanGrid');
   const bossTestRow = document.getElementById('bossTestRow');
@@ -52,6 +55,7 @@
   const encyList = document.getElementById('encyList');
   const encyDetail = document.getElementById('encyDetail');
   const encyClose = document.getElementById('encyClose');
+  const encyDiffGroup = document.getElementById('encyDiffGroup');   // 图鉴头部快捷切换难度（三选一按钮组，见 13-encyclopedia）
 
   // 数值与机制图鉴 DOM
   const infoEntryBtn = document.getElementById('infoEntryBtn');
@@ -109,6 +113,8 @@
     capitalIdleT: 0,   // 4类槽位空闲累计时长（压力高于阈值时超过上限仍会强制刷新）
     jiaoxiang13Done: false, // 本局是否已触发 Lv13 后首次刷新必出焦香螺旋桨（一次性）
     douzhiSkipOnce: false, // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬（killEnemy 置位）
+    bossMinionT: 0,        // 诗篇：BOSS 战期间 1类强制波次计时（resetGame 归零）
+    bossMinionNext: 8,     // 诗篇：下一次 1类强制波次的间隔（rand 6~12，触发后重取）
   };
 
   const player = {
@@ -127,7 +133,7 @@
     berserk: 0,        // 暴走（Lv5）剩余持续时间，归零回落 Lv4
     shield: 0,         // 量子护盾剩余时间
     respawnTimer: 0,   // 掉命后重生倒计时
-    hitCount: 0,       // 受击计数：累计两次才掉一层火力
+    hitCount: 0,       // 受击计数：统一累计 3 次掉一层火力（导弹命中不计入）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
     slashCd: 0,        // 距下次斩击的冷却（s）
@@ -322,8 +328,10 @@
     canvas, ctx, setCtx, DPR, hpFill, scoreText,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, overlay, overlayTitle, overlayDesc, startBtn,
-    musicToggle, planeSelect, planeGrid, wingmanSelect, wingmanGrid, bossTestRow,
+    musicToggle, planeSelect, planeGrid, diffSelect, diffGrid, diffLabel,
+    wingmanSelect, wingmanGrid, bossTestRow,
     retrialBtn, gameoverHomeBtn, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
+    encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,

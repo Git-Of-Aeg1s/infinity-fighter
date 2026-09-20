@@ -3,7 +3,7 @@
 console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(16 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(12 名) 13-encyclopedia(18 名) 14-main(14 名)
+  // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(16 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(17 名) 13-encyclopedia(18 名) 14-main(14 名)
   //
 
 
@@ -51,6 +51,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     { name: 'Lv4', interval: 0.12, dmgMul: 1 },        // 5 射线 + 半拍补射 2 发；单发 12（基准）
     { name: 'Lv5', interval: 0.12 },                   // 暴走：限时 6s，攻速同 Lv4，弹速提升，伤害走 BERSERK.dmgMul
   ];
+  const CHAOS_PIERCE_DMG_MUL = 0.5;   // 混乱将至主炮弹穿透后的伤害倍率：每发可穿透 1 个非 BOSS/4类敌人，穿透后伤害减半（结算见 08-entities，美术见 10-draw-world）
   const BERSERK = { interval: 0.12, dmgMul: 2, rMul: 1.4, duration: 6, spdMul: 1.6 };
   const SHIELD_DURATION = 6;   // 量子护盾持续时间
 
@@ -110,6 +111,29 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   };
   const STORM_WIND = '#dff3ff';   // 风弹/风流配色（风白）
 
+  // ---------- 诗篇难度：暴风之眼技能改版参数（真我不读取；04-spawn / 05-boss / 08-entities 经 isShipian() 门控） ----------
+  // 技能1：脱离技能轮换——每 10~16s 独立释放一轮风波（单轮 3~4 道、随机一侧），不占用技能槽、不影响技能释放间隔
+  // 技能2：大型龙卷血量 6000（真我 3200）；受到僚机伤害额外 +150%（与 tornadoWingVuln 1.5 加算，不乘算）
+  // 技能3：风柱射击 10 次（真我 5），第一次射击同时射出两处（共 11 道风柱），射击间隔不变
+  // 技能4：总时长 9s；持续期间自身减伤 25%；旋转速度 +20%、风弹射速 +30%；初始方向顺/逆时针随机，
+  //   期间随机改变 1~3 次方向（相邻两次 ≥1s；7s 仍未改变过则 7s 必定改变一次）
+  // 技能5：两轮风弹数量 14/11（真我 12/9）；普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不减慢）
+  // 技能7：涡流风旋改为三旋臂（真我双旋臂）
+  const STORM_SHIP = {
+    s1: { min: 10, max: 16 },                  // 技能1 独立释放间隔（s）
+    s2: { hp: 6000, wingVulnAdd: 1.5 },        // 技能2 龙卷血量 / 僚机易伤追加（加算）
+    s3: { shots: 10, firstDouble: true },      // 技能3 射击次数 / 首次射击两处
+    s4: {
+      dur: 9, dr: 0.25,                        // 总持续时长（s）/ 持续期间自身减伤
+      spinMul: 1.2, speedMul: 1.3,             // 旋转速度 +20% / 风弹射速 +30%
+      changesMin: 1, changesMax: 3,            // 持续期间随机改变方向次数
+      changeGap: 1,                            // 相邻两次改变方向的最小间隔（s）
+      forceChangeAt: 7,                        // 届时仍未改变过方向 → 此刻必定改变一次（s）
+    },
+    s5: { counts: [14, 11], slowChance: 0.20, slowMin: 0.5, slowMax: 0.8 },   // 两轮数量 / 减速概率与弹速倍率区间
+    s7: { arms: 3 },                           // 涡流风旋旋臂数
+  };
+
   // ---------- BOSS3：风暴编织者（风暴消散后现身的雷电飞舰） ----------
   const STORM2 = {
     name: '风暴编织者',
@@ -122,6 +146,54 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     bobAmp: 22,                // 上下浮动幅度（一定程度的上下移动）
     bobSpeed: 0.9,             // 上下浮动角速度
     crashDmg: 40,              // 碰撞伤害（接触一次性，受击无敌帧照常）
+    // ---- 技能（实装：状态机见 05-boss，演出见 11-draw-boss）----
+    skillCd: STORM.skillCd * 0.75,   // 技能释放间隔 = 暴风之眼的 75%（玩家暴走时再减半，见 updateBossStorm2）
+    berserkDR: 0.30,                 // 受到暴走（Lv5）伤害 -30%（主炮/僚机/斩击经 enemyDamageMul 生效；爆弹为真实伤害不受影响）
+    s1Charge: 1.2, s1R: 15, s1BeamDur: 0.9,   // 技能1：电弧球蓄力 → 向下强力电弧激光（伤害走导弹规则，见 runStorm2Skill）
+    s2Charge: 1.2, s2Gap: 0.13, s2R: 7, s2BeamDur: 0.45, s2Dmg: 50,   // 技能2：四喷口激涌蓄力 → 随机序依次下射电弧激光
+    s3Dmg: 25,                       // 技能3：场地正中释放斜下电弧光束（左右镜像对称，左右边界反弹，弹道呈"<"折线）
+    s4Dmg: 20,                       // 技能4：蛇形瞄准连射 / 雷环子弹（含技能5 打击外扩的雷环）
+    ringR: 5.4,                      // 雷电圆形子弹半径（带短拖尾）
+    ringV0: 470, ringCruise: 205, ringDecel: 300,   // 雷环子弹：初速较高 → 减速至巡航速度
+    s5Warn: 1.2, s5Dmg: 40, s5RMul: 0.8,   // 技能5：雷击预警时长 / 打击伤害 / 区域半径系数（×焦香螺旋桨火环 JIAOXIANG.auraR）
+    s6Dmg: 28, s6R: 7,               // 技能6：臂向光束 / 重现光束伤害与半宽（重现光束与臂向光束同长）
+  };
+
+  // ---------- 诗篇难度：旧日之歌技能改版参数（真我不读取；05-boss 经 isShipian() 门控） ----------
+  // 技能1：恒 4 条旋转双曲线弹流（初始方向/角速度逐条随机；当前指向水平以上时角速度大幅增加、以下较为减小）；
+  //   时长：≥70% 血 +25%、<70% 血 ×3；释放其他技能时概率连携技能1（连携不享时长加成，2 条流概率见 link）
+  // 技能2：7 轮大子弹散射（缺失 10%~20%）；首轮必定慢速，其余随机 3 轮快速（弹速 ×1.4~1.7）
+  // 技能3：2 部位锁定标记点（间隔 ×1.8）+ 2 部位持续追踪玩家（间隔 ×1.4）
+  // 技能4：≥70% 血 270° 双发同时乱射；<70% 血 360° 单发乱射 + 射速 ×3 + 每 1~1.5s 向下扇形圆弹幕（8~10 发，
+  //   弹速 = 乱射长条弹基准速度 ×(60%~90% 或 120%~150%)）
+  // 技能5/6：暗黑子弹（登场部件球弹幕同源）——技能5 瞄准玩家竖直近旁 ±10% 屏高带状区域；
+  //   技能6 射向两侧边界（[自身高度-20% 屏高, 屏幕底部] 或底部左右边缘，二选一），碰左右壁反弹，左右对称
+  const SONG_SHIP = {
+    skillCdMul: 0.4,           // 技能释放间隔 = 原有的 40%
+    dark: { r: 7, dmg: 20, speed: 430, color: '#c084fc', trail: '#7c3aed', preT: 0.25, band: 0.10, wallUp: 0.20 },
+    s1: {
+      durBase: 1.0,            // 基础时长（与真我一致）
+      durHighHp: 1.25,         // ≥70% 血：时长 ×1.25（+25%）
+      durLowHp: 3.0,           // <70% 血：时长 ×3（300%）
+      streams: 4,              // 恒 4 条双曲线弹流
+      emitGap: 0.24,           // 每条流的发射间隔（s）
+      speed: 230, arcDmg: BOSS.arcDmg,
+      life: 4.5,               // 旋转弧线弹寿命上限（s）：防止高速旋转弹长期滞留场上
+      angSpread: 1.9,          // 初始方向 = 竖直向下 ± 此弧度（逐条随机）
+      spinMin: 0.9, spinMax: 2.2,   // 角速度随机区间（rad/s，方向逐条随机）
+      spinUpMul: 2.8,          // 当前指向水平以上（vy<0）：角速度大幅增加
+      spinDownMul: 0.55,       // 水平以下：角速度较为减小
+      link: { chance: 0.18, chanceLowHp: 0.22, twoStreamChance: 0.60, twoStreamChanceLowHp: 0.40 },
+    },
+    s2: { rounds: 7, roundGap: 0.8, missMin: 0.10, missMax: 0.20, fastRounds: 3, fastMin: 1.4, fastMax: 1.7 },
+    s3: { lockIntervalMul: 1.8, trackIntervalMul: 1.4 },
+    s4: {
+      rateMul: 3,              // <70% 血乱射射速 ×3
+      fanGapMin: 1.0, fanGapMax: 1.5,   // 扇形圆弹幕间隔（s）
+      fanMin: 8, fanMax: 10,   // 每次扇形弹幕发数（8~10）
+      fanSlowMin: 0.6, fanSlowMax: 0.9,   // 扇形弹速 = 乱射长条弹基准速度 × 此区间（慢档）
+      fanFastMin: 1.2, fanFastMax: 1.5,   // 或快档
+    },
   };
 
   // 暴风之眼本体图（透明底台风云盘）：异步预加载，加载完成前矢量风暴照常绘制
@@ -147,6 +219,14 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const lightningLoaderThin = new Image();
   lightningLoaderThin.onload = () => { lightningImgThin = lightningLoaderThin; };
   lightningLoaderThin.src = 'assets/lightning-2.png';
+  let lightningImgBig = null;
+  const lightningLoaderBig = new Image();
+  lightningLoaderBig.onload = () => { lightningImgBig = lightningLoaderBig; };
+  lightningLoaderBig.src = 'assets/lightning-4.png';
+  let lightningImgSmall = null;
+  const lightningLoaderSmall = new Image();
+  lightningLoaderSmall.onload = () => { lightningImgSmall = lightningLoaderSmall; };
+  lightningLoaderSmall.src = 'assets/lightning-5.png';
 
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   const BOSSES = {
@@ -189,6 +269,53 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   // 写操作必须经由本文件的 setter（并行修改约定 + ES modules 下导入绑定只读，均要求如此）
   function setPlane(p) { currentPlane = p; }
   function setWingman(w) { currentWingman = w; }
+
+  // ---------- 难度注册表：具象 / 真我 / 诗篇 ----------
+  // 三档难度共用同一套关卡流程与出怪框架，差异通过 mods 修正表落地（怪物数值/行动逻辑/BOSS 技能组等）。
+  // 当前「真我」（全部数值与机制的基准，mods 全 1）与「诗篇」（BOSS 血量 ×1.6 / 暴走减免 / BOSS 战 1类强制波；
+  // 旧日之歌 / 暴风之眼技能组深度改版见 SONG_SHIP / STORM_SHIP）已实装；
+  // 「具象」为占位（wip=true，主界面展示但不可选择），待后续设计填充 mods 后再开放。
+  // mods 约定（后续设计按需增删键）：
+  //   enemyHpMul     敌机血量倍率
+  //   enemyDmgMul    敌方弹幕/碰撞伤害倍率
+  //   enemySpeedMul  敌机移速/弹速倍率
+  //   scoreMul       击杀得分倍率
+  //   bossSkillMods  BOSS 技能组修正（{ bossId: { skillId: {...} } }，交由 05-boss 解释）
+  //   wip 难度 mods 保持 null——未实装的难度必须回退基准值，绝不允许 null 直接参与乘算。
+  const DIFFICULTIES = {
+    juxiang: {
+      id: 'juxiang', name: '具象',
+      desc: '正常难度<br>适合所有玩家',   // 一句一行（<br> 分行；"设计中"由卡片角标展示）
+      wip: true, mods: null,
+    },
+    zhenwo: {
+      id: 'zhenwo', name: '真我',
+      desc: '挑战难度<br>适合飞机老资历',
+      wip: false,
+      mods: { enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 1, bossSkillMods: {} },
+    },
+    shipian: {
+      id: 'shipian', name: '诗篇',
+      desc: '直面疯狂',
+      wip: false,
+      // 诗篇修正表：BOSS 血量 ×1.6；全体 BOSS 受到暴走伤害 -10%（与既有 BOSS 专属暴走减免叠加时取最高）；
+      // BOSS 战期间每 6~12s 强制刷新 1类小组/长队（不受场上压力影响），该波敌人道具掉率 ×0.3
+      mods: {
+        enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 1, bossSkillMods: {},
+        bossHpMul: 1.6,
+        bossBerserkDR: 0.10,
+        bossMinionWave: { min: 6, max: 12, dropMul: 0.30 },
+      },
+    },
+  };
+  let currentDifficulty = DIFFICULTIES.zhenwo;   // 默认（也是当前唯一实装的）难度：真我
+  // 难度写入入口：与 setPlane/setWingman 同约定——顶层 let 的写操作必须经由 setter
+  function setDifficulty(d) { currentDifficulty = d; }
+  // 当前难度修正表：未实装难度（mods 为 null）回退真我基准，保证框架先行、行为不变。
+  // 后续接入点示例：makeEnemy 血量 × diffMods().enemyHpMul、BOSS 技能参数经 diffMods().bossSkillMods 查表。
+  function diffMods() { return currentDifficulty.mods || DIFFICULTIES.zhenwo.mods; }
+  // 是否为诗篇难度（旧日之歌技能改版等深度改写经此门控；参数级修正走 diffMods()）
+  function isShipian() { return currentDifficulty.id === 'shipian'; }
 
   // ---------- 群星之杀：空间斩击参数 ----------
   // 机头直射一条较细淡白锁定光束（不造成伤害），选中最靠近玩家的主目标；
@@ -874,8 +1001,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const BOSS_LOWFIRE_BONUS = 0.20;    // 玩家火力 Lv1 时对 BOSS 的武器伤害加成（BOSS 受到伤害 ×1.20，逆境补偿）
   const POPIAN_VULN_LV1 = 0.30;       // 火力 Lv1 时对破片的易伤（受到伤害 ×1.30，低火力补偿）
   const POPIAN_VULN_LV2 = 0.10;       // 火力 Lv2 时对破片的易伤（受到伤害 ×1.10）
-  const WEAPON_DROP_HITS = 2;         // 常规：累计受击 2 次掉 1 级火力
-  const WEAPON_DROP_HITS_BOSS = 3;    // BOSS 战：累计受击 3 次才掉 1 级火力（更宽松）
+  const WEAPON_DROP_HITS = 3;         // 统一：累计受击 3 次掉 1 级火力（全场景同规则；导弹命中不计入）
 
   // 测试模式（图鉴挑战）：敌方不再无敌 —— 按 1~4 类统一血量（BOSS 与大型龙卷等召唤物保持注册表血量）
   const TEST_HP_CLASS1 = 4000;        // 1类：侧翼艇 / 增生侧翼艇 / 卫护飞船
@@ -937,8 +1063,9 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   export {
     CANVAS_W, CANVAS_H, PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     BOSS_SEQUENCE, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
-    STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
+    STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
+    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, isShipian, SONG_SHIP, STORM_SHIP,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,
     BAOLING, JIAOXIANG, DOUZHI, FASHI_A1, FASHI_A2, POPIAN,
@@ -947,7 +1074,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,
     CAPITAL_PALETTE, GUNSHIP_PALETTE, STAR_COUNT, MAX_BOMBS, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO,
     CAPITAL_HIGHFIRE_DR, CAPITAL_DESCEND_DR, BOSS_LOWFIRE_BONUS, POPIAN_VULN_LV1, POPIAN_VULN_LV2, WEAPON_DROP_HITS,
-    WEAPON_DROP_HITS_BOSS, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE, DROP_KIT_YELLOW, DROP_SHIELD_RATE,
+    CHAOS_PIERCE_DMG_MUL, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE, DROP_KIT_YELLOW, DROP_SHIELD_RATE,
     DROP_SHIELD_BLUE, DROP_SHIELD_STACK, DROP_HP_RATE, DROP_HP_GREEN, DROP_HP_BOSS, DROP_HP_BOSS2,
     DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W,
     TEST_HP_CLASS1, TEST_HP_CLASS234, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE,

@@ -3,8 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：12-ui(1 名) 14-main(1 名)
   //
-  import { BERSERK, BOSS, CANVAS_H, CANVAS_W, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentPlane } from './01-config.js';
-  import { DPR, canvas, clamp, ctx, encyDetail, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx } from './02-core.js';
+  import { BERSERK, BOSS, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, setDifficulty } from './01-config.js';
+  import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
@@ -83,7 +83,7 @@
     harbinger: {
       name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 900, score: 600,
       lore: '炮舰术师操作的无人战舰，装甲厚重，材质坚实。正是他们引导了炮舰猛烈的导弹袭击。',
-      desc: '较慢入场，悬停于后排。<b>不直接开火</b>：核心充能 <b>3s</b> 后召唤垂直落下的导弹（<b>最多导引 4 次</b>），随后循环；就位约 <b>18s</b> 后停火开走。<br />导弹命中：<b>HP&lt;60 直接击杀</b>；HP≥60 损失 80% 当前血量且武器等级 -1。装甲对<b>僚机弹幕减伤 25%</b>，碰撞 12.5。',
+      desc: '较慢入场，悬停于后排。<b>不直接开火</b>：核心充能 <b>3s</b> 后召唤垂直落下的导弹（<b>最多导引 4 次</b>），随后循环；就位约 <b>18s</b> 后停火开走。<br />导弹命中：<b>HP&lt;60 直接击杀</b>；HP≥60 损失 80% 当前血量且<b>武器等级 -1</b>（不计入常规受击计数）。装甲对<b>僚机弹幕减伤 25%</b>，碰撞 12.5。',
     },
     weilong: {
       name: '威龙', type: 'weilong', color: '#ff9a1a', hp: 4500, score: 1200,
@@ -196,7 +196,14 @@ boss_storm: {
         '<b>造型</b>：X 形四臂——左上-右上、右下-左下夹角 <b>120°</b>，同侧上下臂夹角 <b>60°</b>，上臂较短、下臂较长；中央为<b>灰色装甲机体</b>，中下方镶嵌<b>白蓝 → 深蓝的电弧能量球</b>，雷电沿机体导管泵向四臂端头的发射缝隙。<br />' +
         '<b>数值</b>：HP <b>25000</b>，尺寸约 <b>43% 屏宽</b>，碰撞伤害 <b>40</b>（接触一次性）；悬停移速显著高于旧日之歌，并伴有一定程度的上下浮动。<br />' +
         '<b>击败掉落</b>：80 颗水晶（继承一阶段）+ 20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池（灰 + 蓝标记：护盾 6%；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。击败后通关。<br />' +
-        '概念：操纵雷电的飞舰搅动宇宙能量，卷起第一阶段的风暴。<b>技能与登场动画设计中。</b>',
+        '概念：操纵雷电的飞舰搅动宇宙能量，卷起第一阶段的风暴。<b>6 种技能乱序释放</b>（间隔 = 暴风之眼的 75%；玩家暴走期间间隔额外减半；本机受到暴走伤害 -30%；血量 70% 掉落暴走道具）：<br />' +
+        '<b>技能1</b> 停止移动，中心电弧球明显预警蓄力 <b>1.2s</b> 后向下发射强力电弧激光（伤害与先兆者导弹相同：HP&lt;60 直接击杀 / ≥60 失去 80% 血量 + 武器等级 -1）<br />' +
+        '<b>技能2</b> 停止移动，四臂喷口激涌蓄力 1.2s 后向下发射电弧激光（随机一个先发射、随后快速随机跟上，<b>50 伤害</b>）<br />' +
+        '<b>技能3</b> 仅在<b>场地正中</b>向斜下发射四道电弧光束（左右镜像对称，触左右边界<b>反弹</b>，弹道呈"&lt;"形折线，25 伤害）；光束沿头部轨迹<b>从 0 增长</b>至全长，转折处沿折线自然弯折<br />' +
+        '<b>技能4</b> 中心能量球连续快速连射 <b>40~70</b> 发雷电长条弹——每发均为<b>直射弹</b>、飞行中不扭动，仅朝向逐发变化（按蛇形曲线采样），弹点集合整体呈"先左后右、越摆越宽"的流线轨迹；<b>70% 血以下强化</b>：四喷口外各现一圈 10~14 枚雷电子弹（<b>间隔 0.8~1.5s 依次浮现</b>，停留原处 1s 后向对应方向爆开，高初速减速至巡航，20 伤害；<b>爆开弹速每圈独立浮动 80%~120%，同圈一致</b>）<br />' +
+        '<b>技能5</b> 周身明亮雷电光环，下方 30% 区域随机 5 处依次雷击（雷电积聚预警 1.2s、区域半径为焦香螺旋桨火环的 <b>80%</b>，<b>40 伤害</b>；击中中心外扩一圈 10~14 枚雷电子弹）<br />' +
+        '<b>技能6</b> 四喷口沿臂方向直射电弧光束出屏 → 光束于<b>左右边界</b>重现（与臂向光束<b>同长</b>，预警后<b>自 0 增长</b>），以约 <b>1s 抵达底边</b>的速度射向目标，左右两侧<b>镜像对称</b>；每点连射 2 次（<b>轮次间隔 1.5s</b>；<b>70% 血以下 3 次</b>）；左点瞄准底边 25%~100%、同点落点间隔 ≥25% 屏宽（28 伤害）<br />' +
+        '<b>入场</b>：一阶段风暴消散后，电闪雷鸣约 2s，风暴编织者自雷光中现身。',
     },
   };
 
@@ -246,13 +253,11 @@ boss_storm: {
     const gradeName = ENCY_GRADES[encyCurrentGrade].name;
     const isBoss = d.type === 'boss';
     // BOSS 页面：试炼（正常战斗）+ 测试该敌人（爆弹无限）；普通敌人页面：仅测试该敌人
-    // previewOnly（风暴编织者，二阶段设计中）：仅展示机体预览，不提供试炼 / 测试入口
+    // （风暴编织者技能已实装：与其他 BOSS 一致提供试炼 / 测试入口；专属登场动画待单独设计）
     const actionHtml = isBoss
-      ? (d.previewOnly
-          ? `<div class="ency-challenge-hint">二阶段设计中：技能与数值待定，当前仅展示机体预览</div>`
-          : `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
-             <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
-             <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（每枚炸掉 60% 最大血量）</div>`)
+      ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
+         <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
+         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（每枚炸掉 60% 最大血量）</div>`
       : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
     encyDetail.innerHTML = `
       <div class="ency-detail-name" style="color:${d.color}">${d.name}</div>
@@ -283,7 +288,7 @@ boss_storm: {
     const d = ENCY_DATA[entryId];
     const challenge = d.type === 'boss'
       ? { kind: 'boss', type: 'boss', bossId: d.bossId || 'song' }
-      : { kind: 'enemy', type: d.type, variant: d.variant || null, behavior: d.behavior || null };
+      : { kind: 'enemy', type: d.type, variant: d.variant || null, behavior: d.behavior || null, name: d.name };
     closeEncyclopedia();
     resetGame(true, { challenge });
   }
@@ -430,9 +435,38 @@ boss_storm: {
     });
   }
 
+  // ---------- 快捷切换难度（图鉴头部，关闭按钮左侧） ----------
+  // 三选一按钮组（静态标记于 index.html，始终渲染）：点击直接选中（与主界面「选择难度」卡片的选中态同步）。
+  // 置灰/提示/选中态由 DIFFICULTIES 驱动；设计中（wip）难度不可点，实装后自动可选。
+  // 难度在下一局开始时生效（选机页停留期间切换即为开局所选）。
+  // 启动时调用一次：绑定点击 + 按 DIFFICULTIES 初始化按钮状态
+  function initEncyDiffButtons() {
+    encyDiffGroup.querySelectorAll('.ency-diff-btn').forEach(btn => {
+      const d = DIFFICULTIES[btn.dataset.diff];
+      if (!d) return;
+      btn.disabled = !!d.wip;
+      btn.title = d.desc;
+      btn.addEventListener('click', () => {
+        if (d.wip || d.id === currentDifficulty.id) return;
+        setDifficulty(d);
+        syncDifficultyUI();
+      });
+    });
+    syncDifficultyUI();
+  }
+
+  // 同步难度 UI：图鉴按钮组选中态 + 主界面难度卡片选中态（HUD 标签由 updateHUD 每帧自刷新，无需处理）
+  function syncDifficultyUI() {
+    encyDiffGroup.querySelectorAll('.ency-diff-btn').forEach(el =>
+      el.classList.toggle('selected', el.dataset.diff === currentDifficulty.id));
+    diffGrid.querySelectorAll('.diff-card').forEach(el =>
+      el.classList.toggle('selected', el.dataset.diff === currentDifficulty.id));
+  }
+
   function openEncyclopedia() {
     encyclopedia.classList.remove('hidden');
     overlay.classList.add('hidden');
+    syncDifficultyUI();   // 打开时刷新选中态（难度可能经主界面卡片变更过）
     buildEncyclopedia();
   }
 
@@ -987,7 +1021,7 @@ boss_storm: {
       { h: '御4 金色六边力场', p: '力场内所有敌人受到的<b>非真实伤害 -30%</b>；高能爆弹为真实伤害，无视力场。' },
       { h: '寒霜 冰蓝光圈', p: '圈内玩家<b>射速 -35%、移动速度 -35%</b>（以战机核心位置判定）。' },
       { h: '破片 炮弹', p: '<b>若首发命中，则后两发炮弹无视玩家的无敌效果</b>；若首发未命中而后两发命中，该次无敌时间 -30%。' },
-      { h: '导弹', p: '命中判定：<b>玩家 HP &lt; 60 直接击杀</b>；HP ≥ 60 失去 80% 当前血量 + 武器等级 -1。量子护盾可消解导弹。' },
+      { h: '导弹', p: '命中判定：<b>玩家 HP &lt; 60 直接击杀</b>；HP ≥ 60 失去 80% 当前血量且<b>武器等级 -1</b>（不计入常规受击计数）。量子护盾可消解导弹。' },
       { h: '卫护飞船（增生侧翼艇衍生）', p: '撞击造成的无敌时间仅为常规的 <b>40%</b>（0.48s）。' },
       { h: '高能爆弹', p: '<b>真实伤害</b>：无视御4力场等一切减伤与易伤修正，直接结算；对全场敌人造成 4000 + 目标最大血量 10% 伤害。' },
       { h: '斗志昂扬（增益）', p: '<b>我方攻速 / 弹速翻倍 8s</b>（不可叠加，重复获得刷新时长）。' },
@@ -1163,7 +1197,7 @@ boss_storm: {
   export {
     ENCY_GRADES, ENCY_DATA, encyCurrentGrade, buildEncyclopedia, selectEncGrade, showEncyDetail,
     startChallenge, startBossTrial, previewCtxDepth, withPreviewCtx, drawEncyPreview, openEncyclopedia,
-    closeEncyclopedia, infoTab, infoWeightKind, INFO_TIERS, INFO_TIERS_LIVE, tierMask,
+    closeEncyclopedia, initEncyDiffButtons, infoTab, infoWeightKind, INFO_TIERS, INFO_TIERS_LIVE, tierMask,
     INFO_FORMATIONS, INFO_SIDE_KINDS, INFO_CAPITAL_KINDS, fmtInfoW, infoShipCanvas,
     buildWeightTable, infoAppendNote, INFO_TIER_NOTE, infoSideRows, infoStrikerRows, infoSpecial3Rows,
     infoCapitalRows, infoFormationRows, renderInfoWeights, renderInfoWaves, renderInfoMods, INFO_FIRE_LEVELS,

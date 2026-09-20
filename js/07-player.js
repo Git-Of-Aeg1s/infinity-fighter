@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, flash, hurt, lives, score}
   //
-  import { BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, HANSHUANG, PLAYER_CFG, STARSLAYER, WEAPON_DROP_HITS, WEAPON_DROP_HITS_BOSS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, currentPlane, currentWingman } from './01-config.js';
+  import { BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, HANSHUANG, PLAYER_CFG, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, currentPlane, currentWingman } from './01-config.js';
   import { bossFlow, clamp, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, pBullets, phaseFx, player, playerHitFx, shake, slashFx, spawnParticles, state, wingmen } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul } from './04-spawn.js';
   import { clearMissiles, killEnemy } from './06-enemy.js';
@@ -33,7 +33,7 @@
     const dmg = PLAYER_CFG.bulletDamage * (WEAPON_LEVELS[player.weapon].dmgMul || 1);
     const r = 3;
     for (const [ox, oy] of WEAPON_LINES[player.weapon]) {
-      pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r, dmg, color: currentPlane.bulletColor, lv: player.weapon });
+      pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r, dmg, color: currentPlane.bulletColor, lv: player.weapon, mainPierce: 1 });   // mainPierce：混乱将至主炮可穿透 1 个非 BOSS/4类敌人（结算见 08-entities）
     }
     // Lv4：主弹射出后延迟半拍，在中间位置补射 2 发（视觉错开，全部直射）
     if (player.weapon === 4) {
@@ -49,8 +49,8 @@
       if (s.t > 0) continue;
       delayedShots.splice(i, 1);
       if (!player.alive || player.weapon !== 4) continue;
-      pBullets.push({ x: s.x - 10, y: s.y - 18, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r: s.r, dmg: s.dmg, color: currentPlane.bulletColor, lv: 4 });
-      pBullets.push({ x: s.x + 10, y: s.y - 18, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r: s.r, dmg: s.dmg, color: currentPlane.bulletColor, lv: 4 });
+      pBullets.push({ x: s.x - 10, y: s.y - 18, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r: s.r, dmg: s.dmg, color: currentPlane.bulletColor, lv: 4, mainPierce: 1 });
+      pBullets.push({ x: s.x + 10, y: s.y - 18, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r: s.r, dmg: s.dmg, color: currentPlane.bulletColor, lv: 4, mainPierce: 1 });
     }
   }
 
@@ -63,7 +63,7 @@
       [0, -22], [15, -14], [15, -14], [27, -6], [27, -6],
     ];
     for (const [ox, oy] of lines) {
-      pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed * BERSERK.spdMul, r, dmg, color: currentPlane.berserkColor, berserk: true, lv: 5 });   // berserk: 暴走弹标记，渲染时附尾焰与光晕
+      pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed * BERSERK.spdMul, r, dmg, color: currentPlane.berserkColor, berserk: true, lv: 5, mainPierce: 1 });   // berserk: 暴走弹标记，渲染时附尾焰与光晕
     }
   }
 
@@ -645,7 +645,15 @@
     player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
   }
 
-  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false) {
+  // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 3 次掉 1 级火力
+  function accumulateWeaponDropHit() {
+    if (player.weapon < 5 && player.weapon > 1) {
+      player.hitCount++;
+      if (player.hitCount >= WEAPON_DROP_HITS) { player.weapon--; player.hitCount = 0; }
+    }
+  }
+
+  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false) {
     if (!player.alive) return false;
     if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
     if (player.shield > 0) return false;   // 护盾期间免疫碰撞伤害（无视无敌 ≠ 无视护盾）
@@ -673,12 +681,9 @@
     spawnParticles(player.x, player.y, '#ff6b81', 10, 240);   // 红色碎片
     spawnParticles(player.x, player.y, '#ffd166', 6, 200);    // 金色火花
     playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.42, r: 18, seed: Math.random() * 10 });   // 白热闪核 + 红橙冲击环 + 迸溅火花线
-    // 被击中掉火力：常规累计受击 2 次掉一层，BOSS 战放宽到 3 次；暴走（Lv5）/护盾期间不计也不掉
-    if (player.weapon < 5 && player.weapon > 1) {
-      const dropHits = (bossFlow.stage === 'warn' || bossFlow.stage === 'fight') ? WEAPON_DROP_HITS_BOSS : WEAPON_DROP_HITS;
-      player.hitCount++;
-      if (player.hitCount >= dropHits) { player.weapon--; player.hitCount = 0; }
-    }
+    // 被击中掉火力：统一累计受击 3 次掉一层（BOSS 战同规则）；暴走（Lv5）/护盾期间不计也不掉；
+    // 导弹命中不在此处计数（isMissile）：先兆者导弹自带"-1 级"结算、破片导弹整轮仅计一次（由 06-enemy 显式调 accumulateWeaponDropHit）
+    if (!isMissile) accumulateWeaponDropHit();
     if (player.hp <= 0) {
       player.hp = 0;
       player.alive = false;
@@ -765,17 +770,11 @@
       if (state.bombs <= 0) return;
       state.bombs--;
     }
-    if (state.challenge) {
-      // 测试模式：震动 / 白闪大幅减弱，改为自场地中心急速扩散至全场的橙黄火圈
-      shake(4, 0.18);
-      state.flash = 0.1;
-      bombBurst.active = true;
-      bombBurst.t = 0;
-    } else {
-      shake(18, 0.6);
-      // 白闪
-      state.flash = 0.6;
-    }
+    // 震屏 / 白闪 / 火圈：统一采用测试模式的表现 —— 弱震屏 + 微白闪 + 自场地中心急速扩散至全场的橙黄火圈
+    shake(4, 0.18);
+    state.flash = 0.1;
+    bombBurst.active = true;
+    bombBurst.t = 0;
     // 清空敌弹 + 导弹/预警线
     clearEnemyBullets();
     clearMissiles();
@@ -813,4 +812,5 @@
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
     segIntersect, shieldSweepHit, clipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
+    accumulateWeaponDropHit,
   };

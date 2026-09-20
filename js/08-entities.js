@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM } from './01-config.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, isShipian } from './01-config.js';
   import { clamp, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
@@ -22,7 +22,12 @@
     if (e.type === 'baoling' && player.alive &&
         Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) mul *= 1 + BAOLING.vuln;
     if (e.type === 'harbinger' && isWing) mul *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
-    if (e.type === 'tornado') mul *= isWing ? (1 + STORM.tornadoWingVuln) : (1 - STORM.tornadoMainDR);   // 风团：主武器减伤 50%、僚机伤害 +150%
+    if (e.type === 'tornado') {
+      // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；诗篇：僚机易伤额外 +150%（加算，不乘算）
+      mul *= isWing
+        ? (1 + STORM.tornadoWingVuln + (isShipian() ? STORM_SHIP.s2.wingVulnAdd : 0))
+        : (1 - STORM.tornadoMainDR);
+    }
     // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
     if (e.type === 'capital' && !e.arrived && (e.hoverY - e.y) >= 90) mul *= (1 - CAPITAL_DESCEND_DR);
     if (e.type === 'capital' && player.weapon >= 4) mul *= (1 - CAPITAL_HIGHFIRE_DR);
@@ -31,6 +36,18 @@
     if (e.type === 'popian' && player.weapon <= 2) mul *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
     // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
     if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
+    // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%；诗篇难度全体 BOSS -10%——
+    // 同时存在多个暴走减免修正时取最高（不叠加）。主炮/僚机弹幕/空间斩击均生效；高能爆弹为真实伤害不经此处
+    if (e.type === 'boss' && player.weapon >= 5) {
+      let dr = e.bossId === 'storm2' ? STORM2.berserkDR : 0;
+      const mod = diffMods().bossBerserkDR || 0;
+      if (mod > dr) dr = mod;
+      if (dr > 0) mul *= (1 - dr);
+    }
+    // 暴风之眼（诗篇）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
+    if (e.type === 'boss' && e.bossId === 'storm' && isShipian() && e.skill && e.skill.id === 3) {
+      mul *= (1 - STORM_SHIP.s4.dr);
+    }
     // 焦香螺旋桨：登场 2s 内受到的伤害 -30%（入场保护，主武器与僚机弹幕均生效）
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
@@ -65,13 +82,18 @@
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
-          const dmg = b.dmg * enemyDamageMul(e, b.wing);
+          // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
+          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing);
           e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
+          // 混乱将至主炮弹（mainPierce）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透一次，穿透后伤害减半
           let pierce = false;
           if (b.pierce != null && e.type === 'escort') pierce = true;
           else if (b.pierce > 0 && (e.type === 'side' || e.type === 'prolifera')) { pierce = true; b.pierce--; }
+          else if (b.mainPierce > 0 && e.type !== 'boss' && e.type !== 'capital' && e.type !== 'fashiArray') {
+            pierce = true; b.mainPierce--; b.weakened = true;
+          }
           if (!pierce) pBullets.splice(i, 1);
           if (e.hp <= 0) killEnemy(j);
           break;
@@ -82,6 +104,19 @@
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
       if (b.ax) b.vx += b.ax * dt;   // 弧线弹（1/4 双曲线弹道）
+      // 旋转弹（诗篇·旧日之歌技能1 旋转弧线流）：速度方向按角速度逐帧旋转——
+      // 当前指向水平以上（屏幕坐标 vy<0）时角速度大幅增加、水平以下较为减小（倍率由弹体自带，缺省见下）
+      if (b.angVel) {
+        const w = b.angVel * (b.vy < 0 ? (b.spinUp || 2.8) : (b.spinDown || 0.55));
+        const rc = Math.cos(w * dt), rs = Math.sin(w * dt);
+        const nvx = b.vx * rc - b.vy * rs, nvy = b.vx * rs + b.vy * rc;
+        b.vx = nvx; b.vy = nvy;
+      }
+      // 寿命上限（旋转弹可能长期滞留场上）：到时直接消散
+      if (b.life != null) {
+        b.life -= dt;
+        if (b.life <= 0) { eBullets.splice(i, 1); continue; }
+      }
       // 沿飞行方向加速：初速低、快速增长至上限（4类红技能3 的 '/||\' 弹幕）
       if (b.accel) {
         const sp = Math.hypot(b.vx, b.vy) || 1;
@@ -129,14 +164,49 @@
           }
         }
       }
-      b.x += b.vx * dt; b.y += b.vy * dt;
+      // 风暴编织者雷环子弹：停留期原地不动（BOSS 移走也不跟随），到时向对应方向爆开（高初速 → 减速至巡航）
+      if (b.holdT != null && b.holdT > 0) {
+        b.holdT -= dt;
+        if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
+      } else {
+        b.x += b.vx * dt; b.y += b.vy * dt;
+      }
+      // 反弹光束（技能3）：触左右边界反弹，实际弹道呈"<"形折线
+      if (b.bounceX && ((b.x < b.r && b.vx < 0) || (b.x > CANVAS_W - b.r && b.vx > 0))) {
+        b.vx *= -1;
+        b.x = clamp(b.x, b.r, CANVAS_W - b.r);
+      }
+      // 折线光束（技能3）：记录头部轨迹，光束沿轨迹从 0 增长至全长（b.len）；
+      // 转折处轨迹自然弯折——头部转向后旧段仍沿原方向保留，随尾部裁剪逐段消失
+      if (b.beamTrail) {
+        if (!b.path) { b.path = [{ x: b.x, y: b.y }]; b.pathLen = 0; }
+        const last = b.path[b.path.length - 1];
+        const dseg = Math.hypot(b.x - last.x, b.y - last.y);
+        if (dseg > 1) { b.path.push({ x: b.x, y: b.y }); b.pathLen += dseg; }
+        while (b.path.length > 2 && b.pathLen > b.len) {
+          const segLen = Math.hypot(b.path[1].x - b.path[0].x, b.path[1].y - b.path[0].y) || 1;
+          if (b.pathLen - segLen <= 0) break;
+          b.pathLen -= segLen;
+          b.path.shift();
+        }
+      }
+      // 减速子弹（雷环爆开）：初速较高，线性减速至巡航速度（不低于巡航）
+      if (b.decelTo != null) {
+        const sp = Math.hypot(b.vx, b.vy) || 1;
+        if (sp > b.decelTo) {
+          const ns = Math.max(b.decelTo, sp - (b.decelRate || 300) * dt);
+          b.vx *= ns / sp; b.vy *= ns / sp;
+        }
+      }
       if (b.trail) {
-        // 暗紫轨迹残影：记录帧间线段（中心黑、两边紫、随机位置星芒闪耀）
+        // 轨迹残影：记录帧间线段（缺省暗紫；b.trailCol 自定义色 + b.trailLife 短拖尾）
         if (b.px != null) {
           trailGhosts.push({
             x1: b.px, y1: b.py, x2: b.x, y2: b.y,
-            life: 1.0, max: 1.0, r: b.r,
+            life: b.trailLife || 1.0, max: b.trailLife || 1.0,
+            r: b.r,
             seed: Math.random() * 10, spark: Math.random() < 0.2,
+            col: b.trailCol || null,
           });
         }
         b.px = b.x; b.py = b.y;
@@ -227,6 +297,19 @@
           const effLen = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len;
           const tproj = clamp((player.x - b.x) * ux + (py - b.y) * uy, 0, effLen);
           hitPlayer = Math.hypot(player.x - (b.x + ux * tproj), py - (b.y + uy * tproj)) < PLAYER_CFG.hitRadius + b.r;
+        } else if (b.path && b.path.length > 1) {
+          // 折线光束（技能3）：判定点到头部轨迹折线段集的最近距离
+          const py = player.y + PLAYER_CFG.hitOffsetY;
+          let best = Infinity;
+          for (let k = 0; k < b.path.length - 1; k++) {
+            const ax = b.path[k].x, ay = b.path[k].y;
+            const dx = b.path[k + 1].x - ax, dy = b.path[k + 1].y - ay;
+            const L2 = dx * dx + dy * dy || 1;
+            const tt = clamp(((player.x - ax) * dx + (py - ay) * dy) / L2, 0, 1);
+            const dd = Math.hypot(player.x - (ax + dx * tt), py - (ay + dy * tt));
+            if (dd < best) best = dd;
+          }
+          hitPlayer = best < PLAYER_CFG.hitRadius + b.r;
         } else if (b.len) {
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const ux = b.vx / sp, uy = b.vy / sp;
@@ -390,7 +473,7 @@
   // 暴走冲击波：粉橙双环自机体扩散（暴走触发的醒目特效，不遮挡画面）
   const berserkBurst = { active: false, t: 0, duration: 0.7, x: 0, y: 0, big: false };
 
-  // 高能爆弹火圈（测试模式）：自场地中心急速扩大至全场的橙黄色火环
+  // 高能爆弹火圈：自场地中心急速扩大至全场的橙黄色火环（全部模式统一表现）
   const bombBurst = { active: false, t: 0, duration: 0.55 };
 
   export {

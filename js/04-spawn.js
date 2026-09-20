@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{waveSeq}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BAOLING, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4 } from './01-config.js';
+  import { ANVIL, BAOLING, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isShipian, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4 } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss } from './05-boss.js';
@@ -119,6 +119,8 @@
     } else if (type === 'prolifera') {
       e.score = SIDE_SCORE;
     }
+    // 诗篇：暴风之眼技能2 召唤的大型龙卷血量 6000（真我基准 3200）
+    if (type === 'tornado' && isShipian()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
     // 测试模式：敌方不再无敌 —— 按 1~4 类统一血量（1类 4000 / 2~4类 10000；BOSS 保持注册表血量）
     if (state.challenge && type !== 'boss') {
       const testHp = (type === 'side' || type === 'prolifera' || type === 'escort') ? TEST_HP_CLASS1 : TEST_HP_CLASS234;
@@ -448,6 +450,14 @@
     }
   }
 
+  // 诗篇：BOSS 战期间定时强制的 1类波次（小组 / 长队各 50%）——不走压力系统，场上存怪不影响刷新；
+  // 本波敌人标记 minionDrop：所有道具掉率 ×0.3（结算见 06-enemy rollItemDrops）
+  function spawnBossMinionWave() {
+    const n0 = enemies.length;
+    (Math.random() < 0.5 ? spawnSideGroup : spawnSideColumn)();
+    for (let k = n0; k < enemies.length; k++) enemies[k].minionDrop = true;
+  }
+
   // BOSS 击败后的固定首波：一群 1类排成长队从左或从右入场、横穿战场自另一侧离场；
   // 本波不出现紫电（kamikaze）1类（白影/增生/黄芒/赤月按权重混入）
   function spawnPostBossWave() {
@@ -768,7 +778,7 @@
     return e;
   }
 
-  // 4类槽位出场：Lv10 起有 slotChance 概率出场法术阵列（其余为主力舰；法术阵列 Lv10 前不出场）
+  // 4类槽位出场：Lv5 起 4类才会出现（由 14-main 的槽位通道门控）；Lv10 起有 slotChance 概率出场法术阵列（其余为主力舰）
   function spawnCapitalSlot() {
     if (levelFlow.level >= 10 && Math.random() < FASHI_ARRAY.slotChance) spawnFashiArray();
     else spawnCapital();
@@ -1093,7 +1103,7 @@
   export {
     strikerVariantWeights, sideSpawnWeights, pickVariant, makeEnemy, pickSideSpawn, spawnSideUnit, spawnSideGroup,
     spawnStrikerGroup, spawnMirrorRow, spawnSideSweep, spawnSideKamikazeStream, spawnStrikerVee, spawnGunshipWings,
-    spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, fieldPressureW, spawnPressureThreshold,
+    spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
     capitalMaxWait, SPECIAL3_POOL, spawnWave, WAVE_FORMATIONS, pickFormation,
     spawnWaveBody, spawnGunship, rollBaoling, rollFashiA1, spawnFashiA1, spawnFashiA2,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
