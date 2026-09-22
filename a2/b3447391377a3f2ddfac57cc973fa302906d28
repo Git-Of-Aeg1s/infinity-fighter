@@ -1,0 +1,21 @@
+README.md
+  s_4f207b1b74e8ee::t_3255c12b9e1be1 3,33,160
+package.json
+  s_4f207b1b74e8ee::t_997619e1090d3b 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a2b3447391377a3f2ddfac57cc973fa302906d28",
+  "prompts": {},
+  "sessions": {
+    "s_4f207b1b74e8ee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f4c147089ffevoKoE5jS6fI49U",
+        "model": "unknown"
+      },
+      "human_author": "aegis.wang <aegis.wang@ly.com>"
+    }
+  }
+}
