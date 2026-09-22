@@ -1,6 +1,6 @@
 ﻿// 01-config：全部常量与注册表（画布/战机/僚机/敌机类型/BOSS/掉落率/压力权重）
 
-console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
+  console.log('[InfinityFighter] JS build: 20260923-storm2-topbar-5');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(16 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(17 名) 13-encyclopedia(18 名) 14-main(14 名)
@@ -21,6 +21,10 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   // ---------- 常量 ----------
   const CANVAS_W = 480;
   const CANVAS_H = 792;   // 战场高度（原 720 增长 10%：上边界不动、下边界下移）
+  // 主菜单攻击演示屏（画布逻辑坐标）：与主菜单 .demo-screen DOM 边框（top 15% / height 51%）
+  // 严格对齐；演示实体层以此为裁剪矩形（10-draw-world render），弹道/特效不越出演示屏
+  const DEMO_TOP = Math.round(CANVAS_H * 0.15);
+  const DEMO_BOTTOM = Math.round(CANVAS_H * 0.66);
 
   const PLAYER_CFG = {
     w: 40,
@@ -61,6 +65,9 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   // 该技能结束后的冷却降为 20%（-80%）
   // ---------- 关卡流程：刷怪 50s → 旧日之歌 → 击败后 2s 缓冲 + 固定首波（1类长队）+ 4s 观察期 → 刷怪 50s → 暴风之眼 → 风暴编织者 → 胜利 ----------
   const BOSS_SEQUENCE = ['song', 'storm', 'storm2'];   // BOSS 出场顺序（正常流程按序登场；风暴编织者由暴风之眼死后直接召唤，不经警报/刷怪）
+  // 首轮 BOSS（每局第一个登场的 BOSS）名单：其掉落的水晶对七日澜心量表有额外加成（ARMOR_SKILLS.lanxin.firstBossBonus）。
+  // 后续新增"可作为首轮"的 BOSS 时，把 bossId 加入本表即可（现在只有旧日之歌）
+  const FIRST_ROUND_BOSSES = ['song'];
   const SPAWN_PHASE_TIMES = [50, 50];        // 各阶段刷怪时长（s）：两轮均为 50s（第二轮与第一轮节奏一致）
   // 关卡由“非 BOSS 期间的有效刷怪时间”驱动（不再随分数增长，切断高分→怪多→更高分的正反馈）：
   // 出怪期间每 5s +1（50s 刷怪期恰好 +10 级）：第一轮 1 级起步 → 50s 后恰好 11 级（首个 BOSS 登场即 11 级）；
@@ -73,7 +80,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const BOSS = {
     name: '旧日之歌',
     w: 288, h: 130,            // 宽度约 60% 屏宽
-    hp: 32000,                 // 首个 BOSS 血量
+    hp: 32000,                 // 基准血量（真我；各难度见 hpByDiff）
+    hpByDiff: { juxiang: 30000, zhenwo: 32000, shipian: 50000 },   // 分难度血量表（具象 / 真我 / 诗篇）
     score: 6000,
     hoverY: 120,
     moveAmp: 80, moveSpeed: 0.55,   // 小幅左右巡航
@@ -89,7 +97,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const STORM = {
     name: '暴风之眼',
     w: 384, h: 384,            // 占屏宽 80%（CANVAS_W=480）
-    hp: 45000,                 // 一阶段血量
+    hp: 46000,                 // 基准血量（真我；各难度见 hpByDiff）
+    hpByDiff: { juxiang: 42000, zhenwo: 46000, shipian: 70000 },   // 分难度血量表（具象 / 真我 / 诗篇）
     score: 6000,               // 击杀分数（原 9000 降为 6000：水晶掉落移交给二阶段）
     hoverY: 205,               // 风暴中心悬停高度
     skillCd: BOSS.skillCd * 0.5,   // 技能间基础冷却 = 旧日之歌常态间隔（2.2s）的 50%（连中同技能 ×0.2）
@@ -120,12 +129,13 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   // 技能4：总时长 9s；持续期间自身减伤 25%；旋转速度 +40%（20%+20% 加算）、风弹射速 +60%（30%+30% 加算）、
   //   风弹长度 +30%；初始方向顺/逆时针随机，期间随机改变 2~3 次方向（相邻两次 ≥1s，首次改变不晚于前 5s）
   // 技能5：两轮风弹数量 14/11（真我 12/9）；普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不减慢）
-  // 技能6：三旋臂基础上追加一组镜像三旋臂——转向相反、初始射击位置相反（相位差 π），转速与射击节奏与本体一致
-  // 技能7：涡流风旋改为三旋臂（真我双旋臂）；风弹射速 +30%，风旋最大转速 2.3 rad/s（真我 2.625）
+  // 技能6：三旋臂基础上追加一组镜像三旋臂——两射击点 35% / 65% 屏宽（关于竖直中轴镜像），初始射向镜像
+  //   （armAng2 = π − armAng）且转向相反，任意时刻两组旋臂均关于竖直中轴精确镜像；转速与射击节奏与本体一致
+  // 技能7：涡流风旋改为三旋臂（真我双旋臂）；风弹射速 +25%，风旋最大转速 2.3 rad/s（真我 2.625）
   // 技能8「双子旋臂」（仅诗篇技能池出场）：设风暴半径为 x——在距风暴中心 30%x~80%x 的环内随机选取 2 点
-  //   （两点间距 ≥15%x），两点绕风暴中心旋转（角速度 0.4 rad/s，方向随机——与风暴同向或反向）；每点各 50% 概率发出
+  //   （两点间距 ≥70px），两点绕风暴中心旋转（公转角速度 0.3 rad/s，恒与风暴自转同向）；每点各 50% 概率发出
   //   三旋臂（技能6 真我版：最大转速与射击频率 -20%）或四旋臂（技能4 真我版：中途改变一次转向，
-  //   最大转速与射击频率 -30%），持续 6s；旋臂初始转向随机
+  //   最大转速与射击频率 -30%），持续 6s；【旋臂自转】方向随机且两点独立
   const STORM_SHIP = {
     s1: { min: 10, max: 16 },                  // 技能1 独立释放间隔（s）
     s2: { hp: 6000, wingVulnAdd: 1.5 },        // 技能2 龙卷血量 / 僚机易伤追加（加算）
@@ -138,12 +148,12 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       firstChangeBy: 5,                        // 首次改变方向不晚于该时刻（s）
     },
     s5: { counts: [14, 11], slowChance: 0.20, slowMin: 0.5, slowMax: 0.8 },   // 两轮数量 / 减速概率与弹速倍率区间
-    s6: { mirror: true },                      // 技能6：追加镜像三旋臂
-    s7: { arms: 3, bulletSpdMul: 1.3, spinMax: 2.3 },   // 涡流风旋：三旋臂 / 风弹射速 +30% / 最大转速（真我 2.625）
+    s6: { mirror: true, fx: [0.35, 0.65] },    // 技能6：追加镜像三旋臂 / 两射击点屏宽比例（左 35% / 右 65%，中轴镜像）
+    s7: { arms: 3, bulletSpdMul: 1.25, spinMax: 2.3 },   // 涡流风旋：三旋臂 / 风弹射速 +25% / 最大转速（真我 2.625）
     s8: {
       dur: 6,                                  // 持续时长（s）
-      rMinF: 0.30, rMaxF: 0.80, sepF: 0.15,    // 距风暴中心环带（×风暴半径）/ 两点最小间距（×风暴半径）
-      followSpin: 0.4,                         // 绕风暴中心公转角速度（rad/s，较风暴自转 1.4 大幅降低）
+      rMinF: 0.30, rMaxF: 0.80, sep: 70,       // 距风暴中心环带（×风暴半径）/ 两点最小间距（px，绝对值）
+      followSpin: 0.3,                         // 绕风暴中心公转角速度（rad/s，恒与风暴自转同向；较风暴自转 1.4 大幅降低）
       // 三旋臂（技能6 真我版）：初始转速 0.65、转速斜率与射击频率 -20%（0.617→0.4936 / 0.10→0.125）
       triple: { fireInt: 0.125, spin0: 0.65, spinSlope: 0.4936 },
       // 四旋臂（技能4 真我版）：恒定转速 1.6 → 1.12（-30%）、射击间隔 0.11 → 0.157（-30%），
@@ -156,7 +166,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const STORM2 = {
     name: '风暴编织者',
     w: 168, h: 94,             // 判定箱（基础 ×1.2 整体扩大；仍刻意小于模型视觉约 208 ≈ 43% 屏宽）
-    hp: 25000,                 // 二阶段血量
+    hp: 32000,                 // 基准血量（真我；各难度见 hpByDiff）
+    hpByDiff: { juxiang: 28000, zhenwo: 32000, shipian: 45000 },   // 分难度血量表（具象 / 真我 / 诗篇）
     score: 6000,
     hoverY: 150,               // 悬停高度（较风暴中心 205 更靠下，凸显机体形态）
     moveSpeed: 1.65,           // 水平巡航角速度：旧日之歌 0.55 的 3 倍（悬停移速显著更高）
@@ -164,31 +175,59 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     bobAmp: 22,                // 上下浮动幅度（一定程度的上下移动）
     bobSpeed: 0.9,             // 上下浮动角速度
     crashDmg: 40,              // 碰撞伤害（接触一次性，受击无敌帧照常）
+    // ---- 登场动画（重制版）：暴风之眼轰然消散 → 中央雷电风暴轰鸣（电球凝聚）→ 现身汇入机体 ----
+    entrance: { dissipate: 0.9, storm: 1.6, reveal: 0.7 },   // 三段时长（s）：消散 / 雷暴（电球凝聚）/ 现身
     // ---- 技能（实装：状态机见 05-boss，演出见 11-draw-boss）----
     skillCd: STORM.skillCd * 0.75,   // 技能释放间隔 = 暴风之眼的 75%（玩家暴走时再减半，见 updateBossStorm2）
     berserkDR: 0.30,                 // 受到暴走（Lv5）伤害 -30%（主炮/僚机/斩击经 enemyDamageMul 生效；爆弹为真实伤害不受影响）
-    s1Charge: 1.0, s1R: 15, s1BeamDur: 0.9,   // 技能1：蓝色预警波收缩 0.8s + 0.2s 间隔 → 向下强力电弧激光（伤害走导弹规则）
+    s1Charge: 1.0, s1R: 21, s1BeamDur: 0.9, s1Dmg: 60,   // 技能1：蓝色预警波收缩 0.8s + 0.2s 间隔 → 向下强力电弧激光（固定 60 伤害；光束宽度 +40%）
     s1RingR0: 300, s1RingDur: 0.8,   // 技能1 预警波：起始半径 300px / 收缩到中心用时（完成后再过 0.2s 发射）
     s2RingR0: 200, s2RingDur: 0.8,   // 技能2 同款预警波：起始半径 200px（蓄力 0.2s 后开始收缩，完成后再过 0.2s 发射）
     s2Charge: 1.2, s2Gap: 0.13, s2R: 7, s2BeamDur: 0.45, s2Dmg: 50,   // 技能2：四喷口激涌蓄力 → 随机序依次下射电弧激光
     s3Dmg: 25,                       // 技能3：斜下电弧光束（左右镜像对称，左右边界反弹，弹道呈"<"折线）
+    s3SpdMul: 1.8, s3CdMul: 0.3,     // 技能3：弹速倍率（+80%）；释放后下一次技能释放间隔额外 ×0.3（-70%）
     s3ConeHalf: 75 * Math.PI / 180,  // 技能3：朝下方 150° 锥角（竖直向下 ±75°）随机选定发射角
     s3MinSep: 15 * Math.PI / 180,    // 技能3：内外两对光束的最小角距
-    s4Dmg: 20,                       // 技能4：蛇形瞄准连射 / 雷环子弹（含技能5 打击外扩的雷环）
+    s4Dmg: 20,                       // 技能4：蛇形瞄准连射 / 雷环子弹（四喷口雷环始终释放，<70% 增至 6 圈；含技能5 打击外扩的雷环）
+    s4Spd: 250,                      // 技能4：蛇形雷电长条弹基准速度（雷环爆开初速 = 此速度 × 60~80% 或 120~140% 随机档）
+    s4LowShotsMul: 1.5,              // 技能4：70% 血以下蛇形雷条持续 +50%（子弹数 ×1.5）
+    s4FlushBoost: 1.3,               // 技能4：射完时补齐/强爆的雷环初速与最终速度额外 +30%
     ringR: 5.4,                      // 雷电圆形子弹半径（带短拖尾）
-    ringV0: 470, ringCruise: 205, ringDecel: 300,   // 雷环子弹：初速较高 → 减速至巡航速度
+    ringCruise: 250, ringDecel: 300,   // 雷环子弹：减速下限（初速低于巡航的慢档不再减速）
     s5Warn: 1.2, s5Dmg: 40, s5RMul: 0.8,   // 技能5：雷击预警时长 / 打击伤害 / 区域半径系数（×焦香螺旋桨火环 JIAOXIANG.auraR）
     s5RingDecelMul: 2.5,             // 技能5 落雷外扩雷环的减速倍率（加速度 +150%，更快减慢至巡航速度）
     s6Dmg: 28, s6R: 7,               // 技能6：臂向光束 / 重现光束伤害与半宽（重现光束与臂向光束同长）
-    s6GrowDur: 0.45,                 // 技能6 光束自 0 增长至全长（640）的时间（原 ≈0.29s，放慢以看清射出过程）
+    s6GrowDur: 1.0, s6ReplaySpdMul: 0.6,   // 技能6 光束自 0 增长至全长（640）的时间（增长速度 -25%）；重现光束飞行速度倍率（-15%，约 1.7s 抵底）
+    s6PairSep: 15 * Math.PI / 180,   // 技能6：每边同轮两条光束的最小夹角
+    s6CdMul: 0.5,                    // 技能6：释放后下一次技能释放间隔 ×0.5（-50%）
+  };
+
+  // ---------- 诗篇难度：风暴编织者独特修正（真我 / 具象不读取；05-boss 经 isShipian() 门控） ----------
+  const STORM2_SHIP = {
+    s1: {
+      shots: 5,              // 激光连续射出次数
+      charge2: 1.0,          // 第 2~5 次预警时长（s）：与首发一致（必大于 gapMax，保证预警在上一发射完前开始）
+      ring2R0: 300,          // 第 2~5 次预警圈起始半径（与首发一致，特效不减弱）
+      ring2Dur: 0.8,         // 第 2~5 次预警圈收缩时长（与首发一致）
+      gapMin: 0.1, gapMax: 0.5,   // 上一发射完到下一发开火的间隔
+      spdMulMax: 2.0,        // 首次蓄力期间逐渐提升到的移速倍率（200%）
+      spdDecay: 6,           // 5 次射完后移速加成的衰减速率（指数系数/s）
+    },
+    s2: { linkS6Chance: 0.5, noLinkCdMul: 0.1 },   // 技能2：50% 同时释放技能6；未连携则下次技能间隔 ×0.1（-90%）
+    s3: { secondMin: 0.5, secondMax: 1.0 },        // 技能3：第二回释放间隔（s）
+    s4: { rings: 8, ringGapMul: 0.6 },             // 技能4：雷环固定 8 圈；生成间隔 ×0.6（-40%）
+    s5: { zoneTop: 0.40, volleyGapMul: 0.9 },      // 技能5：落点区域扩展到下方 60%（top = 0.40 屏高）；轰击错峰 ×0.9
+    s6: { instantStrikes: 4, strikeDmgMul: 0.5, ringCntMul: 0.5 },   // 技能6：释放瞬间四个雷电喷口处瞬发雷霆打击（无预警、伤害/雷环子弹减半）
   };
 
   // ---------- 诗篇难度：旧日之歌技能改版参数（真我不读取；05-boss 经 isShipian() 门控） ----------
   // 技能1：恒 4 条旋转双曲线弹流（初始方向/角速度逐条随机；当前指向水平以上时角速度大幅增加、以下较为减小）；
-  //   时长：≥70% 血 +25%、<70% 血 ×3；释放其他技能时概率连携技能1（连携不享时长加成，2 条流概率见 link）
+  //   时长：≥70% 血 +25%、<70% 血 ×3；释放其他技能时概率连携技能1（≥70% 血 20% / <70% 血 30% / <35% 血 50%；
+  //   连携不享时长加成，2 条流概率见 link）
   // 技能2：7 轮大子弹散射（缺失 10%~20%）；首轮必定慢速，其余随机 3 轮快速（弹速 ×1.4~1.7）
-  // 技能3：2 部位锁定标记点（间隔 ×1.8）+ 2 部位持续追踪玩家（间隔 ×1.4）
-  // 技能4：≥70% 血 270° 双发同时乱射；<70% 血 360° 单发乱射 + 射速 ×3 + 每 1~1.5s 向下扇形圆弹幕（8~10 发，
+  // 技能3：2 部位锁定标记点 + 2 部位持续追踪玩家（随机分配）；每轮射击间隔 0.9~1.3s 四部位独立随机
+  // 技能4：以真我为基准（双管每轮各 1 发、10% 概率齐指玩家）——≥70% 血 270° 散射 + 射速 +100%（间隔 ×0.5）；
+  //   <70% 血 360° 单发 + 射速 +200%（间隔 ÷3）+ 每 0.7~1.7s 向下扇形圆弹幕（8~14 发，
   //   弹速 = 乱射长条弹基准速度 ×(60%~90% 或 120%~150%)）
   // 技能5/6：暗黑子弹（登场部件球弹幕同源）——技能5 瞄准玩家竖直近旁 ±10% 屏高带状区域；
   //   技能6 射向两侧边界（[自身高度-20% 屏高, 屏幕底部] 或底部左右边缘，二选一），碰左右壁反弹，左右对称
@@ -196,10 +235,10 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     skillCdMul: 0.4,           // 技能释放间隔 = 原有的 40%
     aimOffset: 10 * Math.PI / 180,   // 技能2/3 瞄准偏移角：每次瞄准在真实方向 ±10° 内随机偏移
     dark: {
-      r: 7, dmg: 20, speed: 430, color: '#c084fc', trail: '#7c3aed', preT: 0.25, band: 0.10, wallUp: 0.20,
+      r: 7, dmg: 36, speed: 430, color: '#c084fc', trail: '#7c3aed', preT: 0.6, band: 0.10, wallUp: 0.20,
       animR: 180,              // 技能5/6 重组动画：圆球起始半径（自机体四周随机角飞向镶接位）
-      animStagger: 0.015,      // 逐球错峰起始（s）
-      animDur: 0.18,           // 单球飞行时长（s）——末球 0.045+0.18=0.225s 内到位，不拖延 preT=0.25s 的发射时刻
+      animStagger: 0.03,       // 逐球错峰起始（s）
+      animDur: 0.42,           // 单球飞行时长（s）——末球 0.15+0.42=0.57s 内到位，早于 preT=0.6s 的发射时刻
     },
     s1: {
       durBase: 1.0,            // 基础时长（与真我一致）
@@ -214,13 +253,11 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       spinMin: 0.9, spinMax: 2.2,   // 角速度随机区间（rad/s，方向逐条随机）
       spinUpMul: 2.8,          // 当前指向水平以上（vy<0）：角速度大幅增加
       spinDownMul: 0.55,       // 水平以下：角速度较为减小
-      link: { chance: 0.18, chanceLowHp: 0.22, twoStreamChance: 0.60, twoStreamChanceLowHp: 0.40 },
+      link: { chance: 0.20, chanceLowHp: 0.30, chanceBelow35: 0.50, twoStreamChance: 0.60, twoStreamChanceLowHp: 0.40 },
     },
     s2: { rounds: 7, roundGap: 0.8, missMin: 0.10, missMax: 0.20, fastRounds: 3, fastMin: 1.4, fastMax: 1.7 },
     s3: {
-      lockIntervalMul: 1.8,    // 锁定部位射击间隔 ×1.8
-      trackIntervalMul: 1.4,   // 追踪部位射击间隔 ×1.4
-      sprayConeHalf: 75 * Math.PI / 180,   // 乱射部位：朝下半球 150° 锥角（竖直向下 ±75°）随机方向
+      ivMin: 0.9, ivMax: 1.3,   // 每轮射击间隔（s）：2 锁定 + 2 追踪，四部位独立随机
     },
     s4: {
       fanGapMin: 0.7, fanGapMax: 1.7,     // 扇形圆弹幕间隔（s）
@@ -244,6 +281,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   //   lightning-1 主电弧（白热蓝辉纤细大闪电）：能量球表面电弧 / 球外放电
   //   lightning-2 细流光弧（纤细蓝弧）：周身闪电风暴的小闪电
   //   lightning-bolt 备用电弧（粗壮闪电）：与主电弧交替出现，避免重复感
+  //   lightning-ring 雷电环（黑底蓝色环形雷电）：技能5 周身雷电环 / 雷击预警聚能 / 打击爆闪演出
   // 异步预加载，未加载时能量球 / 风暴回退为程序化弧线
   let lightningImg = null;
   const lightningLoader = new Image();
@@ -265,6 +303,19 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   const lightningLoaderSmall = new Image();
   lightningLoaderSmall.onload = () => { lightningImgSmall = lightningLoaderSmall; };
   lightningLoaderSmall.src = 'assets/lightning-5.png';
+  let lightningImgRing = null;
+  const lightningLoaderRing = new Image();
+  lightningLoaderRing.onload = () => { lightningImgRing = lightningLoaderRing; };
+  lightningLoaderRing.src = 'assets/lightning-ring.webp';
+
+  // 电球序列帧（黑底蓝色雷电球）：风暴编织者登场动画专用——
+  //   energy-orb-sheet.webp 为 10×6 网格共 60 帧，运行时按图片实际宽高切分（无需物理拆分文件）；
+  //   黑底经 lighter 混合融入画面，未加载完成时登场动画跳过电球层（其余演出照常）
+  let energyOrbSheet = null;
+  const energyOrbSheetLoader = new Image();
+  energyOrbSheetLoader.onload = () => { energyOrbSheet = energyOrbSheetLoader; };
+  energyOrbSheetLoader.src = 'assets/energy-orb-sheet.webp';
+  const ENERGY_ORB = { cols: 10, rows: 6, frames: 60, fps: 24, baseD: 260, offX: -12, offY: 3 };   // 网格 / 帧率 / 基准直径 / 对齐偏移（素材球在帧内偏右，左移使其对准机体核心 RX=0,RY=3）
 
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   const BOSSES = {
@@ -284,6 +335,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       name: '混乱将至',
       desc: '直线弹道，猛烈输出',
       startWeapon: 1,   // 初始火力等级（Lv1 即三射线；开局 / 重生回落到此等级；BOSS 试炼 / 图鉴挑战固定 Lv4）
+      drawScale: 1.15,  // 机体绘制放大 15%（座舱核心与判定点尺寸不变，见 paintShip 逆向补偿）
       bulletColor: '#7ce7ff',
       trailColor: '#3d7d99',   // 双连发尾弹（颜色稍暗）
       berserkColor: '#ffb545',
@@ -329,6 +381,9 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   //   invulnMul              玩家所有来源的无敌时间倍率
   //   missileFlatDmg         >0：导弹命中改为固定伤害（取消秒杀/80% 血量规则），null = 保留原规则
   //   noWeaponDropOnHit      true：受击不再降低武器等级
+  //   bombStart              初始高能爆弹数（基准 1）
+  //   bombCap                高能爆弹上限（基准 3 = MAX_BOMBS）
+  //   bombBossDmgMul         高能爆弹对 BOSS 的伤害倍率（基准 1）
   //   bossSkillMods          BOSS 技能组修正（{ bossId: { skillId: {...} } }，交由 05-boss 解释）
   //   wip 难度 mods 保持 null——未实装的难度必须回退基准值，绝不允许 null 直接参与乘算。
   const DIFFICULTIES = {
@@ -353,6 +408,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
         invulnMul: 1.5,
         missileFlatDmg: 50,
         noWeaponDropOnHit: true,
+        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
       },
     },
     zhenwo: {
@@ -374,6 +430,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
         invulnMul: 1,
         missileFlatDmg: null,
         noWeaponDropOnHit: false,
+        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
       },
     },
     shipian: {
@@ -381,7 +438,9 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       desc: '直面疯狂',
       wip: false,
       // 诗篇修正表：BOSS 血量 ×1.6；全体 BOSS 受到暴走伤害 -10%（与既有 BOSS 专属暴走减免叠加时取最高）；
-      // 刷怪框架与真我基准一致（spawnIntervalMul 1）；得分 ×1.2
+      // 高能爆弹初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%；刷怪框架与真我基准一致（spawnIntervalMul 1）；得分 ×1.2；
+      // 加血套件节流：任意两次加血套件（普通敌人掉落）至少间隔 8s（hpKitGap）——冷却期内加血环节变为
+      // 50%（hpKitBankChance）概率"预触发"（计数、敌人不掉落），冷却结束后击杀的第一个敌人必掉一个（计数清零）
       mods: {
         enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 1.2, bossSkillMods: {},
         spawnIntervalMul: 1,
@@ -396,17 +455,26 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
         invulnMul: 1,
         missileFlatDmg: null,
         noWeaponDropOnHit: false,
+        bombStart: 0, bombCap: 2, bombBossDmgMul: 0.75,
         bossHpMul: 1.6,
         bossBerserkDR: 0.10,
+        hpKitGap: 8, hpKitBankChance: 0.5,
       },
     },
   };
-  let currentDifficulty = DIFFICULTIES.zhenwo;   // 默认（也是当前唯一实装的）难度：真我
+  let currentDifficulty = DIFFICULTIES.shipian;   // 默认难度：诗篇（主页面与怪物图鉴的难度初始选中项）
   // 难度写入入口：与 setPlane/setWingman 同约定——顶层 let 的写操作必须经由 setter
   function setDifficulty(d) { currentDifficulty = d; }
   // 当前难度修正表：未实装难度（mods 为 null）回退真我基准，保证框架先行、行为不变。
   // 后续接入点示例：makeEnemy 血量 × diffMods().enemyHpMul、BOSS 技能参数经 diffMods().bossSkillMods 查表。
   function diffMods() { return currentDifficulty.mods || DIFFICULTIES.zhenwo.mods; }
+  // BOSS 血量解析：优先按难度表 hpByDiff（juxiang / zhenwo / shipian），未配置的难度回退 基准 × 当前难度 bossHpMul
+  function resolveBossHp(B) {
+    const id = currentDifficulty.id;
+    if (B.hpByDiff && B.hpByDiff[id] != null) return B.hpByDiff[id];
+    const m = currentDifficulty.mods && currentDifficulty.mods.bossHpMul != null ? currentDifficulty.mods.bossHpMul : 1;
+    return B.hp * m;
+  }
   // 是否为诗篇难度（旧日之歌技能改版等深度改写经此门控；参数级修正走 diffMods()）
   function isShipian() { return currentDifficulty.id === 'shipian'; }
   // 玩家无敌时间难度倍率（具象：所有来源的无敌时间 +50%；与装甲 invulnMul 乘算，见 ARMORS）
@@ -425,30 +493,50 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   // 其余装甲效果（最终壁垒免死 / 祈星减伤 / 澄月暴走护盾 / 七日澜心量表技能）为行为型逻辑，
   // 分别挂钩 07-player（damagePlayer / pickupKit / pickupBerserk / updatePlayer）与 06-enemy（killEnemy / BOSS 接触）。
   // 新增装甲只需在注册表加条目：主界面卡片自动生成（12-ui buildArmorCards）。
+  // brief  = 主菜单卡片的简短文案（玩家向）；desc = 数值与机制图鉴「护甲」页的详细数值文案
+  // 条目顺序 = 展示顺序（主菜单卡片与图鉴护甲页均按注册表键序生成）：
+  //   第一排：群星守望（默认，无脑最适合新人）/ 铜皮夏勇 / 祈星 / 洄
+  //   第二排：七日澜心 / 最终壁垒 / 天枢圣盾 / 澄月；第三排：炽心
   const ARMORS = {
-    tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
-      maxHpAdd: 25, desc: '血量提高 25<br>（100 → 125）' },
-    bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
-      desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 3s 无敌、清除周围 250px 内敌弹' },
-    tianshu:  { id: 'tianshu', name: '天枢圣盾', glyph: '⬡', color: '#4dd0ff',
-      invulnMul: 1.4, desc: '从所有来源获得的无敌时间 +40%' },
-    qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
-      desc: '受到伤害时 25% 概率伤害减半<br>单次伤害 &gt;40 时概率翻倍' },
     watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff',
+      default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化）
       clearChance: { 1: 0.30, 2: 0.60, 3: 0.80, 4: 1.0 },
-      desc: '击杀 1/2/3/4 类敌人时<br>30%/60%/80%/100% 立刻清除<br>一颗离自身最近的敌方子弹' },
-    chengyue: { id: 'chengyue', name: '澄月', glyph: '☾', color: '#6fe3ff',
-      desc: '触发暴走时 10% 概率获得量子护盾<br>BOSS 战中概率提升到 40%<br>（每个 BOSS 限一次、时长 3s）' },
+      clearChanceBoss: { 1: 0.70, 2: 1.0, 3: 1.0, 4: 1.0 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
+      brief: '击毁敌机时概率消除弹幕；BOSS 战中整组清除',
+      desc: '击杀 1/2/3/4 类敌人时<br>30%/60%/80%/100% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：70%/100%/100%/100%，<br>且改为清除该敌人发出的所有在场射弹' },
+    tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
+      maxHpAdd: 30, brief: '夏勇皮糙肉厚，战机血量提升',
+      desc: '血量提高 30<br>（100 → 130）' },
+    qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
+      halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
+      brief: '受伤时概率使该次伤害减半',
+      desc: '受到伤害时 30% 概率伤害减半<br>单次伤害 &gt;40 时概率提升到 60%' },
+    hui:      { id: 'hui', name: '洄', glyph: '∞', color: '#39C5BB',
+      regenInterval: 2, regenHp: 1,   // 恢复间隔（s）/ 每次恢复量
+      bossKillLostPct: 0.25,            // 击败 BOSS：先回复 25% 已损失生命
+      bossKillHeal: 20,                 // 击败 BOSS：再回复 20 生命
+      brief: '缓慢回复血量，击败BOSS回血',
+      desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时先回复 25% 已损失生命<br>随后再回复 20 生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
-      desc: '收集水晶填充右下角量表（按角度）<br>按 F 触发：水晶护盾环绕自身 3s<br>（消失时清除周围 250px 内所有敌弹）' },
+      brief: '收集水晶以充能结晶护盾，按F释放',
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 5s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
+    bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
+      invulnFireRateMul: 0.5,   // 免死无敌期间自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘）
+      brief: '受到致命伤害时不死且短暂无敌，仅限一次',
+      desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 3s 无敌（淡金菱形环绕，期间射速 -50%）<br>菱形消散时清除周围 250px 内敌弹并扩散金环' },
+    tianshu:  { id: 'tianshu', name: '天枢圣盾', glyph: '⬡', color: '#4dd0ff',
+      invulnMul: 1.6, brief: '受到神圣赐福，无敌时间提升',
+      desc: '从所有来源获得的无敌时间 +60%<br>无敌期间免疫破片导弹的<br>"无视无敌"穿透' },
+    chengyue: { id: 'chengyue', name: '澄月', glyph: '☾', color: '#6fe3ff',
+      chance: 0.15, bossChance: 0.50,   // 暴走触发（新触发）与暴走续时均判定一次
+      brief: '触发暴走时概率获得量子护盾',
+      desc: '触发暴走时 15% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 50%<br>（每个 BOSS 限一次、时长 3s）' },
     chixin:   { id: 'chixin', name: '炽心', glyph: '❂', color: '#ff7a18',
       burnR: 100, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
+      brief: '战机周身围绕火环，灼烧接近敌人',
       desc: '自身环绕焦香同款火环（半径 100，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害' },
-    hui:      { id: 'hui', name: '洄', glyph: '∞', color: '#66e39a',
-      regenInterval: 2.5, regenHp: 1,   // 恢复间隔（s）/ 每次恢复量
-      desc: '每 2.5 秒恢复 1 生命' },
   };
-  let currentArmor = ARMORS.tongpi;   // 默认装甲：铜皮夏勇
+  let currentArmor = ARMORS.watch;   // 默认装甲：群星守望（无按钮无资源管理、击杀即触发清弹，对新最无脑直观）
   // 装甲写入入口：与 setPlane/setWingman/setDifficulty 同约定——顶层 let 的写操作必须经由 setter
   function setArmor(a) { currentArmor = a; }
   // 装甲效果读取（键缺省安全回退；战斗逻辑经这些函数取值，不直接读 currentArmor 字段）
@@ -468,7 +556,9 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
   //   普通水晶 +10、巨型水晶 +500，后续水晶系统重构新增的水晶类型只需带各自 val，
   //   拾取处（08-entities armorSkillGain）自动按得分等比计入，无需改动
   const ARMOR_SKILLS = {
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 3, clearR: 250, gaugeCrystalScore: 1000 },
+    // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
+    // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 5, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
   };
 
   // ---------- 群星之杀：空间斩击参数 ----------
@@ -524,7 +614,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       desc: '坚盾护体，侧向打击',
       barTail: '#3b7de8', barMid: '#6dc4f8', barHead: '#b0e8ff',   // 尾中蓝 → 头浅天蓝（天蓝占比更大）
       flame: '#8fd8ff',
-      offsetX: 41, offsetY: -20,   // 前侧站位（稍微靠近主机，本体+盾整体往右上移动）
+      offsetX: 48, offsetY: -20,   // 前侧站位（外移加大横向距离，本体+盾整体往右上移动）
       // 防御辅助型：前方连体白盾消解非导弹直射弹（详见 BULWARK 与挡弹系统）
       // 武器：一侧扇形错序发射（最前方先发）——0°（竖直向上）→90°（水平）均布，另有一发 105°（水平朝下 15°）压轴
       //   双僚机合计 DPS = Lv1 160 / Lv2 200 / Lv3 240 / Lv4 300 / Lv5 444（弹幕扩容后单发伤害按比例重配平，DPS 不变）
@@ -564,10 +654,24 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
 
   // 守愿者白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
   //   arcFrom/arcTo 为相对“竖直向上”朝外侧扫过的角度（度）；segments 为折线逼近段数（供扫掠相交/裁切）
+  //   scale 为整体尺寸系数：绘制（机体/盾板/尾焰/辉光）与挡弹折线半径统一乘算，保证视觉与判定一致
   const BULWARK = {
     radius: 30, arcFrom: -10, arcTo: 100, thickness: 6, segments: 12,
+    scale: 0.9,   // 整体缩小 10%
     color: '#eaf6ff', glow: '#bfe4ff',
   };
+
+  // ---------- 守愿者白盾 × 射弹交互属性注册表（四类；新增射弹在此登记并按类实现）----------
+  //   一类·截断（默认行为，无标注字段）：长条激光类射弹——被白盾截断 / 磨短 / 吸收。
+  //     现役：法术大师A1/A2 激光（laser 弹，08-entities laser 分支）、风暴编织者技能3 "<"光束（beamTrail 分支）、
+  //           风暴编织者技能6 电弧光束（s.beams clipD，见 05-boss runStorm2Skill）
+  //   二类·穿透（c.swPen 标记）：白盾无法截断——触盾直接穿过并标记，此后命中玩家伤害 -50%。
+  //     现役：法术矩阵射弹 / 法术阵列射弹 / 法术阵列分裂射弹（spellCubes，见 06-enemy updateSpellCubes / splitSpellCube）
+  //   三类·反射（b.swRef 标记）：首次触盾按入射夹角镜像反弹（反射角=入射角，非原路弹回）；
+  //     反弹后失去墙壁反弹能力（bounceX 清除）；同一射弹仅反弹一次，再次触盾白盾无任何效果（直接穿过、伤害不减）。
+  //     现役：旧日之歌暗黑射弹（技能5/6 + 登场部件球弹幕，见 05-boss fireDarkSix / updateBoss；反弹见 08-entities swRef 分支）
+  //   四类·免疫：白盾对其无任何影响——不截断、不吸收、无伤害损失。
+  //     现役：风暴编织者技能1/2 激光（s.beams 专用光束，不经 eBullets；截断逻辑已移除，见 runStorm2Skill 技能1/2）
 
   // 各火力等级僚机弹幕：volleys=[第一轮发数, 第二轮发数]，interval=启动连射的冷却
   // 夹角不再按等级固定，而是由“单轮发数”决定（见 WINGMAN_SPREAD）；level.spread 仅作缺省回退
@@ -652,14 +756,14 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       fireInterval: [1e9, 1e9],   // 不攻击：间隔天文数字，永不落入通用开火逻辑
     },
     // 特殊3类：御4（防御无人机）—— 俯视四旋翼无人机、介于圆与方之间的超椭圆暖灰渐变机体 + 金色 X 形条纹 + 四角风扇圆；
-    // 不攻击：登场 0.5s 后展开金色六边力场（光环内敌人受到的非真实伤害 -30%），停留 22s；Lv10 前不出场
+    // 不攻击：登场 0.5s 后展开金色六边力场（光环内敌人受到的非真实伤害 -30%），停留 22s；Lv11 前不出场
     yu4: {
       w: 53, h: 53, hp: 700, score: 500, color: '#d6c078', drawScale: 1.02,   // 机体缩小 15%（含碰撞盒同步：62→53、drawScale 1.2→1.02）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,
       fireInterval: [1e9, 1e9],   // 不攻击：间隔天文数字，永不落入通用开火逻辑
     },
     // 特殊3类：铁砧（治疗无人机）—— 菱形黑灰框架 + 中央灰黑正方形 + 上下左右横杠 + 中心朝下凸出白杠 + 正方形青绿治疗光环；
-    // 不攻击：登场 0.5s 后展开治疗光环（圈内所有敌人含自身每秒回复 1% 最大生命 + 60），悬停于炮火先兆者前方，停留 22s；Lv10 前不出场
+    // 不攻击：登场 0.5s 后展开治疗光环（圈内所有敌人含自身每秒回复 1% 最大生命 + 60），悬停于炮火先兆者前方，停留 22s；Lv11 前不出场
     anvil: {
       w: 70, h: 58, hp: 500, score: 500, color: '#8ce36b', drawScale: 1.44,   // 体型增大 20%（58×48 → 70×58；drawScale 同步 ×1.2 使视觉与碰撞盒一致）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,
@@ -688,7 +792,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
       fireInterval: [1e9, 1e9],   // 不攻击
     },
     // 特殊2类：法术大师A1（紫光激光无人机）—— 四角风扇圆 + 灰黑矩形机身(1:3:1 紫光条) + 底部深紫炮管；
-    // 不停留：入场 1.2~3s 后开始攻击（停移射击），50% 概率横移再恢复下降；lv10 前低权重、lv10 后较多出现
+    // 不停留：入场 1.2~3s 后开始攻击（停移射击），50% 概率横移再恢复下降；lv11 前低权重、lv11 起较多出现
     fashiA1: {
       w: 46, h: 40, hp: 70, score: 180, color: '#a855f7', drawScale: 1.4,
       bulletSpeed: 380, bulletR: 5, bulletDmg: 16, crashDmg: 20,   // 碰撞伤害 = 普通2类(25) × 80%
@@ -696,7 +800,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     },
     // 特殊2类：破片（三连发导弹无人机）—— 造型类铁砧但更小、灰白金属主导（边框+核心）；中心两条黑杠（头部红、下方缩短）；
     // 下方两根黑色炮管（前部加粗、图层最底）；只沿直线飞到选定点后急停锁停（除非被击毁不再移动），停稳后才攻击；
-    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv10 前低权重
+    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv11 前低权重
     popian: {
       w: 55, h: 48, hp: 200, score: 180, color: '#cfd6e0', drawScale: 1.2,   // 体型同常规 2 类突击艇 ×1.2
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,   // 碰撞伤害按登场时间分段覆盖（见 updateEnemies）：0.5s 内 0 / 0.5~2s 2类×40% / 2s 后 2类×80%
@@ -714,7 +818,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     // 特殊2类：法术矩阵（白红菱形法师无人机）—— 竖菱形机体（高为宽 1.8 倍）+ 白红渐变核心 + 一圈很细的黑色菱形环 + 环外仍白红；
     // 慢速下降到悬停带（约常规 2 类入位速一半），停稳后朝玩家左右 ±15° 发射「发白光的正方体」（每条边发红光，走独立 spellCubes 弹道）；
     // 正方体限程（自身→玩家距离 70%~140% + 15% 屏高）：到射程后减速滑行，末段提前渐隐、速度归零时恰好消失；
-    // 撞上守愿者白盾被阻挡：撞击特效 + 尾焰快速衰减后消散（不瞬间消失）；
+    // 撞上守愿者白盾直接穿过（二类·穿透射弹，注册表见 BULWARK 注释）：无法被截断，穿盾后命中伤害 -50%；
     // 受主战机（非僚机）伤害 -30%；场上存在 3 类「法术阵列」(fashiArray) 时偏移角增至 ±25°、正方体速度 +25%（见 FASHI_MATRIX）
     fashiMatrix: {
       w: 27, h: 48, hp: 80, score: 180, color: '#ff5566', drawScale: 1.02,   // 竖菱形碰撞盒 h≈1.8w；整体缩小 30%（原 38×68 / drawScale 1.45）
@@ -727,7 +831,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     // 朝玩家发射法术矩阵同款但大一号的红色正方体（伤害 26、红光更强），
     // 飞行 30%~60% 射程时（提前 0.5s 红圈收缩预警）分裂为 3 枚常规正方体（1 同向 + 2 垂直，微弱冲击波）；
     // 就位 4s 后首次召唤、其后每 5s：闪动红光并在周围召唤一个法术矩阵（召唤体死亡不加分不掉水晶、
-    // 1s 后开始攻击并随机移动），飞离期间不召唤；Lv10 前不出场（Lv10 起占 4 类槽位，见 spawnCapitalSlot）
+    // 1s 后开始攻击并随机移动），飞离期间不召唤；Lv11 前不出场（Lv11 起占 4 类槽位，见 spawnCapitalSlot）
     fashiArray: {
       w: 82, h: 82, hp: 3000, score: 1500, color: '#c22b3d', drawScale: 1.68,   // 体型同炮火先兆者；4 类级血量
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 26,
@@ -758,7 +862,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     warnTime: 3,         // 导弹垂直预警线时长
     missileSpeed: 1400,  // 导弹从上方下落速度（高速）
     missileR: 12,        // 导弹半径（宽于常规子弹）
-    lowHpKill: 60,       // 玩家血量低于此值被导弹命中则直接击杀
+    missileDmgMin: 60,   // 导弹伤害下限：实际伤害 = max(此值, 当前血量 80%)（低血保底，不再直接秒杀）
   };
 
   // 威龙参数（特殊3类无人机）
@@ -905,8 +1009,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     strafeMin: 80,       // 斜移水平分量最小距离
     strafeMax: 160,      // 斜移水平分量最大距离
     strafeSpeed: 192,    // 横移速度（原 320 × 0.6 = 降 40%）
-    spawnLowLv: 0,       // lv10 前替换概率（0 = 不替换，仅图鉴挑战可生成）
-    spawnHighLv: 0.60,   // lv10 后替换概率（较多出现）
+    spawnLowLv: 0,       // lv11 前替换概率（0 = 不替换，仅图鉴挑战可生成）
+    spawnHighLv: 0.60,   // lv11 起替换概率（较多出现）
     maxTurn: 10,         // 最大转向角速度（rad/s，很大）：炮管始终对准玩家，几乎实时转向但仍有可见转动过程
     exitTurn: 2.5,       // 下压超过屏高 80% 后炮管缓慢转向正下方的角速度（rad/s；约 1.2s 转完 180°）
   };
@@ -966,8 +1070,8 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     fireInterval: [1.6, 2.4],   // 停稳后攻击间隔
     maxTurn: 3.2,          // 最大转向角速度（rad/s）：飞行倾斜与就位追踪玩家共用，转向有可见过程
     fireAlign: 0.35,       // 发射所需朝向对齐阈值（弧度，约 20°）：未朝向玩家时无法发起攻击
-    spawnLowLv: 0.02,      // lv10 前替换概率（很低）
-    spawnHighLv: 0.20,     // lv10 后替换概率
+    spawnLowLv: 0.02,      // lv11 前替换概率（很低）
+    spawnHighLv: 0.20,     // lv11 起替换概率
   };
 
   // 法术矩阵参数（特殊2类白红菱形法师无人机）：慢速下降到悬停带停稳 → 朝玩家左右 ±15° 发射发光正方体（独立 spellCubes 弹道）
@@ -1006,12 +1110,11 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     brakeDist: 46,       // 到达「最大射程 - brakeDist」时进入减速段
     brakeRate: 4,        // 减速段收敛率（原 8 减半：减速度减半，临射程前滑行更远）
     fadeTime: 0.35,      // 减速末段渐隐窗口（s）：滑行末段才提前渐隐，速度归零时恰好消失
-    shieldDie: 0.22,     // 撞上守愿者被阻挡后的消散时长（s）：撞击特效 + 尾焰快速衰减，不瞬间消失
     dimRate: 0.55,       // 黯淡速率（较慢：保证减速滑行期间仍清晰可见）
     glowFloor: 0.35,     // 黯淡下限（不至于全黑）
     mainDR: 0.3,         // 受主战机（非僚机）伤害 -30%
-    spawnLowLv: 0.02,    // lv10 前替换概率（很低）
-    spawnHighLv: 0.30,   // lv10 后替换概率
+    spawnLowLv: 0.02,    // lv11 前替换概率（很低）
+    spawnHighLv: 0.30,   // lv11 起替换概率
   };
 
   // 法术阵列参数（特殊3类血红三菱法师母机）：移速/碰撞同炮火先兆者；发射法术矩阵同款但大一号的红色正方体，
@@ -1039,7 +1142,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
     splitMin: 0.30,      // 分裂行程下限（占射程比例）
     splitMax: 0.60,      // 分裂行程上限（占射程比例）
     splitWarn: 0.5,      // 分裂预警时长（s，红圈收缩）
-    slotChance: 0.50,    // Lv10 起 4 类槽位出场时替换主力舰的概率（其余为主力舰）
+    slotChance: 0.50,    // Lv11 起 4 类槽位出场时替换主力舰的概率（其余为主力舰）
     doubleChance: 0.25,  // 场上已有 1 台法术阵列时，慢速强制刷新路径上再补 1 台的概率（双法术阵列较少出现）
   };
 
@@ -1146,7 +1249,7 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
    * 真实伤害：无视一切减伤乘区——目前仅高能爆弹，在 useBomb 中直接结算（不经过 updateBullets 的减伤链）
    */
   const STAR_COUNT = 90;
-  const MAX_BOMBS = 3;             // 高能爆弹上限（右上角以图标数量展示）
+  const MAX_BOMBS = 3;             // 高能爆弹基准上限（诗篇经 mods.bombCap 降为 2；右上角以图标数量展示）
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害（真实伤害：无视御4防御光环等一切减伤）
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
   const CAPITAL_HIGHFIRE_DR = 0.15;   // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力的减伤（受到伤害 ×0.85）
@@ -1215,10 +1318,11 @@ console.log('[InfinityFighter] JS build: 20260919-bulwark-hex-fix-5');   // 【�
 
   export {
     CANVAS_W, CANVAS_H, PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
-    BOSS_SEQUENCE, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
-    STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
+    BOSS_SEQUENCE, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
+    STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, energyOrbSheet, ENERGY_ORB, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, lightningImgRing, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
-    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, isShipian, invulnDiffMul, bossDmgMul, SONG_SHIP, BOSS_MINION_WAVE, STORM_SHIP,
+    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isShipian, invulnDiffMul, bossDmgMul, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP,
+    DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, currentArmor, setArmor, armorMaxHp,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,

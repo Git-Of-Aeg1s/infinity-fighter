@@ -236,9 +236,10 @@ try {
   sample('二次开局 120 帧');
 
   // 怪物图鉴：打开即构建列表 + 全部条目缩略图（drawEncyPreview → 嵌套 withPreviewCtx）
-  const encyBtn = createdElements.find(el => el.id === 'encyEntryBtn');
+  // 入口按钮现为主菜单静态元素（index.html 内 id=encyEntryBtn），由 getElementById 获取
+  const encyBtn = documentStub.getElementById('encyEntryBtn');
   if (encyBtn) { encyBtn.click(); frames(10); sample('打开怪物图鉴（预览渲染）'); }
-  else errors.push({ key: '无图鉴入口', stack: '未找到 id=encyEntryBtn 的动态按钮（入口创建逻辑被改动？）' });
+  else errors.push({ key: '无图鉴入口', stack: '未找到 id=encyEntryBtn 的按钮（index.html 静态入口被改动？）' });
 
   // 数值与机制图鉴：权重表 / 波次说明等 DOM 构建
   elements.infoEntryBtn.click();

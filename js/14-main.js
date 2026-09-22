@@ -6,22 +6,23 @@
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
-  import { bossFlow, canvas, clamp, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars } from './02-core.js';
+  import { armorGlyphFx, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
-  import { spawnBoss, updateZoneMarks } from './05-boss.js';
+  import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, triggerArmorSkill, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, tryChengyueShield, updateDemo, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildArmorCards, buildDiffCards, buildPlaneCards, buildWingmanCards, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { buildArmorCards, buildDiffCards, buildPlaneCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
   import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
   // ---------- 输入 ----------
-  // 武器等级切换作弊开关：true=需先按 0 武装再用 1~5 切换；false=默认可直接切换（当前测试期）
-  const WEAPON_CHEAT_REQUIRE_ARM = false;
-  // 直接设定武器等级（调试/作弊）：Lv5 视为暴走，需同时给予暴走倒计时，否则下一帧会回落 Lv4
+  // 武器等级切换作弊开关：true=需先按 0 武装再用 1~5 切换（右上角音量键微微变亮作为已武装标识）
+  const WEAPON_CHEAT_REQUIRE_ARM = true;
+  // 直接设定武器等级（调试/作弊）：Lv5 视为暴走，需同时给予暴走倒计时，否则下一帧会回落 Lv4；
+  // 切到 Lv5 与自然暴走同样触发澄月判定（tryChengyueShield，BOSS 战限一次的门控照常生效）
   function debugSetWeapon(n) {
     if (!player.alive) return;
     if (n === 5) {
@@ -29,6 +30,7 @@
       player.berserk = BERSERK.duration;
       player.berserkBanner = Math.max(player.berserkBanner || 0, 1.5);
       spawnParticles(player.x, player.y, currentPlane.berserkColor || '#ffb545', 20, 240);
+      tryChengyueShield();
     } else {
       player.weapon = n;
       player.berserk = 0;
@@ -45,10 +47,14 @@
     if (k === 'r') resetGame(true, { keepTest: true });
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
-    // 作弊：切换武器等级（测试用）。预留“按 0 武装”门控——WEAPON_CHEAT_REQUIRE_ARM 改为 true 后需先按 0 才能用 1~5 切换。
-    // 测试模式（图鉴挑战）：1~5 直接切换武器等级，无需按 "0"（门控默认关闭）；"+" 立刻再召唤一个测试目标
+    // 作弊：切换武器等级（测试用）。需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为标识）才能用 1~5 切换。
+    // 武装按键在任意界面状态均可触发（菜单 / 暂停 / 结算中皆可按 0）；图鉴挑战模式同样需要武装（门控统一）。
+    // "+" 立刻再召唤一个测试目标
+    if (k === '0' && !state.cheatArm) {
+      state.cheatArm = true;
+      musicToggle.classList.add('cheat-armed');   // 已武装标识：音量键边框提亮
+    }
     if (state.mode === 'playing' && !state.paused) {
-      if (k === '0') state.cheatArm = true;
       const lv = '12345'.indexOf(k);
       if (lv >= 0 && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) debugSetWeapon(lv + 1);
       if (k === '+' && state.challenge && state.challenge.kind === 'enemy') spawnChallengeTarget();
@@ -121,7 +127,6 @@
         if (bossFlow.timer >= phaseTime) bossFlow.stage = 'wait';
       } else if (bossFlow.stage === 'wait') {
         if (enemies.length === 0) {
-          bossFlow.stage = 'warn';
           bossFlow.warnT = 0;
           // 正常流程：登场本阶段对应的 BOSS（BOSS 试炼 / 图鉴挑战已在 resetGame 指定 pendingBoss，不覆盖）
           if (!state.testBoss && !state.challenge) {
@@ -129,7 +134,16 @@
           }
           collectAllItems();   // 警报开始时立即收集场上所有水晶和道具
           clearEnemyBullets(); clearMissiles();   // 警报触发：立刻清除全场所有弹幕
-          startAlarm();
+          // 风暴编织者：正常流程由暴风之眼死后直接召唤（无警报），图鉴挑战 / 试炼保持一致——
+          //   跳过警报直接召唤，先放暴风之眼残影轰然消散，登场演出（雷暴 → 现身）即入场动画
+          if (bossFlow.pending === 'storm2') {
+            spawnStormGhost();
+            spawnBoss('storm2');
+            bossFlow.stage = 'fight';
+          } else {
+            bossFlow.stage = 'warn';
+            startAlarm();
+          }
         }
       } else if (bossFlow.stage === 'warn') {
         bossFlow.warnT += dt;
@@ -145,7 +159,8 @@
 
       // BOSS 战斗期间（全难度）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
       // 不受压力系统与场上存怪影响；本波敌人道具掉率 ×0.3（见 04-spawn / 06-enemy）
-      if (bossFlow.stage === 'fight') {
+      // 警报演出（warn）至我方可开火（BOSS combatReady）前不计时——强制波首刷自可开火起 6~12s 后才出现
+      if (bossFlow.stage === 'fight' && !playerFireLocked()) {
         levelFlow.bossMinionT += dt;
         // BOSS 战 1类强制波间隔固定（6~12s）：明确不受任何刷怪调整影响（不随难度 spawnIntervalMul 缩放）
         if (levelFlow.bossMinionT >= levelFlow.bossMinionNext) {
@@ -256,12 +271,15 @@
           bossFlow.victoryDelay = 0;
           state.mode = 'idle';
           state.victoryOverlay = true;
+          resultAchieve.classList.remove('hidden');   // 胜利结算页显示「获得成就」区（暂停页在 togglePause 内隐藏）
           showOverlay(
             '胜利',
-            `击坠 <b style="color:#ffb545">${bossFlow.defeatedName || ''}</b>！<br /><br />` +
+            `击坠 <b style="color:#ffb545">${bossFlow.defeatedName || ''}</b>！` +
+            (state.challenge ? '<br />' : '<br /><br />') +   // 挑战模式无得分行：不插空行（避免三行间距过大）
+            `<span class="result-stats">` +
             (state.challenge ? '' : `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />`) +
             `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b><br />` +
-            `抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`,
+            `抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b></span>`,
             '返回主界面'
           );
           // BOSS 试炼 / 图鉴挑战胜利：额外提供「再次挑战」（重开同一目标）；正常流程胜利不显示
@@ -273,10 +291,13 @@
       }
     } else if (!state.paused) {
       // 暂停时完全冻结画面（不更新背景与粒子，避免暂停遮罩后仍有闪动）
+      state.time += dt;   // 全局时钟：非战斗态同样推进——演示屏的暴走环绕光点 / 光环呼吸 / 尾焰摆动 / 守愿者脉冲环都挂在 state.time 上，不推进会全部静止
+      updateDemo(dt);      // 主菜单攻击演示：驱动 state.demo（僚机开火门控）、阶段循环与开火（仅菜单可见时生效）
       updateStars(dt * 0.4);
       updateNebulae(dt * 0.4);
       updateParticles(dt);
-      updateWingmen(dt);   // idle 模式也平滑 lerp 僚机位置（开火已被 state.mode 门控抑制）
+      updateWingmen(dt);   // idle 模式也平滑 lerp 僚机位置（state.demo 时僚机同步开火）
+      updateBullets(dt);   // 演示弹道推进（场上无敌人：仅位移 / 出界清理 / 补射队列外的共用逻辑）
     }
 
     // 全屏特效衰减（震屏 / 白闪 / 护盾·暴走冲击波）：只要未暂停就执行——
@@ -297,6 +318,27 @@
       if (shieldBurst.active) {
         shieldBurst.t += dt;
         if (shieldBurst.t >= shieldBurst.duration) shieldBurst.active = false;
+      }
+      if (crystalBurst.active) {
+        crystalBurst.t += dt;
+        if (crystalBurst.t >= crystalBurst.duration) crystalBurst.active = false;
+      }
+      if (bulwarkBurst.active) {
+        bulwarkBurst.t += dt;
+        if (bulwarkBurst.t >= bulwarkBurst.duration) bulwarkBurst.active = false;
+      }
+      for (let i = watchClearFx.length - 1; i >= 0; i--) {   // 群星守望消弹光粒推进
+        const p = watchClearFx[i];
+        p.age += dt;
+        if (p.age >= p.life) { watchClearFx.splice(i, 1); continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= 0.95;
+        p.vy *= 0.95;
+      }
+      for (let i = armorGlyphFx.length - 1; i >= 0; i--) {   // 装甲触发图标演出推进
+        armorGlyphFx[i].t += dt;
+        if (armorGlyphFx[i].t >= armorGlyphFx[i].dur) armorGlyphFx.splice(i, 1);
       }
       if (berserkBurst.active) {
         berserkBurst.t += dt;
@@ -370,11 +412,12 @@
   initEncyDiffButtons();   // 图鉴头部三选一难度按钮组：绑定点击并按 DIFFICULTIES 初始化状态
 
   // ---------- 自适应缩放 ----------
-  // 视口适配：把「标题栏 + 游戏舞台」作为整体按视口等比缩放（大屏放大、小屏缩小、垂直居中），
-  // 并同步提升画布物理分辨率（缩放比 × DPR）保持任意缩放下清晰。HUD/遮罩/图鉴为 DOM 元素，随 transform 一致缩放。
+  // 视口适配：把游戏舞台按视口等比缩放（大屏放大、小屏缩小、顶部对齐），
+  // 标题栏为覆盖层不占文档流空间，舞台上边界直接贴近视口顶端。
+  // 同步提升画布物理分辨率（缩放比 × DPR）保持任意缩放下清晰。HUD/遮罩/图鉴为 DOM 元素，随 transform 一致缩放。
   const gameWrap = document.querySelector('.game-wrap');
   const gameSizer = document.querySelector('.game-sizer');
-  let wrapNaturalH = 0;   // 未缩放时的整体高度（标题 + 间距 + 舞台），首次测量后缓存
+  let wrapNaturalH = 0;   // 未缩放时的整体高度（标题栏为覆盖层，即舞台高度 792），首次测量后缓存
   function fitStage() {
     if (!gameWrap || !gameSizer) return;
     if (!wrapNaturalH) wrapNaturalH = gameWrap.offsetHeight || 1;
@@ -405,6 +448,7 @@
   buildPlaneCards();
   buildWingmanCards();
   buildArmorCards();
+  initMenuPanels();   // 主菜单装备四框 ↔ 展开面板绑定 + 当前配置摘要
   resetGame(false);
   fitStage();
   scheduleLoop();

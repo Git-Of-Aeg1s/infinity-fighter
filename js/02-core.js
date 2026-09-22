@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(55 名) 13-encyclopedia(15 名) 14-main(23 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(14 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(54 名) 13-encyclopedia(15 名) 14-main(23 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime}
   //
@@ -30,7 +30,7 @@
   const shieldFill = document.getElementById('shieldFill');
   const douzhiBar = document.getElementById('douzhiBar');
   const douzhiFill = document.getElementById('douzhiFill');
-  // 七日澜心（装甲技能）圆形计数表：右下角量表（12-ui updateHUD 渲染填充角度）
+  // 七日澜心（装甲技能）圆形计数表：左下角生命值上方量表（12-ui updateHUD 渲染填充角度）
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
 
@@ -42,7 +42,6 @@
   // 主菜单（独立页面态）：idle 全屏显示、进入战斗隐藏；卡片构建与显隐见 12-ui
   const menuScreen = document.getElementById('menuScreen');
   const menuStartBtn = document.getElementById('menuStartBtn');
-  const menuActions = document.getElementById('menuActions');
   const titleBar = document.querySelector('.title-bar');
   const planeGrid = document.getElementById('planeGrid');
   const diffGrid = document.getElementById('diffGrid');
@@ -52,6 +51,7 @@
   const bossTestRow = document.getElementById('bossTestRow');
   const retrialBtn = document.getElementById('retrialBtn');   // 胜利结算页「再次挑战」（仅试炼/挑战模式显示）
   const gameoverHomeBtn = document.getElementById('gameoverHomeBtn');   // 失败结算页「返回主界面」
+  const resultAchieve = document.getElementById('resultAchieve');   // 结算页「获得成就」区（胜利 / 失败显示，暂停页隐藏）
   const pauseHomeBtn = document.getElementById('pauseHomeBtn');
   const pauseRetryBtn = document.getElementById('pauseRetryBtn');
 
@@ -88,6 +88,8 @@
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
+    hpKitLastT: -99,       // 诗篇加血节流：上次实际掉落加血套件的时刻（-99 = 开局不受冷却限制；resetGame 归位）
+    hpKitBanked: 0,        // 诗篇加血节流：冷却期内"预触发"计数（50%/杀；冷却结束后第一个敌人必掉一个并清零）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
@@ -95,6 +97,7 @@
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
     cheatArm: false,   // 武器等级作弊武装开关（按 0 置位；原先为运行时动态挂载的隐式属性）
     victoryOverlay: false, // 胜利结算页激活中（原 12-ui 顶层变量 victoryOverlayActive 并入）
+    demo: false,       // 主菜单攻击演示进行中（07-player updateDemo 驱动：僚机开火门控放宽到演示态）
   };
 
   // BOSS 流程状态机：stage none → wait(等清场) → warn(警报演出) → fight(BOSS战) → none
@@ -142,8 +145,9 @@
     shield: 0,         // 量子护盾剩余时间
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
     bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
+    bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
     chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
-    regenT: 0,         // 洄：回血计时（每 2.5s +1 HP）
+    regenT: 0,         // 洄：回血计时（每 2s +1 HP）
     respawnTimer: 0,   // 掉命后重生倒计时
     hitCount: 0,       // 受击计数：统一累计 3 次掉一层火力（导弹命中不计入）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
@@ -178,6 +182,15 @@
   /** @type {Array} */ const slashFx = [];   // 群星之杀：空间斩击特效（选中目标处展开的紫白斩痕，短暂存留渐隐）
   /** @type {Array} */ const playerHitFx = [];   // 命中玩家特效（白热闪核 + 红橙冲击环 + 迸溅火花线，短存留渐隐）
   /** @type {Array} */ const phaseFx = [];   // 碎盾特效（群星之杀斩碎虚化护盾：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片）
+  /** @type {Array} */ const watchClearFx = [];   // 群星守望消弹特效（淡黄光粒连线 + 原位迸粒，低图层：绘制于子弹之下）
+  /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
+
+  // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
+  // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
+  const crystalBurst = { active: false, t: 0, duration: 0.55, x: 0, y: 0 };
+
+  // 最终壁垒免死金色光环：金色环自机体有限扩散（对应其 250px 清弹范围）
+  const bulwarkBurst = { active: false, t: 0, duration: 0.6, x: 0, y: 0 };
 
   // 键盘输入状态：14-main 的监听器写入、07-player 等读取
   // （原 14-main 顶层变量移入：keys 是跨模块共享的输入状态，留在 14-main 会造成 07↔14 循环依赖，
@@ -356,7 +369,37 @@
     }
   }
 
-  // 清除离 (x, y) 最近的一颗敌方子弹（群星守望：击杀敌人按概率触发）
+  // 群星守望消弹演出（低图层）：从 (fromX, fromY) 到被消弹位置铺淡黄光粒连线 + 原位迸粒
+  // （连线光粒按固定间距约每 16px 一粒铺满整条路径，不设颗数上限，仅保证不过密）
+  function spawnWatchClearFx(fromX, fromY, b) {
+    const dx = b.x - fromX, dy = b.y - fromY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist, uy = dy / dist;
+    const n = Math.max(2, Math.round(dist / 16));
+    for (let k = 0; k < n; k++) {
+      const tt = (k + 1) / n;
+      const jx = rand(-3, 3), jy = rand(-3, 3);
+      watchClearFx.push({
+        x: fromX + ux * (6 + dist * tt * 0.94) + jx,
+        y: fromY + uy * (6 + dist * tt * 0.94) + jy,
+        vx: ux * rand(10, 26), vy: uy * rand(10, 26),   // 顺弹道方向轻微漂移
+        age: 0, life: rand(0.26, 0.4), size: rand(1.4, 2.4),
+      });
+    }
+    // 原位迸粒：被消子弹位置向外的小光粒
+    for (let k = 0; k < 6; k++) {
+      const a = rand(0, Math.PI * 2), sp = rand(24, 90);
+      watchClearFx.push({
+        x: b.x, y: b.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        age: 0, life: rand(0.3, 0.5), size: rand(1.5, 2.8),
+      });
+    }
+  }
+
+  // 清除离 (x, y) 最近的一颗敌方子弹（群星守望：击杀敌人按概率触发——常规战斗）。
+  // 演出（低图层，绘制于子弹之下）：从机体核心到被消弹位置射出一串淡黄微光粒连线，
+  // 原位迸出少量光粒——整体刻意很淡，不抢弹幕视觉。
   function clearNearestEnemyBullet(x, y) {
     let best = -1, bestD = Infinity;
     for (let k = 0; k < eBullets.length; k++) {
@@ -365,21 +408,42 @@
     }
     if (best >= 0) {
       const b = eBullets[best];
-      spawnParticles(b.x, b.y, '#7ce7ff', 6, 140);
+      spawnWatchClearFx(x, y, b);
       eBullets.splice(best, 1);
     }
   }
 
+  // 清除指定敌人发出的、仍在场上的所有敌方子弹（群星守望：BOSS 战期间击杀非 BOSS 敌人触发）。
+  // 每颗子弹都走同款连线+迸粒演出——多弹齐清时视觉上如同从核心一次射出多束粒子光束
+  function clearEnemyBulletsByOwner(owner) {
+    for (let i = eBullets.length - 1; i >= 0; i--) {
+      const b = eBullets[i];
+      if (b.owner !== owner) continue;
+      spawnWatchClearFx(player.x, player.y, b);
+      eBullets.splice(i, 1);
+    }
+  }
+
+  // 装甲触发图标演出（祈星减伤 / 澄月得盾共用）：机体核心处一枚装甲字符图标，
+  // 渐显 → 明显放大 → 渐隐，跟随核心移动（drawPlayer 逐帧在机体当前位置绘制）。
+  // 触发瞬间伴随震屏/受击白闪，演出做大做强保证可感知（30px 字符 + 光晕 + 扩散环，0.8s）。
+  // 图层位于核心白点之下、不盖住核心。
+  function spawnArmorGlyphFx(glyph, color, dur = 0.8) {
+    armorGlyphFx.push({ glyph, color, t: 0, dur });
+  }
+
   // 最终壁垒：每条命一次的免死判定——致死伤害改为存活（同样生效于导弹等强制击杀路径）。
-  // 恢复 1 点生命、获得 3s 无敌（受 invulnDiffMul 难度倍率影响）、清除周围 250px 内的所有子弹。
+  // 恢复 1 点生命、获得 3s 无敌（受 invulnDiffMul 难度倍率影响）。
+  // 演出：机体被淡金菱形环绕至无敌结束（不闪动机体）——触发瞬间不清弹/不扩环；
+  // 菱形开始消散时（07-player updatePlayer 中剩 0.3s）才清除周围 250px 内子弹并扩散金环。
   // 返回 true = 本次免死已消耗；调用方（damagePlayer / 06-enemy BOSS 持续接触）在 hp <= 0 分支优先调用。
   function tryBulwarkCheatDeath() {
     if (currentArmor.id !== 'bulwark' || player.bulwarkUsed) return false;
     player.bulwarkUsed = true;
     player.hp = 1;
     player.invuln = 3 * invulnDiffMul();
-    player.invulnBlink = true;
-    clearEnemyBulletsNear(player.x, player.y, 250);
+    player.invulnBlink = false;   // 免死无敌不闪动机体：以淡金菱形环绕演出代替隐/显闪烁
+    player.bulwarkFxT = player.invuln;   // 菱形演出与实际无敌时长同步（含难度/装甲倍率）
     spawnParticles(player.x, player.y, '#ffb545', 26, 260);
     shake(6, 0.3);
     return true;
@@ -390,10 +454,10 @@
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, skillGauge, skillGaugeRing,
     overlay, overlayTitle, overlayDesc, startBtn,
-    musicToggle, menuScreen, menuStartBtn, menuActions, titleBar,
+    musicToggle, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
     wingmanGrid, armorGrid, bossTestRow,
-    retrialBtn, gameoverHomeBtn, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
+    retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
@@ -404,6 +468,7 @@
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, hasteMul, weightedPick, spawnParticles,
     enemyFireIv,
-    clearEnemyBulletsNear, clearNearestEnemyBullet, tryBulwarkCheatDeath,
+    clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
+    watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst,
     shake,
   };

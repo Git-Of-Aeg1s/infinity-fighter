@@ -29,8 +29,8 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;   /* 视口内垂直居中：大屏时整体（标题 + 舞台）位于适中位置 */
-  padding: 20px 16px 32px;
+  justify-content: center;   /* 视口内垂直居中：上边界距视口顶 = 下边界距视口底（fitStage 预留的 36px 被上下均分） */
+  padding: 16px;
   gap: 16px;
 }
 
@@ -42,13 +42,21 @@ html, body {
 }
 
 .game-wrap {
+  position: relative;   /* 作为标题栏覆盖层与音乐按钮（框角外挂）的定位参照 */
+  width: 480px;         /* 显式定宽：避免被 game-sizer 的 480k 占位宽度撑大，
+                           否则内部 absolute 元素的 right 锚点会双重缩放（480k×k）而跑出画面 */
   transform-origin: top left;
 }
 
+/* 标题栏：覆盖在舞台顶部之上（absolute 不占文档流空间），
+   游戏画面上边界因此直接贴近视口顶端，不再被标题栏下推 */
 .title-bar {
-  position: relative;   /* 作为音量按钮的定位参照 */
-  width: 480px;         /* 与游戏画面同宽：按钮对齐画面右缘、位于画面之外，不遮挡 HUD */
-  max-width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 480px;         /* 与游戏画面同宽：按钮对齐画面右缘 */
+  z-index: 2;           /* 高于画布与 HUD，低于遮罩(5)/主菜单(6)/图鉴(10,11) */
+  pointer-events: none; /* 标题文字不拦截游戏区域点击；音乐按钮单独恢复 */
   text-align: center;
 }
 
@@ -111,7 +119,7 @@ canvas#game {
 /* 左上角计分表 */
 .score-panel {
   display: flex;
-  align-items: baseline;
+  align-items: center;   /* SCORE 字样与数字垂直居中（原 baseline 使小字沉底） */
   gap: 8px;
   padding: 4px 10px;
   margin-bottom: 8px;
@@ -230,7 +238,7 @@ canvas#game {
   to   { box-shadow: 0 0 13px rgba(255, 255, 255, 0.95); }
 }
 
-/* ---------- 左下角：HP 条与生命 ---------- */
+/* ---------- 左下角：装甲技能量表（七日澜心）+ HP 条与生命 ---------- */
 .hud-bl {
   position: absolute;
   left: 14px;
@@ -238,6 +246,10 @@ canvas#game {
   pointer-events: none;
   font-size: 12px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 @keyframes berserk-pulse {
@@ -319,12 +331,12 @@ canvas#game {
 
 .bomb-icon.infinite::after { display: none; }
 
-/* ---------- 音乐 / 音效开关（标题栏右侧，位于游戏画面之外） ---------- */
+/* ---------- 音乐 / 音效开关：骑在游戏画面右上角上、向外超出 ---------- */
 .music-toggle {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
+  position: absolute;   /* 以 game-wrap（游戏画面框）为定位参照 */
+  top: 5px;             /* 中心高度 = 5 + 18 = 23px，与左上角 ? 按钮（top 10 + 26/2）中心对齐 */
+  right: -48px;         /* 悬出画面右缘之外，不遮挡游戏画面 */
+  z-index: 7;           /* 高于主菜单(6)与遮罩(5)：菜单 / 暂停 / 结算时仍可见可点；低于图鉴(10,11) */
   width: 36px;
   height: 36px;
   padding: 0;
@@ -336,13 +348,19 @@ canvas#game {
   border: 1px solid rgba(124, 231, 255, 0.35);
   border-radius: 50%;
   cursor: pointer;
+  transition: filter 0.25s ease;
   backdrop-filter: blur(4px);
   transition: transform 0.12s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
 .music-toggle:hover {
-  transform: translateY(-50%) scale(1.08);
+  transform: scale(1.08);
   box-shadow: 0 0 12px rgba(124, 231, 255, 0.45);
+}
+
+/* 已武装标识（内部调试状态，无任何文档提及）：音量键边框提亮（保持 1px 粗细） */
+.music-toggle.cheat-armed {
+  border-color: rgba(150, 232, 255, 0.7);
 }
 
 .music-toggle.muted {
@@ -403,14 +421,34 @@ canvas#game {
   line-height: 1.7;
 }
 
-/* ---------- 装甲技能圆形计数表（七日澜心） ---------- */
+/* 结算页数据块（最终得分 / 关卡难度 / 抵达关卡…）：整体居中、行内文字左对齐，
+   固定行距——避免得分大号字体（18px）撑高所在行导致上下间距不一致 */
+.result-stats {
+  display: inline-block;
+  text-align: left;
+  line-height: 24px;
+}
+
+/* 结算页「获得成就」区：标题居中，下方预留成就展示位（未实装，暂为空白） */
+.result-achieve-title {
+  margin-top: 14px;
+  font-size: 15px;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+
+.result-achieve-area {
+  height: 96px;   /* 预留：后续成就图标 / 卡片在此展示 */
+}
+
+.result-achieve.hidden { display: none; }
+
+/* ---------- 装甲技能圆形计数表（七日澜心，左下角生命值上方） ---------- */
 .skill-gauge {
   --skill-color: #FFC0CB;
   position: relative;
   width: 38px;
   height: 38px;
-  margin-top: 10px;
-  align-self: flex-end;
   border-radius: 50%;
   filter: drop-shadow(0 0 6px rgba(255, 192, 203, 0.25));
   transition: filter 0.2s ease;
@@ -462,7 +500,10 @@ canvas#game {
   50% { filter: drop-shadow(0 0 12px var(--skill-color)); }
 }
 
-/* ---------- 主菜单（独立页面态） ---------- */
+/* ---------- 主菜单（独立页面态） ----------
+   一屏内完成（禁止滚动）：标题 → 攻击演示屏（15%~66%）→ 装备四框 → 底部按钮。
+   背景保持透明：演示屏区域直接透出画布（机体/弹道由画布绘制），
+   装备框与按钮自带半透明底色保证可读性 */
 .menu-screen {
   position: absolute;
   inset: 0;
@@ -470,20 +511,34 @@ canvas#game {
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  padding: 30px 16px 16px;
-  background:
-    radial-gradient(560px 360px at 50% 0%, rgba(40, 70, 140, 0.4), transparent 72%),
-    linear-gradient(180deg, rgba(5, 8, 18, 0.9) 0%, rgba(5, 8, 18, 0.78) 100%);
-  backdrop-filter: blur(3px);
+  overflow: hidden;        /* 一页内完成：内容按固定比例布局，不出现滚动条 */
+  padding: 0;
 }
 
 .menu-screen.hidden { display: none; }
 
+/* 版本号：主菜单右上角小字（仅主菜单页可见，随菜单显隐） */
+.menu-version {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.85;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 主菜单打开时隐藏画布上方的战斗 HUD（计分/炸弹/HP/状态条）——由 12-ui updateHUD 按 menuScreen 显隐切换 */
+.stage.menu-open .hud,
+.stage.menu-open .hud-bl,
+.stage.menu-open .hud-br { display: none; }
+
 .menu-hero {
   text-align: center;
-  margin-bottom: 14px;
+  padding-top: 10px;       /* 标题尽量靠上 */
+  flex: 0 0 auto;
 }
 
 .menu-title {
@@ -500,40 +555,366 @@ canvas#game {
 
 .menu-subtitle {
   display: block;
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
   color: var(--muted);
   letter-spacing: 6px;
   text-indent: 6px;
 }
 
-.menu-body {
-  width: 100%;
+/* ---------- 攻击演示屏 ----------
+   与画布演示区域（07-player DEMO_TOP/BOTTOM = 高度 15%~66%）严格对齐：
+   DOM 只画边框与轻底色，机体/僚机/弹道/暴走冲击波全部由画布绘制 */
+.demo-screen {
+  position: absolute;
+  top: 15%;
+  height: 51%;             /* 15% + 51% = 66% */
+  left: 10px;
+  right: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.30);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(10, 18, 44, 0.30), rgba(5, 8, 18, 0.12));
+  box-shadow: inset 0 0 26px rgba(30, 90, 160, 0.16), 0 0 14px rgba(60, 130, 220, 0.10);
+  pointer-events: none;
+}
+
+/* ---------- 装备区（战机/僚机高框含形象 | 装甲 + 副武器 + 驾驶员菱形 | 僚机） ---------- */
+.loadout-row {
+  position: absolute;
+  top: calc(66% + 10px);
+  left: 10px;
+  right: 10px;
+  height: 132px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.loadout-box {
+  min-width: 0;
+  padding: 7px 4px 6px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  background: rgba(12, 18, 34, 0.72);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
-.menu-section {
-  width: 100%;
-  margin-bottom: 14px;
-  text-align: center;
+.loadout-box:hover {
+  border-color: rgba(120, 200, 255, 0.55);
+  transform: translateY(-2px);
 }
 
-.menu-section-title {
+/* 战机 / 僚机高框：文字贴顶、当前形象展示在底部（文字上移给预览图腾出空间） */
+.loadout-tall {
+  flex: 1.1;
+  justify-content: flex-start;
+  padding-top: 12px;   /* 6→12：标题与当前配置文字离卡片顶部过近，略微下移 */
+}
+
+.loadout-thumb {
+  display: block;
+  margin: auto 0;   /* 上下均 auto：在文字下方剩余空间内垂直居中（原 margin-top:auto 会把预览图压到箱底） */
+  pointer-events: none;
+}
+
+#loadoutPlaneCvs {
+  width: 86px; height: 71px;
+  position: relative; top: 3px;   /* 文字下移 6px 后：自动重新居中贡献 +3px，此处补 +3px = 预览图与文字同步下移 6px */
+}
+#loadoutWingmanCvs { width: 58px; height: 62px; }
+
+/* 中部簇：装甲 / 副武器 两框 + 居中偏下的驾驶员菱形（占位） */
+.loadout-cluster {
+  flex: 2;
+  position: relative;
+  min-width: 0;
+}
+
+.loadout-cluster .loadout-quad {
+  position: absolute;
+  top: 0;
+  width: calc(50% - 10px);
+  height: 82px;
+  justify-content: center;
+}
+
+/* 护甲：缺失右下角——切角的两个端点（右边框 y=56 与底边框 x=右端-26）由一条直线直接相连 */
+.loadout-cluster .loadout-quad[data-panel="panelArmor"] {
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%);
+}
+
+/* 副武器：缺失左下角——两个端点（底边框 x=26 与左边框 y=56）由一条直线直接相连 */
+.loadout-cluster .loadout-quad[data-panel="panelSub"] {
+  right: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 26px 100%, 0 calc(100% - 26px));
+}
+
+/* 切角边框补线：clip-path 会把 border 一并裁掉，用伪元素沿切线补一条 1px 直线
+   （与 border 等宽同色）。整体沿对角向框内偏移 0.5px（与 1px 边框带中线对齐）。
+   两端不对称定位：上端停在右边框带尖端（t≈1.41，端角恰好接触带内缘 x=W-1，衔接平滑）；
+   下端延长到切角顶点 P2（底边与斜边交点）——若同样只到带尖（t≈35.36），端面与斜边间
+   会留 ~0.7px 楔形暗缝（下边框带在补线深度处覆盖更晚），延长后端面贴合斜边、楔缝消失，
+   代价仅角尖 ~0.6px 的轻微叠色 */
+.loadout-cluster .loadout-quad[data-panel="panelArmor"]::after,
+.loadout-cluster .loadout-quad[data-panel="panelSub"]::after {
+  content: '';
+  position: absolute;
+  width: 35.1px;
+  height: 1px;
+  background: rgba(120, 180, 255, 0.25);   /* 与框 border 完全同色 */
+  pointer-events: none;
+}
+
+/* 护甲右下切线：/ 向；中心 = 切线中点沿轴向下端偏移 0.57px、内移 0.5px
+   → 边框盒坐标 (W-13.757, 69.049)。
+   注意：absolute 定位偏移以 padding box（1px 边框内缘）为基准，需补偿 1px 边框——
+   right：中心 x = (W-1)+4.79-17.55 = W-13.76；top：中心 y = 1+67.55+0.5 = 69.05 */
+.loadout-cluster .loadout-quad[data-panel="panelArmor"]::after {
+  right: -4.79px;
+  top: 67.55px;
+  transform: rotate(-45deg);
+}
+
+/* 副武器左下切线：\ 向（镜像，同 1px 边框基准补偿） */
+.loadout-cluster .loadout-quad[data-panel="panelSub"]::after {
+  left: -4.79px;
+  top: 67.55px;
+  transform: rotate(45deg);
+}
+
+/* 驾驶员菱形：旋转 45° 的方块，淡金色边框，可点击展开占位面板。
+   文字置于反向旋转的文字层（.pilot-face），与框体坐标对齐、严格居中 */
+.pilot-diamond {
+  position: absolute;
+  left: 50%;
+  top: 76px;
+  width: 72px;
+  height: 72px;
+  margin-left: -36px;
+  transform: rotate(45deg);
+  padding: 0;
+  border: 1.5px solid rgba(255, 213, 128, 0.5);
+  border-radius: 6px;
+  background: rgba(18, 16, 12, 0.92);
+  box-shadow: 0 0 12px rgba(255, 213, 128, 0.12);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+/* 反向旋转的文字层：铺满菱形方框，字体复用装备框的 loadout-label / loadout-value */
+.pilot-face {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-45deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.pilot-diamond:hover {
+  border-color: rgba(255, 213, 128, 0.8);
+  box-shadow: 0 0 14px rgba(255, 213, 128, 0.25);
+}
+
+/* 驾驶员面板展开中：金色高亮（与装备框 open 态同义） */
+.pilot-diamond.open {
+  border-color: #ffd580;
+  box-shadow: 0 0 18px rgba(255, 213, 128, 0.35);
+}
+
+/* 框处于展开状态：高亮提示当前面板来源 */
+.loadout-box.open {
+  border-color: var(--accent);
+  background: rgba(77, 208, 255, 0.08);
+  box-shadow: 0 0 18px rgba(77, 208, 255, 0.30);
+}
+
+/* 切角补线随框状态同步提亮（选择器带 [data-panel] 提高权重，覆盖基础色） */
+.loadout-cluster .loadout-quad[data-panel]:hover::after {
+  background: rgba(120, 200, 255, 0.55);   /* 与 hover 边框同色 */
+}
+
+.loadout-cluster .loadout-quad[data-panel].open::after {
+  background: var(--accent);               /* 与展开态边框同色 */
+}
+
+.loadout-label {
   color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 5px;
-  text-indent: 5px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-indent: 3px;
+}
+
+.loadout-value {
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text);
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 护甲装备框：当前装甲图标——中心与装甲名文字中心重合、半透明，图层压在文字下方
+   （绝对定位不参与 flex 布局，"护甲 / 群星守望"两行文字的位置与格式完全不变；
+     名字中心 y ≈ (82-30.6)/2 + label 12 + gap 3 + value 15.6/2 ≈ 48.5 → top = 48.5 - 字号30/2 = 33.5） */
+.loadout-armor-glyph {
+  position: absolute;
+  left: 50%;
+  top: 33.5px;
+  transform: translateX(-50%);
+  font-size: 30px;
+  line-height: 1;
+  opacity: 0.6;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 标签与装甲名垫到图标图层之上（图标与名字同心，文字必须保持在可读顶层） */
+.loadout-quad .loadout-label,
+.loadout-quad .loadout-value {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 装备选择面板：展开时覆盖演示屏区域 ---------- */
+.loadout-panel {
+  position: absolute;
+  top: 15%;
+  height: 51%;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 7px 12px 10px;   /* 顶部 10→7：面板标题略微上移 */
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.32);
+  background: rgba(8, 13, 28, 0.90);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.loadout-panel.hidden { display: none; }
+
+.loadout-panel-head {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;   /* 供标题绝对定位水平居中（✕ 仍靠右） */
   margin-bottom: 8px;
 }
 
-.menu-actions {
-  margin-top: 4px;
+.loadout-panel-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);   /* 标题在面板内水平居中 */
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 5px;
+  margin-right: -5px;   /* 抵消末字后的字距，保证视觉居中 */
+}
+
+.panel-close {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.panel-close:hover { color: var(--danger); border-color: var(--danger); }
+
+.loadout-panel-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 180, 235, 0.28) rgba(255, 255, 255, 0.03);
 }
+
+/* 滚动安全居中：不用 justify-content:center（内容超高时顶部会被裁掉且滚不到），
+   改用子项 auto margin——内容不超高时垂直居中，超高时贴顶、可完整滚动 */
+.loadout-panel-body > * { margin-top: auto; margin-bottom: auto; }
+
+/* 面板滚动条与怪物图鉴同款（蓝灰半透明滑块，hover 亮起主题青） */
+.loadout-panel-body::-webkit-scrollbar { width: 8px; }
+.loadout-panel-body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.loadout-panel-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background: rgba(148, 180, 235, 0.28) padding-box;
+}
+.loadout-panel-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 231, 255, 0.55) padding-box;
+}
+
+/* 面板内的卡片略收窄：三张一排恰好放下（面板内宽约 436px）；顶部内距 8→6 使卡内文字略微上移 */
+.loadout-panel .plane-card { width: 138px; padding: 6px 8px 8px; }
+.loadout-panel .plane-grid,
+.loadout-panel .armor-grid { gap: 8px; }
+
+.panel-placeholder {
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 2px;
+  padding: 30px 0;
+  border: 1px dashed rgba(120, 180, 255, 0.25);
+  border-radius: 10px;
+  width: 100%;
+  text-align: center;
+}
+
+/* ---------- 底部：难度切换 + 开始游戏（左） | 怪物图鉴（右） ---------- */
+.menu-bottom {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 48px;
+}
+
+.menu-start-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-right-col {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ⓘ 圆钮在右列内与怪物图鉴按钮同排：垂直中心对齐（覆盖全局右下角锚定） */
+.menu-right-col .info-entry-btn { position: static; }
 
 .menu-start-btn {
   padding: 10px 44px;
@@ -555,19 +936,7 @@ canvas#game {
 
 .menu-start-btn:active { transform: translateY(0); }
 
-.menu-links {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-/* 主菜单内的 ⓘ 圆钮：脱离遮罩锚定，改为行内布局 */
-.menu-links .info-entry-btn { position: static; }
-
-/* 主菜单打开时隐藏页面顶部标题栏（菜单内已有大标题，避免重复）；
-   visibility 保持占位，不影响 fitStage 的整体布局测量 */
+/* 主菜单打开时隐藏页面顶部标题栏（菜单内已有大标题，避免重复） */
 .title-bar.hidden { visibility: hidden; }
 
 /* ---------- 装甲选择卡片 ---------- */
@@ -578,9 +947,11 @@ canvas#game {
   justify-content: center;
 }
 
+/* 卡片宽 88px（内容 76px）：brief（10px 字号）每行稳放 6 字；
+   部分浏览器把 10px 钳到最小 12px，76/12 = 6.3 恰好仍是 6 字/行 */
 .armor-card {
-  width: 84px;
-  padding: 8px 6px;
+  width: 88px;
+  padding: 8px 5px;
   border-radius: 10px;
   border: 1px solid rgba(120, 180, 255, 0.25);
   background: rgba(255, 255, 255, 0.03);
@@ -612,6 +983,7 @@ canvas#game {
   font-size: 12px;
   font-weight: bold;
   letter-spacing: 2px;
+  text-indent: 1px;   /* 光学居中：letter-spacing 在末尾多出 2px，缩进 1px 抵消（单行标题） */
   margin-bottom: 4px;
 }
 
@@ -644,33 +1016,39 @@ canvas#game {
   justify-content: center;
 }
 
-/* ---------- 难度选择（具象 / 真我 / 诗篇） ---------- */
+/* ---------- 难度选择（具象 / 真我 / 诗篇）：紧凑胶囊组，置于开始按钮上方 ---------- */
 .diff-grid {
   display: flex;
-  gap: 12px;
+  gap: 6px;
   justify-content: center;
 }
 
 .diff-card {
   position: relative;
-  width: 132px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--bg-panel);
-  border: 1px solid rgba(120, 200, 255, 0.18);
+  display: flex;
+  align-items: center;      /* 文本上下居中（中文字形在默认行框内易偏下） */
+  justify-content: center;
+  line-height: 1;
+  padding: 4px 14px;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(12, 18, 34, 0.72);
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-indent: 2px;
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .diff-card:hover {
   border-color: rgba(120, 200, 255, 0.55);
-  transform: translateY(-2px);
 }
 
 .diff-card.selected {
   border-color: var(--accent);
-  background: rgba(77, 208, 255, 0.08);
-  box-shadow: 0 0 18px rgba(77, 208, 255, 0.35), inset 0 0 12px rgba(77, 208, 255, 0.1);
+  background: rgba(77, 208, 255, 0.10);
+  box-shadow: 0 0 14px rgba(77, 208, 255, 0.35);
 }
 
 /* 未实装难度（具象 / 诗篇）：展示但不可选择 */
@@ -681,7 +1059,6 @@ canvas#game {
 
 .diff-card.locked:hover {
   border-color: rgba(120, 200, 255, 0.18);
-  transform: none;
 }
 
 /* 点击未实装难度的拒绝反馈：左右抖动 */
@@ -695,23 +1072,25 @@ canvas#game {
 
 .diff-badge {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: -8px;
+  right: -6px;
   font-size: 9px;
   color: var(--accent-warm);
   border: 1px solid rgba(255, 181, 69, 0.45);
   border-radius: 999px;
-  padding: 1px 6px;
+  padding: 0 5px;
   letter-spacing: 1px;
+  background: rgba(8, 13, 28, 0.9);
 }
 
-/* HUD 左上角当前难度标签（战斗中显示） */
+/* HUD 左上角当前难度标签（战斗中显示）——样式与上方 score-panel 一致（同背景/边框/圆角/内距） */
 .diff-label {
   display: inline-block;
   margin-bottom: 8px;
-  padding: 2px 10px;
+  padding: 4px 10px;
   border-radius: 6px;
   background: var(--bg-panel);
+  border: 1px solid rgba(120, 180, 255, 0.22);
   color: var(--muted);
   font-size: 10px;
   letter-spacing: 2px;
@@ -722,6 +1101,7 @@ canvas#game {
 .plane-card {
   width: 150px;
   padding: 10px 12px 10px;
+  text-align: center;   /* 卡片名称与描述文字居中（预览图本就居中） */
   border-radius: 10px;
   border: 1px solid rgba(120, 180, 255, 0.25);
   background: rgba(255, 255, 255, 0.03);
@@ -1227,16 +1607,16 @@ kbd {
   line-height: 1.6;
 }
 
-/* 图鉴入口按钮 */
+/* 图鉴入口按钮（主菜单右下：与开始游戏同级的大按钮） */
 .ency-entry-btn {
-  margin-top: 10px;
-  padding: 8px 28px;
-  border-radius: 6px;
+  padding: 10px 32px;
+  border-radius: 8px;
   border: 1px solid rgba(102, 227, 154, 0.4);
   background: linear-gradient(180deg, rgba(102, 227, 154, 0.15), rgba(102, 227, 154, 0.04));
   color: #b7ffda;
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 4px;
+  text-indent: 4px;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.2s ease;
 }
@@ -1279,6 +1659,90 @@ kbd {
 .info-entry-btn:active { transform: translateY(0); }
 
 .info-entry-btn.hidden { display: none; }
+
+/* ---------- 主菜单操作提示：左上角 ? 按钮 + 按键说明卡片 ---------- */
+.help-entry-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(124, 231, 255, 0.55);
+  background: rgba(10, 20, 38, 0.8);
+  color: var(--accent);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 6;
+  transition: transform 0.1s ease, box-shadow 0.2s ease, border-color 0.15s;
+}
+
+.help-entry-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(124, 231, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.help-entry-btn:active { transform: translateY(0); }
+
+.help-panel {
+  position: absolute;
+  top: 44px;            /* ? 按钮正下方 */
+  left: 10px;
+  z-index: 8;           /* 高于装备面板(2)/主菜单(6)，低于图鉴(10,11) */
+  width: 262px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 231, 255, 0.35);
+  background: rgba(8, 14, 28, 0.95);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+.help-panel.hidden { display: none; }
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.help-title {
+  color: var(--accent);
+  font-weight: bold;
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+
+.help-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.help-close:hover { color: var(--text); }
+
+.help-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.help-keys { flex: none; white-space: nowrap; }
+.help-keys kbd { margin: 0 1px; }
+
+.help-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 
 /* 弹窗：与怪物图鉴同款全屏遮罩结构 */
 .info-modal {
@@ -1334,9 +1798,10 @@ kbd {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--muted);
-  font-size: 14px;
-  letter-spacing: 2px;
-  padding: 10px 16px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  white-space: nowrap;    /* 五个标签恒为单行，不折行 */
+  padding: 10px 10px;
   cursor: pointer;
   transition: color 0.15s;
 }

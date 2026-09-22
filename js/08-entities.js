@@ -10,7 +10,7 @@
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain } from './07-player.js';
-  import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldSweepHit } from './07-player.js';
+  import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -79,6 +79,7 @@
         const e = enemies[j];
         if (!enemyOnScreen(e)) continue;   // 屏幕外敌人（尚未入场 / 已离场 / 侧翼界外）不受我方子弹伤害
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
+        if (e.dying) continue;   // 渐隐消逝中的暴风之眼：死亡演出期间不再受击
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
@@ -181,7 +182,7 @@
       if (b.holdT != null && b.holdT > 0) {
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
-      } else {
+      } else if (!b.shieldBlocked) {
         b.x += b.vx * dt; b.y += b.vy * dt;
       }
       // 反弹光束（技能3）：触左右边界反弹，实际弹道呈"<"形折线
@@ -212,12 +213,13 @@
         }
       }
       if (b.trail) {
-        // 轨迹残影：记录帧间线段（缺省暗紫；b.trailCol 自定义色 + b.trailLife 短拖尾）
+        // 轨迹残影：记录帧间线段（缺省暗紫；b.trailCol 自定义色 + b.trailLife 短拖尾；
+        // b.trailR 拖尾显示半径——大子弹等大弹径弹用较小半径绘制更纤细的锥形尾，缺省同弹体半径）
         if (b.px != null) {
           trailGhosts.push({
             x1: b.px, y1: b.py, x2: b.x, y2: b.y,
             life: b.trailLife || 1.0, max: b.trailLife || 1.0,
-            r: b.r,
+            r: b.trailR || b.r,
             seed: Math.random() * 10, spark: Math.random() < 0.2,
             col: b.trailCol || null,
           });
@@ -239,7 +241,7 @@
           //   导致某帧轴线与盾折线失去交点，也按“锚定在僚机上的接触点”继续截断——被挡住的激光不会中途漏出盾外
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const ux = b.vx / sp, uy = b.vy / sp;
-          const clip = clipAgainstShield(b.x, b.y, ux, uy, b.len, b.r + BULWARK.thickness / 2);
+          const clip = clipAgainstShield(b.x, b.y, ux, uy, b.len, b.r + BULWARK.thickness / 2 * BULWARK.scale);
           if (clip) {
             b.clipLen = clip.d;
             b.shieldHold = true; b.shieldW = clip.w;
@@ -252,6 +254,37 @@
           } else {
             b.clipLen = null;
           }
+        } else if (b.beamTrail) {
+          // 折线光束（技能3"<"弹）撞盾：头部钉在盾面被截断，尾端继续按原速前进逐帧"磨短"——
+          //   光束整体缩向盾面后消散（修复：此前走普通弹吸收分支，整条"<"光束瞬间消失）
+          if (!b.shieldBlocked) {
+            const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y, b.r);
+            if (hit) {
+              b.shieldBlocked = true; b.sbX = hit.x; b.sbY = hit.y;
+              const over = Math.hypot(b.x - hit.x, b.y - hit.y);   // 本帧越过盾面的距离：从轨迹末端回退
+              if (b.path && b.path.length > 1 && b.pathLen > over) b.pathLen -= over;
+              b.x = hit.x; b.y = hit.y;
+              if (b.path && b.path.length) b.path[b.path.length - 1] = { x: hit.x, y: hit.y };
+            }
+          }
+          if (b.shieldBlocked) {
+            const step = Math.hypot(b.vx, b.vy) * dt;
+            const target = Math.max(0, b.pathLen - step);
+            while (b.path.length > 1 && b.pathLen > target) {
+              const segLen = Math.hypot(b.path[1].x - b.path[0].x, b.path[1].y - b.path[0].y) || 1;
+              if (b.pathLen - segLen < target) break;
+              b.pathLen -= segLen; b.path.shift();
+            }
+            if (b.path.length > 1 && b.pathLen > target) {
+              const segLen = b.pathLen - target;   // 尾端点部分裁剪：精确磨到 target 长度
+              const dx = b.path[1].x - b.path[0].x, dy = b.path[1].y - b.path[0].y;
+              const L = Math.hypot(dx, dy) || 1;
+              b.path[0] = { x: b.path[1].x - dx / L * segLen, y: b.path[1].y - dy / L * segLen };
+              b.pathLen = target;
+            }
+            if (Math.random() < 0.5) spawnParticles(b.sbX, b.sbY, '#eaf6ff', 2, 90);   // 盾面节流迸火花
+            if (b.pathLen <= 1 || b.path.length < 2) { eBullets.splice(i, 1); continue; }   // 被盾吃完
+          }
         } else if (b.len && b.oval) {
           // 椭圆风条：head 端先触盾，逐帧“磨短”（裁掉越盾部分、头端钉在盾面），尾端越盾（有效长度≤0）即消解
           //   pad 含弹体半径 + 盾厚一半（零厚度轴线会让擦盾弧端点的风条漏过）；
@@ -261,7 +294,7 @@
           const ux = b.vx / sp, uy = b.vy / sp;
           const halfL = b.len / 2;
           const tx = b.x - ux * halfL, ty = b.y - uy * halfL;   // 尾端
-          const clip = clipAgainstShield(tx, ty, ux, uy, b.len, b.r + BULWARK.thickness / 2);
+          const clip = clipAgainstShield(tx, ty, ux, uy, b.len, b.r + BULWARK.thickness / 2 * BULWARK.scale);
           let d = clip ? clip.d : null, cx, cy;
           if (clip) {
             b.shieldHold = true; b.shieldW = clip.w;
@@ -277,6 +310,23 @@
             if (d <= 0.5) { eBullets.splice(i, 1); continue; }   // 被吃完
             b.len = d;                                   // 收缩到盾面
             b.x = tx + ux * d / 2; b.y = ty + uy * d / 2;   // 尾端不动、中心回移
+          }
+        } else if (b.swRef) {
+          // 三类·特殊射弹（旧日之歌暗黑射弹，注册表见 01-config BULWARK 注释）：首次触盾按入射夹角镜像反弹
+          //   （反射角=入射角，非原路弹回）；可墙壁反弹者（bounceX）反弹后失去该能力；
+          //   同一射弹仅反弹一次，再次触盾白盾无任何效果（直接穿过、伤害不减）
+          if (!b.swRefDone) {
+            const pxp = b.x - b.vx * dt, pyp = b.y - b.vy * dt;
+            const hit = shieldReflectHit(pxp, pyp, b.x, b.y, b.r);
+            if (hit) {
+              const vn = b.vx * hit.nx + b.vy * hit.ny;
+              b.vx -= 2 * vn * hit.nx; b.vy -= 2 * vn * hit.ny;   // 关于盾面法线镜像反射
+              b.swRefDone = true;
+              b.bounceX = false;   // 反弹后失去墙壁反弹能力
+              b.x = hit.x + b.vx * dt; b.y = hit.y + b.vy * dt;   // 置于盾面并沿反射方向推进，避免原地重复触盾
+              spawnParticles(hit.x, hit.y, '#eaf6ff', 8, 170);
+              spawnParticles(hit.x, hit.y, '#c8b0ff', 5, 130);
+            }
           }
         } else {
           // 普通直射弹：扫掠(prev→cur)与盾相交则吸收；长条弹以弹头前缘扫掠（判定贴合视觉，不再沉入盾面后才消失）
@@ -359,7 +409,8 @@
       player.hp = clamp(player.hp + 40, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
-      state.bombs = Math.min(state.bombs + 1, MAX_BOMBS);
+      const cap = diffMods().bombCap;
+      state.bombs = Math.min(state.bombs + 1, cap != null ? cap : MAX_BOMBS);   // 诗篇：上限 2（mods.bombCap）
       spawnParticles(p.x, p.y, '#ffb545', 12, 160);
     } else if (p.kind === 'shield') {
       // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
@@ -440,7 +491,8 @@
             state.score += Math.round(c.val * diffMods().scoreMul);
             // 七日澜心：按水晶【得分】等比填充技能量表（普通 +10 / 巨型 +500）——
             // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
-            armorSkillGain(c.val);
+            // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
+            armorSkillGain(c.val, c.firstBoss);
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -455,7 +507,7 @@
           Math.abs(c.y - player.y) < player.h / 2 + c.r) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
-        armorSkillGain(c.val);
+        armorSkillGain(c.val, c.firstBoss);
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
       }

@@ -3,12 +3,13 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 07-player(2 名) 08-entities(1 名) 14-main(7 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{crystalMagnetMul, hasteT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
+  //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
   //
-  import { ANVIL, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
-  import { blBombs, bossFlow, clamp, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { blBombs, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
+  import { restartBGM } from './03-audio.js';
   import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, shieldSweepHit, testDamagePlayer } from './07-player.js';
   import { updateBossLootMarks } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
@@ -19,6 +20,16 @@
   function updateEnemies(dt) {
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
+      // 渐隐消逝中的暴风之眼（死亡演出）：不再攻击 / 碰撞 / 结算，仅推进淡出计时，播完移除
+      if (e.dying) {
+        e.dying.t += dt;
+        e.rot = (e.rot || 0) + dt * 0.5;   // 缓慢减速旋转（读 drawStormBoss），风暴"散去"的余韵
+        if (e.dying.t >= e.dying.dur) {
+          const j = enemies.indexOf(e);
+          if (j >= 0) enemies.splice(j, 1);
+        }
+        continue;
+      }
       if (e.type === 'boss') {
         updateBoss(e, dt);
         // BOSS 血量阶段掉落判定（每当失去 20% 血量；所有 BOSS 通用，含今后新增，见 05-boss updateBossLootMarks）
@@ -147,10 +158,11 @@
             : e.entryT < POPIAN.crashLowEnd ? base2 * POPIAN.crashLowMul
             : base2 * POPIAN.crashHighMul;
         }
-        if (crashDmg > 0) damagePlayer(crashDmg, ENEMY_TYPES[e.type].invulnMul || 1);
+        // 护盾（量子 / 水晶）期间撞机不震屏：damagePlayer 被护盾吸收返回 false，返回值决定是否给撞击反馈
+        const tookHit = crashDmg > 0 ? damagePlayer(crashDmg, ENEMY_TYPES[e.type].invulnMul || 1) : false;
         e.hp -= 40 * yu4AuraMul(e);   // 撞机反伤为普通伤害，可被御4防御光环削减（真实伤害仅高能爆弹）
         spawnParticles(e.x, e.y, e.color, 18, 220);
-        shake(6, 0.25);   // 撞机冲击震屏较弱（受击本体反馈见 damagePlayer）
+        if (tookHit) shake(6, 0.25);   // 撞机冲击震屏较弱（受击本体反馈见 damagePlayer）
         if (e.hp <= 0) killEnemy(i);
       }
     }
@@ -1237,6 +1249,7 @@
       lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
       growRate: opts.growRate || 0,   // 每秒生长像素
       traveled: 0,
+      owner: e,                     // 发射者引用（群星守望 BOSS 战：击杀该敌人时清除其全部在场射弹）
     });
   }
 
@@ -1330,9 +1343,9 @@
   }
 
   // 导弹命中玩家的特殊结算（先兆者导弹专用伤害规则）。
-  // 注：风暴编织者并没有导弹技能——但其技能1（电弧激光）在既有设计中刻意复用本函数做命中结算
-  // （低血秒杀 / ≥60 扣 80% 血量并降级，"与先兆者导弹一致"，见 05-boss runStorm2Skill 技能1 注释），
-  // 因此具象的「固定 50 伤害」分支对 先兆者导弹 与 编织者技能1激光 同时生效
+  // 真我 / 诗篇：伤害 = max(60, 当前血量 80%)——低血保底 60、不再直接秒杀；命中后武器等级 -1、暴走中断
+  // （保留"直接降级"特性、不计入常规受击计数；掉命走 damagePlayer 标准流程，最终壁垒免死照常生效）
+  // 具象：missileFlatDmg 固定 50 伤害（无降级）；测试模式照常结算血量但不掉命、不掉级
   function missileHitPlayer() {
     // 具象：导弹不再有秒杀机制——固定 50 伤害（不扣 80% 血量、不降武器等级；受击无敌照常；护盾免疫由调用方处理）
     const flat = diffMods().missileFlatDmg;
@@ -1347,27 +1360,22 @@
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
       return;
     }
+    const dmg = Math.max(HARBINGER.missileDmgMin, player.hp * 0.8);
     // 测试模式：导弹照常结算血量（不掉武器等级、不掉命；血量归零自动重置）
     if (state.challenge) {
-      const dmg = player.hp < HARBINGER.lowHpKill ? PLAYER_CFG.maxHp : player.hp * 0.8;
       testDamagePlayer(dmg);
       player.invuln = PLAYER_CFG.invulnTime; player.invulnBlink = true;   // 受击无敌：闪动提示
       shake(8, 0.35);
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
       return;
     }
-    if (player.hp < HARBINGER.lowHpKill) {
-      // 血量低于 60：直接击杀（走标准掉命/结束流程）
-      damagePlayer(player.hp + 100);
-    } else {
-      // 血量 >= 60：失去 80% 当前血量 + 武器等级 -1（先兆者导弹保留直接降级；不进入受击计数）
-      player.hp = player.hp * 0.2;
+    // 走标准 damagePlayer（isMissile=true：不计入常规受击计数、不触发掉级累计）；命中后武器等级 -1、暴走中断
+    if (damagePlayer(dmg, 1, false, true)) {
       if (player.weapon > 1) player.weapon--;
       player.berserk = 0;
-      player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 受击无敌：闪动提示
-      shake(8, 0.35);
-      spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
     }
+    shake(8, 0.35);
+    spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
   }
 
   function updateMissiles(dt) {
@@ -1534,7 +1542,8 @@
   }
 
   // 大正方体分裂：原地裂为 3 枚常规法术矩阵正方体——1 枚沿原方向、2 枚垂直于原方向；
-  // 射程继承剩余射程、以最大尺寸直接出现；伴随微弱冲击波爆炸特效（k 缩放 drawCubeHitFx 扩散半径）
+  // 射程继承剩余射程、以最大尺寸直接出现；伴随微弱冲击波爆炸特效（k 缩放 drawCubeHitFx 扩散半径）；
+  // 二类·穿透标记 swPen 由母体继承（母体已穿盾时，分裂体在盾后生成，不再触盾也应保持减伤一致性）
   function splitSpellCube(c, i) {
     const rem = Math.max(60, c.maxRange - c.traveled);
     const dirs = [[c.ux, c.uy], [-c.uy, c.ux], [c.uy, -c.ux]];
@@ -1545,6 +1554,7 @@
         dmg: FASHI_MATRIX.cubeDmg,
         traveled: 0, maxRange: rem, phase: 'fly', glow: 1, alpha: 1,
         growT: FASHI_MATRIX.cubeGrowTime, scale: 1, r: FASHI_MATRIX.cubeR,
+        swPen: c.swPen,
       });
     }
     spawnParticles(c.x, c.y, '#ff5a6e', 8, 180);
@@ -1554,7 +1564,8 @@
   }
 
   // 正方体生命周期：fly（平滑加速巡航）→ brake（临近射程减速滑行，末段提前渐隐，速度归零时恰好 alpha=0 消失）
-  //   → blocked（撞上守愿者被阻挡：撞击特效后停在盾面快速消散，尾焰随消散快速衰减而非瞬间消失）
+  //   二类·穿透射弹（注册表见 01-config BULWARK 注释）：守愿者白盾无法截断——触盾直接穿过并标记 swPen，
+  //   此后命中玩家伤害 -50%（法术阵列大正方体分裂出的常规正方体继承标记）
   function updateSpellCubes(dt) {
     for (let i = spellCubes.length - 1; i >= 0; i--) {
       const c = spellCubes[i];
@@ -1585,22 +1596,14 @@
         const rem = Math.max(0, Math.log(Math.max(c.spd, 10) / 10) / FASHI_MATRIX.brakeRate);
         c.alpha = Math.min(1, rem / FASHI_MATRIX.fadeTime);
         if (c.spd < 10) { spellCubes.splice(i, 1); continue; }   // 速度归零：恰好消失
-      } else {   // blocked：撞盾被阻挡，停在盾面快速消散
-        c.dieT += dt;
-        c.alpha = Math.max(0, 1 - c.dieT / FASHI_MATRIX.shieldDie);
-        if (c.dieT >= FASHI_MATRIX.shieldDie) { spellCubes.splice(i, 1); continue; }
       }
       // 白红光效拖尾在绘制层实现（drawSpellCubes 沿运动反方向画渐变光带，非粒子），此处不再生成拖尾粒子
-      // 守愿者白盾：正方体撞盾被阻挡（盾参考系下相对位移扫掠 + 弹体半径边缘）——
-      //   仅粒子效果（白蓝盾面火花 + 红色碎片），本体停在盾面快速消散、尾焰快速衰减（不瞬间消失、不放冲击波环）
-      if (c.phase !== 'blocked' && bulwarkActive()) {
+      // 二类·穿透射弹：守愿者白盾无法截断——触盾直接穿过（仅弱化火花），标记 swPen 后命中伤害 -50%
+      if (bulwarkActive()) {
         const hit = shieldSweepHit(px, py, c.x, c.y, c.r);
-        if (hit) {
-          c.x = hit.x - c.ux * c.r; c.y = hit.y - c.uy * c.r;   // 本体贴在盾面上
-          c.phase = 'blocked'; c.dieT = 0; c.spd = 0;
-          spawnParticles(hit.x, hit.y, '#eaf6ff', 10, 200);
-          spawnParticles(hit.x, hit.y, '#ff5a6e', 6, 170);
-          continue;
+        if (hit && !c.swPen) {
+          c.swPen = true;
+          spawnParticles(hit.x, hit.y, '#eaf6ff', 4, 110);
         }
       }
       // 护盾消解（正方体不可被击毁，但护盾仍免疫）
@@ -1609,10 +1612,11 @@
         spellCubes.splice(i, 1);
         continue;
       }
-      // 命中玩家判定点（被阻挡后不再伤害；渐隐门控：alpha 低于 35% 不再构成威胁——与暴风之眼区域打击同规则）
-      if (c.phase !== 'blocked' && c.alpha > 0.35 && player.alive &&
+      // 命中玩家判定点（渐隐门控：alpha 低于 35% 不再构成威胁——与暴风之眼区域打击同规则）；
+      // 穿过守愿者白盾（swPen）后伤害 -50%
+      if (c.alpha > 0.35 && player.alive &&
           Math.hypot(c.x - player.x, c.y - (player.y + PLAYER_CFG.hitOffsetY)) < PLAYER_CFG.hitRadius + c.r) {
-        damagePlayer(c.dmg);
+        damagePlayer(c.swPen ? c.dmg * 0.5 : c.dmg);
         // 击中特效：白热爆闪（突出白光）+ 红色碎片 + 冲击波环（drawCubeHitFx）
         spawnParticles(c.x, c.y, '#ffffff', 18, 300);
         spawnParticles(c.x, c.y, '#ff5a6e', 12, 210);
@@ -1807,21 +1811,43 @@
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
     shieldRate *= dropMul;
     // 加血套件：普通敌人走互斥链（基础 1.8% / 增生侧翼艇固定 10%）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
+    // 诗篇特殊机制（mods.hpKitGap）：任意两次加血套件之间至少间隔 8s——
+    //   冷却期内掉落判定照常进行，但加血环节概率变为 50%（hpKitBankChance）且敌人不掉落（改为"预触发"计数）；
+    //   冷却结束后若预触发 ≥1，击杀的第一个敌人必定掉落一个加血套件（随后计数清零）。
+    //   每次【实际掉落】加血套件（含 BOSS 战脚本化加血）都会重置 8s 计时
+    const hpKitGap = dMods.hpKitGap != null ? dMods.hpKitGap : Infinity;
+    const hpKitInCd = state.time - state.hpKitLastT < hpKitGap;
+    const hpKitRelease = !isBoss && hpKitGap !== Infinity && !hpKitInCd && state.hpKitBanked >= 1;
     const hpRate = isBoss ? 0 : (tags.includes('green') ? DROP_HP_GREEN : DROP_HP_RATE) * dropMul;
-    const pr = Math.random();
-    if (pr < kitRate) {
-      // 升级套件；其中 5% 变为暴走道具（红橙大 S，吃到攻击等级立刻满级）
-      if (Math.random() < DROP_KIT_BERSERK) spawnPowerup(x, y, 'berserk', 15);
-      else spawnPowerup(x, y, 'kit', 12);
-    } else if (pr < kitRate + shieldRate) {
-      spawnPowerup(x, y, 'shield', 13);
-    } else if (pr < kitRate + shieldRate + hpRate) {
+    let hpDropped = false;
+    if (hpKitRelease) {
+      // 冷却结束后的第一个敌人必掉一个（清空预触发计数），并占用本次互斥链
       spawnPowerup(x, y, 'hp', 12);
+      state.hpKitBanked = 0;
+      state.hpKitLastT = state.time;
+      hpDropped = true;
+    }
+    const pr = Math.random();
+    if (!hpDropped) {
+      if (pr < kitRate) {
+        // 升级套件；其中 5% 变为暴走道具（红橙大 S，吃到攻击等级立刻满级）
+        if (Math.random() < DROP_KIT_BERSERK) spawnPowerup(x, y, 'berserk', 15);
+        else spawnPowerup(x, y, 'kit', 12);
+      } else if (pr < kitRate + shieldRate) {
+        spawnPowerup(x, y, 'shield', 13);
+      } else if (hpKitGap !== Infinity && hpKitInCd) {
+        // 诗篇冷却期内：加血环节概率变为 50%，命中改为"预触发"（敌人不掉落）
+        if (Math.random() < dMods.hpKitBankChance) state.hpKitBanked++;
+      } else if (pr < kitRate + shieldRate + hpRate) {
+        spawnPowerup(x, y, 'hp', 12);
+        if (hpKitGap !== Infinity) state.hpKitLastT = state.time;
+      }
     }
     if (isBoss) {
       const hr = Math.random();
       if (hr < DROP_HP_BOSS) spawnPowerup(x, y, 'hp', 12);
       else if (hr < DROP_HP_BOSS + DROP_HP_BOSS2) { spawnPowerup(x, y, 'hp', 12); spawnPowerup(x, y, 'hp', 12); }
+      if (hr < DROP_HP_BOSS + DROP_HP_BOSS2 && hpKitGap !== Infinity) state.hpKitLastT = state.time;   // BOSS 脚本化加血同样重置 8s 计时
     }
     // 橙色敌人（烈橙突击艇 / 威龙）：0.5% 掉爆弹 —— 整场战斗最多触发一次（不影响 4类 5% 与 BOSS 20%）
     if (tags.includes('orange') && !state.orangeBombUsed && Math.random() < DROP_BOMB_ORANGE) {
@@ -1900,13 +1926,15 @@
       // 水晶：旧日之歌 50 / 风暴编织者 80（继承一阶段掉落）；暴风之眼不再掉落水晶（由二阶段继承）
       if (!testMode && e.bossId !== 'storm') {
         const nCry = e.bossId === 'storm2' ? 80 : 50;
+        // 首轮 BOSS（FIRST_ROUND_BOSSES）掉落的水晶打标：拾取时对七日澜心量表按 firstBossBonus 额外加成
+        const firstBossCry = FIRST_ROUND_BOSSES.includes(e.bossId);
         for (let k = 0; k < nCry; k++) {
           const giant = Math.random() < 0.004;
           crystals.push({
             x: e.x + rand(-200, 200), y: e.y + rand(-40, 40),
             vx: rand(-80, 80), vy: rand(120, 210),
             r: giant ? 15 : 6, val: giant ? 500 : 10,
-            giant, t: Math.random() * Math.PI * 2,
+            giant, firstBoss: firstBossCry, t: Math.random() * Math.PI * 2,
             absorbDelay: rand(0.35, 0.7),   // 稍微下落一段距离后再全部吸收
           });
         }
@@ -1926,6 +1954,13 @@
       bossFlow.timer = 0;
       // 击败第一个 BOSS（旧日之歌）：水晶磁吸半径永久 ×1.5（本场战斗持续生效，重开归 1）
       if (e.bossId === 'song') state.crystalMagnetMul = 1.5;
+      // 洄：击败 BOSS 时先回复 25% 已损失生命，再回复 20 生命（两次回复合并结算、上限当前装甲最大生命）。
+      // 直接结算到 player.hp，不走道具掉落——与诗篇加血套件 8s 节流（hpKitLastT）完全无关，不触发也不受其冷却限制
+      if (currentArmor.id === 'hui' && currentArmor.bossKillHeal && player.alive) {
+        const bossHeal = (player.maxHp - player.hp) * (currentArmor.bossKillLostPct || 0) + currentArmor.bossKillHeal;
+        player.hp = Math.min(player.maxHp, player.hp + bossHeal);
+        spawnParticles(player.x + rand(-12, 12), player.y + rand(-12, 12), '#66e39a', 20, 170);
+      }
       // 阶段推进：还有下一个 BOSS → 重置计时进入新一轮刷怪；已是最终 BOSS（或测试 / 图鉴挑战）→ 延迟后胜利结算
       bossFlow.phase++;
       // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬；
@@ -1935,9 +1970,14 @@
       if (bossFlow.phase < BOSS_SEQUENCE.length && !state.testBoss && !state.challenge) {
         if (e.bossId === 'storm') {
           // 暴风之眼被击败：风暴轰然消散，直接召唤二阶段飞舰「风暴编织者」
-          // （专属登场动画后续单独设计；跳过等清场 / 警报 / 常规刷怪，直接进入战斗）
+          // （跳过等清场 / 警报 / 常规刷怪，直接进入战斗）
           spawnBoss('storm2');
           bossFlow.stage = 'fight';
+          // BGM 淡出重起播：当前曲 0.7s 内淡出，0.8s 后从头重播同一首（二阶段重新起势）
+          restartBGM(0.7, 0.8);
+          // 本体不立即移除：保留 0.8s 渐隐消逝（alpha 1→0 + 缓慢收缩 + 减速旋转，
+          // 见 updateEnemies dying 分支 / drawStormBoss），与二阶段登场的"轰然消散"冲击波环衔接
+          e.dying = { t: 0, dur: 0.8 };
         } else {
           bossFlow.victoryDelay = 0;
           bossFlow.postDelay = 2;   // 击败 BOSS 后 2s 再刷怪（不计入关卡推进；到时固定刷首波 1类长队）
@@ -1946,7 +1986,7 @@
         bossFlow.victoryDelay = 2.5;  // 延迟后返回主界面
         bossFlow.defeatedName = e.name;
       }
-      spliceSelf();
+      if (!e.dying) spliceSelf();   // 暴风之眼渐隐期间保留实体（见上方 dying 标记），其余 BOSS 立即移除
       // BOSS 被击败：强行击坠场上所有剩余敌方单位（小怪 / 护航 / 召唤物，含 BOSS 测试召唤物）
       // 倒序遍历逐个走 killEnemy 完整击杀演出（爆炸粒子 / 水晶 / 计分）
       // （增生侧翼艇被清场击毁时会分裂卫护飞船并追加到数组尾部，故循环至场上无残留为止）
@@ -1970,9 +2010,10 @@
       return;
     }
     // 卫护飞船（增生侧翼艇衍生）：仅掉水晶 —— 80% 掉 1 个 / 20% 掉 2 个，不参与通用水晶/道具掉落池（测试模式不掉落不加分）
+    // BOSS 战强制波衍生的卫护飞船（minionDrop 传播）：同样不加分、不掉水晶
     if (e.type === 'escort') {
       spawnParticles(e.x, e.y, e.color, 14, 200);
-      if (!testMode) {
+      if (!testMode && !e.minionDrop) {
         state.score += Math.round(e.score * diffMods().scoreMul);
         const n = Math.random() < 0.8 ? 1 : 2;
         for (let k = 0; k < n; k++) {
@@ -2011,13 +2052,23 @@
       else if (!e.blThrown) detonateBaoling(e);
     }
     spawnParticles(e.x, e.y, e.color, 22, 260);
-    if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul);
-    // 群星守望：击杀 1/2/3/4 类敌人时按概率立刻清除一颗离自身最近的敌方子弹（30%/60%/80%/100%）
+    // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率 ×0.3 照常，见 rollItemDrops）
+    if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul);
+    // 群星守望：击杀 1/2/3/4 类敌人时按概率消弹——
+    // 常规战斗 30%/60%/80%/100% 清除离自身最近的一颗敌弹；
+    // BOSS 战期间改用 70%/100%/100%/100% 概率表，且改为清除该敌人发出的所有在场射弹
+    // （每颗都带淡黄连线+迸粒演出，多弹齐清时视觉上如同一次射出多束粒子光束）
     const watchCls = ENEMY_CLASS[e.type];
-    const watchChance = (watchCls && currentArmor.clearChance && !testMode)
-      ? currentArmor.clearChance[watchCls] : 0;
-    if (watchChance && Math.random() < watchChance && eBullets.length) {
-      clearNearestEnemyBullet(player.x, player.y);
+    const bossFight = bossFlow.stage === 'fight';
+    const watchTable = bossFight ? currentArmor.clearChanceBoss : currentArmor.clearChance;
+    const watchChance = (watchCls && watchTable && !testMode) ? watchTable[watchCls] : 0;
+    if (watchChance && Math.random() < watchChance) {
+      if (bossFight) clearEnemyBulletsByOwner(e);
+      else if (eBullets.length) clearNearestEnemyBullet(player.x, player.y);
+    }
+    // 七日澜心：BOSS 战期间击杀敌人直接给量表充能 1%~3%（随机；不依赖水晶拾取，量表满后按 F 释放）
+    if (!testMode && bossFight && ARMOR_SKILLS[currentArmor.id]) {
+      state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + rand(0.01, 0.03));
     }
     // 所有非 BOSS 敌机被击毁均不再抖屏（仅保留 BOSS 的击毁震屏）
     // 增生侧翼艇：击毁后分裂出 2~3 个卫护飞船（深蓝紫渐变小三角，沿原航向大致继续飞行，出厂带随机虚化护盾）
@@ -2028,6 +2079,7 @@
         const esc = makeEnemy('escort', e.x + rand(-10, 10), e.y + rand(-8, 8), { fireTimer: 1e9 });
         esc._sideVel = { vx: base.vx + rand(-16, 16), vy: base.vy + rand(-10, 14) };   // 大致沿原路径，带小幅散布
         esc._entryMul = 1;   // 预置 1：无入场冲刺，平滑接续原航向
+        esc.minionDrop = !!e.minionDrop;   // BOSS 战强制波：标记传播给衍生体（不加分 / 不掉水晶）
       }
       spawnParticles(e.x, e.y, '#9a7bff', 10, 180);
     }
@@ -2122,7 +2174,8 @@
         1 + Math.floor(Math.random() * 3));
       const noDrop = (e.type === 'side' && e.behavior === 'kamikaze') || e.type === 'tornado';   // 紫电/大型龙卷不掉水晶
       const guaranteed = e.postBossWave || e.type === 'douzhi';
-      if (!noDrop && (guaranteed || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.60 : 0.80))) {
+      // BOSS 战强制波 1类（minionDrop）：不掉水晶
+      if (!noDrop && !e.minionDrop && (guaranteed || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.60 : 0.80))) {
         for (let k = 0; k < cCount; k++) {
           // 极小概率巨型水晶（0.4%）：体型稍大，价值 50 颗普通水晶
           const giant = Math.random() < 0.004;

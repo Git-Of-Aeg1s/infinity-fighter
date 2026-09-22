@@ -3,8 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, ENEMY_TYPES, GUNSHIP_PALETTE, currentArmor } from './01-config.js';
-  import { bossFlow, clamp, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts } from './02-core.js';
+  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, currentArmor } from './01-config.js';
+  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
   import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
@@ -700,43 +700,60 @@
       }
       if (b.bolt) {
         if (b.path && b.path.length > 1) {
-          // 折线光束（技能3）：沿头部轨迹折线渲染——外辉光 + 锯齿白热内芯 + 头部亮点；
+          // 折线光束（技能3）：渲染与技能6 电弧光束同款——外辉光 + 蓝体淡白芯 + 锯齿电弧双 pass + 头端热斑；
           // 光束随轨迹从 0 增长，转折处沿折线自然弯折（非整体转向）
           let sd = ((Math.floor(state.time * 12) * 7 + (b.seed || 1) * 131) * 9973 + 479) % 233280;
           const rnd = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
+          const strokePath = () => {
+            ctx.beginPath();
+            ctx.moveTo(b.path[0].x, b.path[0].y);
+            for (let k = 1; k < b.path.length; k++) ctx.lineTo(b.path[k].x, b.path[k].y);
+            ctx.stroke();
+          };
           ctx.save();
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
+          // 外辉光（宽而淡的蓝晕）
           ctx.shadowColor = '#6fb8ff';
           ctx.shadowBlur = 12;
-          ctx.strokeStyle = 'rgba(143, 212, 255, 0.45)';
-          ctx.lineWidth = b.r * 2.2;
-          ctx.beginPath();
-          ctx.moveTo(b.path[0].x, b.path[0].y);
-          for (let k = 1; k < b.path.length; k++) ctx.lineTo(b.path[k].x, b.path[k].y);
-          ctx.stroke();
+          ctx.strokeStyle = 'rgba(111, 184, 255, 0.4)';
+          ctx.lineWidth = b.r * 2.4;
+          strokePath();
           ctx.shadowBlur = 0;
-          // 白热内芯：各顶点沿法向随机抖动（1/12s 步进，电弧噼啪感）
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.lineWidth = b.r * 0.7;
-          ctx.beginPath();
-          for (let k = 0; k < b.path.length; k++) {
-            const px2 = b.path[k].x, py2 = b.path[k].y;
-            let nx = 0, ny = 0;
-            if (k > 0 && k < b.path.length - 1) {
-              const tx2 = b.path[k + 1].x - b.path[k - 1].x, ty2 = b.path[k + 1].y - b.path[k - 1].y;
-              const tl = Math.hypot(tx2, ty2) || 1;
-              const off = (rnd() - 0.5) * b.r * 1.1;
-              nx = -ty2 / tl * off;
-              ny = tx2 / tl * off;
+          // 蓝体 + 淡白芯（不再纯白，电弧感由锯齿内芯承担）
+          ctx.strokeStyle = 'rgba(120, 190, 255, 0.85)';
+          ctx.lineWidth = b.r * 1.5;
+          strokePath();
+          ctx.strokeStyle = '#d8ecff';
+          ctx.lineWidth = b.r * 0.8;
+          strokePath();
+          // 锯齿电弧：各顶点沿法向随机抖动（1/12s 步进换形），蓝辉外弧 + 白热细芯双 pass
+          for (const [w2, col] of [[2.2, 'rgba(143, 212, 255, 0.55)'], [1.0, 'rgba(255, 255, 255, 0.9)']]) {
+            ctx.strokeStyle = col;
+            ctx.lineWidth = w2;
+            ctx.beginPath();
+            for (let k = 0; k < b.path.length; k++) {
+              const px2 = b.path[k].x, py2 = b.path[k].y;
+              let nx = 0, ny = 0;
+              if (k > 0 && k < b.path.length - 1) {
+                const tx2 = b.path[k + 1].x - b.path[k - 1].x, ty2 = b.path[k + 1].y - b.path[k - 1].y;
+                const tl = Math.hypot(tx2, ty2) || 1;
+                const off = (rnd() - 0.5) * b.r * 1.1;
+                nx = -ty2 / tl * off;
+                ny = tx2 / tl * off;
+              }
+              k === 0 ? ctx.moveTo(px2 + nx, py2 + ny) : ctx.lineTo(px2 + nx, py2 + ny);
             }
-            k === 0 ? ctx.moveTo(px2 + nx, py2 + ny) : ctx.lineTo(px2 + nx, py2 + ny);
+            ctx.stroke();
           }
-          ctx.stroke();
-          // 头部亮点
-          ctx.fillStyle = '#ffffff';
+          // 头端圆帽热斑（白蓝径向光斑，同技能6 光束头端处理）
+          const hg = ctx.createRadialGradient(b.x, b.y, 1, b.x, b.y, b.r * 1.7);
+          hg.addColorStop(0, 'rgba(235, 249, 255, 0.95)');
+          hg.addColorStop(0.45, 'rgba(170, 220, 255, 0.5)');
+          hg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+          ctx.fillStyle = hg;
           ctx.beginPath();
-          ctx.arc(b.x, b.y, b.r * 0.8, 0, Math.PI * 2);
+          ctx.arc(b.x, b.y, b.r * 1.7, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
           continue;
@@ -747,13 +764,13 @@
         ctx.translate(b.x, b.y);
         ctx.rotate(ang);
         const half = (b.len || 40) / 2;
-        // 外辉光胶囊：尾淡 → 头白蓝
+        // 外辉光胶囊：尾淡 → 头白蓝（头部不再纯白，电弧感由锯齿内芯承担）
         ctx.shadowColor = '#6fb8ff';
         ctx.shadowBlur = 14;
         const bg = ctx.createLinearGradient(-half, 0, half, 0);
         bg.addColorStop(0, 'rgba(143, 212, 255, 0.20)');
-        bg.addColorStop(0.55, '#bfe6ff');
-        bg.addColorStop(1, '#ffffff');
+        bg.addColorStop(0.55, '#9fd4ff');
+        bg.addColorStop(1, '#e8f5ff');
         ctx.fillStyle = bg;
         ctx.beginPath();
         ctx.arc(-half, 0, b.r, Math.PI / 2, -Math.PI / 2);
@@ -984,6 +1001,23 @@
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
+    ctx.globalAlpha = 1;
+  }
+
+  // 群星守望消弹特效（低图层——位于各子弹之下，刻意很淡）：
+  // 淡黄微光粒沿"机体核心 → 被消子弹"连线铺开 + 原位迸散的小光粒，随寿命渐隐
+  function drawWatchClearFx() {
+    for (const p of watchClearFx) {
+      const t = 1 - p.age / p.life;
+      ctx.globalAlpha = clamp(t, 0, 1) * 0.55;   // 整体压暗：微微特效
+      ctx.fillStyle = '#ffe9a8';
+      ctx.shadowColor = '#ffe9a8';
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 
@@ -1333,6 +1367,14 @@
 
     drawStars();
     drawNebulae();
+    // 主菜单攻击演示：实体层（机体/僚机/弹道/粒子/冲击波等）统一裁剪到演示屏矩形——
+    // 弹道与冲击波到达边框即被截断，呈现"屏幕"边界；背景星空不裁剪，保持画面通透
+    if (state.demo) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(10, DEMO_TOP, CANVAS_W - 20, DEMO_BOTTOM - DEMO_TOP);
+      ctx.clip();
+    }
     drawMissileWarns();
         drawZoneMarks();   // 暴风之眼：区域标记 / 风流 / 风柱
             drawStormVortex();   // 暴风之眼：涡流风旋（技能7）
@@ -1347,6 +1389,7 @@
     drawPlayer();
     drawWingmen();
     drawTrailGhosts();
+    drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
     drawBullets();
     drawMissiles();
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
@@ -1412,6 +1455,80 @@
         ctx.fillStyle = '#6fe3ff';
         ctx.beginPath();
         ctx.arc(shieldBurst.x, shieldBurst.y, r * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // 结晶护盾解除冲击波：样式同量子护盾冲击波（淡粉色），但扩散范围有限——对应其 250px 消弹半径
+    if (crystalBurst.active) {
+      const p = crystalBurst.t / crystalBurst.duration;   // 0→1
+      const ease = 1 - Math.pow(1 - p, 3);                // easeOutCubic：初始快、末尾慢
+      const maxR = 265;                                   // 略大于 250px 消弹半径
+      const r = 36 + ease * (maxR - 36);
+      const alpha = 1 - p;
+      const lw = 9 * (1 - ease) + 2;
+      ctx.save();
+      // 外环：淡粉发光扩散环
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.strokeStyle = '#FFC0CB';
+      ctx.shadowColor = '#FFC0CB';
+      ctx.shadowBlur = 18 * alpha;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(crystalBurst.x, crystalBurst.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // 内层白色细环（层次）
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(1, lw * 0.3);
+      ctx.beginPath();
+      ctx.arc(crystalBurst.x, crystalBurst.y, r * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+      // 起始阶段：内部淡粉填充（快速衰减）
+      if (p < 0.3) {
+        ctx.globalAlpha = (1 - p / 0.3) * 0.22;
+        ctx.fillStyle = '#FFC0CB';
+        ctx.beginPath();
+        ctx.arc(crystalBurst.x, crystalBurst.y, r * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // 最终壁垒免死金色光环：金环自机体扩散，范围有限（对应其 250px 清弹范围），样式同量子护盾冲击波
+    if (bulwarkBurst.active) {
+      const p = bulwarkBurst.t / bulwarkBurst.duration;   // 0→1
+      const ease = 1 - Math.pow(1 - p, 3);
+      const maxR = 265;
+      const r = 30 + ease * (maxR - 30);
+      const alpha = 1 - p;
+      const lw = 10 * (1 - ease) + 2;
+      ctx.save();
+      // 主环：金色发光扩散环
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.strokeStyle = '#ffb545';
+      ctx.shadowColor = '#ffd98a';
+      ctx.shadowBlur = 20 * alpha;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(bulwarkBurst.x, bulwarkBurst.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // 内层白色细环（层次）
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.strokeStyle = '#fff3d6';
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = Math.max(1, lw * 0.28);
+      ctx.beginPath();
+      ctx.arc(bulwarkBurst.x, bulwarkBurst.y, r * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+      // 起始阶段：内部淡金填充（快速衰减）
+      if (p < 0.3) {
+        ctx.globalAlpha = (1 - p / 0.3) * 0.2;
+        ctx.fillStyle = '#ffb545';
+        ctx.beginPath();
+        ctx.arc(bulwarkBurst.x, bulwarkBurst.y, r * 0.9, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -1506,6 +1623,8 @@
       ctx.fillText('暴走', player.x, player.y - 42 - (1.5 - Math.min(player.berserkBanner, 1.5)) * 14);
       ctx.restore();
     }
+
+    if (state.demo) ctx.restore();   // 解除演示屏裁剪
 
     ctx.restore();
 

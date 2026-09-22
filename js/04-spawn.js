@@ -8,7 +8,7 @@
   import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isShipian, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4, currentArmor, diffMods } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
-  import { spawnBoss } from './05-boss.js';
+  import { spawnBoss, spawnStormGhost } from './05-boss.js';
   import { clearMissiles } from './06-enemy.js';
   import { clearEnemyBullets } from './07-player.js';
   import { collectAllItems } from './08-entities.js';
@@ -33,7 +33,7 @@
   }
 
   // 按权重随机选取变体
-  // 幽暮突击艇出现率按关卡调整：Lv10 前为基础权重（12%）的 10%，Lv10 起为 40%；
+  // 幽暮突击艇出现率按关卡调整：Lv11 前为基础权重（12%）的 10%，Lv11 起为 40%；
   // 缩减的概率按比例摊给其余变体，保证幽暮出现率精确达标
   function pickVariant(type) {
     if (type === 'striker') {
@@ -457,8 +457,9 @@
     }
   }
 
-  // 诗篇：BOSS 战期间定时强制的 1类波次（小组 / 长队各 50%）——不走压力系统，场上存怪不影响刷新；
-  // 本波敌人标记 minionDrop：所有道具掉率 ×0.3（结算见 06-enemy rollItemDrops）
+  // BOSS 战期间定时强制的 1类波次（小组 / 长队各 50%，全难度）——不走压力系统，场上存怪不影响刷新；
+  // 本波敌人标记 minionDrop：击杀不加分、不掉水晶（增生侧翼艇分裂的卫护飞船随标记传播同样无奖励）；
+  // 道具掉率 ×0.3 照常（结算见 06-enemy rollItemDrops）
   function spawnBossMinionWave() {
     const n0 = enemies.length;
     (Math.random() < 0.5 ? spawnSideGroup : spawnSideColumn)();
@@ -518,8 +519,8 @@
   const SPECIAL3_SAME_TYPE_LIMIT = new Set(['hanshuang', 'yu4', 'anvil']);
 
   // 特殊3类权重表：随波生成抽取 与「数值与机制图鉴」共用（改数值只需改这里）
-  // wLow = Lv10 以下权重，wHigh = Lv10 起权重；0 = 该阶段不出场
-  // 普通炮艇三色为独立条目：抽取直接决定涂装（紫80 / 赤100 / 金80，Lv10 起各 20）
+  // wLow = Lv11 以下权重，wHigh = Lv11 起权重；0 = 该阶段不出场
+  // 普通炮艇三色为独立条目：抽取直接决定涂装（紫80 / 赤100 / 金80，Lv11 起各 20）
   const SPECIAL3_POOL = [
     { name: '紫晶炮艇',     ency: 'gunship_violet',  type: 'gunship',  fn: () => spawnGunship('violet'),  wLow: 80,  wHigh: 20 },
     { name: '赤红炮艇',     ency: 'gunship_crimson', type: 'gunship',  fn: () => spawnGunship('crimson'), wLow: 100, wHigh: 20 },
@@ -534,11 +535,11 @@
     { name: '法术大师A2',   ency: 'fashiA2',        type: 'fashiA2',   fn: spawnFashiA2,   wLow: 0,  wHigh: 30 },
   ];
 
-  // 特殊3类随波抽取：按阶段权重（Lv10 前：三色炮艇 260（紫80/赤100/金80）/ 先兆者 30；
-  // Lv10 起：炮艇 60（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 20 / 威龙 15 / 焦香螺旋桨 15 / 铁砧 15）。
+  // 特殊3类随波抽取：按阶段权重（Lv11 前：三色炮艇 260（紫80/赤100/金80）/ 先兆者 30；
+  // Lv11 起：炮艇 60（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 20 / 威龙 15 / 焦香螺旋桨 15 / 铁砧 15）。
   // 抽中 寒霜 / 御4 / 铁砧 时，若场上已有同种机体则本次跳过（同屏同种限 1）
   function spawnWaveSpecial3() {
-    const hiLv = levelFlow.level >= 10;
+    const hiLv = levelFlow.level >= 11;
     const pool = SPECIAL3_POOL
       .map(it => ({ it, w: hiLv ? it.wHigh : it.wLow }))
       .filter(x => x.w > 0);
@@ -623,7 +624,7 @@
 
   // 3类：炮艇，上方悬停很久后才缓慢下压
   //   variant：指定涂装（随波生成按三色独立权重 80/100/80 选取，见 SPECIAL3_POOL）；缺省走 makeEnemy 内变体抽取
-  //   （暴鸰不再由炮艇替换产生：仅 Lv10 起随波按 SPECIAL3_POOL 权重登场）
+  //   （暴鸰不再由炮艇替换产生：仅 Lv11 起随波按 SPECIAL3_POOL 权重登场）
   function spawnGunship(variant) {
     makeEnemy('gunship', rand(110, CANVAS_W - 110), -60, {
       hoverY: rand(110, 170),
@@ -632,9 +633,9 @@
     });
   }
 
-  // 2类突击艇替换判定：lv10 前低概率替换为法术大师A1，lv10 后较多出现
+  // 2类突击艇替换判定：lv11 前低概率替换为法术大师A1，lv11 起较多出现
   function rollFashiA1() {
-    const chance = levelFlow.level < 10 ? FASHI_A1.spawnLowLv : FASHI_A1.spawnHighLv;
+    const chance = levelFlow.level < 11 ? FASHI_A1.spawnLowLv : FASHI_A1.spawnHighLv;
     return Math.random() < chance;
   }
 
@@ -678,9 +679,9 @@
     return e;
   }
 
-  // 2类突击艇替换判定：lv10 前极低概率替换为破片，lv10 后正常出现（权重见 PRESSURE_W.popian）
+  // 2类突击艇替换判定：lv11 前极低概率替换为破片，lv11 起正常出现（权重见 PRESSURE_W.popian）
   function rollPopian() {
-    const chance = levelFlow.level < 10 ? POPIAN.spawnLowLv : POPIAN.spawnHighLv;
+    const chance = levelFlow.level < 11 ? POPIAN.spawnLowLv : POPIAN.spawnHighLv;
     return Math.random() < chance;
   }
 
@@ -718,9 +719,9 @@
     return e;
   }
 
-  // 2类突击艇替换判定：lv10 前不出现（spawnLowLv=0），lv10 后以 spawnHighLv 概率替换（权重见 PRESSURE_W.fashiMatrix）
+  // 2类突击艇替换判定：lv11 前不出现（spawnLowLv=0），lv11 起以 spawnHighLv 概率替换（权重见 PRESSURE_W.fashiMatrix）
   function rollFashiMatrix() {
-    const chance = levelFlow.level < 10 ? FASHI_MATRIX.spawnLowLv : FASHI_MATRIX.spawnHighLv;
+    const chance = levelFlow.level < 11 ? FASHI_MATRIX.spawnLowLv : FASHI_MATRIX.spawnHighLv;
     return Math.random() < chance;
   }
 
@@ -781,9 +782,9 @@
     return e;
   }
 
-  // 4类槽位出场：Lv5 起 4类才会出现（由 14-main 的槽位通道门控）；Lv10 起有 slotChance 概率出场法术阵列（其余为主力舰）
+  // 4类槽位出场：Lv5 起 4类才会出现（由 14-main 的槽位通道门控）；Lv11 起有 slotChance 概率出场法术阵列（其余为主力舰）
   function spawnCapitalSlot() {
-    if (levelFlow.level >= 10 && Math.random() < FASHI_ARRAY.slotChance) spawnFashiArray();
+    if (levelFlow.level >= 11 && Math.random() < FASHI_ARRAY.slotChance) spawnFashiArray();
     else spawnCapital();
   }
 
@@ -1084,7 +1085,17 @@
     if (ch.kind === 'boss') {
       // 复用警报演出流程生成 BOSS（与旧 BOSS 试炼一致）
       if (bossFlow.stage === 'wait') {
-        if (enemies.length === 0) { bossFlow.stage = 'warn'; bossFlow.warnT = 0; collectAllItems(); clearEnemyBullets(); clearMissiles(); startAlarm(); }
+        if (enemies.length === 0) {
+          collectAllItems(); clearEnemyBullets(); clearMissiles();
+          if (ch.bossId === 'storm2') {
+            // 风暴编织者：与正常流程一致（无警报）——先放暴风之眼残影轰然消散，二阶段登场动画接管
+            spawnStormGhost();
+            spawnBoss('storm2');
+            bossFlow.stage = 'fight';
+          } else {
+            bossFlow.stage = 'warn'; bossFlow.warnT = 0; startAlarm();
+          }
+        }
       } else if (bossFlow.stage === 'warn') {
         bossFlow.warnT += dt;
         // 旧日之歌：提前 3s 生成（黑洞在警报背后形成）

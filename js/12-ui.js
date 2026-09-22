@@ -1,15 +1,15 @@
 ﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(9 名)
+  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(10 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { ARMOR_SKILLS, ARMORS, BERSERK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPlane, currentWingman, setArmor, setDifficulty, setPlane, setWingman } from './01-config.js';
-  import { DPR, armorGrid, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, clamp, crystals, cubeHitFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, menuActions, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
-  import { stopAlarm } from './03-audio.js';
+  import { ARMOR_SKILLS, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPlane, currentWingman, diffMods, setArmor, setDifficulty, setPlane, setWingman } from './01-config.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
+  import { holdBGM, stopAlarm } from './03-audio.js';
   import { delayedShots, initWingmen } from './07-player.js';
-  import { bombBurst, shieldBurst } from './08-entities.js';
+  import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
   import { openEncyclopedia } from './13-encyclopedia.js';
 
@@ -17,6 +17,8 @@
 
   // ---------- HUD ----------
   function updateHUD() {
+    // 主菜单打开时给舞台挂 menu-open 类：CSS 隐藏战斗 HUD（菜单背景透明后会透出画布）
+    menuScreen.parentElement.classList.toggle('menu-open', !menuScreen.classList.contains('hidden'));
     const maxHp = player.maxHp || PLAYER_CFG.maxHp;
     const ratio = player.hp / maxHp;
     hpFill.style.width = (ratio * 100) + '%';
@@ -26,7 +28,7 @@
     // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
     scoreText.parentElement.style.display = state.challenge ? 'none' : '';
     scoreText.textContent = state.score;
-    // 右上角爆弹图标：图标数量代表爆弹数（上限 3）；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
+    // 右上角爆弹图标：图标数量代表爆弹数（上限随难度，诗篇 2）；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
     if (state.challenge) {
       bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>';
     } else {
@@ -53,7 +55,7 @@
     const douzhiOn = state.hasteT > 0;
     douzhiBar.classList.toggle('active', douzhiOn);
     douzhiFill.style.width = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
-    // 装甲技能圆形计数表（右下角，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
+    // 装甲技能圆形计数表（左下角、生命值上方，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
     const skillDef = ARMOR_SKILLS[currentArmor.id];
     skillGauge.classList.toggle('hidden', !skillDef || state.mode !== 'playing');
     if (skillDef) {
@@ -67,7 +69,8 @@
   function resetGame(autoStart = false, opts = {}) {
     state.score = 0;
     levelFlow.level = 1;
-    state.bombs = 1;
+    const bombStart = diffMods().bombStart;
+    state.bombs = bombStart != null ? bombStart : 1;   // 诗篇：初始不带高能爆弹（mods.bombStart）
     state.lives = PLAYER_CFG.lives;
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
@@ -87,10 +90,13 @@
     levelFlow.bossMinionT = 0;           // 诗篇：BOSS 战 1类强制波次计时归零
     levelFlow.bossMinionNext = rand(6, 12);
     state.orangeBombUsed = false;
+    state.hpKitLastT = -99;   // 诗篇加血节流计时归位（开局不受冷却限制）
+    state.hpKitBanked = 0;    // 诗篇加血节流预触发计数清零
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
     state.armorSkillGauge = 0;    // 装甲技能量表（七日澜心）重开归零
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
+    player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
     player.chixinBurnT = 0;       // 炽心：灼烧计时归零
     player.regenT = 0;            // 洄：回血计时归零
     bossFlow.timer = 0;
@@ -111,10 +117,18 @@
     const bossChallenge = state.challenge && state.challenge.kind === 'boss';
     bossFlow.pending = (bossChallenge ? state.challenge.bossId : null) || state.testBoss || 'song';
     if (bossChallenge || state.testBoss) bossFlow.stage = 'wait';   // 跳过等待，清场后进警报（直接 wait→warn，避免开场多打一发）
+    // 风暴编织者挑战 / 试炼：无警报直接召唤——BGM 延后 0.8s 起播（结算曲淡出 + 登场雷暴衔接，不再立刻重播）
+    if ((bossChallenge && state.challenge.bossId === 'storm2') || state.testBoss === 'storm2') holdBGM(0.8);
     state.flash = 0;
     state.hurt = 0;
+    state.demo = false;   // 离开/进入任何局：关闭主菜单攻击演示标记（由 updateDemo 在 idle 重新置位）
     shieldBurst.active = false;
     bombBurst.active = false;
+    berserkBurst.active = false;   // 暴走冲击波随重开熄灭（主菜单演示中途开局时可能仍处激活态）
+    crystalBurst.active = false;   // 结晶护盾解除冲击波随重开熄灭
+    bulwarkBurst.active = false;   // 最终壁垒免死金环随重开熄灭
+    watchClearFx.length = 0;       // 群星守望消弹光粒随重开清空
+    armorGlyphFx.length = 0;       // 装甲触发图标演出随重开清空
     stopAlarm();
 
     enemies.length = 0;
@@ -155,6 +169,7 @@
     player.hitCount = 0;
     player.hitFxT = 0;
     player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
+    player.berserkSpread = 0;   // 暴走刃帆变形进度归零（否则上一局暴走中返回主界面，主菜单演示会残留金光/光点）
     // 磁力装甲：开局自带量子护盾（仅开局，重生不带）
     player.shield = (currentArmor.startShield || 0);
     initWingmen();
@@ -163,25 +178,19 @@
       state.mode = 'playing';
       overlay.classList.add('hidden');
       menuScreen.classList.add('hidden');   // 进入战斗：隐藏主菜单页
-      titleBar.classList.remove('hidden');
+      // 顶部标题栏（大无垠战机 + 英文名）开始游戏后同样隐藏：标题只保留在主菜单页
+      titleBar.classList.add('hidden');
     } else {
       state.mode = 'idle';
       menuScreen.classList.remove('hidden');   // 主菜单独立页面（idle 态不再使用遮罩）
       overlay.classList.add('hidden');
       titleBar.classList.add('hidden');   // 菜单内已有大标题，隐藏页面顶部标题栏（visibility 保留占位）
+      closeAllPanels();   // 回到主菜单：收起上次留下的展开面板
+      refreshLoadout();   // 装备框摘要与当前配置同步
       bossTestRow.style.display = 'none';   // BOSS 试炼已移入怪物图鉴
-      // 怪物图鉴入口按钮（插入主菜单操作区）
-      let encyBtn = document.getElementById('encyEntryBtn');
-      if (!encyBtn) {
-        const btn = document.createElement('button');
-        btn.id = 'encyEntryBtn';
-        btn.className = 'ency-entry-btn';
-        btn.textContent = '怪物图鉴';
-        btn.addEventListener('click', openEncyclopedia);
-        menuActions.appendChild(btn);
-      } else {
-        encyBtn.style.display = '';
-      }
+      // 怪物图鉴入口按钮：现为主菜单静态元素（index.html），此处仅恢复显示；点击绑定见 initMenuPanels
+      const encyBtn = document.getElementById('encyEntryBtn');
+      if (encyBtn) encyBtn.style.display = '';
     }
     syncInfoEntryBtn();
   }
@@ -200,9 +209,10 @@
     overlay.classList.remove('hidden');
   }
 
-  // ---------- 难度选择页面 ----------
+  // ---------- 难度选择（主菜单底部：开始按钮上方的紧凑胶囊组） ----------
   // 三档难度（具象 / 真我 / 诗篇）均已实装，由 DIFFICULTIES 注册表驱动（数值/行为差异见 01-config 各自 mods
   // 与 SONG_SHIP / STORM_SHIP）；wip 难度（当前无）展示但不可选（点击抖动拒绝），机制保留供未来扩展。
+  // 紧凑样式只展示名称（完整描述放 title 悬停提示），完整卡片文案保留在注册表中。
   function buildDiffCards() {
     diffGrid.innerHTML = '';
     for (const id in DIFFICULTIES) {
@@ -210,13 +220,8 @@
       const card = document.createElement('div');
       card.className = 'diff-card' + (d.id === currentDifficulty.id ? ' selected' : '') + (d.wip ? ' locked' : '');
       card.dataset.diff = d.id;
-      const name = document.createElement('div');
-      name.className = 'plane-card-name';
-      name.textContent = d.name;
-      const desc = document.createElement('div');
-      desc.className = 'plane-card-desc';
-      desc.innerHTML = d.desc;
-      card.append(name, desc);
+      card.textContent = d.name;
+      card.title = d.desc.replace(/<[^>]*>/g, ' ').trim();   // 去标签后作悬停提示
       if (d.wip) {
         const badge = document.createElement('span');
         badge.className = 'diff-badge';
@@ -238,8 +243,132 @@
     }
   }
 
+  // ---------- 装备四框 ↔ 展开面板（战机 / 装甲 / 副武器占位 / 僚机） ----------
+  // 点击装备框展开对应选择面板（覆盖演示屏区域），再点同框或 ✕ 收起；单开互斥。
+  // 框内第二行实时显示当前选中项名称（refreshLoadout，选择变化 / 回主菜单时刷新）。
+  function closeAllPanels() {
+    document.querySelectorAll('.loadout-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.loadout-box, .pilot-diamond').forEach(b => b.classList.remove('open'));
+  }
+
+  // 框内当前配置摘要 + 当前形象缩略图（副武器/驾驶员未实装：静态占位，不在刷新范围）
+  function refreshLoadout() {
+    const planeVal = document.getElementById('loadoutPlaneVal');
+    const armorVal = document.getElementById('loadoutArmorVal');
+    const wingmanVal = document.getElementById('loadoutWingmanVal');
+    if (planeVal) planeVal.textContent = currentPlane.name;
+    if (armorVal) armorVal.textContent = currentArmor.name;
+    // 装甲名正下方的半透明图标（绝对定位，不挤动文字）：随当前装甲同步图案与颜色
+    const armorGlyph = document.getElementById('loadoutArmorGlyph');
+    if (armorGlyph) {
+      armorGlyph.textContent = currentArmor.glyph;
+      armorGlyph.style.color = currentArmor.color;
+    }
+    if (wingmanVal) wingmanVal.textContent = currentWingman.empty ? '无' : currentWingman.name;
+    // 战机形象（同选机卡片画法：暴走形态静态帧；群星之杀暴走巨帆更大，额外缩小）
+    const pc = document.getElementById('loadoutPlaneCvs');
+    if (pc) {
+      pc.width = 92 * DPR; pc.height = 76 * DPR;   // 重设尺寸即清空画布
+      const c = pc.getContext('2d');
+      c.scale(DPR, DPR);
+      c.translate(46, 38);
+      let s = currentPlane.id === 'starslayer' ? 0.6 : 0.9;
+      if (currentPlane.id === 'chaos') s *= 0.9;   // 混乱将至：装备框预览图缩小 10%（选机卡片同步）
+      c.scale(s, s);
+      paintShip(c, 1, currentPlane, 1, true);
+    }
+    // 僚机形象（与选僚机卡片同一画法）
+    const wc = document.getElementById('loadoutWingmanCvs');
+    if (wc) {
+      wc.width = 56 * DPR; wc.height = 60 * DPR;
+      const c = wc.getContext('2d');
+      c.scale(DPR, DPR);
+      paintWingmanThumb(c, currentWingman);
+    }
+  }
+
+  function initMenuPanels() {
+    document.querySelectorAll('[data-panel]').forEach(box => {
+      box.addEventListener('click', () => {
+        const panel = document.getElementById(box.dataset.panel);
+        if (!panel) return;
+        const wasOpen = !panel.classList.contains('hidden');
+        closeAllPanels();
+        if (!wasOpen) {
+          panel.classList.remove('hidden');
+          box.classList.add('open');
+        }
+      });
+    });
+    document.querySelectorAll('.panel-close').forEach(btn => {
+      btn.addEventListener('click', () => closeAllPanels());
+    });
+    // 怪物图鉴入口（静态按钮）：一次性绑定点击（resetGame 仅做显隐，避免重复绑定监听）
+    const encyBtn = document.getElementById('encyEntryBtn');
+    if (encyBtn) encyBtn.addEventListener('click', openEncyclopedia);
+    // 操作提示（左上角 ? 按钮）：点击展开 / 收起按键说明卡片；✕ 仅收起
+    const helpBtn = document.getElementById('helpEntryBtn');
+    const helpPanel = document.getElementById('helpPanel');
+    if (helpBtn && helpPanel) {
+      helpBtn.addEventListener('click', () => helpPanel.classList.toggle('hidden'));
+      const helpClose = document.getElementById('helpClose');
+      if (helpClose) helpClose.addEventListener('click', () => helpPanel.classList.add('hidden'));
+    }
+    refreshLoadout();
+  }
+
   // ---------- 选机页面 ----------
     // ---------- 选僚机页面 ----------
+  // 僚机缩略图绘制（选僚机卡片与主菜单装备框共用）：调用前 c 已按 DPR 缩放、画布 56×60 逻辑尺寸
+  function paintWingmanThumb(c, wm) {
+    c.translate(31, 30);   // 两僚机舱体中心统一对齐 (31,30)——群星允诺舱体在本地原点，直落该点；
+    c.scale(-1, 1);   // 左右反转预览图                       // 守愿者舱体在本地 (side*3,-3)，由分支内 translate 修正。
+    // 整体较画布中心右移 3px：尾翼/盾弧镜像后甩向左侧，视觉重心偏左，微调回正
+    // 暴走星焰尾（静态帧）：白紫亮焰，较常规更长更亮（与游戏内 wkBerserk 焰一致）
+    const isBulwark = wm.weapon && wm.weapon.kind === 'fan';
+    if (isBulwark) {
+      c.scale(0.82 * BULWARK.scale, 0.82 * BULWARK.scale);   // 缩小以容纳前方装甲板（×守愿者整体尺寸系数）
+      c.translate(-3, 3);   // 机体中心修正：舱体本地 (side*3,-3) 经本位移 + 镜像 + 缩放后恰落画布中心（与群星允诺舱体同心）
+      // 冷蓝暴走尾焰（静态帧）
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
+      fg.addColorStop(0, 'rgba(234, 248, 255, 0.95)');
+      fg.addColorStop(0.5, 'rgba(150, 210, 255, 0.65)');
+      fg.addColorStop(1, 'rgba(60, 140, 240, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(0, 8);   // 尾焰对齐本体中线（本体偏移 side*3=3，与游戏内 drawWingmen 一致）
+      c.lineTo(3, 8 + 15 + 5);
+      c.lineTo(6, 8);
+      c.closePath();
+      c.fill();
+      paintWingmanBulwark(c, 1, true, 0.35, true);   // 重甲堡垒机体（暴走过热状态，静态帧；still 冻结相位保证预览确定性）
+    } else {
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
+      fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
+      fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
+      fg.addColorStop(1, 'rgba(118, 88, 240, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(-3, 8);
+      c.lineTo(0, 8 + 15 + 5);
+      c.lineTo(3, 8);
+      c.closePath();
+      c.fill();
+      paintWingman(c, 1, true, true);   // 与游戏内僚机同一造型（暴走：含机翼延伸三角；still 冻结相位）
+      // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（星核过载）+ 翼尖微光
+      const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+      aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
+      aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
+      c.fillStyle = aura;
+      c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+      c.save();
+      c.globalAlpha = 0.55; c.shadowColor = '#b49bff'; c.shadowBlur = 12;
+      c.fillStyle = '#cbb8ff';
+      c.beginPath(); c.arc(12.3, 11.4, 2.2, 0, Math.PI * 2); c.fill();
+      c.restore();
+    }
+  }
+
   function buildWingmanCards() {
     wingmanGrid.innerHTML = '';
     for (const id in WINGMEN_CFG) {
@@ -254,51 +383,7 @@
         cvs.style.width = '56px'; cvs.style.height = '60px';
         const c = cvs.getContext('2d');
         c.scale(DPR, DPR);
-        c.translate(31, 34);   // 补偿本体偏移(side*3,-3)在镜像后的左上偏移
-        c.scale(-1, 1);   // 左右反转预览图
-        // 暴走星焰尾（静态帧）：白紫亮焰，较常规更长更亮（与游戏内 wkBerserk 焰一致）
-        const isBulwark = wm.weapon && wm.weapon.kind === 'fan';
-        if (isBulwark) {
-          c.scale(0.82, 0.82);   // 缩小以容纳前方装甲板
-          c.translate(-10, 0);   // 居中修正：盾弧向外侧扫 110°（镜像后甩向左边），整体 bbox 左偏约 8px，回拉到画布中心
-          // 冷蓝暴走尾焰（静态帧）
-          const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
-          fg.addColorStop(0, 'rgba(234, 248, 255, 0.95)');
-          fg.addColorStop(0.5, 'rgba(150, 210, 255, 0.65)');
-          fg.addColorStop(1, 'rgba(60, 140, 240, 0)');
-          c.fillStyle = fg;
-          c.beginPath();
-          c.moveTo(0, 8);   // 尾焰对齐本体中线（本体偏移 side*3=3，与游戏内 drawWingmen 一致）
-          c.lineTo(3, 8 + 15 + 5);
-          c.lineTo(6, 8);
-          c.closePath();
-          c.fill();
-          paintWingmanBulwark(c, 1, true, 0.35);   // 重甲堡垒机体（暴走过热状态，静态帧）
-        } else {
-          const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
-          fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
-          fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
-          fg.addColorStop(1, 'rgba(118, 88, 240, 0)');
-          c.fillStyle = fg;
-          c.beginPath();
-          c.moveTo(-3, 8);
-          c.lineTo(0, 8 + 15 + 5);
-          c.lineTo(3, 8);
-          c.closePath();
-          c.fill();
-          paintWingman(c, 1, true);   // 与游戏内僚机同一造型（暴走：含机翼延伸三角）
-          // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（星核过载）+ 翼尖微光
-          const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
-          aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
-          aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
-          c.fillStyle = aura;
-          c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
-          c.save();
-          c.globalAlpha = 0.55; c.shadowColor = '#b49bff'; c.shadowBlur = 12;
-          c.fillStyle = '#cbb8ff';
-          c.beginPath(); c.arc(12.3, 11.4, 2.2, 0, Math.PI * 2); c.fill();
-          c.restore();
-        }
+        paintWingmanThumb(c, wm);
         card.appendChild(cvs);
       } else {
         card.classList.add('wingman-none');
@@ -315,6 +400,7 @@
         wingmanGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.wingman === wm.id));
         initWingmen();   // 同步重建僚机，避免 idle 预览与开局位置不一致（壁垒前侧 vs 群星后侧）
+        refreshLoadout();   // 装备框摘要同步
       });
       wingmanGrid.appendChild(card);
     }
@@ -335,7 +421,8 @@
       const c = cvs.getContext('2d');
       c.scale(DPR, DPR);
       c.translate(46, 38);
-      const cardScale = p.id === 'starslayer' ? 0.6 : 0.9;    // 群星之杀暴走巨帆更大：缩小以完整入图
+      let cardScale = p.id === 'starslayer' ? 0.6 : 0.9;    // 群星之杀暴走巨帆更大：缩小以完整入图
+      if (p.id === 'chaos') cardScale *= 0.9;   // 混乱将至：选机卡片预览图缩小 10%（主页面装备框同步）
       c.scale(cardScale, cardScale);
       paintShip(c, 1, p, 1, true);   // 概览图使用暴走形态（berserkT=1，still=静态不画动态光效）；传入当前卡片机型 p
       // 暴走翼尖微光（静态帧）——仅 chaos；群星之杀的侧角光已在 paintStarslayer 内绘制
@@ -344,7 +431,7 @@
         c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
         c.fillStyle = '#ff69b4';
         for (const sx of [-1, 1]) {
-          c.beginPath(); c.arc(sx * 22 * 1.2, 10, 2.5, 0, Math.PI * 2); c.fill();
+          c.beginPath(); c.arc(sx * 22 * 1.2 * (p.drawScale || 1), 10, 2.5, 0, Math.PI * 2); c.fill();
         }
         c.restore();
       }
@@ -361,6 +448,7 @@
         setPlane(p);
         planeGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.plane === p.id));
+        refreshLoadout();   // 装备框摘要同步
       });
       planeGrid.appendChild(card);
     }
@@ -372,6 +460,7 @@
       bossTestRow.style.display = 'none';
       const encyBtn = document.getElementById('encyEntryBtn');
       if (encyBtn) encyBtn.style.display = 'none';
+      resultAchieve.classList.add('hidden');   // 暂停页不显示「获得成就」区（仅胜利 / 失败结算页显示）
       showOverlay('已暂停', '按 <kbd>P</kbd> 继续游戏', '继续游戏');
       retrialBtn.classList.add('hidden');   // 暂停菜单不显示胜利页专属按钮
       pauseHomeBtn.classList.remove('hidden');
@@ -391,12 +480,13 @@
     state.mode = 'gameover';
     const encyBtn = document.getElementById('encyEntryBtn');
     if (encyBtn) encyBtn.style.display = 'none';
+    resultAchieve.classList.remove('hidden');   // 失败结算页同样显示「获得成就」区
     showOverlay(
       '战机陨落',
-      `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
+      `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
        关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b><br />
        抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b><br />
-       剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b><br /><br />
+       剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b></span><br /><br />
        按 <kbd>R</kbd> 或点击下方按钮再次出击`,
       '再来一局'
     );
@@ -422,12 +512,13 @@
       name.textContent = a.name;
       const desc = document.createElement('div');
       desc.className = 'armor-card-desc';
-      desc.innerHTML = a.desc;
+      desc.innerHTML = a.brief || a.desc;   // 卡片用简短文案（brief）；详细数值见数值与机制图鉴「护甲」页
       card.append(glyph, name, desc);
       card.addEventListener('click', () => {
         setArmor(a);
         armorGrid.querySelectorAll('.armor-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.armor === a.id));
+        refreshLoadout();   // 装备框摘要同步
       });
       armorGrid.appendChild(card);
     }
@@ -435,5 +526,5 @@
 
   export {
     updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
-    buildWingmanCards, buildPlaneCards, togglePause, endGame,
+    buildWingmanCards, buildPlaneCards, initMenuPanels, togglePause, endGame,
   };

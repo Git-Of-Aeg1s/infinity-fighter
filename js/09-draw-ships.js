@@ -3,8 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(3 名)
   //
-  import { ANVIL, BAOLING, BULWARK, CANVAS_H, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, STARSLAYER, YU4, currentPlane, currentWingman } from './01-config.js';
-  import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
+  import { ANVIL, BAOLING, BULWARK, CANVAS_H, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, STARSLAYER, YU4, currentPlane, currentWingman } from './01-config.js';
+  import { armorGlyphFx, blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
 
 
 
@@ -17,6 +17,7 @@
     for (const w of wingmen) {
       ctx.save();
       ctx.translate(w.x, w.y);
+      if (isBulwark) ctx.scale(BULWARK.scale, BULWARK.scale);   // 守愿者整体（尾焰/机体/盾板/辉光/脉冲环）统一尺寸系数
       // 星焰尾：三角焰体，多频正弦叠加飘动模拟星焰；暴走时更长更亮（守愿者过载焰最盛；壁垒常态焰 +60%）
       const fl = (wkBerserk ? (isBulwark ? 17 : 9) : isBulwark ? 9.6 : 6) + Math.sin(w.flameT * 26) * 2.2 + Math.sin(w.flameT * 41) * 1.1;
       const fg = ctx.createLinearGradient(0, 8, 0, 8 + fl + (isBulwark && wkBerserk ? 8 : 5));
@@ -126,7 +127,7 @@
   // berserk=true 时机体展开变形（翼展加宽、尾翼延伸）
     // 僚机造型（随 side 镜像：尾翼只在外侧）：飞行武器/悬浮炮台——朝上双叉炮口 + 装甲弹体 + 大型后掠双尾翼 + 星核；主绘制与选僚机缩略图共用
     // berserk=true：追加外侧纵向两片透明白紫三角机翼延伸（上小下大，顶角 120°、一腰竖直）
-  function paintWingman(g, side = 1, berserk = false) {
+  function paintWingman(g, side = 1, berserk = false, still = false) {
     // 飞行武器（悬浮炮台/能量弹舱）：朝上双叉炮口 + 棱角装甲弹体 + 大型后掠双尾翼(一边两片、只在外侧) + 中央星核 + 底部推进环
     // —— 刻意去除机翼/座舱/尾翼等飞机语言，读作“一门会悬浮飞行的炮”
     // side：僚机所处侧（-1=左僚机→尾翼全在左；+1=右僚机→尾翼全在右；缩略图默认 +1）
@@ -183,7 +184,7 @@
     // 带呼吸动画：透明度与微光随时间脉动（与机体辉光同频），呈现能量流动感
     if (berserk) {
       g.save();
-      const breathe = Math.sin(state.time * 6);
+      const breathe = still ? 0.4 : Math.sin(state.time * 6);   // still：静态帧冻结相位（预览图确定性）
       g.fillStyle = `rgba(226, 218, 255, ${(0.26 + breathe * 0.09).toFixed(3)})`;
       g.strokeStyle = `rgba(238, 232, 255, ${(0.35 + breathe * 0.12).toFixed(3)})`;
       g.lineWidth = 0.8;
@@ -289,7 +290,7 @@
   //   正面是一块沿弧线排列的厚重钢板装甲（读作铁壁而非能量盾），可见板厚度、铆钉、装甲缝、加强筋
   //   盾板外缘半径 = BULWARK.radius = 挡弹折线半径（视觉与碰撞一致）
   //   side：-1=左 / +1=右；flash(0~1)：命中时金属亮闪；berserk：暴走过热
-  function paintWingmanBulwark(g, side = 1, berserk = false, flash = 0) {
+  function paintWingmanBulwark(g, side = 1, berserk = false, flash = 0, still = false) {
     const R = BULWARK.radius;                 // 外缘半径（= 挡弹碰撞线）
     const Ri = 10;                            // 内缘半径（装甲板内表面，与本体相连）
     const thick = 4.5;                        // 可见板厚（断面深度）
@@ -298,9 +299,9 @@
     const a1 = up + side * (BULWARK.arcTo * Math.PI / 180);
     const ccw = side < 0;
     const segs = 5;                           // 装甲板分段数（读作独立钢板拼接）
+    const T = still ? 1.7 : (typeof state !== 'undefined' && state.time) || 0;   // still：静态帧冻结相位（预览图确定性）
 
     // ---- (1) 装甲板主体：沿弧线的厚重钢板，深蓝→天蓝渐变 + 板间缝隙 ----
-    const T = (typeof state !== 'undefined' && state.time) || 0;
     g.save();
     // 底板（整体弧形，作为基底填色）
     const plateGrd = g.createRadialGradient(0, 0, Ri, 0, 0, R);
@@ -495,10 +496,10 @@
   // 暴走（berserkT 0→1）：双刃顶点插值形变为巨大橙金帆翼（紫骨架），结束时收回。
   // spreadT 0→1：双刃沿连接臂向外滑出至全展位（开局展开动画 / 标题页预览=1）。
   function paintStarslayer(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false) {
-    const T = (typeof state !== 'undefined' && state.time) || 0;
+    const T = still ? 2.2 : (typeof state !== 'undefined' && state.time) || 0;   // still：静态帧冻结相位（预览图确定性）
     const sp = clamp(spreadT, 0, 1);   // 0=双刃收拢 1=全展开
     const slide = (1 - sp) * 4;        // 收拢位：双刃向机身平移 4
-    const atk = clamp((player.bladeFlashT || 0) / 0.45, 0, 1);   // 攻击闪光强度 0~1
+    const atk = still ? 0 : clamp((player.bladeFlashT || 0) / 0.45, 0, 1);   // 攻击闪光强度 0~1（预览冻结为 0，避免抓到攻击帧）
     let e = clamp(berserkT, 0, 1);     // 暴走变形进度
     e = e * e * (3 - 2 * e);           // smoothstep 缓动
     const lerp = (a, b) => a + (b - a) * e;
@@ -920,6 +921,24 @@
 
   function paintShip(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false) {
     if (plane && plane.id === 'starslayer') { paintStarslayer(g, spreadT, plane, berserkT, still); return; }
+    const DS = (plane && plane.drawScale) || 1;   // 机体整体绘制缩放（混乱将至 ×1.15；座舱核心逆向补偿保持原尺寸）
+    g.save();
+    if (DS !== 1) g.scale(DS, DS);
+    // 尾焰（仅静态预览 still：游戏内由 drawPlayer 绘制动画尾焰，这里补画否则预览图缺尾焰）
+    // 形状 / 配色与 drawPlayer 的 chaos 尾焰一致（粉 → 橙渐变），固定长度静帧
+    if (still) {
+      const pfg = g.createLinearGradient(0, 14, 0, 14 + 9 + 12);
+      pfg.addColorStop(0, 'rgba(255, 192, 203, 0.95)');
+      pfg.addColorStop(0.5, 'rgba(255, 150, 190, 0.6)');
+      pfg.addColorStop(1, 'rgba(255, 90, 40, 0)');
+      g.fillStyle = pfg;
+      g.beginPath();
+      g.moveTo(-5, 14);
+      g.lineTo(0, 14 + 9 + 12);
+      g.lineTo(5, 14);
+      g.closePath();
+      g.fill();
+    }
     const wingSpread = 1 + spreadT * 0.2;   // 暴走时翼展加宽 20%（渐进）
     const finExtend = 1 + spreadT * 0.25;   // 暴走时尾翼延伸 25%（渐进）
 
@@ -1058,8 +1077,9 @@
     }
 
     // 底部两个粉色尾翼三角（稍高、伸出机身；蓝色快速过渡到粉色，粉色区域更大）
+    //   整体上移 3px（y: 6/23/15 → 3/20/12）
     for (const sx of [-1, 1]) {
-      const finGrd = g.createLinearGradient(sx * 3, 6, sx * 11 * finExtend, 23 * finExtend);
+      const finGrd = g.createLinearGradient(sx * 3, 3, sx * 11 * finExtend, 20 * finExtend);
       finGrd.addColorStop(0, '#57d4ff');      // 靠机身：蓝
       finGrd.addColorStop(0.2, '#FFC0CB');    // 更早过渡到粉色
       finGrd.addColorStop(1, '#ff8fa8');      // 尖端：深粉（更有层次）
@@ -1067,9 +1087,9 @@
       g.strokeStyle = 'rgba(255, 192, 203, 0.5)';
       g.lineWidth = 0.7;
       g.beginPath();
-      g.moveTo(sx * 3, 6);
-      g.lineTo(sx * 11 * finExtend, 23 * finExtend);
-      g.lineTo(sx * 3, 15);
+      g.moveTo(sx * 3, 3);
+      g.lineTo(sx * 11 * finExtend, 20 * finExtend);
+      g.lineTo(sx * 3, 12);
       g.closePath();
       g.fill();
       g.stroke();
@@ -1092,7 +1112,9 @@
     g.closePath();
     g.fill();
 
-    // 座舱：白色核心 + 微黑外圈
+    // 座舱：白色核心 + 微黑外圈（核心不随机体放大：逆向缩放补偿，保持原尺寸与原位置）
+    g.save();
+    if (DS !== 1) g.scale(1 / DS, 1 / DS);
     const cockGrd = g.createRadialGradient(0, -7, 0.5, 0, -7, 5);
     cockGrd.addColorStop(0, '#ffffff');
     cockGrd.addColorStop(0.45, '#ffffff');
@@ -1111,6 +1133,7 @@
     g.beginPath();
     g.ellipse(-0.8, -9, 0.9, 1.4, -0.2, 0, Math.PI * 2);
     g.fill();
+    g.restore();
 
     // 粉色机身装饰线（两侧对称，从机身向翼尖延伸）
     g.strokeStyle = 'rgba(255, 192, 203, 0.6)';
@@ -1134,65 +1157,68 @@
       g.fill();
     }
 
-    // 暴走时大型展开翼片：从机翼外缘向外展开的三角形能量片（左右各 4 片）
-    // spreadT 控制展开程度：0=完全收起，1=完全展开
-    if (spreadT > 0.01) {
-      const alpha = spreadT * (0.7 + Math.sin(state.time * 10) * 0.1);
+    // ===== 前翼三角片（机翼上方左右各 2 片，共 4 片）：常态即存在 =====
+    // 常态：小型前掠三角贴于机翼上方（解决常态机体过素）；暴走：随 spreadT 平滑放大、尖端外扫，
+    // 形成醒目的“张机翼”轮廓（全开尺寸较旧版整体 ×0.8 缩小）
+    // 动画：尖端位置 / 透明度均随 spreadT（机翼展开进度 0~1）插值，与机翼展开动画同步
+    {
+      const pulse = still ? 0.8 : 0.7 + Math.sin(state.time * 10) * 0.1;   // still：静态帧冻结（预览图确定性）
+      const alpha = pulse * (0.72 + 0.28 * spreadT);   // 常态即高可见（悬于翼上暗色空域），暴走满强度
       g.shadowColor = '#ff69b4';
-      g.shadowBlur = 6 * spreadT;
+      g.shadowBlur = 3 + 3 * spreadT;
       for (const sx of [-1, 1]) {
-        // 翼片 1（最外）：从翼尖向外上方展开（大三角）
-        const tipX1 = sx * 22 * wingSpread;
-        const extX1 = tipX1 + sx * 16 * spreadT;
-        g.fillStyle = `rgba(255, 80, 160, ${(alpha * 0.8).toFixed(3)})`;
-        g.beginPath();
-        g.moveTo(tipX1, 4);
-        g.lineTo(extX1, 2 - 4 * spreadT);
-        g.lineTo(tipX1, 12);
-        g.closePath();
-        g.fill();
+        // 暴走时大型展开翼片：从机翼外缘向外展开的三角形能量片（左右各 4 片，仅暴走出现）
+        if (spreadT > 0.01) {
+          // 翼片 1（最外）：从翼尖向外上方展开（大三角）
+          const tipX1 = sx * 22 * wingSpread;
+          const extX1 = tipX1 + sx * 16 * spreadT;
+          g.fillStyle = `rgba(255, 80, 160, ${(alpha * 0.8).toFixed(3)})`;
+          g.beginPath();
+          g.moveTo(tipX1, 4);
+          g.lineTo(extX1, 2 - 4 * spreadT);
+          g.lineTo(tipX1, 12);
+          g.closePath();
+          g.fill();
 
-        // 翼片 2（中外）：从翼中外侧向外展开
-        const tipX2 = sx * 18 * wingSpread;
-        const extX2 = tipX2 + sx * 13 * spreadT;
-        g.fillStyle = `rgba(255, 110, 180, ${(alpha * 0.7).toFixed(3)})`;
-        g.beginPath();
-        g.moveTo(tipX2, 6);
-        g.lineTo(extX2, 10 + 2 * spreadT);
-        g.lineTo(tipX2, 14);
-        g.closePath();
-        g.fill();
+          // 翼片 2（中外）：从翼中外侧向外展开
+          const tipX2 = sx * 18 * wingSpread;
+          const extX2 = tipX2 + sx * 13 * spreadT;
+          g.fillStyle = `rgba(255, 110, 180, ${(alpha * 0.7).toFixed(3)})`;
+          g.beginPath();
+          g.moveTo(tipX2, 6);
+          g.lineTo(extX2, 10 + 2 * spreadT);
+          g.lineTo(tipX2, 14);
+          g.closePath();
+          g.fill();
 
-        // 翼片 3（中内）：从翼中部向外展开
-        const tipX3 = sx * 14 * wingSpread;
-        const extX3 = tipX3 + sx * 11 * spreadT;
-        g.fillStyle = `rgba(255, 140, 200, ${(alpha * 0.65).toFixed(3)})`;
-        g.beginPath();
-        g.moveTo(tipX3, 7);
-        g.lineTo(extX3, 13 + 3 * spreadT);
-        g.lineTo(tipX3, 16);
-        g.closePath();
-        g.fill();
+          // 翼片 3（中内）：从翼中部向外展开
+          const tipX3 = sx * 14 * wingSpread;
+          const extX3 = tipX3 + sx * 11 * spreadT;
+          g.fillStyle = `rgba(255, 140, 200, ${(alpha * 0.65).toFixed(3)})`;
+          g.beginPath();
+          g.moveTo(tipX3, 7);
+          g.lineTo(extX3, 13 + 3 * spreadT);
+          g.lineTo(tipX3, 16);
+          g.closePath();
+          g.fill();
 
-        // 翼片 4（最内）：从翼根外侧向外下方展开（稍小三角）
-        const tipX4 = sx * 10 * wingSpread;
-        const extX4 = tipX4 + sx * 9 * spreadT;
-        g.fillStyle = `rgba(255, 160, 210, ${(alpha * 0.55).toFixed(3)})`;
-        g.beginPath();
-        g.moveTo(tipX4, 8);
-        g.lineTo(extX4, 15 + 3 * spreadT);
-        g.lineTo(tipX4, 17);
-        g.closePath();
-        g.fill();
+          // 翼片 4（最内）：从翼根外侧向外下方展开（稍小三角）
+          const tipX4 = sx * 10 * wingSpread;
+          const extX4 = tipX4 + sx * 9 * spreadT;
+          g.fillStyle = `rgba(255, 160, 210, ${(alpha * 0.55).toFixed(3)})`;
+          g.beginPath();
+          g.moveTo(tipX4, 8);
+          g.lineTo(extX4, 15 + 3 * spreadT);
+          g.lineTo(tipX4, 17);
+          g.closePath();
+          g.fill();
+        }
 
-        // ===== 前翼：暴走时向前外方大幅展开，形成醒目的“机翼张开”轮廓 =====
-        // fwOpen 驱动尖端从机身侧向外前方扫出（x:13→36），直观呈现“张开”动画
-        const fwOpen = spreadT;
-        // 主前翼片（大三角、前掠）：根部靠机身肩，尖端向外前方大幅扫出
-        const fwRootFx = sx * 5, fwRootFy = -8;
-        const fwTipX = sx * (13 + 23 * fwOpen);       // 尖端 x：13 → 36（大幅外展）
-        const fwTipY = -6 - 10 * fwOpen;              // 尖端 y：向前（上）扫出
-        const fwRootBx = sx * 15 * wingSpread, fwRootBy = 4;
+        // 前翼主片（外侧）：沿机翼斜向伏于翼面（外+下），根部贴机身肩；暴走时沿翼向尖端外扫放大
+        const fwRootFx = sx * 9, fwRootFy = -3;
+        const fwTipX = sx * (16 + 13.5 * spreadT);    // 尖端 x：常态 16 → 暴走 29.5
+        const fwTipY = -5.5 - 2.5 * spreadT;          // 尖端 y：常态 -5.5（高度 +30%）→ 暴走 -8
+        const fwRootBx = sx * 15.5 * wingSpread, fwRootBy = 3;
         const fwGrd = g.createLinearGradient(fwRootFx, fwRootFy, fwTipX, fwTipY);
         fwGrd.addColorStop(0, `rgba(255, 245, 252, ${(alpha * 0.95).toFixed(3)})`);  // 根部近白热
         fwGrd.addColorStop(0.4, `rgba(255, 120, 195, ${(alpha * 0.9).toFixed(3)})`);  // 中段亮粉
@@ -1206,23 +1232,23 @@
         g.fill();
         // 前缘能量刃（高亮描边，强化“张开”锐利感）
         g.strokeStyle = `rgba(255, 235, 248, ${(alpha * 0.95).toFixed(3)})`;
-        g.lineWidth = 1.3;
+        g.lineWidth = 1.2;
         g.beginPath();
         g.moveTo(fwRootFx, fwRootFy);
         g.lineTo(fwTipX, fwTipY);
         g.stroke();
 
-        // 次前翼片（叠在主翼片上方、更靠前缘，增加层次与张开密度）
-        const fw2TipX = sx * (10 + 16 * fwOpen);
-        const fw2TipY = -11 - 8 * fwOpen;
-        const fw2Grd = g.createLinearGradient(sx * 4, -10, fw2TipX, fw2TipY);
+        // 次前翼片（内侧、靠上一档，与主翼片错位形成两片独立三角）
+        const fw2TipX = sx * (11.5 + 9.5 * spreadT);  // 尖端 x：常态 11.5 → 暴走 21
+        const fw2TipY = -10.5 - 2 * spreadT;          // 尖端 y：常态 -10.5（高度 +30%）→ 暴走 -12.5
+        const fw2Grd = g.createLinearGradient(sx * 6.5, -7.5, fw2TipX, fw2TipY);
         fw2Grd.addColorStop(0, `rgba(255, 210, 235, ${(alpha * 0.75).toFixed(3)})`);
         fw2Grd.addColorStop(1, `rgba(255, 90, 165, ${(alpha * 0.6).toFixed(3)})`);
         g.fillStyle = fw2Grd;
         g.beginPath();
-        g.moveTo(sx * 4, -10);
+        g.moveTo(sx * 6.5, -7.5);
         g.lineTo(fw2TipX, fw2TipY);
-        g.lineTo(sx * 11 * wingSpread, -1);
+        g.lineTo(sx * 10 * wingSpread, 0.5);
         g.closePath();
         g.fill();
       }
@@ -1252,6 +1278,54 @@
     g.lineTo(-1.5, -19);
     g.closePath();
     g.fill();
+    g.restore();   // 对应函数开头的机体缩放 save（drawScale）
+  }
+
+  // '#rrggbb' → 'rgba(r, g, b, a)'（仅演出用本地小工具，色值均来自 ARMORS 注册表的 6 位 hex）
+  function hexToRgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a.toFixed(3)})`;
+  }
+
+  // 装甲触发图标演出（祈星✧ / 澄月☾ 共用）：核心处字符图标快速渐显 → 明显放大 → 渐隐（0.8s）。
+  // 逐帧在机体当前位置绘制（跟核心移动）；受击闪动帧也会调用（祈星在受击时触发，不能被闪烁吞没）。
+  // 触发瞬间伴随震屏与受击白闪，故本演出刻意做大做强（30px 字符 + 大光晕 + 扩散环）保证可感知
+  function drawArmorGlyphFx(x, y) {
+    for (const f of armorGlyphFx) {
+      const p = f.t / f.dur;                        // 0→1
+      const envIn = clamp(p / 0.2, 0, 1);           // 前 20% 渐显
+      const envOut = clamp((1 - p) / 0.55, 0, 1);   // 后 55% 渐隐
+      const sc = 0.8 + p * 0.55;                    // 明显放大（0.8 → 1.35）
+      const a = 0.9 * envIn * envOut;
+      ctx.save();
+      ctx.translate(x, y + 4);
+      // 同色径向光晕（大而亮，保证在震屏/白闪中仍可读）
+      const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 28 * sc);
+      glow.addColorStop(0, hexToRgba(f.color, a * 0.55));
+      glow.addColorStop(0.6, hexToRgba(f.color, a * 0.22));
+      glow.addColorStop(1, hexToRgba(f.color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, 28 * sc, 0, Math.PI * 2);
+      ctx.fill();
+      // 快速外扩的细描边环：一圈"触发脉冲"的直觉反馈
+      ctx.globalAlpha = a * 0.5;
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 20 + p * 22, 0, Math.PI * 2);
+      ctx.stroke();
+      // 字符图标本体
+      ctx.globalAlpha = a;
+      ctx.font = '30px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = f.color;
+      ctx.shadowColor = f.color;
+      ctx.shadowBlur = 14;
+      ctx.fillText(f.glyph, 0, 0);
+      ctx.restore();
+    }
   }
 
   function drawPlayer() {
@@ -1310,29 +1384,40 @@
     if (player.weapon === 5 && !currentPlane.slashWeapon) {
       const pulse = 0.3 + Math.sin(state.time * 14) * 0.12;
       ctx.save();
+      const wds = currentPlane.drawScale || 1;   // 翼尖光随机体缩放贴住翼尖
+      ctx.translate(x, y);
+      if (wds !== 1) ctx.scale(wds, wds);
       ctx.globalAlpha = pulse;
       ctx.shadowColor = '#ff69b4';
       ctx.shadowBlur = 12;
       ctx.fillStyle = '#ff69b4';
       // 两侧翼尖点状光芹
       ctx.beginPath();
-      ctx.arc(x - 22, y + 8, 2.5, 0, Math.PI * 2);
+      ctx.arc(-22, 8, 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(x + 22, y + 8, 2.5, 0, Math.PI * 2);
+      ctx.arc(22, 8, 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
 
-    // 受击无敌（invulnBlink）时每秒隐/显 10 次；登场/重生无敌（invulnBlink=false）不闪动
+    // 受击无敌（invulnBlink）时每秒隐/显 10 次；登场/重生无敌（invulnBlink=false）不闪动。
+    // 闪动帧同样绘制装甲图标演出——祈星在受击时触发，若随闪烁吞没则基本看不见
     const blink = player.invuln > 0 && player.invulnBlink && player.weapon !== 5 && Math.floor(player.invuln * 20) % 2 === 0;
-    if (blink) return;
+    if (blink) {
+      drawArmorGlyphFx(x, y);
+      return;
+    }
 
     ctx.save();
     ctx.translate(x, y);
 
     // 尾焰：粉(#FFC0CB) → 橙渐变（对称，动画）；群星之杀改为蓝→紫能量尾焰
+    // 混乱将至机体放大（drawScale）：尾焰随同缩放保持贴住机尾
     const flame = 9 + Math.sin(state.time * 30) * 3;
+    const pds = currentPlane.drawScale || 1;
+    ctx.save();
+    if (pds !== 1) ctx.scale(pds, pds);
     const grd = ctx.createLinearGradient(0, 14, 0, 14 + flame + 12);
     if (currentPlane.slashWeapon) {
       grd.addColorStop(0, 'rgba(190, 205, 255, 0.95)');
@@ -1350,6 +1435,7 @@
     ctx.lineTo(5, 14);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();   // 尾焰随机体缩放完毕：恢复后再画原尺寸判定相关元素与机身（paintShip 内部自行处理 drawScale）
 
     // 机身（与选机缩略图共用同一造型，传入展开进度 0~1）
     const spreadPulse = player.wingSpread > 0.9
@@ -1372,6 +1458,10 @@
       ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
+
+    // 装甲触发图标演出（祈星✧ / 澄月☾）：以核心为中心渐显 → 微微放大 → 渐隐。
+    // 逐帧在机体当前位置绘制（跟核心移动，不会留在原地）；图层位于核心白点之下、不盖住核心
+    drawArmorGlyphFx(x, y);
 
     // 判定点：机身中心发光白点（下移 4px，真实反映判定范围）
     ctx.save();
@@ -1403,39 +1493,79 @@
       ctx.restore();
     }
 
-    // 七日澜心水晶护盾：环绕机体的粉色（#FFC0CB）水晶环——8 颗菱形水晶缓慢公转，最后 1s 渐弱
+    // 七日澜心结晶护盾：量子护盾同款气泡样式（粉色 #FFC0CB）+ 律动晶体网格特效，最后 1s 渐弱
+    // （消失时另有小范围粉色冲击波——见 10-draw-world crystalBurst，范围对应其 250px 消弹半径）
     if (player.crystalShield > 0) {
       const fade = player.crystalShield < 1 ? player.crystalShield : 1;
-      const rot = state.time * 1.6;
+      const sp = 0.5 + Math.sin(state.time * 10) * 0.2;   // 与量子护盾同款呼吸脉动
       ctx.save();
-      ctx.globalAlpha = fade;
+      // 气泡：粉色发光圆环 + 淡粉填充（描边/填充结构与量子护盾一致）
+      ctx.globalAlpha = fade * sp;
+      ctx.strokeStyle = '#FFC0CB';
       ctx.shadowColor = '#FFC0CB';
-      ctx.shadowBlur = 10;
-      for (let k = 0; k < 8; k++) {
-        const a = rot + k * Math.PI / 4;
-        const cx = x + Math.cos(a) * 34, cy = y + Math.sin(a) * 34;
-        const s = 3.2 + Math.sin(state.time * 6 + k * 1.7) * 0.8;   // 呼吸大小
-        ctx.fillStyle = '#FFC0CB';
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 36, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = fade * sp * 0.35;
+      ctx.fillStyle = '#FFC0CB';
+      ctx.fill();
+      // 律动晶体网格：两枚三角形反向旋转叠成六芒晶格，线宽与透明度按节律脉动
+      ctx.globalAlpha = fade * (0.22 + 0.14 * Math.sin(state.time * 6));
+      ctx.lineWidth = 1.2 + Math.sin(state.time * 6) * 0.5;
+      ctx.strokeStyle = '#ffd9e2';
+      ctx.shadowBlur = 6;
+      for (const dir of [1, -1]) {
+        const rot = state.time * 0.8 * dir + (dir > 0 ? 0 : Math.PI / 3);
         ctx.beginPath();
-        ctx.moveTo(cx, cy - s * 1.4);
-        ctx.lineTo(cx + s, cy);
-        ctx.lineTo(cx, cy + s * 1.4);
-        ctx.lineTo(cx - s, cy);
+        for (let k = 0; k < 3; k++) {
+          const a = rot + k * Math.PI * 2 / 3 - Math.PI / 2;
+          const px = x + Math.cos(a) * 30, py = y + Math.sin(a) * 30;
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
         ctx.closePath();
-        ctx.fill();
+        ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    // 最终壁垒免死演出：淡金色（#ffb545 系）较粗菱形环绕机体，白黄渐变沿菱形往复流动；
+    // 免死无敌不闪动机体，本菱形即无敌指示——结束时 0.3s 内迅速淡去
+    if (player.bulwarkFxT > 0) {
+      const a = clamp(player.bulwarkFxT / 0.3, 0, 1);
+      const ph = clamp(0.5 + 0.5 * Math.sin(state.time * 2.2), 0, 1);   // 白色高光位置往复滑动（流动感）
+      const grad = ctx.createLinearGradient(x, y - 46, x, y + 46);
+      grad.addColorStop(0, '#ffb545');
+      grad.addColorStop(ph, '#ffffff');
+      grad.addColorStop(1, '#ffd98a');
+      ctx.save();
+      ctx.globalAlpha = a * (0.85 + Math.sin(state.time * 5) * 0.1);
+      ctx.strokeStyle = grad;
+      ctx.shadowColor = '#ffb545';
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 3.5;
+      const breathe = 1 + Math.sin(state.time * 4) * 0.02;   // 微微呼吸
+      ctx.beginPath();
+      ctx.moveTo(x, y - 46 * breathe);
+      ctx.lineTo(x + 32 * breathe, y);
+      ctx.lineTo(x, y + 46 * breathe);
+      ctx.lineTo(x - 32 * breathe, y);
+      ctx.closePath();
+      ctx.stroke();
       ctx.restore();
     }
 
     // “暴走”字样已移至 render() 顶层绘制（位于所有游戏实体之上，不被子弹/敌机遮挡）
   }
 
-  // 群星之杀：机头直射的淡白锁定光束（不造成伤害，故刻意很淡）——命中目标则止于目标，否则直射至屏顶
+  // 群星之杀：机头直射的淡白锁定光束（不造成伤害，故刻意很淡）——命中目标则止于目标，否则直射至屏顶；
+  // 主菜单演示模式（state.demo）无目标时光束止于演示屏顶部，避免穿过 DOM 边框画到标题区
   function drawStarslayerBeam() {
     if (currentPlane.id !== 'starslayer' || !player.alive) return;
     const t = player.slashTarget;
     const noseY = player.y - 23;   // 群星之杀箭形机头（paintStarslayer y=-25，光束从尖端略内出）   // 群星之杀箭形机头尖端（paintStarslayer 造型 y=-32，光束从尖端略内出）
-    const yTop = t ? t.y : -20;
+    const yTop = t ? t.y : (state.demo ? DEMO_TOP + 8 : -20);
     if (yTop >= noseY) return;
     const x = player.x;
     const pulse = 0.6 + Math.sin(state.time * 9) * 0.18;
@@ -3371,9 +3501,8 @@
       // ---- 光效拖尾（光带而非粒子）：沿运动反方向从质心发出，白热内芯 + 红光外带（带红色外发光）；仅飞行/减速阶段 ----
       //   减速段尾焰长度与当前速度挂钩（速度比 = spd/cruise 随减速指数下降 → 开始减速时尾焰迅速变短）
       if (c.alpha > 0.02) {
-        // 尾焰长度系数：减速段随速度收短；撞盾被阻挡后随消散快速衰减（不瞬间消失）
-        const spdMul = c.phase === 'brake' ? Math.max(0, c.spd / c.cruise)
-          : c.phase === 'blocked' ? Math.max(0, 1 - c.dieT / FASHI_MATRIX.shieldDie) : 1;
+        // 尾焰长度系数：减速段随速度收短
+        const spdMul = c.phase === 'brake' ? Math.max(0, c.spd / c.cruise) : 1;
         const tl = FASHI_MATRIX.cubeTrailLen * c.scale * spdMul;
         const tx = ccx - c.ux * tl, ty = ccy - c.uy * tl;
         ctx.save();

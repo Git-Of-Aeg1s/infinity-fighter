@@ -1,12 +1,12 @@
 // 07-player：玩家武器 / 僚机逻辑 / 受伤与无敌 / 拾取 / 高能爆弹 / 清弹
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(4 名) 08-entities(6 名) 12-ui(2 名) 13-encyclopedia(1 名) 14-main(5 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(4 名) 08-entities(7 名) 12-ui(2 名) 13-encyclopedia(1 名) 14-main(7 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, flash, hurt, lives, score}
+  //   state.{bombs, demo, flash, hurt, lives, score}
   //
-  import { ARMOR_SKILLS, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, HANSHUANG, PLAYER_CFG, SHIELD_DURATION, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentWingman, diffMods, invulnDiffMul } from './01-config.js';
-  import { bossFlow, clamp, clearEnemyBulletsNear, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, pBullets, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnParticles, state, tryBulwarkCheatDeath, wingmen } from './02-core.js';
+  import { ARMOR_SKILLS, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, HANSHUANG, PLAYER_CFG, SHIELD_DURATION, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentWingman, diffMods, invulnDiffMul } from './01-config.js';
+  import { bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, menuScreen, pBullets, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnArmorGlyphFx, spawnParticles, state, tryBulwarkCheatDeath, wingmen } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { clearMissiles, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
@@ -219,7 +219,7 @@
       return;
     }
 
-    player.slashCd -= dt * playerFrostSlowMul() * hasteMul();
+    player.slashCd -= dt * playerFrostSlowMul() * hasteMul() * bulwarkFireRateMul();   // 壁垒免死无敌期间斩击充能同样 ×0.5
     if (player.slashCd > 0) return;
     // 锁定中 / 无目标：保持就绪，解锁 / 出现目标后立即斩击
     if (playerFireLocked() || !player.slashTarget) { player.slashCd = 0; return; }
@@ -296,12 +296,12 @@
       if (wpn.kind === 'fan') {
         computeShieldSegs(w); if (w.shieldFlash > 0) w.shieldFlash = Math.max(0, w.shieldFlash - dt * 3);
         // 暴走过热：盾缘高频迸出白热火花（能量自装甲外泄；每次 2 颗、约 16 次/秒，确保醒目）
-        if (player.weapon === 5 && player.alive && state.mode === 'playing' && Math.random() < dt * 16) {
+        if (player.weapon === 5 && player.alive && (state.mode === 'playing' || state.demo) && Math.random() < dt * 16) {
           const pts = w.shieldPts;
           if (pts && pts.length) { const pt = pts[(Math.random() * pts.length) | 0]; spawnParticles(pt.x, pt.y, '#ffffff', 2, 150); }
         }
       }
-      if (!player.alive || locked || state.mode !== 'playing') { w.burst = null; w.cooldown = 0; continue; }
+      if (!player.alive || locked || (state.mode !== 'playing' && !state.demo)) { w.burst = null; w.cooldown = 0; continue; }
 
       // ---- fan 模型（守愿者）：错序扇形发射，最前方（0°）先发 ----
       if (wpn.kind === 'fan') {
@@ -389,7 +389,7 @@
   //   随 side 镜像、随 w.x/w.y 平移；shieldPts 供渲染画弧，shieldSegs 供激光/风条裁切，
   //   shieldLocalSegs 为以盾心为原点的本地折线（形状恒定）——盾与弹体均在运动，扫掠命中在盾参考系下判定
   function computeShieldSegs(w) {
-    const R = BULWARK.radius, seg = BULWARK.segments, up = -Math.PI / 2;
+    const R = BULWARK.radius * BULWARK.scale, seg = BULWARK.segments, up = -Math.PI / 2;   // 半径乘整体尺寸系数（与绘制一致）
     const pts = [];
     for (let i = 0; i <= seg; i++) {
       const theta = BULWARK.arcFrom + (BULWARK.arcTo - BULWARK.arcFrom) * (i / seg);
@@ -468,6 +468,31 @@
     return best;
   }
 
+  // 特殊射弹反弹命中（三类·swRef，注册表见 01-config BULWARK 注释）：扫掠判定同 shieldSweepHit，
+  //   另返回命中盾段的单位法线 nx/ny（取指向弹体来向的一侧）——供 08-entities 按入射夹角镜像反射（非原路弹回）
+  function shieldReflectHit(px, py, x, y, br = 0) {
+    let best = null, bestD = Infinity;
+    for (const w of wingmen) {
+      const segs = w.shieldLocalSegs;
+      if (!segs || !segs.length) continue;
+      const pcx = w.px != null ? w.px : w.x, pcy = w.py != null ? w.py : w.y;
+      const ax = px - pcx, ay = py - pcy, bx = x - w.x, by = y - w.y;
+      for (const s of segs) {
+        const h = segSegClosest(ax, ay, bx, by, s.x1, s.y1, s.x2, s.y2);
+        if (h.d <= br && h.d < bestD) {
+          bestD = h.d;
+          best = { x: w.x + h.x, y: w.y + h.y, w, sdx: s.x2 - s.x1, sdy: s.y2 - s.y1 };
+        }
+      }
+    }
+    if (!best) return null;
+    best.w.shieldFlash = 1;
+    const L = Math.hypot(best.sdx, best.sdy) || 1;
+    let nx = -best.sdy / L, ny = best.sdx / L;
+    if (nx * (x - px) + ny * (y - py) > 0) { nx = -nx; ny = -ny; }   // 法线取指向弹体来向的一侧
+    return { x: best.x, y: best.y, w: best.w, nx, ny };
+  }
+
   // 激光/风条截断裁切：弹体轴线（尾端 tx,ty 沿单位向量 ux,uy 延伸 len）与盾折线相交，返回最靠近尾端的交点及沿轴距离 d
   //   用于激光 clipLen（不 splice、继续生长/推进）与风条“磨短”；无相交返回 null
   //   pad 为弹体半径容差（弹体半径 + 盾厚一半）：轴线与折线无精确交点、但弹体边缘触及盾面（含擦盾弧端点掠过）时，
@@ -498,6 +523,34 @@
     }
     if (best) best.w.shieldFlash = 1;
     return best;
+  }
+
+  // BOSS 光束截断专用（现仅技能6 使用，见 05-boss runStorm2Skill；技能1/2 为四类·免疫射弹不走此处）：
+  //   盾弧 + 两盾内端点之间的“连体桥”——
+  //   守愿者双盾分居主机两侧（offsetX ±41），盾弧内缘之间留有约 71px 空隙，竖直/近竖直向下的
+  //   BOSS 光柱会从主机正上方空隙漏过。此处把两盾内端点连线一并纳入截断（即“白盾连成一面”），
+  //   仅供 BOSS 光束裁切使用；普通子弹判定维持既有几何（shieldSweepHit / clipAgainstShield）不变
+  function beamClipAgainstShield(tx, ty, ux, uy, len, pad = 0) {
+    const clip = clipAgainstShield(tx, ty, ux, uy, len, pad);
+    if (clip) return clip;
+    if (uy < 0.25 || wingmen.length !== 2) return null;   // 仅朝下的光束参与桥截断（臂向外/向上的光束不受影响）
+    const [a, b] = wingmen;
+    if (!a.shieldSegs || !a.shieldSegs.length || !b.shieldSegs || !b.shieldSegs.length) return null;
+    const pA = a.shieldPts[0], pB = b.shieldPts[0];   // 各盾内缘端点（computeShieldSegs 的 theta=arcFrom 端）
+    if (!pA || !pB) return null;
+    const hx = tx + ux * len, hy = ty + uy * len;
+    const flashBoth = () => { a.shieldFlash = 1; b.shieldFlash = 1; };
+    const hit = segIntersect(tx, ty, hx, hy, pA.x, pA.y, pB.x, pB.y);
+    if (hit) { flashBoth(); return { x: hit.x, y: hit.y, d: hit.t * len, w: a }; }
+    if (pad > 0) {
+      const h = segSegClosest(tx, ty, hx, hy, pA.x, pA.y, pB.x, pB.y);
+      if (h.d <= pad) {
+        const d = clamp(((h.x - tx) * ux + (h.y - ty) * uy) / len, 0, 1) * len;
+        flashBoth();
+        return { x: h.x, y: h.y, d, w: a };
+      }
+    }
+    return null;
   }
 
   // 僚机单轮齐射：n 发长条弹幕，绕竖直向上方向对称展开，相邻夹角 spreadDeg 度
@@ -570,7 +623,7 @@
       // 群星之杀：不发射普通子弹，改为锁定光束 + 周期性空间斩击
       updateStarslayer(dt);
     } else {
-      player.cooldown -= dt * playerFrostSlowMul() * hasteMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍
+      player.cooldown -= dt * playerFrostSlowMul() * hasteMul() * bulwarkFireRateMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍；壁垒免死无敌期间 ×0.5
       if (player.cooldown <= 0) {
         if (!playerFireLocked()) {
           player.cooldown = berserk ? BERSERK.interval : WEAPON_LEVELS[player.weapon].interval;
@@ -583,6 +636,20 @@
     }
 
     if (player.invuln > 0) player.invuln -= dt;
+    // 最终壁垒免死菱形演出：与无敌时长同步衰减；菱形开始消散（剩 0.3s，与绘制的淡出窗口一致）时
+    // 才清除周围 250px 内敌弹并扩散金环（触发瞬间不清弹——演出后置到消散时刻）
+    if (player.bulwarkFxT > 0) {
+      const prevFx = player.bulwarkFxT;
+      player.bulwarkFxT -= dt;
+      if (prevFx > 0.3 && player.bulwarkFxT <= 0.3) {
+        bulwarkBurst.active = true;
+        bulwarkBurst.t = 0;
+        bulwarkBurst.x = player.x;
+        bulwarkBurst.y = player.y;
+        clearEnemyBulletsNear(player.x, player.y, 250);
+      }
+      if (player.bulwarkFxT < 0) player.bulwarkFxT = 0;
+    }
     if (player.hitFxT > 0) player.hitFxT -= dt;   // 受击闪白计时衰减
     if (player.berserkBanner > 0) player.berserkBanner -= dt;
     // 暴走机翼展开动画：平滑过渡 0↔1
@@ -615,11 +682,16 @@
         clearEnemyBullets();   // 护盾解除：清除场上一切敌弹
       }
     }
-    // 七日澜心水晶护盾：倒计时；消失时清除周围 250px 内的所有敌弹（粉色迸散演出）
+    // 七日澜心水晶护盾：倒计时；消失时清除周围 250px 内的所有敌弹
+    // （演出：淡粉冲击波环自机体扩散，范围对应其 250px 消弹半径——样式同量子护盾冲击波但更小）
     if (player.crystalShield > 0 && !pauseTimers) {
       player.crystalShield -= dt;
       if (player.crystalShield <= 0) {
         player.crystalShield = 0;
+        crystalBurst.active = true;
+        crystalBurst.t = 0;
+        crystalBurst.x = player.x;
+        crystalBurst.y = player.y;
         clearEnemyBulletsNear(player.x, player.y, ARMOR_SKILLS.lanxin.clearR);
         spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 22, 220);
         shake(4, 0.2);
@@ -641,7 +713,7 @@
         }
       }
     }
-    // 洄：每 2.5 秒恢复 1 生命（不超过当前装甲最大生命）
+    // 洄：每 2 秒恢复 1 生命（不超过当前装甲最大生命）
     if (currentArmor.id === 'hui') {
       player.regenT = (player.regenT || 0) + dt;
       if (player.regenT >= currentArmor.regenInterval) {
@@ -664,6 +736,11 @@
     return !enemies.some(e => e.type === 'boss' && e.combatReady);
   }
 
+  // 最终壁垒免死无敌期间：自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘；倍率走注册表 invulnFireRateMul）
+  function bulwarkFireRateMul() {
+    return (player.bulwarkFxT > 0 && currentArmor.invulnFireRateMul) ? currentArmor.invulnFireRateMul : 1;
+  }
+
   function respawnPlayer() {
     player.alive = true;
     player.hp = player.maxHp || armorMaxHp();   // 当前装甲下的每条命最大 HP
@@ -675,6 +752,7 @@
     player.berserk = 0;
     player.shield = 0;
     player.bulwarkUsed = false;   // 最终壁垒：每条命一次，重生重置
+    player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
     player.hitCount = 0;
     player.hitFxT = 0;
     player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
@@ -693,9 +771,14 @@
   function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false) {
     if (!player.alive) return false;
     if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
-    if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心水晶护盾期间免疫（无视无敌 ≠ 无视护盾）
-    // 祈星：受到伤害时 25% 概率伤害减半，单次伤害 >40 时概率翻倍（50%）
-    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? 0.5 : 0.25)) amount *= 0.5;
+    // 天枢圣盾：无敌期间免疫破片导弹的"无视无敌"穿透（ignoreInvuln 仅破片后续导弹使用）
+    if (ignoreInvuln && player.invuln > 0 && currentArmor.id === 'tianshu') return false;
+    if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（无视无敌 ≠ 无视护盾）
+    // 祈星：受到伤害时 30% 概率伤害减半，单次伤害 >40 时概率提升到 60%（概率走注册表）；触发时核心处图标演出
+    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? currentArmor.halveChanceBig : currentArmor.halveChance)) {
+      amount *= 0.5;
+      spawnArmorGlyphFx('✧', currentArmor.color);
+    }
     // 测试模式（图鉴挑战）：玩家不再无敌 —— 照常扣血，但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（视为不死）
     if (state.challenge) {
       player.hp -= amount;
@@ -746,8 +829,11 @@
   // 照常扣血但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（测试模式视为不死）；护盾期间免疫
   function testDamagePlayer(amount) {
     if (!player.alive || player.shield > 0 || player.crystalShield > 0) return false;
-    // 祈星：同 damagePlayer（测试模式同样生效）
-    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? 0.5 : 0.25)) amount *= 0.5;
+    // 祈星：同 damagePlayer（测试模式同样生效，概率走注册表）；触发时核心处图标演出
+    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? currentArmor.halveChanceBig : currentArmor.halveChance)) {
+      amount *= 0.5;
+      spawnArmorGlyphFx('✧', currentArmor.color);
+    }
     player.hp -= amount;
     if (player.hp <= 0) {
       player.hp = player.maxHp || PLAYER_CFG.maxHp;
@@ -763,12 +849,12 @@
     hpFillFastRefill.t = setTimeout(() => hpFill.classList.remove('fast'), 120);
   }
 
-  // 澄月：触发暴走时概率获得量子护盾——常规 10% / BOSS 战 40%（每个 BOSS 限一次，时长 3s）
-  // （护盾时长：BOSS 战 3s，常规为完整 SHIELD_DURATION 6s；BOSS 限次以 BOSS 实体标记，天然随 BOSS 更替重置）
+  // 澄月：触发暴走（新触发与暴走续时均判定一次）时概率获得量子护盾——
+  // 常规 15% / BOSS 战 50%（每个 BOSS 限一次，时长 3s；概率走注册表 ARMORS.chengyue）
   function tryChengyueShield() {
     if (currentArmor.id !== 'chengyue') return;
     const bossFight = bossFlow.stage === 'fight';
-    const chance = bossFight ? 0.40 : 0.10;
+    const chance = bossFight ? currentArmor.bossChance : currentArmor.chance;
     if (Math.random() >= chance) return;
     if (bossFight) {
       const boss = enemies.find(en => en.type === 'boss');
@@ -778,15 +864,20 @@
     } else {
       player.shield = SHIELD_DURATION;
     }
+    spawnArmorGlyphFx('☾', currentArmor.color);   // 核心处澄月图标演出（淡青☾渐显-放大-渐隐）
     spawnParticles(player.x, player.y, '#6fe3ff', 18, 200);
   }
 
   // ---------- 装甲技能（量表型，按 F 触发；注册表见 01-config ARMOR_SKILLS，后续新技能在此扩展实现） ----------
 
   // 收集水晶时填充当前装甲的技能量表（amount = 本颗水晶的分数；七日澜心填满需 gaugeCrystalScore 分）
-  function armorSkillGain(amount) {
+  // firstBoss = 水晶是否来自首轮 BOSS（FIRST_ROUND_BOSSES）：对量表收益按 def.firstBossBonus 额外加成（+400% → ×5）
+  // 结晶护盾持续期间（player.crystalShield > 0）量表停止累计（水晶得分与吸收入场照常）
+  function armorSkillGain(amount, firstBoss = false) {
     const def = ARMOR_SKILLS[currentArmor.id];
     if (!def) return;
+    if (player.crystalShield > 0) return;
+    if (firstBoss && def.firstBossBonus) amount *= def.firstBossBonus;
     state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / def.gaugeCrystalScore);
   }
 
@@ -821,8 +912,9 @@
         berserkBurst.x = player.x; berserkBurst.y = player.y; berserkBurst.big = true;
       }
     } else if (player.weapon === 5) {
-      // 已处于暴走：重置倒计时
+      // 已处于暴走：重置倒计时（续时同样判定澄月护盾）
       player.berserk = BERSERK.duration;
+      tryChengyueShield();
       player.berserkBanner = 1.0;
       spawnParticles(player.x, player.y, '#ffb545', 16, 200);
     }
@@ -833,7 +925,7 @@
     state.score += Math.round(100 * diffMods().scoreMul);
     const alreadyBerserk = player.weapon === 5;
     player.weapon = 5;
-    if (!alreadyBerserk) tryChengyueShield();   // 澄月：仅在“新触发”暴走时判定（已暴走续时不算）
+    tryChengyueShield();   // 澄月：新触发与暴走续时均判定一次（已暴走续时也判定）
     player.berserk = BERSERK.duration;   // 重置倒计时
     player.berserkBanner = alreadyBerserk ? 1.0 : 2.0;
     shake(alreadyBerserk ? 5 : 8, alreadyBerserk ? 0.25 : 0.35);   // 暴走震屏减弱（以冲击波环为主要反馈）
@@ -875,7 +967,10 @@
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
       } else {
-        const dmg = BOMB_DAMAGE_BASE + e.maxHp * BOMB_DAMAGE_RATIO;
+        let dmg = BOMB_DAMAGE_BASE + e.maxHp * BOMB_DAMAGE_RATIO;
+        // 诗篇：高能爆弹对 BOSS 伤害 -25%（mods.bombBossDmgMul，缺省不乘）
+        const bbMul = diffMods().bombBossDmgMul;
+        if (e.type === 'boss' && bbMul != null) dmg *= bbMul;
         e.hp -= dmg;
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
@@ -893,11 +988,119 @@
     }
   }
 
+  // ---------- 主菜单攻击演示（idle 态主菜单页） ----------
+  // 演示屏（页面高度 15%~66% 区域，DOM 边框 .demo-screen 与此严格对齐）内展示当前选中的
+  // 战机与僚机：位置固定居中、不可操控，仅自动循环攻击演示——
+  //   Lv4 火力攻击 5s → 暴走(Lv5) 攻击 5s → 循环。
+  // 暴走动画（粉橙冲击波 / 机翼展开 / 弹道暴走配色）与游戏内一致，但不显示“暴走”二字
+  // （berserkBanner 恒 0）。弹道飞出演示屏边界即消失，呈现“屏幕”边框感。
+  // 演示屏矩形 DEMO_TOP / DEMO_BOTTOM 见 01-config（与主菜单 .demo-screen DOM 边框对齐）
+  const DEMO_PHASE_T = 5;   // 每个攻击阶段时长（s）
+  let demoT = 0;            // 演示累计时间（相位 = floor(demoT / DEMO_PHASE_T) % 2）
+  let demoPhase = -1;       // 当前相位（0=Lv4 / 1=暴走），-1 = 强制首帧初始化
+
+  // 群星之杀演示斩击：演示屏内无敌人可锁定，对屏内上方固定演出点按真实节奏释放斩击特效
+  // （方向角 / 交替 / 尺寸 / 暴走三连斩与 doSlash 同源，仅无伤害结算）
+  function demoSlash(lvl) {
+    player.bladeFlashT = 0.45;   // 双刃攻击闪光（paintStarslayer 读取）
+    const cx = CANVAS_W / 2, cy = DEMO_TOP + Math.round((DEMO_BOTTOM - DEMO_TOP) * 0.3);   // 演示屏上方 30% 处
+    const deg = STARSLAYER.slashAngleMin + Math.random() * (STARSLAYER.slashAngleMax - STARSLAYER.slashAngleMin);
+    const sign = (slashSeq++ % 2 === 0) ? 1 : -1;
+    const rot = sign * deg * Math.PI / 180;
+    const berserk = player.weapon === 5;
+    slashFx.push({
+      x: cx, y: cy, rot, spinDir: sign,
+      halfLen: lvl.slashR * STARSLAYER.slashLenMul, halfW: lvl.slashR * STARSLAYER.slashWMul,
+      t: STARSLAYER.slashFxTime, max: STARSLAYER.slashFxTime, berserk, hits: [],
+    });
+    spawnParticles(cx, cy, berserk ? '#ffe9a8' : '#cfe0ff', 16, 280);
+  }
+
+  // 演示推进：由主循环 idle 分支每帧调用（14-main）。设置 state.demo 供僚机开火门控放宽；
+  // 弹道位移由 14-main 在 idle 分支调 updateBullets 完成（此处只负责开火与出界清理）
+  function updateDemo(dt) {
+    state.demo = state.mode === 'idle' && !menuScreen.classList.contains('hidden');
+    if (!state.demo) return;
+    // 固定站位（不可操控）：战机位于演示屏底部 88% 处（弹幕向上穿越整个演示屏）；
+    // 清掉开场无敌与任何残留闪白，避免演示机体闪烁
+    player.x = CANVAS_W / 2;
+    player.y = Math.round(DEMO_TOP + (DEMO_BOTTOM - DEMO_TOP) * 0.88);
+    player.invuln = 0;
+    player.berserkBanner = 0;   // 演示不显示“暴走”二字
+    // 阶段循环：偶数 5s = Lv4 火力，奇数 5s = 暴走
+    demoT += dt;
+    const phase = Math.floor(demoT / DEMO_PHASE_T) % 2;
+    if (phase !== demoPhase) {
+      demoPhase = phase;
+      const enteringBerserk = phase === 1;
+      player.weapon = enteringBerserk ? 5 : 4;
+      player.berserk = enteringBerserk ? BERSERK.duration : 0;
+      player.cooldown = 0;
+      player.slashQueued = 0;
+      if (enteringBerserk) {
+        // 暴走触发动画：粉橙双环冲击波 + 粒子（与 pickupBerserk 一致，省略震屏）
+        berserkBurst.active = true;
+        berserkBurst.t = 0;
+        berserkBurst.x = player.x;
+        berserkBurst.y = player.y;
+        berserkBurst.big = false;
+        spawnParticles(player.x, player.y, currentPlane.berserkColor || '#ffb545', 18, 220);
+      } else {
+        spawnParticles(player.x, player.y, '#7ce7ff', 12, 180);
+      }
+    }
+    // 机翼展开动画（与 updatePlayer 同参数：0.4s 展开 / 0.29s 合拢）
+    const wingTarget = (player.weapon === 5) ? 1 : 0;
+    if (player.wingSpread < wingTarget) player.wingSpread = Math.min(wingTarget, player.wingSpread + dt * 2.5);
+    else if (player.wingSpread > wingTarget) player.wingSpread = Math.max(wingTarget, player.wingSpread - dt * 3.5);
+    if (player.bladeFlashT > 0) player.bladeFlashT = Math.max(0, player.bladeFlashT - dt);
+    // 暴走刃帆变形进度：全机型统一驱动（与 updatePlayer 同参）——
+    // 必须在机型分支之外：混乱将至不驱动会继承切机 / 上一局残留值，导致演示屏常驻金光与环绕光点
+    const sailTargetDemo = (player.weapon === 5 && player.berserk > 0) ? 1 : 0;
+    if (player.berserkSpread < sailTargetDemo) player.berserkSpread = Math.min(sailTargetDemo, player.berserkSpread + dt * 3);
+    else if (player.berserkSpread > sailTargetDemo) player.berserkSpread = Math.max(sailTargetDemo, player.berserkSpread - dt * 3);
+    // 攻击：斩击机型走演出斩击（无敌人），其余机型走真实弹道
+    if (currentPlane.slashWeapon) {
+      const lvl = STARSLAYER.levels[player.weapon] || STARSLAYER.levels[1];
+      if (player.slashQueued > 0) {
+        player.slashGapT -= dt;
+        if (player.slashGapT <= 0) {
+          demoSlash(lvl);
+          player.slashQueued--;
+          player.slashGapT = STARSLAYER.slashGapBase;
+        }
+      } else {
+        player.slashCd -= dt;
+        if (player.slashCd <= 0) {
+          player.slashCd = lvl.interval;
+          demoSlash(lvl);
+          if (player.weapon === 5 && (lvl.slashes || 1) > 1) {
+            player.slashQueued = lvl.slashes - 1;
+            player.slashGapT = STARSLAYER.slashGapBase;
+          }
+        }
+      }
+    } else {
+      player.cooldown -= dt;
+      if (player.cooldown <= 0) {
+        if (player.weapon === 5) { player.cooldown = BERSERK.interval; fireWeaponBerserk(); }
+        else { player.cooldown = WEAPON_LEVELS[player.weapon].interval; fireWeapon(); }
+      }
+    }
+    updateDelayedShots(dt);   // Lv4 半拍补射队列（演示与游戏共用逻辑）
+    updateSlashFx(dt);        // 斩击特效存留衰减（演示屏内仅特效，无伤害结算）
+    // 演示屏外清理（仅为回收内存：视觉边界由 10-draw-world 的演示屏裁剪保证，弹道飞出边框即被截断）
+    for (let i = pBullets.length - 1; i >= 0; i--) {
+      const b = pBullets[i];
+      if (b.y < DEMO_TOP - 40 || b.y > DEMO_BOTTOM + 60 || b.x < -40 || b.x > CANVAS_W + 40) pBullets.splice(i, 1);
+    }
+  }
+
   export {
     WEAPON_LINES, delayedShots, fireWeapon, updateDelayedShots, fireWeaponBerserk, slashSeq,
     beamSparkT, pickSlashTarget, doSlash, updateStarslayer, wingmanHasteMul, updateSlashFx,
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
-    segIntersect, shieldSweepHit, clipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
+    segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, beamClipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
-    accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill,
+    accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
   };

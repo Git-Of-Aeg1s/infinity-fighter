@@ -1,7 +1,7 @@
 // 03-audio：BGM 切换 / BOSS 警报音效 / 全局静音开关
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 12-ui(1 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(1 名) 12-ui(1 名) 14-main(3 名)
   //
   import { bossFlow, musicToggle, state } from './02-core.js';
 
@@ -24,7 +24,7 @@
   // 每曲目音量倍率：平衡各曲目的母带响度差异（战斗曲与 main_theme 维持 1.0；觉得某曲偏响/偏轻直接调这里）
   const BGM_GAIN = {
     main_theme: 1,
-    main_theme_2: 0.8,   // 比 main_theme 母带偏响，收小对齐
+    main_theme_2: 0.64,   // 比 main_theme 母带偏响，两次收小（0.8 → 再降 20%）对齐
     victory: 0.85,   // 短结算曲通常母带偏响，稍收
     defeat: 0.85,
   };
@@ -113,16 +113,69 @@
 
   // 警报演出期间不播放任何 BGM（静默 + 警报音效营造紧张感）
 
+  // ---------- BOSS 击败重起播（暴风之眼专属） ----------
+  // 暴风之眼被击败：当前战斗曲在 fadeT 内淡出 → 静默至 gapT → 从头重播同一首
+  // （二阶段衔接演出：音乐随风暴消散退场，雷暴轰鸣中重新起势）
+  let bgmRestart = null;   // { key, audio, t0, from, fadeT, gapT }
+  function restartBGM(fadeT = 0.7, gapT = 0.8) {
+    if (!bgmCurrent || RESULT_TRACKS.includes(bgmCurrent)) return;
+    const a = bgmAudios[bgmCurrent];
+    if (!a || a.paused) return;
+    bgmRestart = { key: bgmCurrent, audio: a, t0: performance.now(), from: a.volume, fadeT, gapT };
+  }
+
+  function stepBGMRestart() {
+    if (!bgmRestart) return;
+    const r = bgmRestart, a = r.audio;
+    const t = (performance.now() - r.t0) / 1000;
+    // 曲目已被切换 / 暂停 / 静音：放弃重起流程并恢复音量（交回常规逻辑接管）
+    if (bgmCurrent !== r.key || state.paused || audioMuted) {
+      a.volume = trackVol(r.key);
+      bgmRestart = null;
+      return;
+    }
+    if (t < r.fadeT) {
+      if (!a.paused) a.volume = r.from * (1 - t / r.fadeT);   // 淡出
+    } else if (t < r.gapT) {
+      if (!a.paused) { a.pause(); a.currentTime = 0; }   // 静默窗口（曲目已归零）
+    } else {
+      a.currentTime = 0;   // 从头重播同一首
+      a.volume = trackVol(r.key);
+      a.play().catch(() => {});
+      bgmRestart = null;
+    }
+  }
+
+  // ---------- BGM 起播抑制 ----------
+  // 场景：挑战 / 试炼重开风暴编织者（无警报直接召唤）——重开瞬间结算曲会立刻切到战斗曲，
+  //   破坏登场雷暴的氛围。holdBGM 在 delay 内强制静默（当前曲快速淡出），到期后 updateBGM 自然起播
+  let bgmHoldUntil = 0;
+  function holdBGM(delay = 0.8) {
+    bgmHoldUntil = performance.now() + delay * 1000;
+    if (!bgmCurrent) return;
+    const a = bgmAudios[bgmCurrent];
+    if (RESULT_TRACKS.includes(bgmCurrent)) {
+      if (a && !a.paused) startResultFade();   // 结算曲：快速淡出
+    } else if (a && !a.paused) {
+      a.pause(); a.currentTime = 0;            // 战斗曲：直接归零暂停
+    }
+  }
+
   // 每帧根据状态决定应播放的曲目，并处理暂停/恢复
   function updateBGM() {
     stepResultFade();
+    stepBGMRestart();
     // 结算展示上升沿：新一局结算开始 → 允许结算曲重新起播（清掉上一局自然播完遗留的 resultDone，
     // 否则上一局结算曲播完后 resultDone 恒为 true，下一局胜利页会直接跳主界面轮播、胜利曲不响）
     const resultShown = state.victoryOverlay || state.mode === 'gameover';
     if (resultShown && !prevResultShown) resultDone = false;
     prevResultShown = resultShown;
     let target;
-    if (state.mode === 'playing') {
+    if (state.victoryOverlay && !resultDone) {
+      // 胜利窗口可见：任意情况（正常通关 / BOSS 试炼 / 图鉴挑战）下窗口弹出即播胜利曲，
+      // 判定优先级最高（不受 mode / bossFlow 阶段影响）；播完转主界面轮播
+      target = 'victory';
+    } else if (state.mode === 'playing') {
       if (bossFlow.victoryDelay > 0) {
         // 击坠演出期（结算页尚未弹出）：不提前播胜利曲，维持当前战斗曲直到结算页弹出
         target = (bgmCurrent && !RESULT_TRACKS.includes(bgmCurrent)) ? bgmCurrent : null;
@@ -133,14 +186,13 @@
       } else {
         target = 'battle_normal_1';
       }
-    } else if (state.victoryOverlay && !resultDone) {
-      target = 'victory';   // 胜利结算：先播胜利曲（播完转主界面轮播）
     } else if (state.mode === 'gameover' && !resultDone) {
       target = 'defeat';    // 失败结算：先播失败曲（播完转主界面轮播）
     } else {
       // 主界面 / 结算曲播完后的结算页：主界面随机轮播
       target = menuTarget(bgmCurrent);
     }
+    if (performance.now() < bgmHoldUntil) target = null;   // 起播抑制窗口内强制静默
     if (bgmCurrent !== target) switchTrack(target);
     if (!bgmCurrent) {
       // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停 / 静音
@@ -155,8 +207,8 @@
     if (!a || !bgmUnlocked) return;
     if (state.paused || audioMuted) {
       if (!a.paused) a.pause();
-    } else if (a.paused) {
-      a.play().catch(() => {});
+    } else if (a.paused && !bgmRestart) {
+      a.play().catch(() => {});   // 重起播静默期内不自动续播（stepBGMRestart 到点重起）
     }
   }
 
@@ -211,5 +263,5 @@
   export {
     BGM_TRACKS, BGM_VOLUME, bgmAudios, bgmCurrent, bgmUnlocked, audioMuted,
     initBGM, updateBGM, alarmAudio, startAlarm, stopAlarm, unlockBGM,
-    setMuted,
+    setMuted, restartBGM, holdBGM,
   };
