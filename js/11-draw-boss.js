@@ -1565,7 +1565,7 @@
     return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
   }
   // 电弧光束：自 (x,y) 沿 ang 延伸 len 的光柱——外辉光 + 蓝边白芯主体
-  function drawS2Beam(x, y, ang, len, halfW, alpha) {
+  function drawS2Beam(x, y, ang, len, halfW, alpha, flicker) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
@@ -1582,6 +1582,45 @@
     g2.addColorStop(1, 'rgba(143, 212, 255, 0.9)');
     ctx.fillStyle = g2;
     ctx.fillRect(0, -halfW, len, halfW * 2);
+    if (flicker && len > 12) {
+      // 雷电闪动：沿光束主轴的锯齿电弧（时间步进种子 → 每 1/12s 换一次形状；辉光层 + 白热内芯双层）
+      const seg = Math.max(4, Math.floor(len / 26));
+      const rnd = s2Seeded(Math.floor(state.time * 12) * 31 + seg * 17 + ((x * 7 + y * 3) | 0) % 97);
+      for (const [w2, col] of [[2.6, 'rgba(143, 212, 255, 0.55)'], [1.1, 'rgba(255, 255, 255, 0.9)']]) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = w2;
+        ctx.shadowColor = '#bfe6ff';
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (let k = 1; k <= seg; k++) {
+          const px = (k / seg) * len;
+          const py = (rnd() * 2 - 1) * halfW * 1.4 * Math.sin(Math.PI * k / seg);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  // 蓝色预警波（技能1/2 蓄力）：自半径 r0 处向中心收缩的圆环波——
+  // 带两圈拖尾残影（收缩方向的后像在外侧）、亮度随收缩进度从不明显渐增；t0 为收缩起始时刻
+  function drawS2WarnWave(x, y, r0, t0, dur, t) {
+    if (t < t0) return;
+    const p = clamp((t - t0) / dur, 0, 1);
+    const r = r0 * (1 - p);
+    if (r < 2) return;
+    ctx.save();
+    ctx.shadowColor = '#7cd8ff';
+    for (const [mul, w2, a] of [[1.10, 1.4, 0.16], [1.05, 2.2, 0.34], [1, 3, 1]]) {
+      ctx.strokeStyle = `rgba(159, 216, 255, ${(a * (0.18 + 0.82 * p)).toFixed(3)})`;
+      ctx.lineWidth = w2;
+      ctx.beginPath();
+      ctx.arc(x, y, r * mul, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -1594,23 +1633,17 @@
       if (!s.fired) {
         const p = clamp(s.t / STORM2.s1Charge, 0, 1);
         ctx.save();
-        // 预警柱：淡红色竖直参考带（蓄力后半段显现，提示打击列）
-        if (p > 0.5) {
-          ctx.globalAlpha = (p - 0.5) * 1.4;
-          ctx.fillStyle = 'rgba(255, 120, 120, 0.10)';
+        // 预警波：蓝色收缩圆环波（自 300px 向中心收缩 0.8s，带拖尾残影、越收越明显），
+        // 完成后留 0.2s 间隔再发射（s1Charge = 0.8 + 0.2）
+        drawS2WarnWave(ball.x, ball.y, STORM2.s1RingR0, 0, STORM2.s1RingDur, s.t);
+        // 预警柱：淡蓝色竖直参考带（收缩完成后至发射前的间隔内显现，提示打击列）
+        if (s.t >= STORM2.s1RingDur) {
+          ctx.globalAlpha = clamp((s.t - STORM2.s1RingDur) / (STORM2.s1Charge - STORM2.s1RingDur), 0, 1) * 0.9;
+          ctx.fillStyle = 'rgba(143, 212, 255, 0.12)';
           ctx.fillRect(ball.x - STORM2.s1R, 0, STORM2.s1R * 2, CANVAS_H);
         }
         ctx.globalAlpha = 1;
-        // 收缩双环（红白，明显预警）
-        const rr = 46 * (1 - p) + 16;
-        for (const [w2, col] of [[3.2, 'rgba(255, 150, 150, 0.8)'], [1.4, 'rgba(255, 245, 245, 0.9)']]) {
-          ctx.strokeStyle = col;
-          ctx.lineWidth = w2;
-          ctx.beginPath();
-          ctx.arc(ball.x, ball.y, rr, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        // 球体增亮罩
+        // 球体增亮罩（电弧球随蓄力增亮）
         const gg = ctx.createRadialGradient(ball.x, ball.y, 2, ball.x, ball.y, 30);
         gg.addColorStop(0, `rgba(235, 249, 255, ${(0.35 + 0.45 * p).toFixed(3)})`);
         gg.addColorStop(1, 'rgba(160, 210, 255, 0)');
@@ -1652,25 +1685,10 @@
         }
       }
     } else if (s.id === 1) {
-      // 技能2 蓄力预警：四喷口上方各现一圈从大收缩至喷口的预警环（红白双色、越收越亮——醒目）
-      for (let i = 0; i < 4; i++) {
-        if (s.t < STORM2.s2Charge) {
-          const nz = storm2Nozzle(e, i);
-          const p = clamp(s.t / STORM2.s2Charge, 0, 1);
-          const rr = 44 * (1 - p) + 4.5;
-          ctx.save();
-          for (const [w2, col] of [
-            [3, `rgba(255, 150, 150, ${(0.35 + 0.55 * p).toFixed(3)})`],
-            [1.4, `rgba(255, 245, 245, ${(0.4 + 0.5 * p).toFixed(3)})`],
-          ]) {
-            ctx.strokeStyle = col;
-            ctx.lineWidth = w2;
-            ctx.beginPath();
-            ctx.arc(nz.x, nz.y, rr, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
+      // 技能2 蓄力预警：蓝色预警波（机体中心单圈，自 200px 收缩 0.8s——蓄力 0.2s 后开始，完成后留 0.2s 发射）
+      if (s.t < STORM2.s2Charge) {
+        const ballC = storm2BallPos(e);
+        drawS2WarnWave(ballC.x, ballC.y, STORM2.s2RingR0, 0.2, STORM2.s2RingDur, s.t);
       }
       for (const b of s.beams) {
         const vis = b.t < 0.10 ? b.t / 0.10 : 1 - (b.t - 0.10) / b.dur;
@@ -1769,7 +1787,7 @@
       // 技能6：臂向 / 左右边界重现光束（同长 640、均自 0 增长 ≈0.29s 长满；重现光束沿瞄准方向慢速飞行）
       for (const b of s.beams) {
         const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
-        drawS2Beam(b.x, b.y, b.ang, b.len || 0, STORM2.s6R, clamp(vis, 0, 1));
+        drawS2Beam(b.x, b.y, b.ang, b.len || 0, STORM2.s6R, clamp(vis, 0, 1), true);   // 雷电闪动特效
       }
       // 重现点汇聚预兆（发射前 0.3s）：左右边界两点亮起电弧球
       if (s.pointsAt && s.ptT > 0) {
@@ -2146,11 +2164,12 @@
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // ---------- 组装阶段：飞行中的部件（世界坐标） ----------
-    if (e.phase === 'assemble' && e.parts) {
+    // ---------- 组装阶段 / 技能5/6 重组动画：飞行中的部件（世界坐标） ----------
+    // e.partsAnim：诗篇技能5/6 释放前的六球重组演出（runPartsAnim 驱动 pt.x/pt.y，endPartsAnim 清除）
+    if ((e.phase === 'assemble' || e.partsAnim) && e.parts) {
       for (const pt of e.parts) {
-        if (pt.attached) {
-          // 已镶接：在机体上绘制装甲板高光闪烁（短暂）
+        if (e.phase === 'assemble' && pt.attached) {
+          // 已镶接（仅组装阶段）：在机体上绘制装甲板高光闪烁（短暂）
           if (pt.flyT < 0.8) {
             const glow = 1 - (pt.flyT - 0.55) / 0.25;
             if (glow > 0) {
@@ -2168,7 +2187,7 @@
           }
           continue;
         }
-        if (e.phaseT < pt.delay) continue;   // 还没轮到
+        if (e.phase === 'assemble' && e.phaseT < pt.delay) continue;   // 还没轮到
         // 绘制飞行中的部件：暗色装甲块 + 紫色尾焰
         const px = e.x + pt.x * e.scale;
         const py = e.y + pt.y * e.scale;

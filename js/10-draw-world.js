@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, ENEMY_TYPES, GUNSHIP_PALETTE } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, ENEMY_TYPES, GUNSHIP_PALETTE, currentArmor } from './01-config.js';
   import { bossFlow, clamp, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
@@ -684,6 +684,9 @@
       ctx.globalAlpha = 1;
     }
     for (const b of eBullets) {
+      // 消散期子弹（寿命到期的旋转弧线弹）：按剩余消散时间整体渐隐（分支内部 save/restore 会保留该透明度）
+      if (b.fadeT != null) ctx.globalAlpha = clamp(b.fadeT / (b.lifeFade || 0.28), 0, 1);
+      else ctx.globalAlpha = 1;
       if (b.trail) {
         // 暗紫光芒包裹：弹体外围径向辉光（源头与轨迹衔接处最亮）
         const halo = ctx.createRadialGradient(b.x, b.y, b.r * 0.3, b.x, b.y, b.r * 2.8);
@@ -874,7 +877,18 @@
         // 径向渐变以弹心为圆心、与坐标无关 → 平移到弹位置后用缓存渐变绘制
         ctx.save();
         ctx.translate(b.x, b.y);
-        if (b.r >= 10) {
+        if (b.bossRound) {
+          // BOSS 圆形弹幕（诗篇·旧日之歌技能4 扇形弹）：白核 → 主色径向渐变，
+          // 与长条弹的"白热中段 → 主色头端"同色系，避免平涂主色 + 红辉光造成的偏红观感
+          ctx.fillStyle = cachedGrad(`bround|${b.color}|${b.r}`, () => {
+            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
+            bg.addColorStop(0, '#ffffff');
+            bg.addColorStop(0.45, '#ffffff');
+            bg.addColorStop(1, b.color);
+            return bg;
+          });
+          ctx.shadowColor = b.color;
+        } else if (b.r >= 10) {
           ctx.fillStyle = cachedGrad(`big|${b.color}|${b.r}`, () => {
             const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
             bg.addColorStop(0, '#ffffff');
@@ -913,6 +927,7 @@
         ctx.restore();
       }
     }
+    ctx.globalAlpha = 1;   // 清除消散期子弹的渐隐透明度
     ctx.shadowBlur = 0;
   }
 
@@ -1233,6 +1248,71 @@
     ctx.restore();
   }
 
+  // 炽心：自身火环——焦香螺旋桨同款（三层波形火舌 + 暖光辉光 + 上升火星 + 边界环），整体减淡（约 45%）。
+  // 绘制于低图层（实体与子弹之下，见 render 调用位），不遮挡我方 / 敌方子弹与任何单位
+  function drawPlayerFireRing() {
+    if (currentArmor.id !== 'chixin' || !player.alive || state.mode !== 'playing') return;
+    const ar = currentArmor.burnR || 100;
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.globalAlpha *= 0.45;   // 整体减淡（焦香本体的火环更浓）
+
+    // 暖光辉光（从中心向外淡出的径向渐变）
+    const glow = ctx.createRadialGradient(0, 0, ar * 0.15, 0, 0, ar);
+    glow.addColorStop(0, 'rgba(255, 100, 20, 0.10)');
+    glow.addColorStop(0.5, 'rgba(255, 60, 10, 0.07)');
+    glow.addColorStop(0.85, 'rgba(255, 40, 0, 0.04)');
+    glow.addColorStop(1, 'rgba(255, 30, 0, 0)');
+    ctx.beginPath(); ctx.arc(0, 0, ar, 0, Math.PI * 2);
+    ctx.fillStyle = glow; ctx.fill();
+
+    // 三层波形火舌（各层不同半径/振幅/速度/相位，产生火焰跳动感）
+    const tongues = 40;
+    const layers = [
+      { lr: ar * 0.92, amp: 4.0, spd: 2.2, ph: 0,    color: 'rgba(255, 60, 10, 0.42)', lw: 2.4 },
+      { lr: ar * 0.96, amp: 3.0, spd: -1.6, ph: 1.3, color: 'rgba(255, 140, 30, 0.32)', lw: 1.8 },
+      { lr: ar * 0.88, amp: 5.0, spd: 3.0, ph: 2.7,  color: 'rgba(255, 200, 60, 0.20)', lw: 1.2 },
+    ];
+    for (const L of layers) {
+      ctx.beginPath();
+      for (let k = 0; k <= tongues; k++) {
+        const a = (k / tongues) * Math.PI * 2;
+        const wave = Math.sin(a * 6 + state.time * L.spd + L.ph) * L.amp
+                   + Math.sin(a * 11 - state.time * L.spd * 0.7 + L.ph * 2) * L.amp * 0.5;
+        const r = L.lr + wave;
+        if (k === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = L.color;
+      ctx.lineWidth = L.lw;
+      ctx.stroke();
+    }
+
+    // 上升火星（12 颗小亮点沿光环内随机位置缓慢上飘，循环重置）
+    ctx.fillStyle = 'rgba(255, 220, 80, 0.7)';
+    for (let k = 0; k < 12; k++) {
+      const seed = k * 137.508;   // 黄金角分布
+      const sa = (seed % (Math.PI * 2));
+      const sr = ar * (0.4 + 0.5 * ((seed * 0.618) % 1));
+      const rise = ((state.time * 28 + seed * 3) % 50) - 25;   // 循环上升偏移
+      const sx = Math.cos(sa) * sr + Math.sin(state.time * 1.2 + k) * 2;
+      const sy = Math.sin(sa) * sr - rise;
+      const sparkR = 1.0 + Math.sin(state.time * 4 + k * 2) * 0.4;
+      if (Math.hypot(sx, sy) < ar) {
+        ctx.beginPath(); ctx.arc(sx, sy, sparkR, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // 稳定边界环（最外层淡橙描边，标识光环范围）
+    ctx.beginPath(); ctx.arc(0, 0, ar, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 120, 30, 0.34)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
   function render() {
     // 抖动
     ctx.save();
@@ -1258,6 +1338,7 @@
             drawStormVortex();   // 暴风之眼：涡流风旋（技能7）
     drawCrystals();
     drawPowerups();
+    drawPlayerFireRing();   // 炽心：自身火环（低图层——位于实体与子弹之下，不遮挡任何单位）
     for (const e of enemies) {
       if (e.type === 'boss') drawBoss(e);
       else drawEnemy(e);

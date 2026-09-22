@@ -5,8 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
   //
-  import { ANVIL, BAOLING, BOSS, BOSS_BULLET, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, diffMods } from './01-config.js';
-  import { blBombs, bossFlow, clamp, crystals, cubeHitFx, douzhiFx, eBullets, enemies, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, windFlows, zoneMarks } from './02-core.js';
+  import { ANVIL, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { blBombs, bossFlow, clamp, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, shieldSweepHit, testDamagePlayer } from './07-player.js';
@@ -29,29 +29,32 @@
         // 完全登场（combatReady）前无接触判定：汇聚 / 组装阶段的机体尚不可碰撞
         if (e.combatReady && player.alive &&
             Math.abs(e.x - player.x) < e.w / 2 && Math.abs(e.y - player.y) < e.h / 2 &&
-            player.shield <= 0) {
+            player.shield <= 0 && player.crystalShield <= 0) {
           if (Math.random() < 0.5) spawnParticles(player.x + rand(-8, 8), player.y + rand(-8, 8), '#ff4d6d', 1, 70);
           if (e.bossId === 'storm') {
             if (state.challenge) {
-              testDamagePlayer(dt / 0.025);   // ≈40 HP/s，血量 ≤0 立刻重置为满
+              testDamagePlayer(dt / 0.025 * bossDmgMul());   // ≈40 HP/s（具象：BOSS 伤害 -40%），血量 ≤0 立刻重置为满
             } else {
-              player.hp -= dt / 0.025;   // ≈40 HP/s
+              player.hp -= dt / 0.025 * bossDmgMul();   // ≈40 HP/s（具象：BOSS 伤害 -40%）
               if (player.hp <= 0) {
-                player.hp = 0;
-                player.alive = false;
-                state.lives--;
-                spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
-                shake(16, 0.6);
-                if (state.lives <= 0) setTimeout(() => endGame(), 700);
-                else player.respawnTimer = PLAYER_CFG.respawnTime;
+                // 最终壁垒：每条命一次的免死同样生效于本持续接触致死路径
+                if (!tryBulwarkCheatDeath()) {
+                  player.hp = 0;
+                  player.alive = false;
+                  state.lives--;
+                  spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
+                  shake(16, 0.6);
+                  if (state.lives <= 0) setTimeout(() => endGame(), 700);
+                  else player.respawnTimer = PLAYER_CFG.respawnTime;
+                }
               }
             }
           } else {
-            // 旧日之歌 50 / 风暴编织者 40：接触一次性伤害（受击无敌帧照常；护盾免疫）
-            const cDmg = e.bossId === 'storm2' ? STORM2.crashDmg : BOSS.crashDmg;
+            // 旧日之歌 50 / 风暴编织者 40：接触一次性伤害（受击无敌帧照常；护盾免疫；具象：BOSS 伤害 -40%）
+            const cDmg = (e.bossId === 'storm2' ? STORM2.crashDmg : BOSS.crashDmg) * bossDmgMul();
             if (state.challenge) {
               testDamagePlayer(cDmg);
-              player.invuln = PLAYER_CFG.invulnTime; player.invulnBlink = true;   // 接触后照常给受击无敌帧
+              player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 接触后照常给受击无敌帧
             } else {
               damagePlayer(cDmg);
             }
@@ -425,7 +428,7 @@
           e.vy += (spd - e.vy) * Math.min(1, dt * acc);
           if (e.vy >= spd * 0.9) {
             e.fa1State = 'descend';
-            e.fa1FireTimer = rand(FASHI_A1.fireInterval[0], FASHI_A1.fireInterval[1]);
+            e.fa1FireTimer = enemyFireIv(FASHI_A1);
           }
           break;
       }
@@ -497,7 +500,7 @@
           if (e.fa2Fired && e.fa2T >= FASHI_A2.firePause + FASHI_A2.fireLingerAfter) {
             // 攻击计时从本次射击完毕重新起算：横移与随后的下降共用同一窗口（1~1.5s），
             // 横移耗时（80~160px ÷ 62）常超出窗口 → 下一击在横移途中触发（见 strafe 分支打断）
-            e.fa2FireTimer = rand(FASHI_A2.fireInterval[0], FASHI_A2.fireInterval[1]);
+            e.fa2FireTimer = enemyFireIv(FASHI_A2);
             // 横移被打断的情况：射击完毕放弃剩余横移，径直下降直到下次攻击（不再掷横移）
             if (e.strafeAbort) {
               e.strafeAbort = false;
@@ -852,7 +855,8 @@
     // 充能与召唤均在 updateEnemyFire 内进行，不影响 updateEnemyMovement 的移动（下降/悬停巡航照常）
     if (e.type === 'harbinger') {
       if (e.leaving) return;   // 已离场：停止充能
-      e.chargeT += dt;
+      // 具象：攻击间隔 +25% —— 充能序列整体时间膨胀（红相充满更慢 → 召唤导弹更稀疏）
+      e.chargeT += dt / (diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1);
       // 首波红相 1.5s、后续波红相 2s；充满即召唤（chargeWave 整波保持不变，避免召唤后动画参数跳变）
       const cd = (e.chargeWave || 0) === 0 ? HARBINGER.chargeFirst : HARBINGER.charge;
       if (!e.firedThisCycle && e.chargeT >= cd && e.missilesGuided < HARBINGER.maxMissiles) {
@@ -883,7 +887,7 @@
       e.fireTimer -= dt;
       if (e.fireTimer <= 0) {
         const cfg = ENEMY_TYPES.weilong;
-        e.fireTimer = rand(cfg.fireInterval[0], cfg.fireInterval[1]);
+        e.fireTimer = enemyFireIv(cfg);
         e.burst = {
           baseAng: Math.atan2(player.y - e.y, player.x - e.x),   // 锁定玩家方向（无偏转）
           speed: cfg.bulletSpeed * WEILONG.bulletSpeedMul,       // 较普通弹快 60%
@@ -934,7 +938,7 @@
             ty: clamp(player.y + rand(-POPIAN.warnOffset, POPIAN.warnOffset), 12, CANVAS_H - 12),
             t: 0,
           };
-          e.atkT = rand(POPIAN.fireInterval[0], POPIAN.fireInterval[1]);
+          e.atkT = enemyFireIv(POPIAN);
         } else {
           e.atkT = 0.25;   // 不在范围 / 尚未转向到位：短暂重试
         }
@@ -946,7 +950,7 @@
       if (!e.arrived || e.leaving) return;   // 入场下降未就位 / 离场中不攻击
       e.fireTimer -= dt;
       if (e.fireTimer <= 0) {
-        e.fireTimer = rand(FASHI_MATRIX.fireInterval[0], FASHI_MATRIX.fireInterval[1]);
+        e.fireTimer = enemyFireIv(FASHI_MATRIX);
         fireMatrixCube(e);
       }
       return;
@@ -972,7 +976,7 @@
       }
       e.fireTimer -= dt;
       if (e.fireTimer <= 0) {
-        e.fireTimer = rand(FASHI_ARRAY.fireInterval[0], FASHI_ARRAY.fireInterval[1]);
+        e.fireTimer = enemyFireIv(FASHI_ARRAY);
         fireArrayCube(e);
       }
       return;
@@ -1013,7 +1017,7 @@
     e.fireTimer -= dt;
     if (e.fireTimer > 0) return;
     const cfg = ENEMY_TYPES[e.type];
-    e.fireTimer = rand(cfg.fireInterval[0], cfg.fireInterval[1]);
+    e.fireTimer = enemyFireIv(cfg);
   
     if (e.type === 'side' || e.type === 'prolifera' || e.type === 'escort') {
       // 仅 side 的 'shoot' 行为追踪射击，且整场只攻击一次（首射后不再开火）；增生侧翼艇/卫护飞船无攻击
@@ -1071,7 +1075,7 @@
             fireTriVolley(e, cfg);
             e.scheduled.push({ t: 0.5, fn: () => fireTriVolley(e, cfg) });
             e.scheduled.push({ t: 1.0, fn: () => fireTriVolley(e, cfg) });
-            e.scheduled.push({ t: 1.11, fn: () => { e.fireTimer = rand(cfg.fireInterval[0], cfg.fireInterval[1]); } });
+            e.scheduled.push({ t: 1.11, fn: () => { e.fireTimer = enemyFireIv(cfg); } });
             break;
           }
         }
@@ -1325,8 +1329,24 @@
     shake(4, 0.2);
   }
 
-  // 导弹命中玩家的特殊结算
+  // 导弹命中玩家的特殊结算（先兆者导弹专用伤害规则）。
+  // 注：风暴编织者并没有导弹技能——但其技能1（电弧激光）在既有设计中刻意复用本函数做命中结算
+  // （低血秒杀 / ≥60 扣 80% 血量并降级，"与先兆者导弹一致"，见 05-boss runStorm2Skill 技能1 注释），
+  // 因此具象的「固定 50 伤害」分支对 先兆者导弹 与 编织者技能1激光 同时生效
   function missileHitPlayer() {
+    // 具象：导弹不再有秒杀机制——固定 50 伤害（不扣 80% 血量、不降武器等级；受击无敌照常；护盾免疫由调用方处理）
+    const flat = diffMods().missileFlatDmg;
+    if (flat != null) {
+      if (state.challenge) {
+        testDamagePlayer(flat);
+        player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 受击无敌：闪动提示
+      } else {
+        damagePlayer(flat);
+      }
+      shake(8, 0.35);
+      spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
+      return;
+    }
     // 测试模式：导弹照常结算血量（不掉武器等级、不掉命；血量归零自动重置）
     if (state.challenge) {
       const dmg = player.hp < HARBINGER.lowHpKill ? PLAYER_CFG.maxHp : player.hp * 0.8;
@@ -1344,7 +1364,7 @@
       player.hp = player.hp * 0.2;
       if (player.weapon > 1) player.weapon--;
       player.berserk = 0;
-      player.invuln = PLAYER_CFG.invulnTime; player.invulnBlink = true;   // 受击无敌：闪动提示
+      player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 受击无敌：闪动提示
       shake(8, 0.35);
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
     }
@@ -1759,12 +1779,15 @@
     const isBoss = e.type === 'boss';
     if (e.type === 'douzhi') return;   // 斗志昂扬：不掉任何道具（仅掉水晶）
     // 类型掉率修正：1类（含增生侧翼艇；卫护飞船不走此池）所有道具概率减半；2类突击艇全部道具概率 ×0.75。
-    // 高能爆弹为橙色标记的独立判定（见函数末尾），不在此修正范围内
+    // 具象：1/2类额外减少修正不再生效。高能爆弹为橙色标记的独立判定（见函数末尾），不在此修正范围内
+    const dMods = diffMods();
     let dropMul = 1;
-    if (e.type === 'side' || e.type === 'prolifera') dropMul = 0.5;
-    else if (e.type === 'striker') dropMul = 0.75;
-    // 诗篇：BOSS 战期间强制波次的 1类敌人——所有道具掉率 ×0.3（标记见 04-spawn spawnBossMinionWave）
-    if (e.minionDrop) dropMul *= (diffMods().bossMinionWave ? diffMods().bossMinionWave.dropMul : 0.30);
+    if (!dMods.dropClassNoReduce) {
+      if (e.type === 'side' || e.type === 'prolifera') dropMul = 0.5;
+      else if (e.type === 'striker') dropMul = 0.75;
+    }
+    // BOSS 战期间强制波次（全难度）的 1类敌人——所有道具掉率 ×0.3（标记见 04-spawn spawnBossMinionWave；具象不生效）
+    if (e.minionDrop && !dMods.bossMinionDropNoReduce) dropMul *= BOSS_MINION_WAVE.dropMul;
     // 升级套件：基础 9% → 红 ×1.5 / 紫 ×1.2 / 黄（含金）×1.2；
     // 再按「场上已有套件数 + 我方火力等级」统一降率：===4 全体 ×0.5、>=5 全体 ×0.3
     let kitRate = DROP_KIT_RATE;
@@ -1830,6 +1853,7 @@
     const delay = e.jxFlank ? JIAOXIANG.auraDelayFlank : JIAOXIANG.auraDelay;
     if (e.auraT < delay) return;
     if (!player.alive || player.shield > 0) return;
+    if (currentArmor.id === 'chixin') return;   // 炽心装甲：免疫焦香螺旋桨的火环伤害
     const dist = Math.hypot(e.x - player.x, e.y - (player.y + PLAYER_CFG.hitOffsetY));
     if (dist > JIAOXIANG.auraR) return;
     const near = dist <= JIAOXIANG.nearR;
@@ -1867,7 +1891,7 @@
     };
     // BOSS 击毁：单独结算
     if (e.type === 'boss') {
-      if (!testMode) state.score += e.score;
+      if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul);
       spawnParticles(e.x, e.y, '#ffffff', 60, 380);
       spawnParticles(e.x, e.y, BOSS_BULLET.long, 40, 300);
       shake(22, 1.0);
@@ -1949,7 +1973,7 @@
     if (e.type === 'escort') {
       spawnParticles(e.x, e.y, e.color, 14, 200);
       if (!testMode) {
-        state.score += e.score;
+        state.score += Math.round(e.score * diffMods().scoreMul);
         const n = Math.random() < 0.8 ? 1 : 2;
         for (let k = 0; k < n; k++) {
           crystals.push({
@@ -1987,7 +2011,14 @@
       else if (!e.blThrown) detonateBaoling(e);
     }
     spawnParticles(e.x, e.y, e.color, 22, 260);
-    if (!testMode) state.score += e.score;
+    if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul);
+    // 群星守望：击杀 1/2/3/4 类敌人时按概率立刻清除一颗离自身最近的敌方子弹（30%/60%/80%/100%）
+    const watchCls = ENEMY_CLASS[e.type];
+    const watchChance = (watchCls && currentArmor.clearChance && !testMode)
+      ? currentArmor.clearChance[watchCls] : 0;
+    if (watchChance && Math.random() < watchChance && eBullets.length) {
+      clearNearestEnemyBullet(player.x, player.y);
+    }
     // 所有非 BOSS 敌机被击毁均不再抖屏（仅保留 BOSS 的击毁震屏）
     // 增生侧翼艇：击毁后分裂出 2~3 个卫护飞船（深蓝紫渐变小三角，沿原航向大致继续飞行，出厂带随机虚化护盾）
     if (e.type === 'prolifera') {

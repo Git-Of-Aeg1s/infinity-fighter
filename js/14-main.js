@@ -5,16 +5,16 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentPlane, diffMods } from './01-config.js';
-  import { bossFlow, canvas, clamp, ctx, diffSelect, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, pauseHomeBtn, pauseRetryBtn, planeSelect, player, playerHitFx, rand, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, wingmanSelect } from './02-core.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { bossFlow, canvas, clamp, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearEnemyBullets, triggerArmorSkill, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildDiffCards, buildPlaneCards, buildWingmanCards, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { buildArmorCards, buildDiffCards, buildPlaneCards, buildWingmanCards, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
   import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
@@ -44,6 +44,7 @@
     if (k === 'p' && state.mode === 'playing') togglePause();
     if (k === 'r') resetGame(true, { keepTest: true });
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
+    if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     // 作弊：切换武器等级（测试用）。预留“按 0 武装”门控——WEAPON_CHEAT_REQUIRE_ARM 改为 true 后需先按 0 才能用 1~5 切换。
     // 测试模式（图鉴挑战）：1~5 直接切换武器等级，无需按 "0"（门控默认关闭）；"+" 立刻再召唤一个测试目标
     if (state.mode === 'playing' && !state.paused) {
@@ -142,17 +143,15 @@
         }
       }
 
-      // BOSS 战斗期间（诗篇）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
+      // BOSS 战斗期间（全难度）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
       // 不受压力系统与场上存怪影响；本波敌人道具掉率 ×0.3（见 04-spawn / 06-enemy）
       if (bossFlow.stage === 'fight') {
-        const mw = diffMods().bossMinionWave;
-        if (mw) {
-          levelFlow.bossMinionT += dt;
-          if (levelFlow.bossMinionT >= levelFlow.bossMinionNext) {
-            levelFlow.bossMinionT = 0;
-            levelFlow.bossMinionNext = rand(mw.min, mw.max);
-            spawnBossMinionWave();
-          }
+        levelFlow.bossMinionT += dt;
+        // BOSS 战 1类强制波间隔固定（6~12s）：明确不受任何刷怪调整影响（不随难度 spawnIntervalMul 缩放）
+        if (levelFlow.bossMinionT >= levelFlow.bossMinionNext) {
+          levelFlow.bossMinionT = 0;
+          levelFlow.bossMinionNext = rand(BOSS_MINION_WAVE.min, BOSS_MINION_WAVE.max);
+          spawnBossMinionWave();
         }
       }
 
@@ -177,9 +176,10 @@
           bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
         // bossVictoryDelay > 0：最终 BOSS 已被击坠、正在等待胜利结算——冻结刷怪，避免结算前刷出新怪
         // ---------- 场面压力刷新系统（替代固定冷却） ----------
-        // 压力比 = 场上敌人权重和 / 满场基准；低于阈值 → 直接/加速刷新，高于阈值 → 较慢（间隔有限，拖得太长仍会刷新）
+        // 压力比 = 场上敌人权重和 / 满场基准（具象 ×0.75：更早超阈值 → 更早进入慢速刷新，压低同屏数量）；
+        // 低于阈值 → 直接/加速刷新，高于阈值 → 较慢（间隔有限，拖得太长仍会刷新）
         const threshold = spawnPressureThreshold();
-        const pressure = fieldPressureW() / PRESSURE_CAPACITY;
+        const pressure = fieldPressureW() / (PRESSURE_CAPACITY * (diffMods().pressureCapacityMul != null ? diffMods().pressureCapacityMul : 1));
         // 低于阈值：刷新倒计时加速流逝（间隔快速缩短直到刷新）；回到阈值以上恢复正常流速
         let rush = 1;
         if (pressure < threshold) {
@@ -199,7 +199,9 @@
             spawnJiaoxiang();
             enemies[enemies.length - 1].waveTag = levelFlow.waveSeq;
           }
-          const base = Math.max(0.55, 2.1 - (levelFlow.level - 1) * 0.15);
+          // 基础波间隔随难度倍率放大：真我 ×1.3（总刷怪量/同屏数量 ≈ -23%）、具象 ×2.3（≈ -55%）
+          const base = Math.max(0.55, 2.1 - (levelFlow.level - 1) * 0.15)
+            * (diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1);
           // 高于阈值时下一波间隔放大（较慢）；低于阈值保持基础间隔并叠加加速流逝 → 迅速补怪
           levelFlow.spawnTimer = rand(base * 0.7, base * 1.3) * (pressure >= threshold ? SPAWN_SLOW_MUL : 1);
           levelFlow.lowPressureT = 0;
@@ -254,14 +256,11 @@
           bossFlow.victoryDelay = 0;
           state.mode = 'idle';
           state.victoryOverlay = true;
-          diffSelect.classList.add('hidden');
-          planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');
-          const encyBtnV = document.getElementById('encyEntryBtn');
-          if (encyBtnV) encyBtnV.style.display = 'none';
           showOverlay(
             '胜利',
             `击坠 <b style="color:#ffb545">${bossFlow.defeatedName || ''}</b>！<br /><br />` +
             (state.challenge ? '' : `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />`) +
+            `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b><br />` +
             `抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`,
             '返回主界面'
           );
@@ -360,6 +359,13 @@
       resetGame(true, { keepTest: true });
     }
   });
+
+  // 主菜单「开始游戏」：idle 态直接开局（菜单独立页面态的入口按钮）
+  menuStartBtn.addEventListener('click', () => {
+    if (state.mode === 'idle' && !state.paused && !state.victoryOverlay) {
+      resetGame(true, { keepTest: true });
+    }
+  });
   encyClose.addEventListener('click', closeEncyclopedia);
   initEncyDiffButtons();   // 图鉴头部三选一难度按钮组：绑定点击并按 DIFFICULTIES 初始化状态
 
@@ -398,6 +404,7 @@
   buildDiffCards();
   buildPlaneCards();
   buildWingmanCards();
+  buildArmorCards();
   resetGame(false);
   fitStage();
   scheduleLoop();

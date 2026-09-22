@@ -9,6 +9,7 @@
   import { clamp, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
+  import { armorSkillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldSweepHit } from './07-player.js';
 
 
@@ -112,10 +113,22 @@
         const nvx = b.vx * rc - b.vy * rs, nvy = b.vx * rs + b.vy * rc;
         b.vx = nvx; b.vy = nvy;
       }
-      // 寿命上限（旋转弹可能长期滞留场上）：到时直接消散
+      // 寿命上限（旋转弧线弹可能长期滞留场上）：到期进入消散期——快速减速 + 渐隐，
+      // 消散开始瞬间迸出一次同色粒子；自然出界的子弹不经过此流程（无消失动画）
       if (b.life != null) {
-        b.life -= dt;
-        if (b.life <= 0) { eBullets.splice(i, 1); continue; }
+        if (b.fadeT == null) {
+          b.life -= dt;
+          if (b.life <= 0) {
+            b.fadeT = b.lifeFade != null ? b.lifeFade : 0.28;
+            b.life = 0;
+            spawnParticles(b.x, b.y, b.color || '#a5ffd6', 8, 130);
+          }
+        } else {
+          b.fadeT -= dt;
+          const decay = Math.exp(-8 * dt);
+          b.vx *= decay; b.vy *= decay;
+          if (b.fadeT <= 0) { eBullets.splice(i, 1); continue; }
+        }
       }
       // 沿飞行方向加速：初速低、快速增长至上限（4类红技能3 的 '/||\' 弹幕）
       if (b.accel) {
@@ -211,7 +224,10 @@
         }
         b.px = b.x; b.py = b.y;
       }
-      if (b.y > CANVAS_H + 20 || b.y < -40 || b.x < -20 || b.x > CANVAS_W + 20) {
+      // 出界移除：折线光束（beamTrail，技能3 "<"弹）的可见轨迹自头部向后延伸 b.len——
+      // 头部出界后整条"<"轨迹继续滑出屏幕，直至尾端也越过边界才消失（不再头部一出界就整条闪没）
+      const trailPad = b.beamTrail ? (b.len || 0) : 0;
+      if (b.y > CANVAS_H + 20 + trailPad || b.y < -40 - trailPad || b.x < -20 || b.x > CANVAS_W + 20) {
         eBullets.splice(i, 1); continue;
       }
       // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效
@@ -279,9 +295,11 @@
         }
       }
       // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
-      if (!b.laser && player.shield > 0 && player.alive &&
-          Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r) {
-        spawnParticles(b.x, b.y, '#6fe3ff', 6, 140);
+      // 七日澜心水晶护盾：同样消解气泡内敌弹（粉色迸散）
+      if (!b.laser && player.alive &&
+          Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r &&
+          (player.shield > 0 || player.crystalShield > 0)) {
+        spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 6, 140);
         eBullets.splice(i, 1);
         continue;
       }
@@ -338,7 +356,7 @@
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
   function applyPowerupPickup(p) {
     if (p.kind === 'hp') {
-      player.hp = clamp(player.hp + 40, 0, PLAYER_CFG.maxHp);
+      player.hp = clamp(player.hp + 40, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
       state.bombs = Math.min(state.bombs + 1, MAX_BOMBS);
@@ -419,7 +437,10 @@
           c.vy = (dy / dist) * pull;
           // 近距直吸：本帧位移即可抵达玩家时直接结算（高速拉取一帧可能越过拾取窗口）
           if (bossPull && dist <= pull * dt + 8) {
-            state.score += c.val;
+            state.score += Math.round(c.val * diffMods().scoreMul);
+            // 七日澜心：按水晶【得分】等比填充技能量表（普通 +10 / 巨型 +500）——
+            // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
+            armorSkillGain(c.val);
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -432,7 +453,9 @@
       if (player.alive &&
           Math.abs(c.x - player.x) < player.w / 2 + c.r &&
           Math.abs(c.y - player.y) < player.h / 2 + c.r) {
-        state.score += c.val;
+        state.score += Math.round(c.val * diffMods().scoreMul);
+        // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
+        armorSkillGain(c.val);
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
       }

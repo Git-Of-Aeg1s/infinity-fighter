@@ -71,40 +71,60 @@
           <div class="buff-track"><div class="buff-fill" id="douzhiFill"></div></div>
           <span class="buff-tag">斗志昂扬</span>
         </div>
+        <!-- 装甲技能圆形计数表（七日澜心专属；按填充角度统计量表，满后按 F 触发） -->
+        <div class="skill-gauge hidden" id="skillGauge" title="装甲技能量表：满后按 F 释放">
+          <div class="skill-gauge-ring" id="skillGaugeRing"></div>
+          <span class="skill-gauge-key">F</span>
+        </div>
       </div>
 
-      <!-- 开始 / 结束遮罩 -->
-      <div class="overlay" id="overlay">
-        <div class="overlay-card">
-          <h2 id="overlayTitle">准备起飞</h2>
-          <p id="overlayDesc">
-            使用 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 操纵战机<br />
-            主炮自动开火，<kbd>Space</kbd> 释放高能爆弹（重创全场敌人 + 清空敌弹）<br />
-            拾取水晶加分，升级套件提升火力（满级 Lv5 即暴走）<br />
-            <kbd>P</kbd> 暂停 · <kbd>R</kbd> 重新开始
-          </p>
-          <!-- 难度选择（复用 plane-select 显隐样式）：具象为占位（设计中），真我 / 诗篇可玩 -->
-          <div class="plane-select" id="diffSelect">
-            <div class="plane-select-title">选择难度</div>
+      <!-- 主菜单（独立页面态）：idle 时全屏显示，进入战斗隐藏——
+           难度 / 战机 / 僚机 / 装甲 四组选择 + 开始按钮与图鉴入口，由 12-ui 构建卡片 -->
+      <div class="menu-screen hidden" id="menuScreen">
+        <div class="menu-hero">
+          <h1 class="menu-title">大无垠战机</h1>
+          <span class="menu-subtitle">BIG INFINITY FIGHTER</span>
+        </div>
+        <div class="menu-body">
+          <div class="menu-section">
+            <div class="menu-section-title">选择难度</div>
             <div class="diff-grid" id="diffGrid"></div>
           </div>
-          <div class="plane-select" id="planeSelect">
-            <div class="plane-select-title">选择战机</div>
+          <div class="menu-section">
+            <div class="menu-section-title">选择战机</div>
             <div class="plane-grid" id="planeGrid"></div>
           </div>
-          <div class="plane-select" id="wingmanSelect">
-            <div class="plane-select-title">选择僚机</div>
+          <div class="menu-section">
+            <div class="menu-section-title">选择僚机</div>
             <div class="plane-grid" id="wingmanGrid"></div>
           </div>
+          <div class="menu-section">
+            <div class="menu-section-title">选择装甲</div>
+            <div class="armor-grid" id="armorGrid"></div>
+          </div>
+        </div>
+        <div class="menu-actions" id="menuActions">
+          <button id="menuStartBtn" class="menu-start-btn">开始游戏</button>
+          <div class="menu-links">
+            <!-- 数值与机制图鉴入口（主菜单内，ⓘ 圆钮） -->
+            <button class="info-entry-btn" id="infoEntryBtn" title="数值与机制图鉴">i</button>
+            <!-- 怪物图鉴入口（12-ui 动态创建插入） -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 暂停 / 结算遮罩（主菜单独立成页后，遮罩仅承担 暂停 / 失败 / 胜利 三种状态） -->
+      <div class="overlay hidden" id="overlay">
+        <div class="overlay-card">
+          <h2 id="overlayTitle">已暂停</h2>
+          <p id="overlayDesc"></p>
           <!-- 再次挑战置于上方：BOSS 试炼 / 图鉴挑战胜利页与「返回主界面」同时可见，挑战按钮在上 -->
           <button id="retrialBtn" class="hidden">再次挑战</button>
-          <button id="startBtn">开始游戏</button>
+          <button id="startBtn">继续游戏</button>
           <button id="gameoverHomeBtn" class="hidden">返回主界面</button>
           <button id="pauseRetryBtn" class="hidden">重新挑战</button>
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <div class="boss-test-row" id="bossTestRow"></div>
-          <!-- 数值与机制图鉴入口（开始界面右下角） -->
-          <button class="info-entry-btn" id="infoEntryBtn" title="数值与机制图鉴">i</button>
         </div>
       </div>
       <!-- 怪物图鉴 -->

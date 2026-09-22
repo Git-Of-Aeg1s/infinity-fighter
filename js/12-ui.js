@@ -1,12 +1,12 @@
 ﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(8 名)
+  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(9 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, challenge, crystalMagnetMul, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, currentDifficulty, currentPlane, currentWingman, setDifficulty, setPlane, setWingman } from './01-config.js';
-  import { DPR, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, crystals, cubeHitFx, diffGrid, diffLabel, diffSelect, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, planeSelect, player, playerHitFx, popianMissiles, powerups, rand, retrialBtn, scoreText, shieldBar, shieldFill, slashFx, spellCubes, startBtn, state, trailGhosts, windFlows, wingmanGrid, wingmanSelect, zoneMarks } from './02-core.js';
+  import { ARMOR_SKILLS, ARMORS, BERSERK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPlane, currentWingman, setArmor, setDifficulty, setPlane, setWingman } from './01-config.js';
+  import { DPR, armorGrid, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, clamp, crystals, cubeHitFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, menuActions, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
   import { stopAlarm } from './03-audio.js';
   import { delayedShots, initWingmen } from './07-player.js';
   import { bombBurst, shieldBurst } from './08-entities.js';
@@ -17,7 +17,8 @@
 
   // ---------- HUD ----------
   function updateHUD() {
-    const ratio = player.hp / PLAYER_CFG.maxHp;
+    const maxHp = player.maxHp || PLAYER_CFG.maxHp;
+    const ratio = player.hp / maxHp;
     hpFill.style.width = (ratio * 100) + '%';
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
 
@@ -52,6 +53,15 @@
     const douzhiOn = state.hasteT > 0;
     douzhiBar.classList.toggle('active', douzhiOn);
     douzhiFill.style.width = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
+    // 装甲技能圆形计数表（右下角，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
+    const skillDef = ARMOR_SKILLS[currentArmor.id];
+    skillGauge.classList.toggle('hidden', !skillDef || state.mode !== 'playing');
+    if (skillDef) {
+      const frac = clamp(state.armorSkillGauge || 0, 0, 1);
+      skillGaugeRing.style.background = `conic-gradient(${skillDef.color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+      skillGauge.classList.toggle('ready', frac >= 1);
+      skillGauge.style.setProperty('--skill-color', skillDef.color);
+    }
   }
   // ---------- 流程控制 ----------
   function resetGame(autoStart = false, opts = {}) {
@@ -78,6 +88,11 @@
     levelFlow.bossMinionNext = rand(6, 12);
     state.orangeBombUsed = false;
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
+    state.armorSkillGauge = 0;    // 装甲技能量表（七日澜心）重开归零
+    player.crystalShield = 0;     // 七日澜心水晶护盾清除
+    player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
+    player.chixinBurnT = 0;       // 炽心：灼烧计时归零
+    player.regenT = 0;            // 洄：回血计时归零
     bossFlow.timer = 0;
     bossFlow.phase = 0;
     bossFlow.stage = 'none';
@@ -126,7 +141,8 @@
 
     player.x = CANVAS_W / 2;
     player.y = CANVAS_H - 90;
-    player.hp = PLAYER_CFG.maxHp;
+    player.maxHp = armorMaxHp();   // 当前装甲下的每条命最大 HP（复合装甲 +40）
+    player.hp = player.maxHp;
     player.cooldown = 0;
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
     player.invuln = 1.0;
@@ -139,18 +155,22 @@
     player.hitCount = 0;
     player.hitFxT = 0;
     player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
+    // 磁力装甲：开局自带量子护盾（仅开局，重生不带）
+    player.shield = (currentArmor.startShield || 0);
     initWingmen();
 
     if (autoStart) {
       state.mode = 'playing';
       overlay.classList.add('hidden');
+      menuScreen.classList.add('hidden');   // 进入战斗：隐藏主菜单页
+      titleBar.classList.remove('hidden');
     } else {
       state.mode = 'idle';
-      diffSelect.classList.remove('hidden');   // 标题页：展示难度选择
-      planeSelect.classList.remove('hidden'); wingmanSelect.classList.remove('hidden');   // 标题页：展示选机卡片
+      menuScreen.classList.remove('hidden');   // 主菜单独立页面（idle 态不再使用遮罩）
+      overlay.classList.add('hidden');
+      titleBar.classList.add('hidden');   // 菜单内已有大标题，隐藏页面顶部标题栏（visibility 保留占位）
       bossTestRow.style.display = 'none';   // BOSS 试炼已移入怪物图鉴
-      showOverlay('准备起飞~', defaultDesc(), '开始游戏');
-      // 图鉴入口按钮
+      // 怪物图鉴入口按钮（插入主菜单操作区）
       let encyBtn = document.getElementById('encyEntryBtn');
       if (!encyBtn) {
         const btn = document.createElement('button');
@@ -158,7 +178,7 @@
         btn.className = 'ency-entry-btn';
         btn.textContent = '怪物图鉴';
         btn.addEventListener('click', openEncyclopedia);
-        startBtn.parentNode.insertBefore(btn, startBtn.nextSibling);
+        menuActions.appendChild(btn);
       } else {
         encyBtn.style.display = '';
       }
@@ -166,16 +186,11 @@
     syncInfoEntryBtn();
   }
 
-  // 数值与机制图鉴入口按钮（ⓘ）：仅开始界面显示（遮罩可见 + 选机页可见 + 非暂停 + 非胜利结算）
+  // 数值与机制图鉴入口按钮（ⓘ）：仅主菜单页可见时显示（战斗 / 暂停 / 结算均隐藏）
   function syncInfoEntryBtn() {
-    const show = !overlay.classList.contains('hidden') &&
-                 !planeSelect.classList.contains('hidden') &&
-                 state.mode === 'idle' && !state.paused && !state.victoryOverlay;
+    const show = state.mode === 'idle' && !state.paused && !state.victoryOverlay &&
+                 !menuScreen.classList.contains('hidden');
     infoEntryBtn.classList.toggle('hidden', !show);
-  }
-
-  function defaultDesc() {
-    return `<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>Space</kbd> 爆弹 · <kbd>P</kbd> 暂停 · <kbd>R</kbd> 重新开始`;
   }
 
   function showOverlay(title, html, btnText) {
@@ -186,8 +201,8 @@
   }
 
   // ---------- 难度选择页面 ----------
-  // 三档难度（具象 / 真我 / 诗篇）由 DIFFICULTIES 注册表驱动；wip 难度（具象）展示但不可选（点击抖动拒绝）。
-  // 真我 / 诗篇已实装（数值/行为差异见 01-config 各自 mods 与 SONG_SHIP / STORM_SHIP）。
+  // 三档难度（具象 / 真我 / 诗篇）均已实装，由 DIFFICULTIES 注册表驱动（数值/行为差异见 01-config 各自 mods
+  // 与 SONG_SHIP / STORM_SHIP）；wip 难度（当前无）展示但不可选（点击抖动拒绝），机制保留供未来扩展。
   function buildDiffCards() {
     diffGrid.innerHTML = '';
     for (const id in DIFFICULTIES) {
@@ -354,8 +369,6 @@
   function togglePause() {
     state.paused = !state.paused;
     if (state.paused) {
-      diffSelect.classList.add('hidden');
-      planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');
       bossTestRow.style.display = 'none';
       const encyBtn = document.getElementById('encyEntryBtn');
       if (encyBtn) encyBtn.style.display = 'none';
@@ -376,13 +389,12 @@
 
   function endGame() {
     state.mode = 'gameover';
-    diffSelect.classList.add('hidden');
-    planeSelect.classList.add('hidden'); wingmanSelect.classList.add('hidden');   // 结算页：隐藏选机，直接重开
     const encyBtn = document.getElementById('encyEntryBtn');
     if (encyBtn) encyBtn.style.display = 'none';
     showOverlay(
       '战机陨落',
       `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
+       关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b><br />
        抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b><br />
        剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b><br /><br />
        按 <kbd>R</kbd> 或点击下方按钮再次出击`,
@@ -392,7 +404,36 @@
     syncInfoEntryBtn();
   }
 
+  // ---------- 装甲选择页面 ----------
+  // 装甲注册表（ARMORS，见 01-config）驱动：主界面卡片自动生成；效果经 armorXxx 读取函数落地于战斗逻辑
+  function buildArmorCards() {
+    armorGrid.innerHTML = '';
+    for (const id in ARMORS) {
+      const a = ARMORS[id];
+      const card = document.createElement('div');
+      card.className = 'armor-card' + (a.id === currentArmor.id ? ' selected' : '');
+      card.dataset.armor = a.id;
+      const glyph = document.createElement('div');
+      glyph.className = 'armor-card-glyph';
+      glyph.textContent = a.glyph;
+      glyph.style.color = a.color;
+      const name = document.createElement('div');
+      name.className = 'armor-card-name';
+      name.textContent = a.name;
+      const desc = document.createElement('div');
+      desc.className = 'armor-card-desc';
+      desc.innerHTML = a.desc;
+      card.append(glyph, name, desc);
+      card.addEventListener('click', () => {
+        setArmor(a);
+        armorGrid.querySelectorAll('.armor-card').forEach(el =>
+          el.classList.toggle('selected', el.dataset.armor === a.id));
+      });
+      armorGrid.appendChild(card);
+    }
+  }
+
   export {
-    updateHUD, resetGame, syncInfoEntryBtn, defaultDesc, showOverlay, buildDiffCards,
+    updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
     buildWingmanCards, buildPlaneCards, togglePause, endGame,
   };

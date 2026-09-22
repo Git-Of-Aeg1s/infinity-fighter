@@ -1,11 +1,11 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(49 名) 13-encyclopedia(15 名) 14-main(23 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(13 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(55 名) 13-encyclopedia(15 名) 14-main(23 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime}
   //
-  import { CANVAS_H, CANVAS_W, DOUZHI, PLAYER_CFG, STAR_COUNT } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, DOUZHI, PLAYER_CFG, STAR_COUNT, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
 
 
   // ---------- DOM ----------
@@ -30,19 +30,25 @@
   const shieldFill = document.getElementById('shieldFill');
   const douzhiBar = document.getElementById('douzhiBar');
   const douzhiFill = document.getElementById('douzhiFill');
+  // 七日澜心（装甲技能）圆形计数表：右下角量表（12-ui updateHUD 渲染填充角度）
+  const skillGauge = document.getElementById('skillGauge');
+  const skillGaugeRing = document.getElementById('skillGaugeRing');
 
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
   const overlayDesc = document.getElementById('overlayDesc');
   const startBtn = document.getElementById('startBtn');
   const musicToggle = document.getElementById('musicToggle');
-  const planeSelect = document.getElementById('planeSelect');
+  // 主菜单（独立页面态）：idle 全屏显示、进入战斗隐藏；卡片构建与显隐见 12-ui
+  const menuScreen = document.getElementById('menuScreen');
+  const menuStartBtn = document.getElementById('menuStartBtn');
+  const menuActions = document.getElementById('menuActions');
+  const titleBar = document.querySelector('.title-bar');
   const planeGrid = document.getElementById('planeGrid');
-  const diffSelect = document.getElementById('diffSelect');   // 难度选择区（复用 plane-select 显隐样式）
   const diffGrid = document.getElementById('diffGrid');
   const diffLabel = document.getElementById('diffLabel');     // HUD 左上角当前难度标签
-  const wingmanSelect = document.getElementById('wingmanSelect');
   const wingmanGrid = document.getElementById('wingmanGrid');
+  const armorGrid = document.getElementById('armorGrid');
   const bossTestRow = document.getElementById('bossTestRow');
   const retrialBtn = document.getElementById('retrialBtn');   // 胜利结算页「再次挑战」（仅试炼/挑战模式显示）
   const gameoverHomeBtn = document.getElementById('gameoverHomeBtn');   // 失败结算页「返回主界面」
@@ -83,6 +89,7 @@
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
+    armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
@@ -123,6 +130,7 @@
     w: PLAYER_CFG.w,
     h: PLAYER_CFG.h,
     hp: PLAYER_CFG.maxHp,
+    maxHp: PLAYER_CFG.maxHp,   // 当前装甲下的每条命最大 HP（装甲 maxHpAdd 见 ARMORS / armorMaxHp）
     kbT: 0, kbVx: 0, kbVy: 0,   // 风暴风流/风柱命中的击退（短暂位移、快速衰减）
     cooldown: 0,
     invuln: 0,
@@ -132,6 +140,10 @@
     wingSpread: 0,     // 机翼展开动画进度（0=收起, 1=完全展开）
     berserk: 0,        // 暴走（Lv5）剩余持续时间，归零回落 Lv4
     shield: 0,         // 量子护盾剩余时间
+    crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
+    bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
+    chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
+    regenT: 0,         // 洄：回血计时（每 2.5s +1 HP）
     respawnTimer: 0,   // 掉命后重生倒计时
     hitCount: 0,       // 受击计数：统一累计 3 次掉一层火力（导弹命中不计入）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
@@ -280,6 +292,13 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+  // 非BOSS敌机攻击间隔随机区间：按当前难度修正倍率缩放（具象：攻击间隔 +25%）
+  // 消费方传入带 fireInterval: [min, max] 的配置对象（ENEMY_TYPES 各类 / POPIAN / FASHI_* 等）
+  function enemyFireIv(cfg) {
+    const m = diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1;
+    return rand(cfg.fireInterval[0] * m, cfg.fireInterval[1] * m);
+  }
+
   // 敌机是否与屏幕可见区域相交（碰撞盒 vs 可视画布）——完全在屏幕外的敌人不可被我方武器伤害。
   // 判定 = 碰撞盒与 [0, CANVAS_W] × [0, CANVAS_H] 有任一交叠（部分入屏即可受击）；
   // 尺寸一律取 CANVAS_W / CANVAS_H（未来 BOSS 战扩展屏幕时，只需让这两个常量跟随实际屏幕，此处自动生效）
@@ -324,12 +343,56 @@
     state.shakeTime = Math.max(state.shakeTime, time);
   }
 
+  // ---------- 装甲共享辅助（02-core 持有 eBullets/player，避免 06↔07 循环依赖） ----------
+
+  // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失共用）
+  function clearEnemyBulletsNear(x, y, radius) {
+    for (let i = eBullets.length - 1; i >= 0; i--) {
+      const b = eBullets[i];
+      if (Math.hypot(b.x - x, b.y - y) <= radius) {
+        spawnParticles(b.x, b.y, '#9be7ff', 3, 80);
+        eBullets.splice(i, 1);
+      }
+    }
+  }
+
+  // 清除离 (x, y) 最近的一颗敌方子弹（群星守望：击杀敌人按概率触发）
+  function clearNearestEnemyBullet(x, y) {
+    let best = -1, bestD = Infinity;
+    for (let k = 0; k < eBullets.length; k++) {
+      const d = Math.hypot(eBullets[k].x - x, eBullets[k].y - y);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    if (best >= 0) {
+      const b = eBullets[best];
+      spawnParticles(b.x, b.y, '#7ce7ff', 6, 140);
+      eBullets.splice(best, 1);
+    }
+  }
+
+  // 最终壁垒：每条命一次的免死判定——致死伤害改为存活（同样生效于导弹等强制击杀路径）。
+  // 恢复 1 点生命、获得 3s 无敌（受 invulnDiffMul 难度倍率影响）、清除周围 250px 内的所有子弹。
+  // 返回 true = 本次免死已消耗；调用方（damagePlayer / 06-enemy BOSS 持续接触）在 hp <= 0 分支优先调用。
+  function tryBulwarkCheatDeath() {
+    if (currentArmor.id !== 'bulwark' || player.bulwarkUsed) return false;
+    player.bulwarkUsed = true;
+    player.hp = 1;
+    player.invuln = 3 * invulnDiffMul();
+    player.invulnBlink = true;
+    clearEnemyBulletsNear(player.x, player.y, 250);
+    spawnParticles(player.x, player.y, '#ffb545', 26, 260);
+    shake(6, 0.3);
+    return true;
+  }
+
   export {
     canvas, ctx, setCtx, DPR, hpFill, scoreText,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
-    douzhiBar, douzhiFill, overlay, overlayTitle, overlayDesc, startBtn,
-    musicToggle, planeSelect, planeGrid, diffSelect, diffGrid, diffLabel,
-    wingmanSelect, wingmanGrid, bossTestRow,
+    douzhiBar, douzhiFill, skillGauge, skillGaugeRing,
+    overlay, overlayTitle, overlayDesc, startBtn,
+    musicToggle, menuScreen, menuStartBtn, menuActions, titleBar,
+    planeGrid, diffGrid, diffLabel,
+    wingmanGrid, armorGrid, bossTestRow,
     retrialBtn, gameoverHomeBtn, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
@@ -340,5 +403,7 @@
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, hasteMul, weightedPick, spawnParticles,
+    enemyFireIv,
+    clearEnemyBulletsNear, clearNearestEnemyBullet, tryBulwarkCheatDeath,
     shake,
   };

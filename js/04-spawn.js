@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{waveSeq}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BAOLING, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isShipian, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4 } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isShipian, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4, currentArmor, diffMods } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss } from './05-boss.js';
@@ -21,6 +21,15 @@
   function strikerVariantWeights(lv) {
     const tier = lv < 11 ? STRIKER_VARIANT_TIERS.low : STRIKER_VARIANT_TIERS.high;
     return VARIANTS.striker.map(v => ({ id: v.id, w: tier[v.id] }));
+  }
+
+  // 非BOSS敌人首攻延迟的难度加成（具象：初始攻击间隔 +0.5~1.8s）——
+  // mods.enemyFirstFireAdd 为 [min, max] 秒区间（rand 取值）或固定秒数，0/缺省 = 不加；
+  // 覆盖全部非BOSS敌人：makeEnemy 的 fireTimer 与不走 fireTimer 的状态机型（法术大师A1/A2 的 firstAt、破片的 atkT）
+  function firstFireAdd() {
+    const a = diffMods().enemyFirstFireAdd;
+    if (!a) return 0;
+    return Array.isArray(a) ? rand(a[0], a[1]) : a;
   }
 
   // 按权重随机选取变体
@@ -63,7 +72,11 @@
    */
   function makeEnemy(type, x, y, opts = {}) {
     const cfg = ENEMY_TYPES[type];
-    const hpBonus = 0;   // 已取消关卡血量加成，所有敌机始终使用基础 HP
+    const diff = diffMods();
+    // 血量难度倍率（具象：所有非BOSS怪物血量 -20%）；不再有关卡血量加成
+    const hpMul = diff.enemyHpMul != null ? diff.enemyHpMul : 1;
+    // 首次攻击延迟难度加成（具象：所有非BOSS怪物初始攻击间隔 +0.5~1.8s，见 firstFireAdd）
+    const ffa = firstFireAdd();
     // 2/3/4 类选取变体（不同颜色 + 不同技能）；opts.variant 可强制指定（图鉴挑战用）
     const variant = (type === 'striker' || type === 'gunship' || type === 'capital')
       ? (opts.variant ? (VARIANTS[type].find(v => v.id === opts.variant) || pickVariant(type)) : pickVariant(type))
@@ -74,12 +87,13 @@
       : firstFire ? rand(firstFire[0], firstFire[1])
       : rand(cfg.fireInterval[0], cfg.fireInterval[1]);
     if (variant && variant.firstDelay) initFire += Array.isArray(variant.firstDelay) ? rand(variant.firstDelay[0], variant.firstDelay[1]) : variant.firstDelay;
+    initFire += ffa;
     const e = {
       type,
       x, y,
       w: cfg.w, h: cfg.h,
-      hp: cfg.hp + hpBonus,
-      maxHp: cfg.hp + hpBonus,
+      hp: cfg.hp * hpMul,
+      maxHp: cfg.hp * hpMul,
       vx: 0, vy: 0,
       // 1类依行为上色（pass/shoot/kamikaze）；2/3/4类依变体上色；其余用默认色
       color: type === 'side'
@@ -111,10 +125,10 @@
       missilesGuided: 0,     // 仅 harbinger：已导引导弹数（上限 5）
     };
     // 变体血量覆盖（炮艇三变体独立血量 350/350/400 覆盖注册表基准；幽暮的血量在其后单独处理）
-    if (variant && variant.hp != null) e.hp = e.maxHp = variant.hp;
+    if (variant && variant.hp != null) e.hp = e.maxHp = variant.hp * hpMul;
     // 1类行为数值修正：黄芒（shoot）血量 10；分数 白影/增生/黄芒/赤月 50、紫电（kamikaze）80
     if (type === 'side') {
-      if (e.behavior === 'shoot') e.hp = e.maxHp = SIDE_SHOOT_HP;
+      if (e.behavior === 'shoot') e.hp = e.maxHp = SIDE_SHOOT_HP * hpMul;
       e.score = e.behavior === 'kamikaze' ? SIDE_KAMIKAZE_SCORE : SIDE_SCORE;
     } else if (type === 'prolifera') {
       e.score = SIDE_SCORE;
@@ -155,7 +169,7 @@
     // 幽暮2类(striker dusk)：生命值 64；忽略编队入场点，改为在落点（场地 30%~80% 高度随机位置）正上方浮现，
     // 渐显后下移落点停驻、环射、渐隐离场 —— 状态机见 updateEnemyMovement 的 dusk 分支
     if (type === 'striker' && variant && variant.id === 'dusk') {
-      e.hp = e.maxHp = DUSK.hp;
+      e.hp = e.maxHp = DUSK.hp * hpMul;
       e.duskTY = rand(CANVAS_H * 0.30, CANVAS_H * 0.80);   // 落点高度（从上往下 30%~80%）
       e.x = rand(60, CANVAS_W - 60);                        // 落点水平位置（随机）
       e.y = e.duskTY - DUSK.shift;                          // 浮现点：落点正上方 shift 距离
@@ -293,8 +307,6 @@
     const seq = [2, 3, 2, 2, 3, 2];   // 回文对称
     const gap = 70;
     const x0 = (CANVAS_W - (seq.length - 1) * gap) / 2;
-    // 两个 3 类：各 1.5% 判定替换为暴鸰；只要有一架被替换，两架都改为暴鸰（成对自爆突入）
-    const blPair = seq.some(t => t === 3) && (rollBaoling() || rollBaoling());
     for (let k = 0; k < seq.length; k++) {
       const x = x0 + k * gap;
       if (seq[k] === 2) {
@@ -305,8 +317,6 @@
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
           holdTimer: rand(1, 4),
         });
-      } else if (blPair) {
-        spawnBaoling(x);
       } else {
         // 3 类稍慢一点
         makeEnemy('gunship', x, -60, {
@@ -384,12 +394,11 @@
     }
   }
 
-  // 对称编队：左右各一艘 3类炮艇压阵，中间 2类护航（各 1.5% 独立判定替换为暴鸰）
+  // 对称编队：左右各一艘 3类炮艇压阵，中间 2类护航
   function spawnGunshipWings() {
     for (const sx of [-1, 1]) {
       const x = CANVAS_W / 2 + sx * 150;
-      if (rollBaoling()) spawnBaoling(x);
-      else makeEnemy('gunship', x, -60, {
+      makeEnemy('gunship', x, -60, {
         hoverY: rand(115, 160),
         holdTimer: 30,
       });
@@ -416,9 +425,7 @@
       const x = startX + k * stepX;
       const y = -40 - k * 40;                          // 阶梯式滞后 → 斜线
       if (k === 3) {
-        // 1.5% 概率被暴鸰替换
-        if (rollBaoling()) spawnBaoling(x);
-        else makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 30 });
+        makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 30 });
       } else if (k % 2 === 0) {   // k=0/2/4 → 1类（三个一组，满足≥3）
         spawnSideUnit(x, y, { vx: fromLeft ? 24 : -24, vy: rand(90, 111) }, pickSideSpawn(), rand(0.8, 1.5));   // 基值 ×0.6，另乘 SIDE_SPEED_MUL
       } else {
@@ -499,9 +506,10 @@
     return Math.min(0.30, 0.20 + (levelFlow.level - 10) * 0.01);
   }
 
-  // 4类主力舰强制刷新上限（同上，节奏更慢）
+  // 4类主力舰强制刷新上限（同上，节奏更慢）；随难度刷怪间隔倍率同步放大（真我 ×1.3 / 具象 ×2.3）
   function capitalMaxWait() {
-    return Math.max(10, 34 - (levelFlow.level - 3) * 1.5);  // Lv3 34s → Lv10 23.5s → Lv16 14.5s
+    const sim = diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1;
+    return Math.max(10, 34 - (levelFlow.level - 3) * 1.5) * sim;  // Lv3 34s → Lv10 23.5s → Lv16 14.5s
   }
 
   // 特殊3类随波生成概率：每波独立判定（特殊3类无单独生成逻辑，随常规波次登场）
@@ -613,20 +621,15 @@
     if (Math.random() < SPECIAL3_WAVE_CHANCE) spawnWaveSpecial3();
   }
 
-  // 3类：炮艇，上方悬停很久后才缓慢下压；1.5% 概率被暴鸰替换（Lv10 前暴鸰唯一出场途径）
+  // 3类：炮艇，上方悬停很久后才缓慢下压
   //   variant：指定涂装（随波生成按三色独立权重 80/100/80 选取，见 SPECIAL3_POOL）；缺省走 makeEnemy 内变体抽取
+  //   （暴鸰不再由炮艇替换产生：仅 Lv10 起随波按 SPECIAL3_POOL 权重登场）
   function spawnGunship(variant) {
-    if (Math.random() < BAOLING.replaceChance) return spawnBaoling();
     makeEnemy('gunship', rand(110, CANVAS_W - 110), -60, {
       hoverY: rand(110, 170),
       holdTimer: 30,
       ...(variant ? { variant } : {}),
     });
-  }
-
-  // 普通炮艇替换判定：1.5% 概率改为暴鸰
-  function rollBaoling() {
-    return Math.random() < BAOLING.replaceChance;
   }
 
   // 2类突击艇替换判定：lv10 前低概率替换为法术大师A1，lv10 后较多出现
@@ -640,7 +643,7 @@
     const e = makeEnemy('fashiA1', x, y, {});
     e.fa1State = 'descend';
     e.fa1T = 0;
-    e.fa1FirstAt = rand(FASHI_A1.firstDelay[0], FASHI_A1.firstDelay[1]);   // 首次攻击时刻：入场后随机 1.2~3s（每架独立随机）
+    e.fa1FirstAt = rand(FASHI_A1.firstDelay[0], FASHI_A1.firstDelay[1]) + firstFireAdd();   // 首次攻击时刻：入场后随机 1.2~3s（每架独立随机）+ 难度加成
     e.fa1FireTimer = 0;   // 到达首攻时刻后立刻刷停移射击（不占用 fireInterval）
     e.fa1Fired = false;
     e.entryT = 0;
@@ -662,7 +665,7 @@
     e.fa2State = 'descend';
     e.fa2T = 0;
     e.fa2FireTimer = 0;   // 首次攻击：下降满随机首攻延时（1.8~2.3s）后立刻刹停射击
-    e.fa2FirstAt = rand(FASHI_A2.firstDelay[0], FASHI_A2.firstDelay[1]);
+    e.fa2FirstAt = rand(FASHI_A2.firstDelay[0], FASHI_A2.firstDelay[1]) + firstFireAdd();
     e.fa2Fired = false;
     e.entryT = 0;
     e.faceAng = 0;        // 机身朝向：炮管（局部 +y）以最大角速度平滑追踪玩家
@@ -711,7 +714,7 @@
     e.warn = null;
     e.popBurst = null;
     e.popBurstTimer = 0;
-    e.atkT = POPIAN.firstDelay;
+    e.atkT = POPIAN.firstDelay + firstFireAdd();
     return e;
   }
 
@@ -877,7 +880,9 @@
   }
 
   // 寒霜光圈减速判定：玩家核心（判定点）位于任一已显现的寒霜光圈内时，冷却流速按入场方式分流（顶部 ×0.65 / 侧翼 ×0.75）
+  // 炽心装甲：免疫寒霜减速
   function playerFrostSlowMul() {
+    if (currentArmor.id === 'chixin') return 1;
     for (const e of enemies) {
       if (e.type !== 'hanshuang' || e.auraT < HANSHUANG.auraDelay) continue;
       if (Math.hypot(player.x - e.x, player.y + PLAYER_CFG.hitOffsetY - e.y) <= HANSHUANG.auraR)
@@ -887,7 +892,9 @@
   }
 
   // 寒霜光圈移动减速：玩家核心位于光圈内时按入场方式分流（顶部 ×0.65 / 侧翼 ×0.75）
+  // 炽心装甲：免疫寒霜减速
   function playerFrostMoveMul() {
+    if (currentArmor.id === 'chixin') return 1;
     for (const e of enemies) {
       if (e.type !== 'hanshuang' || e.auraT < HANSHUANG.auraDelay) continue;
       if (Math.hypot(player.x - e.x, player.y + PLAYER_CFG.hitOffsetY - e.y) <= HANSHUANG.auraR)
@@ -1105,7 +1112,7 @@
     spawnStrikerGroup, spawnMirrorRow, spawnSideSweep, spawnSideKamikazeStream, spawnStrikerVee, spawnGunshipWings,
     spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
     capitalMaxWait, SPECIAL3_POOL, spawnWave, WAVE_FORMATIONS, pickFormation,
-    spawnWaveBody, spawnGunship, rollBaoling, rollFashiA1, spawnFashiA1, spawnFashiA2,
+    spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,

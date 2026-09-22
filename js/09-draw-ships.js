@@ -1403,6 +1403,30 @@
       ctx.restore();
     }
 
+    // 七日澜心水晶护盾：环绕机体的粉色（#FFC0CB）水晶环——8 颗菱形水晶缓慢公转，最后 1s 渐弱
+    if (player.crystalShield > 0) {
+      const fade = player.crystalShield < 1 ? player.crystalShield : 1;
+      const rot = state.time * 1.6;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.shadowColor = '#FFC0CB';
+      ctx.shadowBlur = 10;
+      for (let k = 0; k < 8; k++) {
+        const a = rot + k * Math.PI / 4;
+        const cx = x + Math.cos(a) * 34, cy = y + Math.sin(a) * 34;
+        const s = 3.2 + Math.sin(state.time * 6 + k * 1.7) * 0.8;   // 呼吸大小
+        ctx.fillStyle = '#FFC0CB';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s * 1.4);
+        ctx.lineTo(cx + s, cy);
+        ctx.lineTo(cx, cy + s * 1.4);
+        ctx.lineTo(cx - s, cy);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // “暴走”字样已移至 render() 顶层绘制（位于所有游戏实体之上，不被子弹/敌机遮挡）
   }
 

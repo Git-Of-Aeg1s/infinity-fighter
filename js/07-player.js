@@ -5,9 +5,9 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, flash, hurt, lives, score}
   //
-  import { BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, HANSHUANG, PLAYER_CFG, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, currentPlane, currentWingman } from './01-config.js';
-  import { bossFlow, clamp, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, pBullets, phaseFx, player, playerHitFx, shake, slashFx, spawnParticles, state, wingmen } from './02-core.js';
-  import { playerFrostMoveMul, playerFrostSlowMul } from './04-spawn.js';
+  import { ARMOR_SKILLS, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, HANSHUANG, PLAYER_CFG, SHIELD_DURATION, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentWingman, diffMods, invulnDiffMul } from './01-config.js';
+  import { bossFlow, clamp, clearEnemyBulletsNear, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, pBullets, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnParticles, state, tryBulwarkCheatDeath, wingmen } from './02-core.js';
+  import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { clearMissiles, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
   import { endGame } from './12-ui.js';
@@ -615,6 +615,40 @@
         clearEnemyBullets();   // 护盾解除：清除场上一切敌弹
       }
     }
+    // 七日澜心水晶护盾：倒计时；消失时清除周围 250px 内的所有敌弹（粉色迸散演出）
+    if (player.crystalShield > 0 && !pauseTimers) {
+      player.crystalShield -= dt;
+      if (player.crystalShield <= 0) {
+        player.crystalShield = 0;
+        clearEnemyBulletsNear(player.x, player.y, ARMOR_SKILLS.lanxin.clearR);
+        spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 22, 220);
+        shake(4, 0.2);
+      }
+    }
+    // 炽心：火环持续灼烧周围敌人——每 0.125s 对火环半径内的敌人造成 10 伤害（BOSS 战演出停手期间同样暂停）
+    if (currentArmor.id === 'chixin' && !pauseTimers) {
+      player.chixinBurnT = (player.chixinBurnT || 0) + dt;
+      if (player.chixinBurnT >= currentArmor.burnInterval) {
+        player.chixinBurnT = 0;
+        for (let k = enemies.length - 1; k >= 0; k--) {
+          const en = enemies[k];
+          if (en.phase > 0) continue;   // 虚化护盾期间不受伤害
+          const dx = en.x - player.x, dy = en.y - player.y;
+          if (Math.hypot(dx, dy) > currentArmor.burnR + Math.max(en.w, en.h) / 2) continue;
+          en.hp -= currentArmor.burnDmg * yu4AuraMul(en);   // 普通伤害，可被御4防御光环削减
+          if (Math.random() < 0.3) spawnParticles(en.x + rand(-8, 8), en.y + rand(-8, 8), '#ff7a18', 1, 70);
+          if (en.hp <= 0) killEnemy(k);
+        }
+      }
+    }
+    // 洄：每 2.5 秒恢复 1 生命（不超过当前装甲最大生命）
+    if (currentArmor.id === 'hui') {
+      player.regenT = (player.regenT || 0) + dt;
+      if (player.regenT >= currentArmor.regenInterval) {
+        player.regenT = 0;
+        if (player.alive) player.hp = Math.min(player.maxHp, player.hp + currentArmor.regenHp);
+      }
+    }
   }
 
   // 清空场上所有敌弹（护盾解除 / 炸弹共用）
@@ -632,21 +666,24 @@
 
   function respawnPlayer() {
     player.alive = true;
-    player.hp = PLAYER_CFG.maxHp;
+    player.hp = player.maxHp || armorMaxHp();   // 当前装甲下的每条命最大 HP
     player.x = CANVAS_W / 2;
     player.y = CANVAS_H - 90;
-    player.invuln = 2;
+    player.invuln = 2 * invulnDiffMul();   // 具象：所有来源的无敌时间 +50%（含登场/重生保护）
     player.invulnBlink = false;   // 登场/重生无敌不闪动（机体保持完整可见）
     player.weapon = (state.testBoss || state.challenge) ? 4 : 3;   // 复活后火力等级默认 Lv3（BOSS 试炼 / 图鉴挑战仍固定 Lv4，与 resetGame 一致）
     player.berserk = 0;
     player.shield = 0;
+    player.bulwarkUsed = false;   // 最终壁垒：每条命一次，重生重置
     player.hitCount = 0;
     player.hitFxT = 0;
     player.slashCd = 0; player.slashTarget = null; player.slashQueued = 0; player.slashGapT = 0;   // 群星之杀斩击运行态重置
   }
 
   // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 3 次掉 1 级火力
+  // 具象：受击不再降低武器等级——整个累计机制直接关闭
   function accumulateWeaponDropHit() {
+    if (diffMods().noWeaponDropOnHit) return;
     if (player.weapon < 5 && player.weapon > 1) {
       player.hitCount++;
       if (player.hitCount >= WEAPON_DROP_HITS) { player.weapon--; player.hitCount = 0; }
@@ -656,24 +693,26 @@
   function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false) {
     if (!player.alive) return false;
     if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
-    if (player.shield > 0) return false;   // 护盾期间免疫碰撞伤害（无视无敌 ≠ 无视护盾）
+    if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心水晶护盾期间免疫（无视无敌 ≠ 无视护盾）
+    // 祈星：受到伤害时 25% 概率伤害减半，单次伤害 >40 时概率翻倍（50%）
+    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? 0.5 : 0.25)) amount *= 0.5;
     // 测试模式（图鉴挑战）：玩家不再无敌 —— 照常扣血，但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（视为不死）
     if (state.challenge) {
       player.hp -= amount;
-      player.invuln = PLAYER_CFG.invulnTime * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示
+      player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示（具象：无敌时间 +50%）
       shake(3, 0.15);   // 受击震屏较弱
       player.hitFxT = 0.28;   // 机体受击闪白
       state.hurt = Math.min(1, state.hurt + 0.4);   // 屏幕边缘红晕（较弱）
       playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.4, r: 16, seed: Math.random() * 10 });   // 闪核 + 冲击环 + 火花
       spawnParticles(player.x, player.y, '#7ce7ff', 10, 160);
       if (player.hp <= 0) {
-        player.hp = PLAYER_CFG.maxHp;   // 血量归零：立刻重置生命值为 100，不死亡
+        player.hp = player.maxHp || PLAYER_CFG.maxHp;   // 血量归零：立刻重置生命值为满，不死亡
         hpFillFastRefill();   // 血条回满动画提速 ×300%
       }
       return true;
     }
     player.hp -= amount;
-    player.invuln = PLAYER_CFG.invulnTime * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示
+    player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示（具象：无敌时间 +50%）
     shake(4, 0.2);   // 受击震屏较弱（掉命时的强震屏另行处理）
     player.hitFxT = 0.28;   // 机体受击闪白
     state.hurt = Math.min(1, state.hurt + 0.6);   // 屏幕边缘红晕（叠加有上限）
@@ -685,6 +724,8 @@
     // 导弹命中不在此处计数（isMissile）：先兆者导弹自带"-1 级"结算、破片导弹整轮仅计一次（由 06-enemy 显式调 accumulateWeaponDropHit）
     if (!isMissile) accumulateWeaponDropHit();
     if (player.hp <= 0) {
+      // 最终壁垒：每条命一次——致死伤害（含导弹等强制击杀）不死后恢复 1 点生命、3s 无敌、清除 250px 内敌弹
+      if (tryBulwarkCheatDeath()) return true;
       player.hp = 0;
       player.alive = false;
       state.lives--;
@@ -704,10 +745,12 @@
   // 测试模式（图鉴挑战）受伤入口：供绕过 damagePlayer 的持续伤害源使用（BOSS 接触 / 焦香灼烧 / 先兆者导弹）。
   // 照常扣血但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（测试模式视为不死）；护盾期间免疫
   function testDamagePlayer(amount) {
-    if (!player.alive || player.shield > 0) return false;
+    if (!player.alive || player.shield > 0 || player.crystalShield > 0) return false;
+    // 祈星：同 damagePlayer（测试模式同样生效）
+    if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? 0.5 : 0.25)) amount *= 0.5;
     player.hp -= amount;
     if (player.hp <= 0) {
-      player.hp = PLAYER_CFG.maxHp;
+      player.hp = player.maxHp || PLAYER_CFG.maxHp;
       hpFillFastRefill();   // 血条回满动画提速 ×300%
     }
     return true;
@@ -720,14 +763,57 @@
     hpFillFastRefill.t = setTimeout(() => hpFill.classList.remove('fast'), 120);
   }
 
+  // 澄月：触发暴走时概率获得量子护盾——常规 10% / BOSS 战 40%（每个 BOSS 限一次，时长 3s）
+  // （护盾时长：BOSS 战 3s，常规为完整 SHIELD_DURATION 6s；BOSS 限次以 BOSS 实体标记，天然随 BOSS 更替重置）
+  function tryChengyueShield() {
+    if (currentArmor.id !== 'chengyue') return;
+    const bossFight = bossFlow.stage === 'fight';
+    const chance = bossFight ? 0.40 : 0.10;
+    if (Math.random() >= chance) return;
+    if (bossFight) {
+      const boss = enemies.find(en => en.type === 'boss');
+      if (!boss || boss.chengyueUsed) return;
+      boss.chengyueUsed = true;
+      player.shield = 3;
+    } else {
+      player.shield = SHIELD_DURATION;
+    }
+    spawnParticles(player.x, player.y, '#6fe3ff', 18, 200);
+  }
+
+  // ---------- 装甲技能（量表型，按 F 触发；注册表见 01-config ARMOR_SKILLS，后续新技能在此扩展实现） ----------
+
+  // 收集水晶时填充当前装甲的技能量表（amount = 本颗水晶的分数；七日澜心填满需 gaugeCrystalScore 分）
+  function armorSkillGain(amount) {
+    const def = ARMOR_SKILLS[currentArmor.id];
+    if (!def) return;
+    state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / def.gaugeCrystalScore);
+  }
+
+  // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：水晶护盾环绕 3s）
+  // 返回 true = 触发成功（14-main 的 F 键入口调用）
+  function triggerArmorSkill() {
+    if (state.mode !== 'playing' || state.paused) return false;
+    const def = ARMOR_SKILLS[currentArmor.id];
+    if (!def || (state.armorSkillGauge || 0) < 1) return false;
+    state.armorSkillGauge = 0;
+    if (currentArmor.id === 'lanxin') {
+      player.crystalShield = def.dur;
+      spawnParticles(player.x, player.y, def.color, 20, 180);
+      shake(3, 0.15);
+    }
+    return true;
+  }
+
   // 拾取升级套件：升火力；抵达 Lv5 即进入暴走；暴走期间拾取重置倒计时
   function pickupKit() {
-    state.score += 50;
+    state.score += Math.round(50 * diffMods().scoreMul);
     if (player.weapon < 5) {
       player.weapon++;
       if (player.weapon === 5) {
         // 抵达 Lv5 即暴走：限时 6s，结束后回落 Lv4
         player.berserk = BERSERK.duration;
+        tryChengyueShield();   // 澄月：暴走触发时概率获得量子护盾
         player.berserkBanner = 1.5;   // 机身上方展示"暴走"字样
         shake(5, 0.25);   // 暴走震屏减弱（以冲击波环为主要反馈）
         spawnParticles(player.x, player.y, '#ffb545', 26, 260);
@@ -744,9 +830,10 @@
 
   // 拾取暴走道具：攻击等级立刻升满级（Lv5 即暴走，限时 6s）；已暴走则重置倒计时
   function pickupBerserk() {
-    state.score += 100;
+    state.score += Math.round(100 * diffMods().scoreMul);
     const alreadyBerserk = player.weapon === 5;
     player.weapon = 5;
+    if (!alreadyBerserk) tryChengyueShield();   // 澄月：仅在“新触发”暴走时判定（已暴走续时不算）
     player.berserk = BERSERK.duration;   // 重置倒计时
     player.berserkBanner = alreadyBerserk ? 1.0 : 2.0;
     shake(alreadyBerserk ? 5 : 8, alreadyBerserk ? 0.25 : 0.35);   // 暴走震屏减弱（以冲击波环为主要反馈）
@@ -812,5 +899,5 @@
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
     segIntersect, shieldSweepHit, clipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
-    accumulateWeaponDropHit,
+    accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill,
   };

@@ -403,6 +403,226 @@ canvas#game {
   line-height: 1.7;
 }
 
+/* ---------- 装甲技能圆形计数表（七日澜心） ---------- */
+.skill-gauge {
+  --skill-color: #FFC0CB;
+  position: relative;
+  width: 38px;
+  height: 38px;
+  margin-top: 10px;
+  align-self: flex-end;
+  border-radius: 50%;
+  filter: drop-shadow(0 0 6px rgba(255, 192, 203, 0.25));
+  transition: filter 0.2s ease;
+}
+
+.skill-gauge.hidden { display: none; }
+
+/* 量表环：conic-gradient 按填充角度渲染（updateHUD 逐帧写入） */
+.skill-gauge-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+/* 内圈挖空：环形读表 */
+.skill-gauge::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: rgba(5, 9, 20, 0.9);
+}
+
+.skill-gauge-key {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--muted);
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+/* 量表已满：呼吸辉光 + F 键高亮，提示可按 F 释放 */
+.skill-gauge.ready {
+  animation: skillReady 1.1s ease-in-out infinite;
+}
+
+.skill-gauge.ready .skill-gauge-key {
+  color: var(--skill-color);
+  text-shadow: 0 0 8px var(--skill-color);
+}
+
+@keyframes skillReady {
+  0%, 100% { filter: drop-shadow(0 0 4px var(--skill-color)); }
+  50% { filter: drop-shadow(0 0 12px var(--skill-color)); }
+}
+
+/* ---------- 主菜单（独立页面态） ---------- */
+.menu-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 30px 16px 16px;
+  background:
+    radial-gradient(560px 360px at 50% 0%, rgba(40, 70, 140, 0.4), transparent 72%),
+    linear-gradient(180deg, rgba(5, 8, 18, 0.9) 0%, rgba(5, 8, 18, 0.78) 100%);
+  backdrop-filter: blur(3px);
+}
+
+.menu-screen.hidden { display: none; }
+
+.menu-hero {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.menu-title {
+  margin: 0;
+  font-size: 42px;
+  letter-spacing: 10px;
+  text-indent: 10px;   /* 补偿 letter-spacing 末字间距的居中偏移 */
+  background: linear-gradient(90deg, #39C5BB 0%, #FFC0CB 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 30px rgba(77, 208, 255, 0.3);
+}
+
+.menu-subtitle {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 6px;
+  text-indent: 6px;
+}
+
+.menu-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.menu-section {
+  width: 100%;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.menu-section-title {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 5px;
+  text-indent: 5px;
+  margin-bottom: 8px;
+}
+
+.menu-actions {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.menu-start-btn {
+  padding: 10px 44px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 200, 255, 0.55);
+  background: linear-gradient(180deg, rgba(77, 208, 255, 0.26), rgba(77, 208, 255, 0.07));
+  color: var(--text);
+  font-size: 16px;
+  letter-spacing: 6px;
+  text-indent: 6px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.menu-start-btn:hover {
+  box-shadow: 0 0 24px rgba(77, 208, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.menu-start-btn:active { transform: translateY(0); }
+
+.menu-links {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* 主菜单内的 ⓘ 圆钮：脱离遮罩锚定，改为行内布局 */
+.menu-links .info-entry-btn { position: static; }
+
+/* 主菜单打开时隐藏页面顶部标题栏（菜单内已有大标题，避免重复）；
+   visibility 保持占位，不影响 fitStage 的整体布局测量 */
+.title-bar.hidden { visibility: hidden; }
+
+/* ---------- 装甲选择卡片 ---------- */
+.armor-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.armor-card {
+  width: 84px;
+  padding: 8px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.armor-card:hover {
+  border-color: rgba(120, 200, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+.armor-card.selected {
+  border-color: var(--accent);
+  background: rgba(77, 208, 255, 0.08);
+  box-shadow: 0 0 18px rgba(77, 208, 255, 0.35), inset 0 0 12px rgba(77, 208, 255, 0.1);
+}
+
+.armor-card-glyph {
+  font-size: 20px;
+  line-height: 1.2;
+  text-shadow: 0 0 10px currentColor;
+  margin-bottom: 4px;
+}
+
+.armor-card-name {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.armor-card.selected .armor-card-name { color: var(--accent); }
+
+.armor-card-desc {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 /* ---------- 选机页面 ---------- */
 .plane-select {
   margin: 0 0 8px;
