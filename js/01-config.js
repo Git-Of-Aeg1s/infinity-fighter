@@ -1,6 +1,6 @@
 ﻿// 01-config：全部常量与注册表（画布/战机/僚机/敌机类型/BOSS/掉落率/压力权重）
 
-  console.log('[InfinityFighter] JS build: 20260923-storm2-topbar-5');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
+  console.log('[InfinityFighter] JS build: 20260924-v033-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(16 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(17 名) 13-encyclopedia(18 名) 14-main(14 名)
@@ -21,9 +21,10 @@
   // ---------- 常量 ----------
   const CANVAS_W = 480;
   const CANVAS_H = 792;   // 战场高度（原 720 增长 10%：上边界不动、下边界下移）
-  // 主菜单攻击演示屏（画布逻辑坐标）：与主菜单 .demo-screen DOM 边框（top 15% / height 51%）
+  // 主菜单攻击演示屏（画布逻辑坐标）：与主菜单 .demo-screen DOM 边框（top calc(15% - 10.4px) / height 51%）
   // 严格对齐；演示实体层以此为裁剪矩形（10-draw-world render），弹道/特效不越出演示屏
-  const DEMO_TOP = Math.round(CANVAS_H * 0.15);
+  // 上移量 10.4px = 左上角 ? 按钮（.help-entry-btn，26px 高）高度的 40%；改 CSS top 时必须同步此值
+  const DEMO_TOP = Math.round(CANVAS_H * 0.15 - 10.4);
   const DEMO_BOTTOM = Math.round(CANVAS_H * 0.66);
 
   const PLAYER_CFG = {
@@ -36,7 +37,9 @@
     bulletSpeed: 780,
     bulletDamage: 12,
     invulnTime: 1.2,     // 受击后无敌
+    dodgeInvulnMul: 0.7, // 闪避触发（哈基米等）的无敌时长系数：正常受击无敌 ×70%
     respawnTime: 1.6,    // 掉命后重生延迟
+    enterDur: 0.8,       // 主菜单开局飞入时长：从演示屏站位 smoothstep 滑向出战位（期间操控锁定，主炮照常）
     magnetRadius: 132,   // 水晶吸附半径（基础值；击败旧日之歌后另乘 crystalMagnetMul 1.5 → 198）
     hitRadius: 4,        // 判定点半径：仅机身中心小点被击中才算命中
     hitOffsetY: 4,       // 判定点下移偏移（与白点视觉位置一致）
@@ -176,7 +179,10 @@
     bobSpeed: 0.9,             // 上下浮动角速度
     crashDmg: 40,              // 碰撞伤害（接触一次性，受击无敌帧照常）
     // ---- 登场动画（重制版）：暴风之眼轰然消散 → 中央雷电风暴轰鸣（电球凝聚）→ 现身汇入机体 ----
-    entrance: { dissipate: 0.9, storm: 1.6, reveal: 0.7 },   // 三段时长（s）：消散 / 雷暴（电球凝聚）/ 现身
+    entrance: { dissipate: 0.9, storm: 2.1, reveal: 0.7 },   // 三段时长（s）：消散 / 雷暴（电球凝聚）/ 现身
+    //   雷暴段 1.6 → 2.1s（全程 3.2 → 3.7s）：BGM 在击败暴风之眼后 1.3s 从头重播（restartBGM 0.7/1.3），
+    //   重播点落在雷暴段中段——延长雷暴让重播曲的前奏在密集落雷下充分展开（约多 4 道落雷），
+    //   战斗开始（现身完毕）落在重播后 2.4s 的节奏点上；消散/现身两段保持原有的紧凑爆发节奏
     // ---- 技能（实装：状态机见 05-boss，演出见 11-draw-boss）----
     skillCd: STORM.skillCd * 0.75,   // 技能释放间隔 = 暴风之眼的 75%（玩家暴走时再减半，见 updateBossStorm2）
     berserkDR: 0.30,                 // 受到暴走（Lv5）伤害 -30%（主炮/僚机/斩击经 enemyDamageMul 生效；爆弹为真实伤害不受影响）
@@ -185,9 +191,11 @@
     s2RingR0: 200, s2RingDur: 0.8,   // 技能2 同款预警波：起始半径 200px（蓄力 0.2s 后开始收缩，完成后再过 0.2s 发射）
     s2Charge: 1.2, s2Gap: 0.13, s2R: 7, s2BeamDur: 0.45, s2Dmg: 50,   // 技能2：四喷口激涌蓄力 → 随机序依次下射电弧激光
     s3Dmg: 25,                       // 技能3：斜下电弧光束（左右镜像对称，左右边界反弹，弹道呈"<"折线）
-    s3SpdMul: 1.8, s3CdMul: 0.3,     // 技能3：弹速倍率（+80%）；释放后下一次技能释放间隔额外 ×0.3（-70%）
+    s3SpdMul: 1.458, s3CdMul: 0.3,   // 技能3：弹速倍率（330 基速 ×1.458 ≈ 481，较原 1.8 累计 -19%）；释放后下一次技能释放间隔额外 ×0.3（-70%；诗篇改走 afterCdMul ×1.3）
     s3ConeHalf: 75 * Math.PI / 180,  // 技能3：朝下方 150° 锥角（竖直向下 ±75°）随机选定发射角
     s3MinSep: 15 * Math.PI / 180,    // 技能3：内外两对光束的最小角距
+    s3Len: 268.8,                    // 技能3：光束长度（原 336 的 -20%）
+    s3ShieldR: 2,                    // 技能3"<"光束对白盾的截断判定半径（原为弹体半径 6）：判定箱收窄，擦盾边缘不再被咬住，仅真正触及盾面才被截断
     s4Dmg: 20,                       // 技能4：蛇形瞄准连射 / 雷环子弹（四喷口雷环始终释放，<70% 增至 6 圈；含技能5 打击外扩的雷环）
     s4Spd: 250,                      // 技能4：蛇形雷电长条弹基准速度（雷环爆开初速 = 此速度 × 60~80% 或 120~140% 随机档）
     s4LowShotsMul: 1.5,              // 技能4：70% 血以下蛇形雷条持续 +50%（子弹数 ×1.5）
@@ -197,13 +205,17 @@
     s5Warn: 1.2, s5Dmg: 40, s5RMul: 0.8,   // 技能5：雷击预警时长 / 打击伤害 / 区域半径系数（×焦香螺旋桨火环 JIAOXIANG.auraR）
     s5RingDecelMul: 2.5,             // 技能5 落雷外扩雷环的减速倍率（加速度 +150%，更快减慢至巡航速度）
     s6Dmg: 28, s6R: 7,               // 技能6：臂向光束 / 重现光束伤害与半宽（重现光束与臂向光束同长）
-    s6GrowDur: 1.0, s6ReplaySpdMul: 0.6,   // 技能6 光束自 0 增长至全长（640）的时间（增长速度 -25%）；重现光束飞行速度倍率（-15%，约 1.7s 抵底）
+    s6GrowDur: 1.333, s6ReplaySpdMul: 0.48,   // 技能6 光束自 0 增长至全长（640）的时间（增长速度 +25% 回调：1.667s → 1.333s）；重现光束发射初速倍率（0.6 → 0.48，-20%）
+    s6SpdRampT: 2, s6SpdRampMul: 2,           // 重现光束加速：发射后 2s 内线性加速至初速的 2 倍（满速 0.96 基准 ≈ 原恒速 ×0.6）
+    s6ShieldPad: 3,                  // 技能6 电弧光束的盾截断判定容差（原 s6R + 半盾厚 ≈ 9.7）：判定箱收窄——轴线真正触及盾面才被截断，擦盾边缘掠过不再被咬
     s6PairSep: 15 * Math.PI / 180,   // 技能6：每边同轮两条光束的最小夹角
     s6CdMul: 0.5,                    // 技能6：释放后下一次技能释放间隔 ×0.5（-50%）
   };
 
   // ---------- 诗篇难度：风暴编织者独特修正（真我 / 具象不读取；05-boss 经 isShipian() 门控） ----------
   const STORM2_SHIP = {
+    skillCdMul: 1.4,       // 技能释放间隔统一 ×1.4（+40%）：作用于入场后首发延迟与每次技能的基础间隔
+                           // （连中同技能 ×0.2 / s2 未连携 ×0.1 / s3 ×0.3 / s6 ×0.5 等额外乘区在其上照常叠加，全体系同步 +40%）
     s1: {
       shots: 5,              // 激光连续射出次数
       charge2: 0.8,          // 第 2~5 次预警时长（s）：与预警圈收缩时长（ring2Dur）一致——收缩到核心瞬间即发射（必大于 gapMax，保证预警在上一发射完前开始）
@@ -211,10 +223,14 @@
       ring2Dur: 0.8,         // 第 2~5 次预警圈收缩时长（与首发一致）
       gapMin: 0.1, gapMax: 0.5,   // 上一发射完到下一发开火的间隔
       spdMulMax: 2.0,        // 首次蓄力期间逐渐提升到的移速倍率（200%）
+      spdAccelDiv: 2,        // 加速段时长倍率：加速度减半——爬升至 spdMulMax 的用时由 1×首次蓄力(1s) 延长为 2s（爬升段跨入连射序列）；减速衰减率 spdDecay 不变
       spdDecay: 6,           // 5 次射完后移速加成的衰减速率（指数系数/s）
     },
-    s2: { linkS6Chance: 0.5, noLinkCdMul: 0.1, linkRounds: 1, linkDur: 1.5 },   // 技能2：50% 同时释放技能6——仅 1 轮重现光束（连携时间轴 1.5s = 0.95 汇聚 + 0.45 预警 + 0.1 缓冲，不按独立释放 3 轮 4.6s 计）；未连携则下次技能间隔 ×0.1（-90%）
-    s3: { secondMin: 0.5, secondMax: 1.0 },        // 技能3：第二回释放间隔（s）
+    s2: { linkS6Chance: 0.5, noLinkCdMul: 0.4, charge: 1.6, ringDur: 1.2, linkRounds: 1, linkDur: 1.5 },
+    //   技能2：50% 同时释放技能6——仅 1 轮重现光束（连携时间轴 1.5s = 0.95 汇聚 + 0.45 预警 + 0.1 缓冲，不按独立释放 3 轮 4.6s 计）；
+    //   未连携则下次技能间隔 ×0.4（-60%）；连携时蓄力延长至 1.6s，预警圈收缩时长对应 1.2s
+    //   （"蓄力 0.2s 后开始收缩、完成后再过 0.2s 发射"的结构不变——收缩路程同为 200px、用时 0.8s→1.2s，速度变慢）
+    s3: { secondMin: 1, secondMax: 1.5, afterCdMul: 1.3 },   // 技能3：第二回释放间隔 1~1.5s；释放结束后下次技能间隔 ×1.3（+30%，替代真我的 ×0.3 短冷却）
     s4: { rings: 8, ringGapMul: 0.6 },             // 技能4：雷环固定 8 圈；生成间隔 ×0.6（-40%）
     s5: { zoneTop: 0.40, volleyGapMul: 0.9 },      // 技能5：落点区域扩展到下方 60%（top = 0.40 屏高）；轰击错峰 ×0.9
     s6: { instantStrikes: 4, strikeDmgMul: 0.5, ringCntMul: 0.5 },   // 技能6：释放瞬间四个雷电喷口处瞬发雷霆打击（无预警、伤害/雷环子弹减半）
@@ -229,13 +245,25 @@
   // 技能4：以真我为基准（双管每轮各 1 发、10% 概率齐指玩家）——≥70% 血 270° 散射 + 射速 +100%（间隔 ×0.5）；
   //   <70% 血 360° 单发 + 射速 +200%（间隔 ÷3）+ 每 0.7~1.7s 向下扇形圆弹幕（8~14 发，
   //   弹速 = 乱射长条弹基准速度 ×(60%~90% 或 120%~150%)）
-  // 技能5/6：暗黑子弹（登场部件球弹幕同源）——技能5 瞄准玩家竖直近旁 ±10% 屏高带状区域；
-  //   技能6 射向两侧边界（[自身高度-20% 屏高, 屏幕底部] 或底部左右边缘，二选一），碰左右壁反弹，左右对称
+  // 技能5：任意位置可释放（不要求居中、无预约）。六发暗黑子弹全部锁定「玩家释放瞬间的竖直直线」（x = player.x）——
+  //   三组（翼 0/1 中间 / 炮 2/3 下方 / 甲 4/5 上方，部件位左右成对）各取一个随机点、同组两颗共用：
+  //   翼对 → 玩家高度 ±10% 屏高；炮对 → 玩家上方 10%~30% 屏高；甲对 → 玩家下方 10%~30% 屏高
+  //   （上下两对与中间对高度交错，轨迹于玩家竖直线附近交叉成笼）
+  // 技能6：预约制——仍仅在水平方向最中心释放（顺延至中线过零前 preT 秒启动，见 startBossSkill）。
+  //   三组各随机取偏角 θ ∈ ±75°（下方 150° 扇区），组内左右镜像（π/2∓θ）——左右严格对称；
+  //   碰左右壁反弹（每颗最多 3 次，超过后不再反弹、直飞出屏）
   const SONG_SHIP = {
     skillCdMul: 0.4,           // 技能释放间隔 = 原有的 40%
+    centerDeferMax: 2.2,       // 技能6 预约顺延上限（s）：抽中后顺延至「中线抵达前 preT 秒」启动；
+                               //  距下一轮过零过久（>此值）则放弃预约改抽其余技能，避免技能间隔过长
     aimOffset: 10 * Math.PI / 180,   // 技能2/3 瞄准偏移角：每次瞄准在真实方向 ±10° 内随机偏移
     dark: {
-      r: 7, dmg: 36, speed: 430, color: '#c084fc', trail: '#7c3aed', preT: 0.6, band: 0.10, wallUp: 0.20,
+      r: 7, dmg: 36, speed: 430, color: '#c084fc', trail: '#7c3aed', preT: 0.6,
+      s5MidBand: 0.10,         // 技能5 翼对（中间一组）目标带：玩家高度 ±10% 屏高
+      s5CrossMin: 0.10,        // 技能5 炮/甲对（上/下交叉组）目标带下限：玩家上/下方 10% 屏高
+      s5CrossMax: 0.30,        // 技能5 炮/甲对（上/下交叉组）目标带上限：玩家上/下方 30% 屏高
+      downSpread: 75 * Math.PI / 180,   // 技能6 射向扇区半角：竖直向下 ±75°（下方 150° 内随机，组内镜像）
+      bounceMax: 3,            // 技能6 暗黑子弹墙壁反弹次数上限（超过后不再反弹）
       animR: 180,              // 技能5/6 重组动画：圆球起始半径（自机体四周随机角飞向镶接位）
       animStagger: 0.03,       // 逐球错峰起始（s）
       animDur: 0.42,           // 单球飞行时长（s）——末球 0.15+0.42=0.57s 内到位，早于 preT=0.6s 的发射时刻
@@ -374,6 +402,8 @@
   //   enemyFirstFireAdd      非BOSS首次攻击延迟额外秒数：[min, max] 区间（rand 取值）或固定秒数，0/缺省 = 不加
   //   enemyFireIntervalMul   非BOSS攻击间隔倍率（>1 攻击更稀疏）
   //   dropClassNoReduce      true：1/2类敌人道具掉率的额外减少修正（×0.5 / ×0.75）不再生效
+  //   dropClassLowWeaken     true：低火力减免——火力 Lv1 时 1/2类掉率削减修正失效、Lv2 时效果减弱 50%
+  //                          （1类 ×0.5→×0.75 / 2类 ×0.75→×0.875；BOSS 战 1类波 ×0.3 削减不受影响）
   //   bossMinionDropNoReduce true：BOSS 战 1类强制波道具掉率降低修正（×0.30）不再生效
   //   bossDmgMul             BOSS 所有伤害倍率（含弹幕/接触/区域打击/导弹）
   //   bossFireIntervalMul    BOSS 技能释放间隔倍率（>1 技能更稀疏）
@@ -423,6 +453,7 @@
         enemyFirstFireAdd: 0,
         enemyFireIntervalMul: 1,
         dropClassNoReduce: false,
+        dropClassLowWeaken: true,   // 火力 Lv1：1/2类掉率削减修正失效；Lv2：效果减弱 50%
         bossMinionDropNoReduce: false,
         bossDmgMul: 1,
         bossFireIntervalMul: 1,
@@ -448,6 +479,7 @@
         enemyFirstFireAdd: 0,
         enemyFireIntervalMul: 1,
         dropClassNoReduce: false,
+        dropClassLowWeaken: true,   // 火力 Lv1：1/2类掉率削减修正失效；Lv2：效果减弱 50%
         bossMinionDropNoReduce: false,
         bossDmgMul: 1,
         bossFireIntervalMul: 1,
@@ -477,6 +509,12 @@
   }
   // 是否为诗篇难度（旧日之歌技能改版等深度改写经此门控；参数级修正走 diffMods()）
   function isShipian() { return currentDifficulty.id === 'shipian'; }
+  // 是否为诗篇及更高难度档：按 DIFFICULTIES 键序（键序=难度顺序，后续新增更高难度如「长歌」排在诗篇之后自动归入）。
+  // 用于「高难度保持满强度、低难度放宽」类门控（如群星守望消弹冷却，见 06-enemy killEnemy）
+  function isHardTier() {
+    const order = Object.keys(DIFFICULTIES);
+    return order.indexOf(currentDifficulty.id) >= order.indexOf('shipian');
+  }
   // 玩家无敌时间难度倍率（具象：所有来源的无敌时间 +50%；与装甲 invulnMul 乘算，见 ARMORS）
   function invulnDiffMul() {
     const m = diffMods().invulnMul;
@@ -488,55 +526,61 @@
   // ---------- 装甲系统 ----------
   // 主界面选择、整场战斗生效的机体装甲。效果键位（按需扩展）：
   //   maxHpAdd     每条命 HP 加成（PLAYER_CFG.maxHp = 100 基准；resetGame / 重生结算）
-  //   invulnMul    受击 / 重生无敌时间倍率（并入 invulnDiffMul，与难度倍率乘算——天枢圣盾）
+  //   invulnMul    受击 / 重生无敌时间倍率（并入 invulnDiffMul，与难度倍率乘算——天枢圣卫）
   //   clearChance  击杀 1/2/3/4 类敌人时清除最近一颗敌弹的概率（群星守望）
+  //   clearCd      群星守望常规消弹冷却（每 0.4s 至多消除一枚，仅诗篇及更高难度生效；
+  //                低难度无冷却且概率 ×1.5 上限 100%，见 06-enemy killEnemy）
   // 其余装甲效果（最终壁垒免死 / 祈星减伤 / 澄月暴走护盾 / 七日澜心量表技能）为行为型逻辑，
   // 分别挂钩 07-player（damagePlayer / pickupKit / pickupBerserk / updatePlayer）与 06-enemy（killEnemy / BOSS 接触）。
   // 新增装甲只需在注册表加条目：主界面卡片自动生成（12-ui buildArmorCards）。
   // brief  = 主菜单卡片的简短文案（玩家向）；desc = 数值与机制图鉴「护甲」页的详细数值文案
   // 条目顺序 = 展示顺序（主菜单卡片与图鉴护甲页均按注册表键序生成）：
   //   第一排：群星守望（默认，无脑最适合新人）/ 铜皮夏勇 / 祈星 / 洄
-  //   第二排：七日澜心 / 最终壁垒 / 天枢圣盾 / 澄月；第三排：炽心
+  //   第二排：七日澜心 / 最终壁垒 / 天枢圣卫 / 澄月；第三排：炽心
   const ARMORS = {
     watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff',
       default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化）
-      clearChance: { 1: 0.30, 2: 0.60, 3: 0.80, 4: 1.0 },
-      clearChanceBoss: { 1: 0.70, 2: 1.0, 3: 1.0, 4: 1.0 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
-      brief: '击毁敌机时概率消除弹幕；BOSS 战中整组清除',
-      desc: '击杀 1/2/3/4 类敌人时<br>30%/60%/80%/100% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：70%/100%/100%/100%，<br>且改为清除该敌人发出的所有在场射弹' },
+      clearChance: { 1: 0.04, 2: 0.07, 3: 0.10, 4: 0.30 },
+      clearCd: 0.4,   // 常规消弹内置冷却（s）：每 0.4s 至多消除一枚（仅诗篇及更高难度生效，低难度无冷却）
+      clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
+      brief: '击毁敌机时概率消除弹幕',
+      desc: '击杀 1/2/3/4 类敌人时<br>4%/7%/10%/30% 立刻清除<br>一颗离自身最近的敌方子弹<br>（诗篇及更高难度每 0.4s 至多消除一枚）<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的所有在场射弹<br>诗篇以下难度：无冷却，<br>且清除概率 ×1.5（上限 100%）' },
     tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
-      maxHpAdd: 30, brief: '夏勇皮糙肉厚，战机血量提升',
+      maxHpAdd: 30, brief: '夏勇皮糙肉厚战机血量提升',
       desc: '血量提高 30<br>（100 → 130）' },
     qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
       halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
       brief: '受伤时概率使该次伤害减半',
       desc: '受到伤害时 30% 概率伤害减半<br>单次伤害 &gt;40 时概率提升到 60%' },
-    hui:      { id: 'hui', name: '洄', glyph: '∞', color: '#39C5BB',
+    hui:      { id: 'hui', name: '洄', glyph: '∞', color: '#39C5BB', sym: true,   // sym：∞ 字形换 Corbel 渲染（Segoe UI 下右环偏大）
       regenInterval: 2, regenHp: 1,   // 恢复间隔（s）/ 每次恢复量
-      bossKillLostPct: 0.25,            // 击败 BOSS：先回复 25% 已损失生命
-      bossKillHeal: 20,                 // 击败 BOSS：再回复 20 生命
-      brief: '缓慢回复血量，击败BOSS回血',
-      desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时先回复 25% 已损失生命<br>随后再回复 20 生命' },
+      bossKillLostPct: 0.35,            // 击败 BOSS：回复 35% 已损失生命
+      brief: '缓慢回复血量击败BOSS回血',
+      desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
-      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 5s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 4s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
     bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
       invulnFireRateMul: 0.5,   // 免死无敌期间自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘）
-      brief: '受到致命伤害时不死且短暂无敌，仅限一次',
+      brief: '受到致命伤害时不死且短暂无敌，仅一次',
       desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 3s 无敌（淡金菱形环绕，期间射速 -50%）<br>菱形消散时清除周围 250px 内敌弹并扩散金环' },
-    tianshu:  { id: 'tianshu', name: '天枢圣盾', glyph: '⬡', color: '#4dd0ff',
-      invulnMul: 1.6, brief: '受到神圣赐福，无敌时间提升',
-      desc: '从所有来源获得的无敌时间 +60%<br>无敌期间免疫破片导弹的<br>"无视无敌"穿透' },
+    tianshu:  { id: 'tianshu', name: '天枢圣卫', glyph: '⬡', color: '#4dd0ff',
+      invulnMul: 1.6,   // 受击 / 重生等常规无敌时长倍率
+      guardCycle: 20, guardWindow: 10,   // 圣守周期：无敌结束后起算每 20s 展开持续 10s 的「圣守窗口」；窗口内受击在结算前免除并触发常规受击无敌（窗口/无敌期间周期不计时，等效 30s 一轮）
+      brief: '无敌时间提升；圣守窗口内可免除一次伤害',
+      desc: '从所有来源获得的无敌时间 +60%<br>无敌期间免疫破片导弹的<br>"无视无敌"穿透<br><hr>每 20s（无敌结束后起算）展开<br>持续 10s 的「圣守窗口」：窗口内<br>受到伤害时在结算前触发无敌<br>（常规受击无敌时长），该次伤害完全免除<br>窗口期间与无敌期间周期均不计时<br>（窗口关闭或触发消耗后重新计时）' },
     chengyue: { id: 'chengyue', name: '澄月', glyph: '☾', color: '#6fe3ff',
       chance: 0.15, bossChance: 0.50,   // 暴走触发（新触发）与暴走续时均判定一次
+      shieldDur: 6,   // 护盾时长（s）：与通用量子护盾一致（不再缩短）
       brief: '触发暴走时概率获得量子护盾',
-      desc: '触发暴走时 15% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 50%<br>（每个 BOSS 限一次、时长 3s）' },
+      desc: '触发暴走时 15% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 50%<br>（每个 BOSS 限一次）<br>护盾时长与量子护盾一致（6s）' },
     chixin:   { id: 'chixin', name: '炽心', glyph: '❂', color: '#ff7a18',
-      burnR: 100, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
-      brief: '战机周身围绕火环，灼烧接近敌人',
-      desc: '自身环绕焦香同款火环（半径 100，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害' },
+      burnR: 108, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
+      burnTagMul: 1.5,   // 灰色 / 黑色标记敌人（enemyColorTags 含 'gray'/'black'：灰黑系特殊无人机/炮兵、幽暮与黑色 BOSS）灼烧增伤倍率
+      brief: '战机周身围绕火环，灼烧接近的敌人',
+      desc: '自身环绕焦香同款火环（半径 108，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害<br>对灰 / 黑标记敌人伤害 +50%' },
     standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8',
-      brief: '标准配置，没有任何效果',
+      brief: '标准制式护甲<br>无效果',
       desc: '标准护甲。<br>没有任何效果。' },
   };
   let currentArmor = ARMORS.watch;   // 默认装甲：群星守望（无按钮无资源管理、击杀即触发清弹，对新最无脑直观）
@@ -561,7 +605,7 @@
   const ARMOR_SKILLS = {
     // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
     // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 5, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
   };
 
   // ---------- 群星之杀：空间斩击参数 ----------
@@ -657,112 +701,138 @@
 
   // ---------- 驾驶员系统 ----------
   // 主界面选择、整场战斗生效的驾驶员（战斗修正 + 装备连携）。注册表键序 = 主菜单卡片展示顺序。
-  // brief = 主菜单卡片简短文案；desc = 详细数值文案（后续可接入数值图鉴）。
+  // brief = 主菜单卡片简短文案；desc = 数值与机制图鉴「驾驶员」页的详细机制文案。
   // 效果键（缺省安全回退，与 diffMods 同约定）：
   //   bombDmgMul    可莉：高能爆弹（绷绷炸弹）伤害倍率
   //   bombStartAdd  可莉：初始爆弹额外数量
   //   dashDur/dashLv 许凯狗：开场冲刺时长（s）/ 结束时跳到的关卡等级
+//   speedFast/speedSlow 马兴犬：Shift 加速 / CapsLock 减速的移速倍率（同键再按恢复原速）
   //   chargeDur/scoreMul 埃逸：死亡蓄力自爆时长（s）/ 自爆击杀的得分倍率
-  //   gaugeFull/bossCharge/stormCharge 天秀忧郁王子：量表所需非水晶分数 / BOSS 战每秒充能 / 暴风之眼战每秒充能
+  //   gaugeFull/bossCharge/stormChargeMin~Max 天秀忧郁王子：量表所需非水晶分数 / BOSS 战每秒充能 / 暴风之眼战每秒充能（8%~12% 随机）
   //   stormDmgCut/stormCrashCut 天秀：来自暴风之眼的伤害削减（普通/碰撞）
-  //   stormBuffDur/hasteBoost/gaugeHitGain 天秀：受暴风之眼伤害后的增益时长/攻速倍率/量表增益
   //   otherDmgCut 天秀：暴风之眼战期间其余我方伤害削减（友方大风暴不受此削减、另享 PRINCE_STORM.stormFightDmgMul）
+  // 注册表键序 = 主菜单卡片展示顺序（none 除外，不展示）：
+  //   主槽：可莉 / 许凯狗 / 埃逸 / 大狗 / 马兴犬 / 温酒客 / 胡笛客
+  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 凌漓 / 哈基米大王 / 萧杨
   const PILOTS = {
+    // 「无驾驶员」已不作为可选卡片（选择页移除）：仅作同名互斥时另一槽位的回退值与内部判定用
     none: {
       id: 'none', name: '无驾驶员', empty: true,
       desc: '不携带驾驶员出击。',
     },
     keli: {
-      id: 'keli', name: '可莉', glyph: '✹', color: '#ff7a45', slot: 'main',
-      bombDmgMul: 1.5, bombStartAdd: 1, bombIgnoreDiffCut: true,   // 绷绷炸弹无视诗篇爆弹对 BOSS 的伤害减少
+      id: 'keli', name: '可莉', glyph: '✹', color: '#ff7a45', slot: 'main', default: true,
+      bombDmgMul: 1.5, bombStartAdd: 1, bombIgnoreDiffCut: true,   // 绷绷炸弹：诗篇爆弹对 BOSS 的减伤减半（×0.75 → ×0.875）
       // aoeCut/missileCut：受到的瞬时区域伤害 / 导弹伤害削减
       // （瞬时区域 = 暴鸰爆炸 / 破片范围伤害 / 风暴编织者雷霆轰击 / 暴风之眼区域打击；
       //   导弹 = 先兆者导弹；长条激光 / 持续灼烧 / 撞击伤害不适用）
-      aoeCut: 0.3, missileCut: 0.3,
-      brief: '绷绷炸弹 ×1.5 且无视诗篇减伤；区域伤害与导弹伤害 -30%',
-      desc: '可莉爱用绷绷炸弹。绷绷炸弹替代高能爆弹<br>伤害为高能爆弹的 150%<br>初始额外拥有 1 颗绷绷炸弹<br>无视诗篇难度的爆弹对 BOSS 伤害减少<br>受到的瞬时区域伤害 -30%<br>（暴鸰爆炸 / 破片范围伤害 / 雷霆轰击 /<br>暴风之眼区域打击）<br>受到的导弹伤害 -30%（先兆者导弹）<br>（长条激光 / 持续灼烧 / 撞击不适用）',
+      aoeCut: 0.2, missileCut: 0.2,
+      brief: '爆弹更加强力',
+      desc: '可莉爱用绷绷炸弹。绷绷炸弹替代高能爆弹<br>伤害为高能爆弹的 150%<br>初始额外拥有 1 颗绷绷炸弹<br>诗篇难度的爆弹对 BOSS 伤害减少减半<br>（-25% → -12.5%）<br>受到的瞬时区域伤害 -20%<br>（暴鸰爆炸 / 破片范围伤害 / 雷霆轰击 /<br>暴风之眼区域打击）<br>受到的导弹伤害 -20%（先兆者导弹）<br>（长条激光 / 持续灼烧 / 撞击不适用）',
     },
     xukaigou: {
       id: 'xukaigou', name: '许凯狗', glyph: '⇈', color: '#ffd166', slot: 'main',
       dashDur: 6, dashLv: 7,
-      brief: '开场高能冲刺：无敌横扫，1s/级，结束直升 Lv7',
+      dashEntry: 0.5,   // 冲刺入场时长（s）：从出发位置平滑升至摆动区，不瞬间闪现
+      enemySpdMul: 1.65,   // 冲刺期间怪物移速倍率（+65%）：敌机更快冲入击杀窗口，营造迎面疾驰感
+      dashTail: 1,     // 冲刺收尾时长（s）：最后 1s 流动特效/背景流速逐渐减速，机体平滑滑落至 70% 屏高
+      brief: '开场高能冲刺',
       desc: '许凯狗元气磅礴。开场进行 6s 高能冲刺（期间无敌）<br>来袭敌人出场即被击溃（道具正常掉落）<br>升级时间缩短至 1s（每级刷怪量与正常一致）<br>冲刺结束时等级直接跳至 Lv7',
     },
     aiyi: {
       id: 'aiyi', name: '埃逸', glyph: '✸', color: '#ff4d6d', slot: 'main',
-      chargeDur: 1.2, scoreMul: 0.2, bossDmg: 6000,   // bossDmg：非最后一条命自爆对 BOSS 的固定伤害
-      brief: '死亡时蓄力自爆：终局可秒杀全场含 BOSS，仅得 20% 分数',
-      desc: '埃逸能流奔涌。死亡时短暂蓄力 1.2s 后自爆<br>最后一条命：秒杀当前屏幕所有敌人（含 BOSS）<br>非最后一条命：秒杀全部非 BOSS 敌人，<br>并对 BOSS 造成 6000 伤害<br>被自爆击杀的敌人仅获得 20% 分数<br>最后一条命的自爆击杀最终 BOSS 仍算作胜利<br>（结算标题"自爆成功"）',
+      // 死亡蓄力自爆：chargeDur 非最后一条命蓄力（s）/ chargeDurFinal 最后一条命蓄力（s）
+      // 蓄力期间收缩波向死亡地点汇聚（contractR 非最终起始半径 / contractRFinal 最终三道起始半径，初始较浅渐显）；
+      // 结束产生扩散波波及全场（updateAiyiWaves）：
+      // waveSpeed 扩散速度（px/s）/ finalWaveCount 最后一条命的扩散波道数（错峰 0.1s 释放、很快扫过全场）
+      // bossDmg 非最后一条命自爆对 BOSS 的固定伤害（非 BOSS 敌人一律立刻击杀）
+      chargeDur: 0.5, chargeDurFinal: 1.0, contractR: 300, contractRFinal: 460,
+      waveSpeed: 1300, finalWaveCount: 3,
+      scoreMul: 0.2, bossDmg: 6000,
+      brief: '死亡时高能自爆',
+      desc: '埃逸能流奔涌。死亡时蓄力（0.5s，最后一条命 1s）——<br>一道/三道能流波自远处收缩汇聚后自爆：<br>一道/数道极宽冲击波自死亡地点快速扩散至全场，<br>被波及的敌人立刻结算（<b>无视虚化护盾</b>）——<br>非最后一条命：非 BOSS 敌人立刻击杀、BOSS 受 6000 伤害<br>最后一条命：被波及的所有敌人（含 BOSS）立刻被击杀<br>不能伤害 BOSS 死亡召唤的另一 BOSS（暴风之眼→风暴编织者）；<br>增生侧翼艇被波炸毁时不分裂卫护飞船<br>被自爆击杀的敌人仅获得 20% 分数<br>最后一条命的自爆击杀最终 BOSS 仍算作胜利<br>（结算标题"自爆成功"）',
     },
-    tianxiu: {
-      id: 'tianxiu', name: '天秀忧郁王子', glyph: '☯', color: '#dff3ff', slot: 'sub',
-      gaugeFull: 40000, bossCharge: 0.02, stormCharge: 0.06,
-      stormDmgCut: 0.5, stormCrashCut: 0.6,
-      stormBuffDur: 5, hasteBoost: 1.8, gaugeHitGain: 0.18,
-      otherDmgCut: 0.5,
-      brief: '白色量表充能后按 E 召唤友方大风暴；自带暴风之眼对策',
-      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 40000 充满<br>（BOSS 战 +2%/s；暴风之眼战 +6%/s）<br>满时按 E：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>受暴风之眼伤害后：50% 闪避 + 攻速 +80% +<br>量表 +18%（持续 5s）<br>暴风之眼战期间：友方大风暴伤害 ×3、其余我方伤害 -50%',
+    dagou: {
+      id: 'dagou', name: '大狗', glyph: '汪', color: '#7fb8ff', slot: 'main',
+      // 导弹雨：waveIv 召唤间隔（s）/ count 每波数量 / dmg 对命中目标及小范围敌人的伤害（BOSS 不再减免，同 dmg）
+      // blastR 溅射半径 / speed 上行速度 / launchGap 相邻两发的发射间隔（s，中间两发先出、向两侧两两错开）
+      // 预警蓝光：warnLead 发射前渐显时长（s）/ warnPeak 峰值透明度 / warnFade 发射后快速渐隐时长（s）
+      // warnH 光带高度（px，基准 130 + 10% 屏幕高度）
+      waveIvMin: 10, waveIvMax: 22, count: 8,
+      warnLead: 1.5, warnPeak: 0.3, warnFade: 0.35, warnH: 130 + Math.round(CANVAS_H * 0.1),
+      dmg: 600, blastR: 70, speed: 950, launchGap: 0.1, r: 10,
+      // 分区命中：导弹位于上方 35% 屏高线以内（y ≤ lowZonePct×屏高）命中敌人才爆炸（600 溅射）；
+      //   其余区域（35% 线以下）命中不爆炸，改为对命中目标直接造成 lowZoneDmg 伤害（大无垠之王累积增伤照常生效）
+      lowZonePct: 0.35, lowZoneDmg: 300,
+      brief: '召唤导弹打击',
+      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>对命中目标及周围小范围敌人造成 600 伤害<br>画面下方 65% 屏高线以下命中时不爆炸，<br>改为对命中目标直接造成 300 伤害',
+    },
+    // 马兴犬：Shift 加速 / CapsLock（大写锁定键）减速（同键再按恢复原速）
+    maxingquan: {
+      id: 'maxingquan', name: '马兴犬', glyph: '犬', color: '#d9a066', slot: 'main',
+      speedFast: 1.25, speedSlow: 0.8,
+      brief: 'Shift/Caps<br>切换移速',
+      desc: '马兴犬下头至极。点击 <b>Shift</b> 切换加速 ×1.25<br><b>Caps</b>（大写锁定键）切换减速 ×0.8，<br>再次点击同键恢复原速',
+    },
+    wenjiuke: {
+      id: 'wenjiuke', name: '温酒客', glyph: '醉', color: '#c9a0ff', slot: 'main',
+      brief: '无效果',
+      desc: '温酒客隐匿于黑暗神秘无比。温酒客很神秘，<br>没有任何技能。<br>（待最终决战版本设计）',
+    },
+    hudike: {
+      id: 'hudike', name: '胡笛客', glyph: '笛', color: '#8a9bb0', slot: 'main',
+      brief: '无效果',
+      desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
+    },
+    xiaoyi: {
+      id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub', default: true,
+      pickupHeal: 10, pickupHealLow: 15, pickupHealLowPct: 0.35,   // 拾取道具回血 / 低血回血 / 低血阈值（水晶不算）
+      huiHealMul: 1.25,   // 连携洄：洄的治疗效果 ×1.25
+      brief: '拾取道具回血，可与洄联动',
+      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 10 生命<br>血量低于 35% 时改为恢复 15 生命<br>同时装备护甲「洄」时：<br>洄的治疗效果增加 25%',
     },
     king: {
       id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffd166', slot: 'sub',
       // dmgRate/takenRate：BOSS 战期间每秒累积的 造成伤害/受到伤害 提升（1%/2s 与 1%/4s）
       // phaseKeep：多阶段 BOSS 切换（暴风之眼→风暴编织者）时两项累积增伤的留存比例（-75%）
       dmgRate: 0.005, takenRate: 0.0025, phaseKeep: 0.25,
-      brief: '怒意蔓延：BOSS 战越战越勇，也越战越脆',
+      brief: 'BOSS战逐渐增伤',
       desc: '大无垠之王怒意蔓延。BOSS 战期间：每经过 2s 造成伤害 +1%，<br>每经过 4s 受到伤害 +1%（可无限累积）<br>多阶段 BOSS 切换时（暴风之眼→风暴编织者）<br>两项累积各减少 75%<br>BOSS 阶段结束时立刻失去全部累积',
     },
-    wenjiuke: {
-      id: 'wenjiuke', name: '温酒客', glyph: '醉', color: '#c9a0ff', slot: 'sub',
-      brief: '隐匿于黑暗，神秘无比',
-      desc: '温酒客隐匿于黑暗神秘无比。温酒客很神秘，<br>没有任何技能。<br>（待最终决战版本设计）',
-    },
-    xiaoyi: {
-      id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub',
-      pickupHeal: 12, pickupHealLow: 18, pickupHealLowPct: 0.35,   // 拾取道具回血 / 低血回血 / 低血阈值（水晶不算）
-      huiHealMul: 1.35,   // 连携洄：洄的治疗效果 ×1.35
-      brief: '森灵之力：拾取道具恢复生命；洄的治疗 +35%',
-      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 12 生命<br>血量低于 35% 时改为恢复 18 生命<br>同时装备护甲「洄」时：<br>洄的治疗效果增加 35%',
-    },
     lingluo: {
-      id: 'lingluo', name: '陵落', glyph: '✵', color: '#c084fc', slot: 'main',
+      id: 'lingluo', name: '陵落', glyph: '✵', color: '#c084fc', slot: 'sub',
       // cd：Q 技能冷却（s，开局技力条为空）/ hpCost：每次触发同时扣除的生命上限与当前生命（下限 1）
-      // maxHpRegen：生命上限恢复速率（每秒，不回当前血量）
+      // maxHpRegen：生命上限恢复速率（每秒，不回当前血量；40 上限 ÷ 2/s = 恰好 20s 回满）
       cd: 40, hpCost: 40, maxHpRegen: 2,
-      brief: '按 Q 强行暴走：代价为 40 生命上限+40 生命，40s 冷却',
-      desc: '陵落掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后以每秒 2 点回复（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
+      brief: '按Q烧血暴走',
+      desc: '陵落掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后每秒回复 2 点、20s 恰好回满 40<br>（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
     },
-    hajimi: {
-      id: 'hajimi', name: '哈基米大王', glyph: '喵', color: '#ff9ab5', slot: 'main',
-      dodgeBase: 0.2, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
-      brief: '狂暴出击：暴走期 20% 闪避（延至结束后 4s），失败则概率累积',
-      desc: '哈基米大王狂暴出击。暴走期间 20% 概率闪避受到的伤害<br>（闪避不受伤害、但正常触发受击无敌）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
-    },
-    dagou: {
-      id: 'dagou', name: '大狗', glyph: '汪', color: '#7fb8ff', slot: 'main',
-      // 导弹雨：waveIv 召唤间隔（s）/ count 每波数量 / dmg 对命中目标及小范围敌人的伤害（BOSS 为 bossDmg）
-      // blastR 溅射半径 / speed 上行速度 / launchGap 相邻两发的发射间隔（s，中间两发先出、向两侧两两错开）
-      waveIvMin: 14, waveIvMax: 22, count: 8,
-      dmg: 600, bossDmg: 500, blastR: 70, speed: 950, launchGap: 0.1, r: 10,
-      brief: '叫叫叫：每隔 14~22s 自下而上召唤一波 8 颗导弹雨',
-      desc: '大狗叫叫叫。每隔 14~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>导弹为白蓝色渐变的先兆者同款<br>对命中目标及周围小范围敌人造成 600 伤害<br>（对 BOSS 降低为 500）',
+    tianxiu: {
+      id: 'tianxiu', name: '天秀忧郁王子', short: '忧郁王子', glyph: '☯', color: '#dff3ff', slot: 'sub',
+      gaugeFull: 40000, bossCharge: 0.02, stormChargeMin: 0.08, stormChargeMax: 0.12,
+      stormDmgCut: 0.5, stormCrashCut: 0.6,
+      otherDmgCut: 0.6,
+      brief: '按Q召唤风暴',
+      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 40000 充满<br>（BOSS 战 +2%/s；暴风之眼战 +8%~12%/s 随机）<br>满时按 Q：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3、其余我方伤害 -60%',
     },
     lingli: {
       id: 'lingli', name: '凌漓', glyph: '⚔', color: '#f5b8d0', slot: 'sub',
       // 隐藏计数表（不显示于 HUD）：gaugeFull 填满所需水晶分数（类比七日澜心，无首轮 BOSS 加成、
       // BOSS 水晶不计入）；填满立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）。
       // lanxinDrain：连携七日澜心——澜心量表充满瞬间额外释放一次，并从本表扣除的水晶分数（可扣至负数）
-      gaugeFull: 3200, lanxinDrain: 1000,
-      brief: '隐藏计数表：水晶 3200 分充满即放淡粉冲击波；连携澜心',
-      desc: '折光穹顶之剑，通天之十四塔。拥有独立隐藏计数表<br>（不显示，逻辑类似七日澜心：按水晶得分充能，<br>无首轮 BOSS 加成且 BOSS 水晶不计入）<br>填满 3200 分后立刻清空并释放淡粉冲击波<br>（清除 250px 内所有敌方子弹，不震屏）<br>同时装备七日澜心护甲时：澜心量表充满的瞬间<br>也立刻释放一次同款冲击波，<br>且凌漓计数减少 1000（不足 1000 则减到负数）',
+      gaugeFull: 2400, lanxinDrain: 1000,
+      brief: '积攒水晶清除弹幕，可与七日澜心联动',
+      desc: '折光穹顶之剑。拥有独立隐藏计数表<br>（不显示，逻辑类似七日澜心：按水晶得分充能，<br>无首轮 BOSS 加成且 BOSS 水晶不计入）<br>填满 2400 分后立刻清空并释放淡粉冲击波<br>（清除 250px 内所有敌方子弹，不震屏）<br>同时装备七日澜心护甲时：澜心量表充满的瞬间<br>也立刻释放一次同款冲击波，<br>且凌漓计数减少 1000（不足 1000 则减到负数）',
     },
-    hudike: {
-      id: 'hudike', name: '胡笛客', glyph: '笛', color: '#8a9bb0', slot: 'main',
-      brief: '卑鄙无耻，没有任何效果',
-      desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
+    hajimi: {
+      id: 'hajimi', name: '哈基米大王', glyph: '喵', color: '#ff9ab5', slot: 'sub',
+      dodgeBase: 0.35, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
+      brief: '暴走时有概率闪避',
+      desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害，无敌时长为正常的 70%）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
     },
     xiaoyang: {
       id: 'xiaoyang', name: '萧杨', glyph: '萧', color: '#7a8a6e', slot: 'sub',
-      brief: '阴险狡诈，没有任何效果',
+      brief: '无效果',
       desc: '萧杨阴险狡诈。<br>没有任何效果。',
     },
   };
@@ -770,8 +840,8 @@
   // 每名驾驶员归属 slot（'main' 主驾驶员 / 'sub' 副驾驶员，暂定分野、可随设计调整）；
   // 可同时装备主副各一名，效果同时生效。战斗逻辑经 hasPilot(id) 判定（任一槽位命中即生效），
   // 不区分主副——待主/副差异设计明确后再在此扩展。
-  let currentPilotMain = PILOTS.none;   // 主驾驶员（默认空；写操作经 setPilotMain）
-  let currentPilotSub = PILOTS.none;    // 副驾驶员（默认空；写操作经 setPilotSub）
+  let currentPilotMain = PILOTS.keli;   // 主驾驶员（默认可莉；写操作经 setPilotMain）
+  let currentPilotSub = PILOTS.xiaoyi;  // 副驾驶员（默认小艺；写操作经 setPilotSub）
   function setPilotMain(p) { currentPilotMain = p; }
   function setPilotSub(p) { currentPilotSub = p; }
   // 当前是否装备了指定驾驶员（主副任一槽位命中即 true）
@@ -785,21 +855,36 @@
   // 可莉：绷绷炸弹伤害倍率 / 初始额外爆弹数
   function pilotBombDmgMul() { return (pilotEntry('keli') || {}).bombDmgMul || 1; }
   function pilotBombStartAdd() { return (pilotEntry('keli') || {}).bombStartAdd || 0; }
+  // 大狗导弹雨间隔：连发模式 0.2~1s（按 9 切换），正常取注册表 10~22s
+  function dagouWaveIv(rapid) {
+    return rapid ? 0.2 + Math.random() * 0.8
+      : PILOTS.dagou.waveIvMin + Math.random() * (PILOTS.dagou.waveIvMax - PILOTS.dagou.waveIvMin);
+  }
   // 小艺连携洄：洄的治疗效果倍率（回血 / BOSS 击败回血均乘算）
   function pilotHuiHealMul() {
     const x = pilotEntry('xiaoyi');
     return (x && currentArmor.id === 'hui' && currentArmor.regenHp) ? x.huiHealMul : 1;
   }
 
-  // 天秀忧郁王子：友方大风暴（暴风之眼同款风暴的我方版，按 E 释放）
-  //   dur 存留时长（s）/ riseSpd 向上推进速度 / r 判定与视觉半径
-  //   tickDmg/tickIv 主体接触伤害与间隔 / fireIv 风弹轮间隔 / bulletCount/spreadDeg 每轮风弹数与夹角
-  //   stormFightDmgMul 暴风之眼战期间的伤害倍率（+200%）/ bulletAlphaStormFight 暴风之眼战中我方风弹透明度（与敌弹样式相同，压透明度区分）
+  // 天秀忧郁王子：友方大风暴（大型龙卷（暴风之眼召唤物）同款风暴的我方版，按 Q 释放）
+  //   风暴本体：dur 存留时长（s）/ riseSpd 向上推进速度 / r 判定与视觉半径
+  //     （绘制复用大型龙卷 drawTornado，样式一致；自转为该绘制内置的时间驱动）
+  //   主体接触伤害：tickDmg / tickIv（结算间隔）
+  //   风弹（大型龙卷同款随机喷射）：bulletCount 每轮发数 / fireIvMin~fireIvMax 发射间隔（s，随机）/
+  //     bulletSpeed0 初速 / bulletAccel 沿飞行方向加速度 / bulletMaxSpeed 弹速上限 /
+  //     bulletR 弹体半径 / bulletLen0 出膛长度 / bulletLenMax 全长 / growRate 长度生长速率（px/s）
+  //   天秀限定：风弹仅朝前方 240° 扇形发射（以竖直向上为中心 ±120°，正下方 ±60° 扇区不射）
+  //   bulletDmg 风弹伤害 / stormFightDmgMul 暴风之眼战期间的伤害倍率（+200%）
+  //     / bulletAlphaStormFight 暴风之眼战中我方风弹透明度（与敌弹样式相同，压透明度区分）
   const PRINCE_STORM = {
     dur: 7, riseSpd: 130, r: 110,
-    tickDmg: 60, tickIv: 0.2,
-    fireIv: 0.55, bulletCount: 2, bulletDmg: 20, bulletSpeed: 480, spreadDeg: 8,
+    tickDmg: 80, tickIv: 0.1,
+    bulletCount: 2, fireIvMin: 0.20, fireIvMax: 0.30,
+    bulletSpeed0: 190.4, bulletAccel: 100.625, bulletMaxSpeed: 816.2,
+    bulletR: 5.6, bulletLen0: 14.4, bulletLenMax: 84, growRate: 150,
+    bulletDmg: 50,
     stormFightDmgMul: 3, bulletAlphaStormFight: 0.35,
+    dbgRiseSpdMul: 1.8,   // 按 8 连发模式期间发射的风暴：向上移速 ×1.8
   };
 
   // 守愿者白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
@@ -813,6 +898,7 @@
 
   // ---------- 守愿者白盾 × 射弹交互属性注册表（四类；新增射弹在此登记并按类实现）----------
   //   一类·截断（默认行为，无标注字段）：长条激光类射弹——被白盾截断 / 磨短 / 吸收。
+  //     （技能3 / 技能6 光束的盾判定箱经 STORM2.s3ShieldR / s6ShieldPad 收窄——更难被阻挡，仅真正触及盾面才被截断）
   //     现役：法术大师A1/A2 激光（laser 弹，08-entities laser 分支）、风暴编织者技能3 "<"光束（beamTrail 分支）、
   //           风暴编织者技能6 电弧光束（s.beams clipD，见 05-boss runStorm2Skill）
   //   二类·穿透（c.swPen 标记）：白盾无法截断——触盾直接穿过并标记，此后命中玩家伤害 -50%。
@@ -1153,7 +1239,7 @@
     laserSpeed: 420,     // 激光射弹速度
     laserDmg: 16,        // 激光伤害
     laserLenPct: 0.4,    // （已废弃：激光无上限生长，直到尾端出界才消失）
-    laserGrowRate: 130,  // 激光生长速率 px/s：无上限持续生长，直到尾端出界才消失
+    laserGrowRate: 117,  // 激光生长速率 px/s：无上限持续生长，直到尾端出界才消失（130 → 117，-10%）
     laserR: 5,           // 激光宽度（半径）
     strafeChance: 0.5,   // 攻击后 50% 概率朝斜下方（45°）移动
     strafeMin: 80,       // 斜移水平分量最小距离
@@ -1471,11 +1557,11 @@
     BOSS_SEQUENCE, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
     STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, energyOrbSheet, ENERGY_ORB, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, lightningImgRing, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
-    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isShipian, invulnDiffMul, bossDmgMul, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP,
+    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isShipian, isHardTier, invulnDiffMul, bossDmgMul, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP,
     DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, currentArmor, setArmor, armorMaxHp,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
-    pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, PRINCE_STORM,
+    dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, PRINCE_STORM,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,
     BAOLING, JIAOXIANG, DOUZHI, FASHI_A1, FASHI_A2, POPIAN,

@@ -56,7 +56,7 @@
           <div class="skill-gauge-ring" id="skillGaugeRing"></div>
           <span class="skill-gauge-key">F</span>
         </div>
-        <!-- 驾驶员量表（天秀忧郁王子白色量表按 E / 陵落 Q 冷却，按键标签随驾驶员切换） -->
+        <!-- 驾驶员量表（天秀忧郁王子白色量表 / 陵落 Q 冷却，均按 Q，按键标签随驾驶员切换） -->
         <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
           <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
           <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
@@ -69,7 +69,7 @@
         </div>
       </div>
 
-      <!-- 右下角：暴走 / 护盾 / 斗志昂扬 倒计时读条（文字居右） -->
+      <!-- 右下角：暴走 / 护盾 / 昂扬 / 晶盾 倒计时读条（文字居右） -->
       <div class="hud-br">
         <div class="buff-bar berserk-bar" id="berserkBar">
           <div class="buff-track"><div class="buff-fill" id="berserkFill"></div></div>
@@ -81,7 +81,11 @@
         </div>
         <div class="buff-bar douzhi-bar" id="douzhiBar">
           <div class="buff-track"><div class="buff-fill" id="douzhiFill"></div></div>
-          <span class="buff-tag">斗志昂扬</span>
+          <span class="buff-tag">昂扬</span>
+        </div>
+        <div class="buff-bar jingdun-bar" id="jingdunBar">
+          <div class="buff-track"><div class="buff-fill" id="jingdunFill"></div></div>
+          <span class="buff-tag">晶盾</span>
         </div>
       </div>
 
@@ -92,7 +96,7 @@
            底部（难度切换 + 开始游戏 | 怪物图鉴 | 右下角 ⓘ 数值与机制图鉴） -->
       <div class="menu-screen hidden" id="menuScreen">
         <!-- 版本号：主菜单右上角（与 package.json / README 版本保持同步） -->
-        <span class="menu-version">v0.3.2</span>
+          <span class="menu-version">v0.3.3</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
@@ -105,8 +109,7 @@
           <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停 / 继续</span></div>
           <div class="help-row"><span class="help-keys"><kbd>R</kbd></span><span class="help-desc">立即重开</span></div>
           <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能（七日澜心，量表满后）</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>E</kbd></span><span class="help-desc">驾驶员技能（天秀忧郁王子，量表满后）</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>Q</kbd></span><span class="help-desc">驾驶员技能（陵落，强行暴走，冷却结束）</span></div>
+          <div class="help-row"><span class="help-keys"><kbd>Q</kbd></span><span class="help-desc">副驾驶员技能</span></div>
         </div>
 
         <div class="menu-hero">

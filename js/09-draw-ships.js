@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(3 名)
   //
-  import { ANVIL, BAOLING, BULWARK, CANVAS_H, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, STARSLAYER, YU4, currentPlane, currentWingman } from './01-config.js';
+  import { ANVIL, BAOLING, BULWARK, CANVAS_H, CANVAS_W, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, STARSLAYER, YU4, currentPlane, currentWingman } from './01-config.js';
   import { armorGlyphFx, blBombs, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
 
 
@@ -287,13 +287,12 @@
   }
 
   // 守愿者僚机造型 —— 方案A：重甲堡垒型（坦克反应装甲风格）
-  //   正面是一块沿弧线排列的厚重钢板装甲（读作铁壁而非能量盾），可见板厚度、铆钉、装甲缝、加强筋
+  //   正面是一块沿弧线排列的厚重钢板装甲（读作铁壁而非能量盾），可见铆钉、装甲缝、加强筋
   //   盾板外缘半径 = BULWARK.radius = 挡弹折线半径（视觉与碰撞一致）
   //   side：-1=左 / +1=右；flash(0~1)：命中时金属亮闪；berserk：暴走过热
   function paintWingmanBulwark(g, side = 1, berserk = false, flash = 0, still = false) {
     const R = BULWARK.radius;                 // 外缘半径（= 挡弹碰撞线）
     const Ri = 10;                            // 内缘半径（装甲板内表面，与本体相连）
-    const thick = 4.5;                        // 可见板厚（断面深度）
     const up = -Math.PI / 2;
     const a0 = up + side * (BULWARK.arcFrom * Math.PI / 180);
     const a1 = up + side * (BULWARK.arcTo * Math.PI / 180);
@@ -378,13 +377,6 @@
       // 内排铆钉
       g.beginPath(); g.arc(cx * (Ri + 3), cy * (Ri + 3), 0.7, 0, Math.PI * 2); g.fill();
     }
-    g.restore();
-
-    // ---- (2) 板厚断面：外缘侧面的深色厚度（体现钢板不是薄片）----
-    g.save();
-    g.strokeStyle = 'rgba(10, 24, 60, 0.85)';
-    g.lineWidth = thick;
-    g.beginPath(); g.arc(0, 0, R + thick / 2 - 0.5, a0, a1, ccw); g.stroke();
     g.restore();
 
     // ---- (3) 盾缘亮边（挡弹线 = R 处，白蓝亮线 + 微光晕）----
@@ -1331,6 +1323,74 @@
   function drawPlayer() {
     if (!player.alive) return;
     const { x, y } = player;
+
+    // 许凯狗冲刺：机体前方强烈白色特效（覆盖约 80% 屏宽 + 加法混合 + 持续流动）——
+    // 风幕光晕 + 向前推移的弧形风波 + 两侧横掠高速流线 + 向上奔涌的纵向风线
+    if (state.pilotDashT > 0) {
+      const t = state.time;
+      const halfW = CANVAS_W * 0.4;   // 特效横向覆盖约 80% 屏宽
+      // 收尾段（dashTail 0.8s）：周身特效整体透明度平滑衰减至 0，逐渐消散而非瞬间消失
+      const fxAlpha = Math.min(1, state.pilotDashT / PILOTS.xukaigou.dashTail);
+      ctx.save();
+      ctx.globalAlpha = fxAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      // ① 风幕光晕：机体正前方（上方）的大范围白色亮核光团（呼吸脉动，直径约 80% 屏宽）；
+      //    渐变在 85% 半径处衰减至 0，避免椭圆填充边缘出现明显的亮暗分界
+      const pulse = 1 + Math.sin(t * 9) * 0.08;
+      const gy = ctx.createRadialGradient(x, y - 64, 12, x, y - 64, 192 * pulse);
+      gy.addColorStop(0, 'rgba(255, 255, 255, 0.62)');
+      gy.addColorStop(0.35, 'rgba(235, 247, 255, 0.32)');
+      gy.addColorStop(0.62, 'rgba(228, 244, 255, 0.14)');
+      gy.addColorStop(0.85, 'rgba(228, 244, 255, 0)');
+      gy.addColorStop(1, 'rgba(228, 244, 255, 0)');
+      ctx.fillStyle = gy;
+      ctx.beginPath(); ctx.ellipse(x, y - 64, 192 * pulse, 164 * pulse, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.lineCap = 'round';
+      // ② 弧形风波：白色圆弧自机体前方逐层向外（向上）推移消散，半径/亮度/摆动错落流动（推开空气的波前）
+      for (let i = 0; i < 5; i++) {
+        const cyc = (t * (2.1 + i * 0.23) + i * 0.31) % 1;
+        const rr = 56 + cyc * 226;
+        const a = (1 - cyc) * (0.52 - i * 0.05);
+        const wob = Math.sin(t * 5 + i * 1.7) * 16;
+        ctx.strokeStyle = `rgba(245, 251, 255, ${a.toFixed(3)})`;
+        ctx.lineWidth = 3.6 - cyc * 1.8;
+        ctx.beginPath();
+        ctx.arc(x + wob, y + 16, rr, Math.PI * 1.06, Math.PI * 1.94);
+        ctx.stroke();
+      }
+      // ③ 高速横掠流线：白色长线自机体两侧向外加速掠过（覆盖至 80% 屏宽，长度/高度/速度错落）
+      for (let i = 0; i < 18; i++) {
+        const seed = i * 61.7;
+        const cyc = (t * (3.2 + (i % 4) * 1.1) + seed * 0.017) % 1;
+        const ly = y - 8 - ((seed * 7.3) % 196);
+        const dir = (i % 2 === 0) ? 1 : -1;
+        const lx = x + dir * (12 + ((seed * 3.1) % 118) + cyc * (halfW - 12 - (i % 4) * 22));
+        const ln = 38 + ((seed * 5.7) % 78);
+        const a = Math.sin(cyc * Math.PI) * 0.88;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+        ctx.lineWidth = 1.7 + (i % 3) * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx - dir * ln, ly);
+        ctx.stroke();
+      }
+      // ④ 纵向奔涌风线：细长白线自机体前方高速向上奔涌（体现气流快速流过机身）
+      for (let i = 0; i < 10; i++) {
+        const seed = i * 97.3;
+        const cyc = (t * (3.4 + (i % 3) * 1.3) + seed * 0.013) % 1;
+        const lx = x + Math.sin(seed) * (20 + (i % 5) * 32);
+        const ly = y - 16 - cyc * 230;
+        const ln = 54 + ((seed * 4.3) % 82);
+        const a = Math.sin(cyc * Math.PI) * 0.62;
+        ctx.strokeStyle = `rgba(240, 249, 255, ${a.toFixed(3)})`;
+        ctx.lineWidth = 1.5 + (i % 2) * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx, ly + ln);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // 斗志昂扬：我方周身白色光辉——加亮光核 + 上升光粒 + 扩散光环 + 环绕光点（最后 1.2s 渐弱）
     if (state.hasteT > 0) {

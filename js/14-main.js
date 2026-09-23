@@ -5,13 +5,13 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
-  import { armorGlyphFx, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { armorGlyphFx, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
@@ -47,9 +47,28 @@
     if (k === 'r') resetGame(true, { keepTest: true });
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
-    if (k === 'e' && state.mode === 'playing' && !state.paused) triggerPilotSkill('e');   // 驾驶员技能（天秀忧郁王子：友方大风暴；量表满方可触发）
-    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（陵落：强行暴走；冷却结束方可触发）
-    // 作弊：切换武器等级（测试用）。需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为标识）才能用 1~5 切换。
+    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发）
+    // 大狗导弹雨连发开关：装备大狗时战斗中按 9 切换 0.2~1s 间隔，再按恢复 10~22s。
+    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
+    if (k === '9' && state.mode === 'playing' && hasPilot('dagou')) {
+      state.dagouDebugRapid = !state.dagouDebugRapid;
+      if (state.dagouDebugRapid) state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
+      console.log('[debug] 大狗 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
+    }
+    // 天秀连发风暴开关：装备天秀时战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭
+    if (k === '8' && state.mode === 'playing' && hasPilot('tianxiu')) {
+      state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
+      state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
+      console.log('[debug] 天秀 rapid 风暴: ' + (state.tianxiuDebugSpam ? 'ON（0.4~1.4s/个）' : 'OFF'));
+    }
+    // 马兴犬：Shift 加速 / CapsLock 减速（同键再按恢复原速）——不再使用 Ctrl（按住 Ctrl 时按 W 会触发浏览器关闭标签页，无法拦截）
+    if (k === 'shift' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
+      state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedFast ? 1 : PILOTS.maxingquan.speedFast;
+    }
+    if (k === 'capslock' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
+      state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedSlow ? 1 : PILOTS.maxingquan.speedSlow;
+    }
+    // 武器等级切换：需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为标识）才能用 1~5 切换。
     // 武装按键在任意界面状态均可触发（菜单 / 暂停 / 结算中皆可按 0）；图鉴挑战模式同样需要武装（门控统一）。
     // "+" 立刻再召唤一个测试目标
     if (k === '0' && !state.cheatArm) {
@@ -107,8 +126,9 @@
 
       // 许凯狗：开场高能冲刺（PILOTS.xukaigou）——
       //   等级 1s/级（开局 1 级起步，封顶 dashLv）；冲刺期间无敌由 resetGame 覆盖；
-      //   出场即秒：所有非 BOSS 敌人（含增生分裂 / 召唤衍生体）出生即被击溃，走完整击杀流程（道具正常掉落）；
-      //   刷怪量与正常一致：冲刺阶段刷怪间隔 ÷SPAWN_PHASE_LEVEL.step（见下方 spawnTimer 赋值处）；
+      //   机体自动在屏高 20%~50% 大幅上下摆动（updatePlayer 驱动）、我方全程停火（playerFireLocked）；
+      //   出场即秒：敌机进场 60%~80%（逐机随机）即被强制击杀（enemyEnterFrac），走完整击杀流程（道具正常掉落）；
+      //   刷怪间隔 ÷3（等级 1s/级；节奏介于正常与旧 ÷5 之间——旧 ÷5 每级刷怪量对齐的设计导致刷怪量爆炸）；
       //   冲刺结束：bossFlow.timer 对齐到 dashLv 对应时刻（1 + 30/5 = 7 → 直接衔接 Lv7，刷怪期总长不变）
       if (state.pilotDashT > 0) {
         state.pilotDashT = Math.max(0, state.pilotDashT - dt);
@@ -118,7 +138,15 @@
         bossFlow.timer = 0;
         for (let i = enemies.length - 1; i >= 0; i--) {
           const e = enemies[i];
-          if (e && e.type !== 'boss' && !e._deathSettled) killEnemy(i);
+          if (e && e.type !== 'boss' && !e._deathSettled) {
+            // 进场 60%~80%（逐机随机阈值）即强制击杀
+            const frac = e._dashFrac || (e._dashFrac = rand(0.6, 0.8));
+            if (enemyEnterFrac(e) >= frac) {
+              // 白光冲击特效：被冲刺击杀的敌机身上炸开扩散白环 + 闪核（绘制见 10-draw-world drawDashKillFx）
+              dashKillFx.push({ x: e.x, y: e.y, t: 0, max: 0.35, r: Math.max(e.w, e.h) * 0.55 });
+              killEnemy(i);
+            }
+          }
         }
         if (state.pilotDashT <= 0) {
           bossFlow.timer = (PILOTS.xukaigou.dashLv - lvCfg.base) * lvCfg.step;
@@ -217,9 +245,14 @@
         // 低于阈值 → 直接/加速刷新，高于阈值 → 较慢（间隔有限，拖得太长仍会刷新）
         const threshold = spawnPressureThreshold();
         const pressure = fieldPressureW() / (PRESSURE_CAPACITY * (diffMods().pressureCapacityMul != null ? diffMods().pressureCapacityMul : 1));
-        // 低于阈值：刷新倒计时加速流逝（间隔快速缩短直到刷新）；回到阈值以上恢复正常流速
+        // 低于阈值：刷新倒计时加速流逝（间隔快速缩短直到刷新）；回到阈值以上恢复正常流速。
+        // 许凯狗冲刺期间 rush 强制为 1：冲刺期场上几乎全空、压力恒低于阈值，
+        // 若叠加低气压加速（最高 ×4），实际节奏会变成 base/12 ≈ 旧的 ÷5 体感——
+        // 冲刺的刷怪间隔就是 base/3，不再叠加任何压力加速
         let rush = 1;
-        if (pressure < threshold) {
+        if (state.pilotDashT > 0) {
+          levelFlow.lowPressureT = 0;
+        } else if (pressure < threshold) {
           levelFlow.lowPressureT += dt;
           rush = Math.min(SPAWN_RUSH_CAP, 1 + levelFlow.lowPressureT * SPAWN_RUSH);
         } else {
@@ -240,8 +273,8 @@
           const base = Math.max(0.55, 2.1 - (levelFlow.level - 1) * 0.15)
             * (diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1);
           if (state.pilotDashT > 0) {
-            // 许凯狗冲刺阶段：升级 5 倍速（1s/级）→ 刷怪间隔同比 ÷5，保证每级刷怪量与正常刷怪一致
-            levelFlow.spawnTimer = (base / SPAWN_PHASE_LEVEL[0].step) * rand(0.8, 1.2);
+            // 许凯狗冲刺阶段：刷怪间隔 ÷3（等级 1s/级；带 0.8~1.2 抖动）
+            levelFlow.spawnTimer = (base / 3) * rand(0.8, 1.2);
           } else {
             // 高于阈值时下一波间隔放大（较慢）；低于阈值保持基础间隔并叠加加速流逝 → 迅速补怪
             levelFlow.spawnTimer = rand(base * 0.7, base * 1.3) * (pressure >= threshold ? SPAWN_SLOW_MUL : 1);
@@ -276,7 +309,9 @@
 
       updatePlayer(dt);
       updateWingmen(dt);
-      updateEnemies(dt);
+      // 许凯狗冲刺：怪物移速 ×enemySpdMul（+65%，经 dt 缩放实现——移动/入场速度等比加快，
+      // 怪更快冲入击杀窗口；冲刺期怪物几乎都在被秒杀途中，开火计时同步缩放无可感影响）
+      updateEnemies(dt * (state.pilotDashT > 0 ? PILOTS.xukaigou.enemySpdMul : 1));
       updateBullets(dt);
       updateMissiles(dt);
       updateBaolingBombs(dt);   // 暴鸰：炸弹下坠 / 加速冲向预警区中心 / 爆炸
@@ -288,6 +323,7 @@
       updatePowerups(dt);
       updateCrystals(dt);
       updateFriendStorms(dt);   // 天秀忧郁王子：友方大风暴推进（风弹 / 主体接触伤害 / 生命周期）
+      updateAiyiWaves(dt);      // 埃逸：自爆扩散波推进（波前触碰敌人立刻结算）
       updateDagouMissiles(dt);  // 大狗：导弹雨推进（错峰发射 / 上行飞行 / 命中溅射）
       updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 陵落冷却 / 大狗计时
       updateParticles(dt);
@@ -337,7 +373,7 @@
     if (!state.paused) {
       if (state.shakeTime > 0) {
         state.shakeTime -= dt;
-        if (state.shakeTime <= 0) { state.shakeTime = 0; state.shakeMag = 0; }
+        if (state.shakeTime <= 0) { state.shakeTime = 0; state.shakeMag = 0; state.shakeDur = 0; }
       }
       if (state.flash > 0) state.flash = Math.max(0, state.flash - dt * 2);
       if (state.hurt > 0) state.hurt = Math.max(0, state.hurt - dt * 1.6);   // 受击红晕衰减

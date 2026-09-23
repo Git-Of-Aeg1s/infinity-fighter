@@ -223,7 +223,7 @@ canvas#game {
   to   { box-shadow: 0 0 14px rgba(111, 227, 255, 1); }
 }
 
-/* 斗志昂扬：白色状态条 */
+/* 昂扬（斗志昂扬增益）：白色状态条 */
 .douzhi-bar .buff-tag {
   color: #ffffff;
 }
@@ -236,6 +236,21 @@ canvas#game {
 @keyframes douzhi-pulse {
   from { box-shadow: 0 0 4px rgba(255, 255, 255, 0.5); }
   to   { box-shadow: 0 0 13px rgba(255, 255, 255, 0.95); }
+}
+
+/* 晶盾（七日澜心结晶护盾）：淡粉状态条 */
+.jingdun-bar .buff-tag {
+  color: #FFC0CB;
+}
+
+.jingdun-bar .buff-fill {
+  background: linear-gradient(90deg, #FFC0CB, #ffe4ec);
+  animation: jingdun-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes jingdun-pulse {
+  from { box-shadow: 0 0 4px rgba(255, 192, 203, 0.55); }
+  to   { box-shadow: 0 0 13px rgba(255, 192, 203, 0.95); }
 }
 
 /* ---------- 左下角：装甲技能量表（七日澜心）+ HP 条与生命 ---------- */
@@ -308,6 +323,12 @@ canvas#game {
   border-color: #ff7a45;
   background: radial-gradient(circle at 35% 35%, rgba(255, 165, 90, 0.6), rgba(255, 90, 40, 0.1) 72%);
   box-shadow: 0 0 6px rgba(255, 122, 69, 0.45), inset 0 0 3px rgba(255, 122, 69, 0.35);
+}
+
+/* 可莉：引信火花同步暖色（默认青色 var(--accent) 与绷绷炸弹主题不符） */
+.bomb-icons.klee .bomb-icon::after {
+  background: #ffd166;
+  box-shadow: 0 0 5px rgba(255, 180, 80, 0.9);
 }
 
 /* 引信火花：圆球右上角的小亮点 */
@@ -472,7 +493,7 @@ canvas#game {
 /* 驾驶员面板：主/副槽位分区标题 */
 .pilot-slot-label {
   width: 100%;
-  margin: 2px 0 4px;
+  margin: 4px 0 12px;   /* 实际间距由下方 .loadout-panel-body > .pilot-slot-label 专属覆盖 */
   font-size: 11px;
   letter-spacing: 2px;
   color: rgba(255, 213, 128, 0.75);
@@ -530,7 +551,7 @@ canvas#game {
 }
 
 /* ---------- 主菜单（独立页面态） ----------
-   一屏内完成（禁止滚动）：标题 → 攻击演示屏（15%~66%）→ 装备四框 → 底部按钮。
+   一屏内完成（禁止滚动）：标题 → 攻击演示屏（上边界 15%-10.4px、下边界 66%）→ 装备四框 → 底部按钮。
    背景保持透明：演示屏区域直接透出画布（机体/弹道由画布绘制），
    装备框与按钮自带半透明底色保证可读性 */
 .menu-screen {
@@ -592,12 +613,12 @@ canvas#game {
 }
 
 /* ---------- 攻击演示屏 ----------
-   与画布演示区域（07-player DEMO_TOP/BOTTOM = 高度 15%~66%）严格对齐：
+   与画布演示区域（07-player DEMO_TOP/BOTTOM）严格对齐：
    DOM 只画边框与轻底色，机体/僚机/弹道/暴走冲击波全部由画布绘制 */
 .demo-screen {
   position: absolute;
-  top: 15%;
-  height: 51%;             /* 15% + 51% = 66% */
+  top: calc(15% - 10.4px); /* 上边界上移 10.4px = 左上角 ? 按钮（26px 高）的 40%；01-config DEMO_TOP 已同步 */
+  height: 51%;             /* 底边界不变：15% + 51% = 66% */
   left: 10px;
   right: 10px;
   border: 1px solid rgba(120, 180, 255, 0.30);
@@ -643,7 +664,7 @@ canvas#game {
 .loadout-tall {
   flex: 1.1;
   justify-content: flex-start;
-  padding-top: 12px;   /* 6→12：标题与当前配置文字离卡片顶部过近，略微下移 */
+  padding-top: 8px;   /* 12→8：文字略微上移（6→12 下移后回调 4px） */
 }
 
 .loadout-thumb {
@@ -654,7 +675,7 @@ canvas#game {
 
 #loadoutPlaneCvs {
   width: 86px; height: 71px;
-  position: relative; top: 3px;   /* 文字下移 6px 后：自动重新居中贡献 +3px，此处补 +3px = 预览图与文字同步下移 6px */
+  position: relative; top: 1px;   /* 文字上移 4px 后：自动重新居中贡献 -2px，此处补 -2px = 预览图与文字同步上移 4px */
 }
 #loadoutWingmanCvs { width: 58px; height: 62px; }
 
@@ -670,7 +691,10 @@ canvas#game {
   top: 0;
   width: calc(50% - 10px);
   height: 82px;
-  justify-content: center;
+  /* 文字行与战机/僚机高框同款顶对齐：标签「护甲/副武器」同「僚机」一行、
+     名称「群星守望」等同「守愿者」一行（同 padding-top + 同 flex 流，天然逐像素对齐） */
+  justify-content: flex-start;
+  padding-top: 8px;   /* 与战机/僚机高框同步：12→8 略微上移 */
 }
 
 /* 护甲：缺失右下角——切角的两个端点（右边框 y=56 与底边框 x=右端-26）由一条直线直接相连 */
@@ -723,11 +747,11 @@ canvas#game {
 .pilot-diamond {
   position: absolute;
   left: 50%;
-  top: 76px;
+  top: 81.1px;   /* 整体放大 10% 后顶部顶点保持原位：原顶点 y = 112 − 36√2 ≈ 61.09，放大后半对角 39.6√2 ≈ 56.0 → 中心需 117.09 → top = 117.09 − 36 ≈ 81.1 */
   width: 72px;
   height: 72px;
   margin-left: -36px;
-  transform: rotate(45deg);
+  transform: rotate(45deg) scale(1.1);   /* 整体增大 10%（含文字，绕中心等比放大） */
   padding: 0;
   border: 1.5px solid rgba(255, 213, 128, 0.5);
   border-radius: 6px;
@@ -747,12 +771,16 @@ canvas#game {
   align-items: center;
   justify-content: center;
   gap: 3px;
+  padding-bottom: 8px;   /* 文字两行与其他装备框同步略微上移：居中布局下底部垫高 8px = 内容上移 4px */
 }
 
 .pilot-diamond:hover {
   border-color: rgba(255, 213, 128, 0.8);
   box-shadow: 0 0 14px rgba(255, 213, 128, 0.25);
 }
+
+/* 驾驶员菱形卡片：名字字号小一号（13→12px）——五字全名（大无垠之王等）在 72px 框内不再省略截断 */
+.pilot-face .loadout-value { font-size: 12px; }
 
 /* 驾驶员面板展开中：金色高亮（与装备框 open 态同义） */
 .pilot-diamond.open {
@@ -794,17 +822,17 @@ canvas#game {
   text-overflow: ellipsis;
 }
 
-/* 护甲装备框：当前装甲图标——中心与装甲名文字中心重合、半透明，图层压在文字下方
-   （绝对定位不参与 flex 布局，"护甲 / 群星守望"两行文字的位置与格式完全不变；
-     名字中心 y ≈ (82-30.6)/2 + label 12 + gap 3 + value 15.6/2 ≈ 48.5 → top = 48.5 - 字号30/2 = 33.5） */
+/* 护甲装备框：当前装甲图标——完全显示（不透明），置于装甲名下方的空区
+   （文字行与高框对齐后腾出的空间：名字块底 ≈ border 1 + padding 8 + label 13.3
+     + gap 3 + value 17.3 ≈ 42.6px，内底 ≈ 81px，空区高 ≈ 38.4px，
+     30px 字号图标在空区内垂直居中 → top ≈ 42.6 + 4.2 ≈ 46.8；⛨（最终壁垒）等字形在字面框内偏上，统一再下移 1px 视觉微调） */
 .loadout-armor-glyph {
   position: absolute;
   left: 50%;
-  top: 33.5px;
+  top: 46.8px;
   transform: translateX(-50%);
   font-size: 30px;
   line-height: 1;
-  opacity: 0.6;
   z-index: 0;
   pointer-events: none;
 }
@@ -816,11 +844,24 @@ canvas#game {
   z-index: 1;
 }
 
+/* ∞（洄）字形修正：Segoe UI 的 ∞ 右环明显偏大（30px 实测左右镜像重叠率仅 0.909），
+   换 Corbel（0.958，双环一致；备选 Segoe UI Symbol 0.942）。由 ARMORS.hui.sym 驱动，
+   装备框图标 / 护甲选择卡片 / 数值图鉴「护甲」页三处同步挂 glyph-sym */
+.glyph-sym {
+  font-family: Corbel, "Segoe UI Symbol", "Segoe UI", sans-serif;
+}
+
+/* 装备框内的 ∞（洄）：字形小、墨水顶边比 ◈/⛨ 等大字形低约 5px，视觉锚定偏下——
+   在基准 top 46.8px 基础上再上移 2px 补偿（仅装备框；卡片/图鉴排版不同不适用） */
+.loadout-armor-glyph.glyph-sym {
+  top: 44.8px;
+}
+
 /* ---------- 装备选择面板：展开时覆盖演示屏区域 ---------- */
 .loadout-panel {
   position: absolute;
-  top: 15%;
-  height: 51%;
+  top: calc(15% - 10.4px); /* 与 .demo-screen 上边界一致（? 按钮 26px 高的 40% 上移量） */
+  height: 51%;             /* 底边界不变：15% + 51% = 66% */
   left: 10px;
   right: 10px;
   z-index: 2;
@@ -884,6 +925,10 @@ canvas#game {
 /* 滚动安全居中：不用 justify-content:center（内容超高时顶部会被裁掉且滚不到），
    改用子项 auto margin——内容不超高时垂直居中，超高时贴顶、可完整滚动 */
 .loadout-panel-body > * { margin-top: auto; margin-bottom: auto; }
+
+/* 驾驶员面板：主/副驾驶员分区标题——上 10px 与上一排卡片分隔、下 6px 紧贴自己的卡片行
+   （覆盖上方的 auto 边距规则：auto 在内容超高时塌缩为 0，24px 固定下边距曾致标题与卡片间隔失衡） */
+.loadout-panel-body > .pilot-slot-label { margin: 10px 0 6px; }
 
 /* 面板滚动条与怪物图鉴同款（蓝灰半透明滑块，hover 亮起主题青） */
 .loadout-panel-body::-webkit-scrollbar { width: 8px; }
@@ -989,6 +1034,12 @@ canvas#game {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
+/* 护甲面板卡片加宽 88 → 94px（内容 82px）：洄的 brief「击败BOSS回血」12px 钳制下约需 78px，
+   88px 卡放不下单行；7 个汉字需 84px > 82px，每行仍稳放 6 字；
+   四张一排 4×94 + 3×8 = 400px ≤ 面板内宽约 436px，仍保持 4/4/2 布局
+   （仅护甲选择页生效——驾驶员卡片共用 .armor-card 类，宽度不变） */
+#panelArmor .armor-card { width: 94px; }
+
 .armor-card:hover {
   border-color: rgba(120, 200, 255, 0.55);
   transform: translateY(-2px);
@@ -1022,6 +1073,13 @@ canvas#game {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.45;
+}
+
+/* 驾驶员卡片名称收字距：6 字名「天秀忧郁王子」在 76px 内容宽内单行放下
+   （.armor-card-name 的 2px 字距 + 光学缩进下 6 字 ≈ 85px > 76px 会折行） */
+.pilot-card .armor-card-name {
+  letter-spacing: 0;
+  text-indent: 0;
 }
 
 /* ---------- 选机页面 ---------- */
@@ -1640,8 +1698,8 @@ kbd {
 .ency-entry-btn {
   padding: 10px 32px;
   border-radius: 8px;
-  border: 1px solid rgba(102, 227, 154, 0.4);
-  background: linear-gradient(180deg, rgba(102, 227, 154, 0.15), rgba(102, 227, 154, 0.04));
+  border: 1px solid rgba(102, 227, 154, 0.55);
+  background: linear-gradient(180deg, rgba(102, 227, 154, 0.26), rgba(102, 227, 154, 0.07));
   color: #b7ffda;
   font-size: 15px;
   letter-spacing: 4px;
@@ -1651,7 +1709,7 @@ kbd {
 }
 
 .ency-entry-btn:hover {
-  box-shadow: 0 0 14px rgba(102, 227, 154, 0.35);
+  box-shadow: 0 0 14px rgba(102, 227, 154, 0.5);
   transform: translateY(-1px);
 }
 
@@ -1979,6 +2037,9 @@ kbd {
   font-size: 13px;
   letter-spacing: 1px;
 }
+
+/* 数值图鉴「驾驶员」页条目标题：去字距，保证「☯天秀忧郁王子（副驾驶员）」长名单行放下 */
+.info-pilot-card h4 { letter-spacing: 0; }
 
 .info-wave-card p {
   margin: 0;

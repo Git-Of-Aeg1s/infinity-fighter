@@ -1,9 +1,9 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(14 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(54 名) 13-encyclopedia(15 名) 14-main(23 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(14 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(71 名) 13-encyclopedia(15 名) 14-main(23 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{shakeMag, shakeTime}
+  //   state.{shakeMag, shakeTime, shakeDur}
   //
   import { CANVAS_H, CANVAS_W, DOUZHI, PILOTS, PLAYER_CFG, STAR_COUNT, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
 
@@ -30,10 +30,12 @@
   const shieldFill = document.getElementById('shieldFill');
   const douzhiBar = document.getElementById('douzhiBar');
   const douzhiFill = document.getElementById('douzhiFill');
+  const jingdunBar = document.getElementById('jingdunBar');
+  const jingdunFill = document.getElementById('jingdunFill');
   // 七日澜心（装甲技能）圆形计数表：左下角生命值上方量表（12-ui updateHUD 渲染填充角度）
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
-  // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 E 释放友方大风暴）
+  // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 Q 释放友方大风暴）
   // 陵落复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
   const pilotGauge = document.getElementById('pilotGauge');
   const pilotGaugeRing = document.getElementById('pilotGaugeRing');
@@ -91,6 +93,7 @@
     time: 0,
     shakeTime: 0,
     shakeMag: 0,
+    shakeDur: 0,   // 当前震屏的总时长（衰减基准：幅度按 剩余/总时长 线性减弱，见 render）
     flash: 0,          // 全屏白闪强度（高能爆弹等触发；原 08-entities 顶层变量并入）
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
@@ -100,21 +103,26 @@
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     pilotDashT: 0,         // 许凯狗：开场高能冲刺剩余时长（s；resetGame 置位，14-main 递减与调度）
-    princeDodgeT: 0,       // 天秀忧郁王子：50% 闪避增益剩余时长（受暴风之眼伤害后 5s，见 07-player damagePlayer）
-    princeHasteT: 0,       // 天秀忧郁王子：攻速 +80% 增益剩余时长（与闪避同窗触发；乘区并入 hasteMul）
-    princeGauge: 0,        // 天秀忧郁王子：白色量表（0~1；非水晶得分 40000 充满，BOSS 战按秒充能；按 E 释放友方大风暴）
+    maxinSpeedMul: 1,      // 马兴犬：移速倍率（1 原速 / 1.25 Shift 加速 / 0.8 CapsLock 减速；同键再按恢复原速）
+    princeGauge: 0,        // 天秀忧郁王子：白色量表（0~1；非水晶得分 40000 充满，BOSS 战按秒充能；按 Q 释放友方大风暴）
+    tianxiuDebugSpam: false,  // 天秀：连发风暴模式（战斗中按 8 切换，每 0.4~1.4s 自动发射友方大风暴；跨局保留）
+    tianxiuDebugSpamT: 0,     // 天秀：连发风暴发射倒计时（s）
     princeScoreBase: 0,    // 天秀忧郁王子：上一帧分数快照（逐帧差分 = 非水晶得分增量）
     princeCrystalGain: 0,  // 天秀忧郁王子：本帧水晶得分累计（08-entities 水晶拾取写入，差分时扣除 → 只计非水晶得分）
-    aiyiSelfDestruct: false,  // 埃逸：自爆结算中（killEnemy 得分按 20% 结算；嵌套连锁期间保持置位）
+    aiyiSelfDestruct: false,  // 埃逸：自爆结算中（killEnemy 得分按 20% 结算；扩散波扫完全场后复位）
     aiyiFinalDeath: false,    // 埃逸：最后一条命的死亡（endGame 延后到自爆结算之后；若自爆带来胜利则跳过）
     selfDestructVictory: false, // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就占位标记见 06-enemy killEnemy）
+    aiyiWaves: [],            // 埃逸：自爆扩散波 {x,y,r,id,final,speed,delay,maxR}（见 07-player updateAiyiWaves）
+    aiyiWaveSeq: 0,           // 埃逸：扩散波 id 序号（敌人 _sdWaveId 去重——每道波对每个敌人仅结算一次）
     lingluoCdT: 0,         // 陵落：Q 技能冷却剩余（s；开局 = PILOTS.lingluo.cd，技力条为空）
     kingDmg: 0,            // 大无垠之王：BOSS 战累积的造成伤害提升（小数，0.05 = +5%；阶段结束清零）
     kingTaken: 0,          // 大无垠之王：BOSS 战累积的受到伤害提升（多阶段切换 ×phaseKeep）
     hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
     hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
-    dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 14~22s 随机初值）
-    lingliGauge: 0,        // 凌漓：隐藏计数表（水晶分数累计，3200 填满；不显示于 HUD）
+    dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
+    dagouDebugRapid: false,   // 大狗：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；跨局保留）
+    dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
+    lingliGauge: 0,        // 凌漓：隐藏计数表（水晶分数累计，2400 填满；不显示于 HUD）
     lingliArmorGaugePrev: 0, // 凌漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
@@ -167,12 +175,18 @@
     wingSpread: 0,     // 机翼展开动画进度（0=收起, 1=完全展开）
     berserk: 0,        // 暴走（Lv5）剩余持续时间，归零回落 Lv4
     shield: 0,         // 量子护盾剩余时间
+    shieldMax: 0,      // 本次护盾的总时长（读条分母：通用与澄月均 6s，见 12-ui）
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
     bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
     bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
     chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
     regenT: 0,         // 洄：回血计时（每 2s +1 HP）
+    tianshuCycleT: 0,  // 天枢圣卫：圣守周期计时（无敌结束后起算，满 guardCycle=20s 展开圣守窗口，见 07-player）
+    tianshuArmedT: 0,  // 天枢圣卫：圣守窗口剩余时间（>0 期间受击在结算前免除；窗口与无敌期间周期均不计时）
+    watchClearCd: 0,   // 群星守望：常规消弹冷却（每 0.4s 至多消除一枚，见 ARMORS.watch.clearCd）
     respawnTimer: 0,   // 掉命后重生倒计时
+    enterT: 0,         // 主菜单开局飞入剩余时长（>0 时操控锁定、y 由飞入缓动驱动；resetGame 自主菜单开局置位）
+    enterFromY: 0,     // 开局飞入出发 y（主菜单演示屏站位）
     hitCount: 0,       // 受击计数：统一累计 3 次掉一层火力（导弹命中不计入）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
@@ -183,7 +197,7 @@
     bladeFlashT: 0,    // 双刃攻击闪光计时（doSlash 置位，updateStarslayer 衰减，paintStarslayer 读取）
     berserkSpread: 0,  // 暴走刃帆变形进度 0~1（updateStarslayer 驱动，paintStarslayer 读取）
     aiyiChargeT: 0,    // 埃逸：死亡蓄力自爆倒计时（damagePlayer 掉命时置位，updatePlayer 递减，归零触发自爆）
-    lingluoMaxDebt: 0, // 陵落：被扣除的生命上限余量（每秒回 2 直至清零；重生/重开复原）
+    lingluoMaxDebt: 0, // 陵落：被扣除的生命上限余量（每秒回 2 直至清零——单次触发恰好 20s 回满 40；重生/重开复原）
   };
 
   /** @type {Array} */ const enemies = [];
@@ -210,7 +224,8 @@
   /** @type {Array} */ const phaseFx = [];   // 碎盾特效（群星之杀斩碎虚化护盾：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片）
   /** @type {Array} */ const watchClearFx = [];   // 群星守望消弹特效（淡黄光粒连线 + 原位迸粒，低图层：绘制于子弹之下）
   /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
-  /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 E 释放，向上推进 + 风弹 + 主体接触伤害）
+  /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 Q 释放，向上推进 + 风弹 + 主体接触伤害）
+  /** @type {Array} */ const dashKillFx = [];   // 许凯狗冲刺：被击杀敌机身上的白光冲击（扩散白环 + 渐隐闪核，生成于 14-main 秒杀循环，绘制见 10-draw-world drawDashKillFx）
   /** @type {Array} */ const dagouMissiles = []; // 大狗：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
@@ -248,8 +263,14 @@
   }
 
   function updateStars(dt) {
+    // 许凯狗冲刺：星流速大幅提升（×7）；收尾段（dashTail 0.8s）线性回落至常速，不瞬间停顿
+    let dashBoost = 1;
+    if (state.pilotDashT > 0) {
+      const tail = PILOTS.xukaigou.dashTail;
+      dashBoost = 1 + (7 - 1) * Math.min(1, state.pilotDashT / tail);
+    }
     for (const s of stars) {
-      s.y += (30 + s.z * 140) * dt;
+      s.y += (30 + s.z * 140) * dashBoost * dt;
       if (s.y > CANVAS_H) {
         s.y = -2;
         s.x = Math.random() * CANVAS_W;
@@ -298,9 +319,15 @@
   }
 
   function updateNebulae(dt) {
+    // 许凯狗冲刺：星云流速同步大幅提升（×5）；收尾段（dashTail 0.8s）线性回落至常速
+    let dashBoost = 1;
+    if (state.pilotDashT > 0) {
+      const tail = PILOTS.xukaigou.dashTail;
+      dashBoost = 1 + (5 - 1) * Math.min(1, state.pilotDashT / tail);
+    }
     for (let i = 0; i < nebulae.length; i++) {
       const n = nebulae[i];
-      n.y += n.speed * dt;
+      n.y += n.speed * dashBoost * dt;
       n.x += n.drift * dt;
       n.pulse += n.pulseSpd * dt;
       // 完全移出屏幕下方后重生于顶部
@@ -348,12 +375,26 @@
            e.y + e.h / 2 > 0 && e.y - e.h / 2 < CANVAS_H;
   }
 
-  // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时 ×2）；
-  // 天秀忧郁王子：受暴风之眼伤害后的攻速增益期间再 ×hasteMul（+80%），两者乘算
+  // 敌机碰撞盒进入屏幕的比例（0~1，横竖两轴取较小值）——许凯狗冲刺「强制击杀」的进场判定：
+  // 进入约 60%~80%（逐机随机）即被击溃，无需完全可见
+  function enemyEnterFrac(e) {
+    const fx = Math.min(1, Math.max(0, (Math.min(CANVAS_W, e.x + e.w / 2) - Math.max(0, e.x - e.w / 2)) / e.w));
+    const fy = Math.min(1, Math.max(0, (Math.min(CANVAS_H, e.y + e.h / 2) - Math.max(0, e.y - e.h / 2)) / e.h));
+    return Math.min(fx, fy);
+  }
+
+  // BOSS 登场虚化窗口：警报期间（bossFlow.stage === 'warn'）或任一 BOSS 尚未完全登场
+  // （combatReady=false：旧日之歌部件组装 / 暴风之眼风聚成形 / 风暴编织者三段入场）为 true。
+  // 期间所有 BOSS 视为虚化——我方射弹 / 斩击 / 灼烧 / 友方大风暴等伤害全部穿透不结算
+  // （残留的大狗导弹与场上子弹照常飞过）；大狗导弹雨计时器同步暂停（07-player updatePilotStatus）
+  function bossEntranceActive() {
+    if (bossFlow.stage === 'warn') return true;
+    return enemies.some(e => e.type === 'boss' && !e.combatReady);
+  }
+
+  // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时 ×2）
   function hasteMul() {
-    let m = state.hasteT > 0 ? DOUZHI.buffMul : 1;
-    if (state.princeHasteT > 0) m *= PILOTS.tianxiu.hasteBoost;
-    return m;
+    return state.hasteT > 0 ? DOUZHI.buffMul : 1;
   }
 
   // 按权重从池中随机取一个 id（weights 缺失的 id 视为 1）——BOSS 技能加权随机用
@@ -386,7 +427,7 @@
 
   function shake(mag = 6, time = 0.25) {
     state.shakeMag = Math.max(state.shakeMag, mag);
-    state.shakeTime = Math.max(state.shakeTime, time);
+    if (time > state.shakeTime) { state.shakeTime = time; state.shakeDur = time; }   // 仅更长的新震屏重置衰减窗口
   }
 
   // ---------- 装甲共享辅助（02-core 持有 eBullets/player，避免 06↔07 循环依赖） ----------
@@ -485,7 +526,7 @@
   export {
     canvas, ctx, setCtx, DPR, hpFill, scoreText,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
-    douzhiBar, douzhiFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey,
+    douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey,
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
@@ -496,10 +537,10 @@
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dagouMissiles,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles,
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
-    drawNebulae, rand, clamp, enemyOnScreen, hasteMul, weightedPick, spawnParticles,
+    drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, hasteMul, weightedPick, spawnParticles,
     enemyFireIv,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst,

@@ -3,8 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PRINCE_STORM, currentArmor } from './01-config.js';
-  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
+  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
+  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
   import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
@@ -568,9 +568,56 @@
     ctx.lineCap = 'butt';
   }
 
+  // 椭圆风条画笔（暴风之眼风条 = 天秀忧郁王子友方大风暴风弹共用，样式完全一致）：
+  // 渐变胶囊底盘 + 上下边缘波动椭圆轮廓 + 内部两条流动正弦流线。
+  // 调用方需已完成 translate(b.x,b.y) / rotate(atan2(vy,vx))；整体透明度也由调用方控制
+  function paintWindStreakBody(b) {
+    const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
+    g.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+    g.addColorStop(0.5, '#ffffff');
+    g.addColorStop(1, b.color);
+    ctx.fillStyle = g;
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur = 9;
+    // 椭圆风条：整体呈风的波动感——上下边缘沿椭圆轮廓叠加流动正弦波，内部两条流线
+    const half = b.len / 2;
+    const edgeY = (px, sgn) => {
+      const u = clamp(px / half, -1, 1);
+      const base = Math.sqrt(Math.max(0, 1 - u * u)) * b.r;                       // 椭圆轮廓
+      const wave = Math.sin(u * 7 + state.time * 14 + (sgn > 0 ? 0 : 2.2)) * b.r * 0.24;   // 风的波动（上下相位错开）
+      return sgn * (base + wave);
+    };
+    ctx.beginPath();
+    const SEG = 12;
+    for (let k = 0; k <= SEG; k++) {
+      const px = -half + (k / SEG) * b.len;
+      k === 0 ? ctx.moveTo(px, edgeY(px, -1)) : ctx.lineTo(px, edgeY(px, -1));
+    }
+    for (let k = SEG; k >= 0; k--) {
+      const px = -half + (k / SEG) * b.len;
+      ctx.lineTo(px, edgeY(px, 1));
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // 内部流线：两条沿长度方向的正弦流线，相位随时间流动（强化“风”的动感）
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 1;
+    for (const off of [-0.45, 0.45]) {
+      ctx.beginPath();
+      for (let k = 0; k <= SEG; k++) {
+        const px = -half + (k / SEG) * b.len;
+        const u = px / half;
+        const y = u * b.r * off + Math.sin(u * 5 + state.time * 15 + off * 5) * b.r * 0.28 * Math.sqrt(Math.max(0, 1 - u * u));
+        k === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+      }
+      ctx.stroke();
+    }
+  }
+
   function drawBullets() {
     for (const b of pBullets) {
-      // 天秀忧郁王子：友方大风暴风弹——暴风之眼同款风白椭圆风条（小号简化版）；
+      // 天秀忧郁王子：友方大风暴风弹——暴风之眼技能6 同款椭圆风条（paintWindStreakBody，与敌方风条绘制完全一致）；
       // 暴风之眼 BOSS 战中敌我风弹样式相同，我方风弹整体压至 bulletAlphaStormFight（0.35）透明度区分
       if (b.princeStorm) {
         const stormFight = enemies.some(e => e.type === 'boss' && e.bossId === 'storm' && !e.dying);
@@ -578,17 +625,7 @@
         ctx.translate(b.x, b.y);
         ctx.rotate(Math.atan2(b.vy, b.vx));
         ctx.globalAlpha = stormFight ? PRINCE_STORM.bulletAlphaStormFight : 0.95;
-        const hl = 11, rr = b.r;
-        const wg = ctx.createLinearGradient(-hl, 0, hl, 0);
-        wg.addColorStop(0, 'rgba(223, 243, 255, 0.15)');
-        wg.addColorStop(0.5, '#ffffff');
-        wg.addColorStop(1, '#dff3ff');
-        ctx.fillStyle = wg;
-        ctx.shadowColor = '#dff3ff';
-        ctx.shadowBlur = 9;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, hl, rr, 0, 0, Math.PI * 2);
-        ctx.fill();
+        paintWindStreakBody(b);
         ctx.restore();
         continue;
       }
@@ -856,54 +893,21 @@
         continue;
       }
       if (b.len) {
-        // 长条弹：沿飞行方向的渐变胶囊体（b.oval 时为椭圆体，风条）
+        // 长条弹：沿飞行方向的渐变胶囊体（b.oval 时为椭圆体风条——与友方大风暴风弹共用 paintWindStreakBody）
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);
         ctx.rotate(ang);
-        const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
-        g.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-        g.addColorStop(0.5, '#ffffff');
-        g.addColorStop(1, b.color);
-        ctx.fillStyle = g;
-        ctx.shadowColor = b.color;
-        ctx.shadowBlur = 9;
         if (b.oval) {
-          // 椭圆风条：整体呈风的波动感——上下边缘沿椭圆轮廓叠加流动正弦波，内部两条流线
-          const half = b.len / 2;
-          const edgeY = (px, sgn) => {
-            const u = clamp(px / half, -1, 1);
-            const base = Math.sqrt(Math.max(0, 1 - u * u)) * b.r;                       // 椭圆轮廓
-            const wave = Math.sin(u * 7 + state.time * 14 + (sgn > 0 ? 0 : 2.2)) * b.r * 0.24;   // 风的波动（上下相位错开）
-            return sgn * (base + wave);
-          };
-          ctx.beginPath();
-          const SEG = 12;
-          for (let k = 0; k <= SEG; k++) {
-            const px = -half + (k / SEG) * b.len;
-            k === 0 ? ctx.moveTo(px, edgeY(px, -1)) : ctx.lineTo(px, edgeY(px, -1));
-          }
-          for (let k = SEG; k >= 0; k--) {
-            const px = -half + (k / SEG) * b.len;
-            ctx.lineTo(px, edgeY(px, 1));
-          }
-          ctx.closePath();
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          // 内部流线：两条沿长度方向的正弦流线，相位随时间流动（强化“风”的动感）
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-          ctx.lineWidth = 1;
-          for (const off of [-0.45, 0.45]) {
-            ctx.beginPath();
-            for (let k = 0; k <= SEG; k++) {
-              const px = -half + (k / SEG) * b.len;
-              const u = px / half;
-              const y = u * b.r * off + Math.sin(u * 5 + state.time * 15 + off * 5) * b.r * 0.28 * Math.sqrt(Math.max(0, 1 - u * u));
-              k === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
-            }
-            ctx.stroke();
-          }
+          paintWindStreakBody(b);
         } else {
+          const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
+          g.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+          g.addColorStop(0.5, '#ffffff');
+          g.addColorStop(1, b.color);
+          ctx.fillStyle = g;
+          ctx.shadowColor = b.color;
+          ctx.shadowBlur = 9;
           ctx.fillRect(-b.len / 2, -b.r, b.len, b.r * 2);
           ctx.shadowBlur = 0;
           ctx.strokeStyle = 'rgba(255, 235, 220, 0.9)';   // 描边
@@ -916,6 +920,26 @@
         // 径向渐变以弹心为圆心、与坐标无关 → 平移到弹位置后用缓存渐变绘制
         ctx.save();
         ctx.translate(b.x, b.y);
+        if (b.streak && (b.vx || b.vy)) {
+          // 大子弹简化拖尾（streak：沿速度反向的同色渐隐圆帽线段，长度 ≈1.5× 直径，
+          // 值见 05-boss 大子弹散射两处赋值点；过短会被弹体辉光完全盖住）
+          ctx.shadowBlur = 0;
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const tx = -b.vx / sp * b.streak, ty = -b.vy / sp * b.streak;
+          const sg = ctx.createLinearGradient(0, 0, tx, ty);
+          sg.addColorStop(0, b.color);
+          sg.addColorStop(1, b.color + '00');
+          const ga = ctx.globalAlpha;
+          ctx.globalAlpha = ga * 0.75;   // 拖尾亮度（叠加消散期 alpha），弹体压在上面
+          ctx.strokeStyle = sg;
+          ctx.lineWidth = b.r * 1.1;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+          ctx.globalAlpha = ga;
+        }
         if (b.bossRound) {
           // BOSS 圆形弹幕（诗篇·旧日之歌技能4 扇形弹）：白核 → 主色径向渐变，
           // 与长条弹的"白热中段 → 主色头端"同色系，避免平涂主色 + 红辉光造成的偏红观感
@@ -1305,9 +1329,10 @@
   }
 
   // 炽心：自身火环——焦香螺旋桨同款（三层波形火舌 + 暖光辉光 + 上升火星 + 边界环），整体减淡（约 45%）。
-  // 绘制于低图层（实体与子弹之下，见 render 调用位），不遮挡我方 / 敌方子弹与任何单位
+  // 绘制于低图层（实体与子弹之下，见 render 调用位），不遮挡我方 / 敌方子弹与任何单位；
+  // 主菜单攻击演示（state.demo）同样绘制，随演示屏裁剪呈现"屏幕"边框感
   function drawPlayerFireRing() {
-    if (currentArmor.id !== 'chixin' || !player.alive || state.mode !== 'playing') return;
+    if (currentArmor.id !== 'chixin' || !player.alive || (state.mode !== 'playing' && !state.demo)) return;
     const ar = currentArmor.burnR || 100;
     ctx.save();
     ctx.translate(player.x, player.y);
@@ -1371,6 +1396,22 @@
 
   // 天秀忧郁王子：友方大风暴——暴风之眼同款俯视旋涡的我方版（三层旋臂 + 风暴眼 + 外虚线环），
   // 白蓝色调；存留末段渐隐。绘制于僚机之后、子弹之前（不遮挡我方弹幕）
+  // 大狗导弹雨预警：发射前 warnLead 秒屏幕下方自下而上渐显淡蓝光带（峰值 warnPeak，克制可见），
+  // 发射瞬间起 warnFade 秒内快速渐隐（透明度按剩余时间回落）
+  function drawDagouWarn() {
+    const cfg = PILOTS.dagou;
+    let a = 0;
+    if (state.dagouMissT > 0 && state.dagouMissT <= cfg.warnLead) a = (1 - state.dagouMissT / cfg.warnLead) * cfg.warnPeak;
+    if (state.dagouWarnFadeT > 0) a = Math.max(a, (state.dagouWarnFadeT / cfg.warnFade) * cfg.warnPeak);
+    if (a <= 0) return;
+    const grad = ctx.createLinearGradient(0, CANVAS_H, 0, CANVAS_H - cfg.warnH);
+    grad.addColorStop(0, `rgba(96, 158, 255, ${a.toFixed(3)})`);
+    grad.addColorStop(0.55, `rgba(70, 128, 255, ${(a * 0.45).toFixed(3)})`);
+    grad.addColorStop(1, 'rgba(70, 128, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, CANVAS_H - cfg.warnH, CANVAS_W, cfg.warnH);
+  }
+
   function drawFriendStorms() {
     for (const s of friendStorms) {
       const fadeIn = clamp(s.t / 0.4, 0, 1);
@@ -1378,51 +1419,144 @@
       const a = Math.min(fadeIn, fadeOut);
       if (a <= 0) continue;
       ctx.save();
-      ctx.translate(s.x, s.y);
-      ctx.rotate(s.rot);
-      // 整体辉光（白蓝径向渐变）
-      const glow = ctx.createRadialGradient(0, 0, s.r * 0.1, 0, 0, s.r);
-      glow.addColorStop(0, `rgba(223, 243, 255, ${(0.30 * a).toFixed(3)})`);
-      glow.addColorStop(0.55, `rgba(180, 220, 255, ${(0.14 * a).toFixed(3)})`);
-      glow.addColorStop(1, 'rgba(180, 220, 255, 0)');
-      ctx.fillStyle = glow;
-      ctx.beginPath(); ctx.arc(0, 0, s.r, 0, Math.PI * 2); ctx.fill();
-      // 三层旋臂（对数螺旋弧线，转速随层错开）
+      ctx.globalAlpha *= a;
+      // 风暴本体直接复用大型龙卷（暴风之眼召唤物）绘制 drawTornado：白色实体底盘 + 台风云盘纹理 +
+      // 矢量旋臂 + 外缘柔光 + 风暴眼微光，样式完全一致（自转为该绘制内置的时间驱动，无需实体 rot）
+      drawTornado({ x: s.x, y: s.y, w: s.r * 2 }, 2);   // 自转 ×2（友方大风暴专属转速）
+      ctx.restore();
+    }
+  }
+
+  // 许凯狗冲刺：被击杀敌机身上的白光冲击——扩散白环（加法混合）+ 中心渐隐白闪核
+  function drawDashKillFx() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of dashKillFx) {
+      const p = clamp(f.t / f.max, 0, 1);
+      const a = (1 - p) * (1 - p);
+      // 扩散白环：半径由机体尺寸快速外扩，线宽随扩散变细
+      const rr = f.r * (0.5 + p * 2.2);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.85 * a).toFixed(3)})`;
+      ctx.lineWidth = 3 * (1 - p) + 0.6;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, rr, 0, Math.PI * 2);
+      ctx.stroke();
+      // 内环辉光（稍慢半拍）
+      ctx.strokeStyle = `rgba(214, 238, 255, ${(0.5 * a).toFixed(3)})`;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r * (0.3 + p * 1.4), 0, Math.PI * 2);
+      ctx.stroke();
+      // 中心白闪核：快速渐隐的光团
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * (0.9 + p * 0.8));
+      g.addColorStop(0, `rgba(255, 255, 255, ${(0.75 * a).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r * (0.9 + p * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 许凯狗冲刺：全场流动特效——纵贯全屏的白色疾驰光带自上而下奔涌（星海向身后飞逝的相对运动感）；
+  // 收尾段（dashTail 0.8s）光带流速与亮度同步衰减，冲刺结束前已完全淡出
+  function drawDashWorldFlow() {
+    if (state.pilotDashT <= 0) return;
+    const t = state.time;
+    const tail = PILOTS.xukaigou.dashTail;
+    const fade = Math.min(1, state.pilotDashT / tail);          // 收尾亮度系数 1→0
+    const slow = 0.25 + 0.75 * fade;                             // 收尾流速系数（衰减至 25% 时已不可见）
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    // 26 条全屏长光带：横向位置/速度/长度/亮度错落，自顶部流向底部（世界向身后掠过）
+    for (let i = 0; i < 26; i++) {
+      const seed = i * 131.7;
+      const spd = (1.6 + ((seed * 2.7) % 1) * 2.2) * slow;
+      const cyc = (t * spd + seed * 0.011) % 1;
+      const lx = ((seed * 7.9) % CANVAS_W);
+      const ln = CANVAS_H * (0.16 + ((seed * 3.7) % 1) * 0.3);
+      const ly = cyc * (CANVAS_H + ln) - ln;   // 自 -ln 流动至 CANVAS_H
+      const a = Math.sin(cyc * Math.PI) * (0.05 + ((seed * 5.3) % 1) * 0.1) * fade;
+      const grd = ctx.createLinearGradient(lx, ly, lx, ly + ln);
+      grd.addColorStop(0, 'rgba(210, 235, 255, 0)');
+      grd.addColorStop(0.5, `rgba(210, 235, 255, ${a.toFixed(3)})`);
+      grd.addColorStop(1, 'rgba(210, 235, 255, 0)');
+      ctx.strokeStyle = grd;
+      ctx.lineWidth = 1.4 + ((seed * 4.1) % 1) * 1.8;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx, ly + ln);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 埃逸自爆演出：蓄力期收缩波（一道/三道能流环自远处向死亡地点加速汇聚）+
+  // 爆炸后扩散波（一道/数道极宽冲击环自死亡地点快速扫过全场；实体与结算见 07-player updateAiyiWaves）
+  function drawAiyiFx() {
+    // 蓄力收缩波：进度 p = 1 − 剩余蓄力（0→1），环半径自起始半径收缩至 0（二次缓动加速收拢）；
+    // 初始较浅、随进度渐显（前 30% 进度完成淡入）
+    if (player.aiyiChargeT > 0 && player.aiyiChargeT < 10) {
+      const final = state.aiyiFinalDeath;
+      const dur = final ? PILOTS.aiyi.chargeDurFinal : PILOTS.aiyi.chargeDur;
+      const R0 = final ? PILOTS.aiyi.contractRFinal : PILOTS.aiyi.contractR;
+      const p = clamp(1 - player.aiyiChargeT / dur, 0, 1);
+      const born = clamp(p / 0.30, 0, 1);   // 渐显系数
+      const rings = final ? 3 : 1;
+      ctx.save();
+      ctx.translate(player.x, player.y);
       ctx.lineCap = 'round';
-      const arms = [
-        { mul: 0.95, lw: 3.2, col: `rgba(223, 243, 255, ${(0.75 * a).toFixed(3)})`, rot: 0 },
-        { mul: 0.82, lw: 2.2, col: `rgba(190, 228, 255, ${(0.55 * a).toFixed(3)})`, rot: 2.1 },
-        { mul: 0.68, lw: 1.6, col: `rgba(255, 255, 255, ${(0.45 * a).toFixed(3)})`, rot: 4.2 },
-      ];
-      for (const L of arms) {
-        ctx.strokeStyle = L.col;
-        ctx.lineWidth = L.lw;
-        ctx.shadowColor = '#dff3ff';
-        ctx.shadowBlur = 8;
+      for (let k = 0; k < rings; k++) {
+        const pk = clamp((p - k * 0.18) / 0.82, 0, 1);   // 三道错峰（最后一条命），末段同时抵达
+        if (pk <= 0) continue;
+        const r = R0 * (1 - pk) * (1 - pk);
+        const a = (0.2 + 0.6 * pk) * born;   // 越接近引爆越亮 × 开场渐显
+        ctx.strokeStyle = `rgba(255, 77, 109, ${(0.55 * a).toFixed(3)})`;
+        ctx.lineWidth = 2.5 + 7 * pk;
+        ctx.shadowColor = '#ff4d6d';
+        ctx.shadowBlur = 10 + 14 * pk;
         ctx.beginPath();
-        for (let k = 0; k <= 26; k++) {
-          const t = k / 26;
-          const ang = L.rot + t * 2.4;
-          const r = s.r * L.mul * (0.22 + 0.78 * t);
-          const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
-          k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-        }
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255, 181, 69, ${(0.4 * a).toFixed(3)})`;
+        ctx.lineWidth = 1.2 + 3 * pk;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.shadowBlur = 0;
-      // 风暴眼（白核）+ 外圈旋转虚线环
-      const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, s.r * 0.18);
-      eye.addColorStop(0, `rgba(255, 255, 255, ${(0.95 * a).toFixed(3)})`);
-      eye.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = eye;
-      ctx.beginPath(); ctx.arc(0, 0, s.r * 0.18, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = `rgba(223, 243, 255, ${(0.4 * a).toFixed(3)})`;
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash([8, 12]);
-      ctx.lineDashOffset = -state.time * 30;
-      ctx.beginPath(); ctx.arc(0, 0, s.r, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
       ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+    // 爆炸扩散波：极宽冲击环自爆心外扩，随半径增大逐渐变淡消散（最终自爆波体更宽）
+    for (const w of state.aiyiWaves) {
+      if (w.delay > 0) continue;
+      const a = clamp(1 - w.r / w.maxR, 0, 1);
+      if (a <= 0) continue;
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      // 外层宽辉光带（很宽的波体）+ 白热内芯（最终自爆三道波：波宽 ×1.7 → 再 +30% = ×2.21）
+      const widen = w.final ? 2.21 : 1;
+      ctx.strokeStyle = `rgba(255, 77, 109, ${(0.4 * a).toFixed(3)})`;
+      ctx.lineWidth = (w.final ? 46 : 26) * widen;
+      ctx.shadowColor = '#ff4d6d';
+      ctx.shadowBlur = 22;
+      ctx.beginPath();
+      ctx.arc(0, 0, w.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 181, 69, ${(0.5 * a).toFixed(3)})`;
+      ctx.lineWidth = (w.final ? 26 : 13) * widen;
+      ctx.beginPath();
+      ctx.arc(0, 0, w.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.75 * a).toFixed(3)})`;
+      ctx.lineWidth = (w.final ? 8 : 4.5) * widen;
+      ctx.beginPath();
+      ctx.arc(0, 0, w.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.shadowBlur = 0;
     }
   }
 
@@ -1430,7 +1564,9 @@
     // 抖动
     ctx.save();
     if (state.shakeTime > 0) {
-      const m = state.shakeMag;
+      // 震屏幅度随剩余时长线性衰减（初始最大 → 平滑归零，不再恒定到戛然而止）
+      const decay = state.shakeDur > 0 ? state.shakeTime / state.shakeDur : 0;
+      const m = state.shakeMag * decay;
       ctx.translate(rand(-m, m), rand(-m, m));
     }
 
@@ -1446,6 +1582,8 @@
 
     drawStars();
     drawNebulae();
+    drawDashWorldFlow();   // 许凯狗冲刺：全场流动特效（疾驰光带自上而下奔涌）
+    drawDagouWarn();   // 大狗：导弹雨发射前屏幕下方蓝光预警（渐显 → 发射后快速渐隐）
     // 主菜单攻击演示：实体层（机体/僚机/弹道/粒子/冲击波等）统一裁剪到演示屏矩形——
     // 弹道与冲击波到达边框即被截断，呈现"屏幕"边界；背景星空不裁剪，保持画面通透
     if (state.demo) {
@@ -1468,6 +1606,7 @@
     drawPlayer();
     drawWingmen();
     drawFriendStorms();   // 天秀忧郁王子：友方大风暴（僚机之上、子弹之下）
+    drawAiyiFx();         // 埃逸：自爆收缩波（蓄力期）与扩散波（爆炸后）
     drawTrailGhosts();
     drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
     drawBullets();
@@ -1481,6 +1620,7 @@
     drawPlayerHitFx();    // 命中玩家特效（白热闪核 + 红橙冲击环 + 迸溅火花线）
     drawDouzhiFx();       // 斗志昂扬死亡演出：脱离渐隐蓝盒 + 淡黄扩大光环 + 渐隐本体
     drawSlashFx();        // 群星之杀：空间斩击特效（交叉斩痕 + 冲击环，渐隐）
+    drawDashKillFx();     // 许凯狗冲刺：被击杀敌机白光冲击（扩散白环 + 渐隐闪核）
     drawParticles();
     drawChallengeBar();   // 测试模式：顶部测试目标血条（图鉴挑战·敌人测试）
 
@@ -1663,21 +1803,21 @@
       const r = 16 + ease * maxR;
       const alpha = 1 - p;
       ctx.save();
-      // 火浪内衬：紧贴火环内侧的橙黄径向渐变（跟随火圈推进，火焰余晖感）
+      // 火浪内衬：紧贴火环内侧的橙黄径向渐变（跟随火圈推进，火焰余晖感）；绷绷炸弹（big）内衬更强
       const fg = ctx.createRadialGradient(cx, cy, r * 0.45, cx, cy, r);
       fg.addColorStop(0, 'rgba(255,150,40,0)');
-      fg.addColorStop(0.72, `rgba(255,140,40,${(0.10 * alpha).toFixed(3)})`);
-      fg.addColorStop(1, `rgba(255,200,80,${(0.22 * alpha).toFixed(3)})`);
+      fg.addColorStop(0.72, `rgba(255,140,40,${((bombBurst.big ? 0.16 : 0.10) * alpha).toFixed(3)})`);
+      fg.addColorStop(1, `rgba(255,200,80,${((bombBurst.big ? 0.34 : 0.22) * alpha).toFixed(3)})`);
       ctx.fillStyle = fg;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
-      // 主火环：橙黄发光粗环（宽度随扩张收窄）
+      // 主火环：橙黄发光粗环（宽度随扩张收窄）；绷绷炸弹（big）环带大幅加宽
       ctx.globalAlpha = alpha * 0.9;
       ctx.strokeStyle = '#ffb340';
       ctx.shadowColor = '#ff9a2e';
-      ctx.shadowBlur = 26 * alpha;
-      ctx.lineWidth = 20 * (1 - ease) + 3;
+      ctx.shadowBlur = (bombBurst.big ? 34 : 26) * alpha;
+      ctx.lineWidth = bombBurst.big ? 54 * (1 - ease) + 12 : 20 * (1 - ease) + 3;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
@@ -1685,7 +1825,7 @@
       ctx.globalAlpha = alpha * 0.7;
       ctx.strokeStyle = '#ffe680';
       ctx.shadowBlur = 0;
-      ctx.lineWidth = Math.max(1, 6 * (1 - ease) + 1);
+      ctx.lineWidth = Math.max(1, (bombBurst.big ? 14 : 6) * (1 - ease) + 1);
       ctx.beginPath();
       ctx.arc(cx, cy, r * 0.86, 0, Math.PI * 2);
       ctx.stroke();

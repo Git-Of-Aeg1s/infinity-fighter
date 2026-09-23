@@ -519,7 +519,8 @@
   const SPECIAL3_SAME_TYPE_LIMIT = new Set(['hanshuang', 'yu4', 'anvil']);
 
   // 特殊3类权重表：随波生成抽取 与「数值与机制图鉴」共用（改数值只需改这里）
-  // wLow = Lv11 以下权重，wHigh = Lv11 起权重；0 = 该阶段不出场
+  // wLow = Lv11 以下权重 / wHigh = Lv11 起权重；配置 w1/w10 时 Lv1~10 由 w1→w10 线性过渡（优先于 wLow，同 waveFormationWeight）；
+  // 0 = 该阶段不出场
   // 普通炮艇三色为独立条目：抽取直接决定涂装（紫80 / 赤100 / 金80，Lv11 起各 20）
   const SPECIAL3_POOL = [
     { name: '紫晶炮艇',     ency: 'gunship_violet',  type: 'gunship',  fn: () => spawnGunship('violet'),  wLow: 80,  wHigh: 20 },
@@ -528,20 +529,30 @@
     { name: '炮火先兆者',   ency: 'harbinger',      type: 'harbinger', fn: spawnHarbinger, wLow: 30, wHigh: 30 },
     { name: '寒霜',         ency: 'hanshuang',      type: 'hanshuang', fn: spawnHanshuang, wLow: 0,  wHigh: 30 },
     { name: '威龙',         ency: 'weilong',        type: 'weilong',   fn: spawnWeilong,   wLow: 0,  wHigh: 15 },
-    { name: '御4',          ency: 'yu4',            type: 'yu4',       fn: spawnYu4,       wLow: 0,  wHigh: 20 },
+    { name: '御4',          ency: 'yu4',            type: 'yu4',       fn: spawnYu4,       w1: 0, w10: 10, wHigh: 20 },
     { name: '铁砧',         ency: 'anvil',          type: 'anvil',     fn: spawnAnvil,     wLow: 0,  wHigh: 15 },
-    { name: '暴鸰',         ency: 'baoling',        type: 'baoling',   fn: spawnBaoling,   wLow: 0,  wHigh: 20 },
-    { name: '焦香螺旋桨',   ency: 'jiaoxiang',      type: 'jiaoxiang', fn: spawnJiaoxiang, wLow: 0,  wHigh: 15 },
+    { name: '暴鸰',         ency: 'baoling',        type: 'baoling',   fn: spawnBaoling,   wLow: 0,  wHigh: 25 },
+    { name: '焦香螺旋桨',   ency: 'jiaoxiang',      type: 'jiaoxiang', fn: spawnJiaoxiang, wLow: 0,  wHigh: 25 },
     { name: '法术大师A2',   ency: 'fashiA2',        type: 'fashiA2',   fn: spawnFashiA2,   wLow: 0,  wHigh: 30 },
   ];
 
-  // 特殊3类随波抽取：按阶段权重（Lv11 前：三色炮艇 260（紫80/赤100/金80）/ 先兆者 30；
-  // Lv11 起：炮艇 60（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 20 / 威龙 15 / 焦香螺旋桨 15 / 铁砧 15）。
+  // 池条目在等级 lv 的权重：配置 w1/w10 时 Lv1~10 线性过渡（御4：Lv1 权重 0 → Lv10 权重 10），
+  // 否则 Lv1~10 恒为 wLow；Lv11 起恒为 wHigh。与 waveFormationWeight 同一插值约定
+  function special3Weight(it, lv) {
+    if (lv <= 10) {
+      if (it.w1 != null) return it.w1 + (it.w10 - it.w1) * (lv - 1) / 9;
+      return it.wLow;
+    }
+    return it.wHigh;
+  }
+
+  // 特殊3类随波抽取：按阶段权重（Lv11 前：三色炮艇 260（紫80/赤100/金80）/ 先兆者 30 / 御4 0→10 线性过渡；
+  // Lv11 起：炮艇 60（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 25 / 焦香螺旋桨 25 / 威龙 15 / 铁砧 15）。
   // 抽中 寒霜 / 御4 / 铁砧 时，若场上已有同种机体则本次跳过（同屏同种限 1）
   function spawnWaveSpecial3() {
-    const hiLv = levelFlow.level >= 11;
+    const lv = levelFlow.level;
     const pool = SPECIAL3_POOL
-      .map(it => ({ it, w: hiLv ? it.wHigh : it.wLow }))
+      .map(it => ({ it, w: special3Weight(it, lv) }))
       .filter(x => x.w > 0);
     let total = 0;
     for (const x of pool) total += x.w;
@@ -567,14 +578,14 @@
   //   w1 / w10 = Lv1 / Lv10 权重（Lv1~10 线性过渡）；wHigh = Lv11~20 恒定权重；0 = 该等级不出现
   // slotGunship 仅标记"含炮艇编队"：组合波追加位排除（避免同波两支炮艇编队），无其他特殊规则
   const WAVE_FORMATIONS = [
-    { fn: spawnSideGroup,          w1: 10, w10: 5,  wHigh: 20 },                            // 1类小组 3~5 架
+    { fn: spawnSideGroup,          w1: 10, w10: 5,  wHigh: 20, sideEntry: true },        // 1类小组 3~5 架（侧翼斜插）
     { fn: spawnStrikerGroup,       w1: 30, w10: 20, wHigh: 5  },                            // 2类小组 2 架
-    { fn: spawnSideColumn,         w1: 5,  w10: 20, wHigh: 10 },                            // 1类长队 4~7 架
-    { fn: spawnMirrorRow,          w1: 10, w10: 30, wHigh: 40 },                            // 回文对称横排
-    { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10 },                            // 双侧对称斜扫
-    { fn: spawnStrikerVee,         w1: 5,  w10: 30, wHigh: 30 },                            // 2类 V 字俯冲
-    { fn: spawnSideKamikazeStream, w1: 0,  w10: 5,  wHigh: 15 },                            // 紫自爆流（压迫感强）
-    { fn: spawnDiagonalRaid,       w1: 10, w10: 40, wHigh: 40, slotGunship: true },         // 对角奇袭（含炮艇）
+    { fn: spawnSideColumn,         w1: 5,  w10: 20, wHigh: 10, sideEntry: true },        // 1类长队 4~7 架（侧翼）
+    { fn: spawnMirrorRow,          w1: 0,  w10: 30, wHigh: 40 },                            // 回文对称横排
+    { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10, sideEntry: true },        // 双侧对称斜扫
+    { fn: spawnStrikerVee,         w1: 0,  w10: 30, wHigh: 30 },                            // 2类 V 字俯冲
+    { fn: spawnSideKamikazeStream, w1: 0,  w10: 5,  wHigh: 15, sideEntry: true },        // 紫自爆流（两侧纵列）
+    { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 对角奇袭（含炮艇）
     { fn: spawnGunshipWings,       w1: 0,  w10: 30, wHigh: 40, slotGunship: true },         // 双炮艇压阵
   ];
 
@@ -584,18 +595,25 @@
     return f.wHigh;
   }
 
-  // 按权重抽编队；excludeSlot 为 true 时排除含炮艇编队（组合波追加位不用）
+  // 按权重抽编队；excludeSlot 为 true 时排除含炮艇编队（组合波追加位不用）；
+  // 许凯狗冲刺期间排除侧翼入场编队（sideEntry）——冲刺时两侧不会刷怪，全部改为顶部入场编队
   function pickFormation(excludeSlot) {
+    const dashNoSide = state.pilotDashT > 0;
     let total = 0;
     const pool = [];
     for (const f of WAVE_FORMATIONS) {
       if (excludeSlot && f.slotGunship) continue;
+      if (dashNoSide && f.sideEntry) continue;
       const w = waveFormationWeight(f, levelFlow.level);
       if (w <= 0) continue;   // 权重 0（如 Lv1 的双侧斜扫 / 紫自爆流 / 双炮艇）不入池
       pool.push({ f, w });
       total += w;
     }
-    if (!pool.length) return WAVE_FORMATIONS[0].fn;
+    if (!pool.length) {
+      // 池空回退：冲刺态取首个顶部入场编队，常态取首个编队
+      const fb = WAVE_FORMATIONS.find(f => dashNoSide ? !f.sideEntry : true) || WAVE_FORMATIONS[0];
+      return fb.fn;
+    }
     let r = Math.random() * total;
     for (const it of pool) {
       r -= it.w;
@@ -842,7 +860,8 @@
   // 登场 1s 后周身渐显（0.8s 渐入）较大范围冰蓝寒霜光圈：顶部入场圈内射速/移速 -35%、侧翼入场 -25%（以核心位置判定）；
   // 入场未减速阶段（距落点 ≥90px）判定箱略缩、受伤 -20%（见 06-enemy 移动 / 08-entities 伤害链）
   function spawnHanshuang() {
-    const flank = Math.random() < HANSHUANG.flankChance;
+    // 许凯狗冲刺期间两侧不刷怪：寒霜强制顶部入场（原 50% 侧翼）
+    const flank = Math.random() < HANSHUANG.flankChance && state.pilotDashT <= 0;
     let e;
     if (flank) {
       const fromLeft = Math.random() < 0.5;
@@ -1122,7 +1141,7 @@
     strikerVariantWeights, sideSpawnWeights, pickVariant, makeEnemy, pickSideSpawn, spawnSideUnit, spawnSideGroup,
     spawnStrikerGroup, spawnMirrorRow, spawnSideSweep, spawnSideKamikazeStream, spawnStrikerVee, spawnGunshipWings,
     spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
-    capitalMaxWait, SPECIAL3_POOL, spawnWave, WAVE_FORMATIONS, pickFormation,
+    capitalMaxWait, SPECIAL3_POOL, special3Weight, spawnWave, WAVE_FORMATIONS, pickFormation,
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnCapitalSlot,

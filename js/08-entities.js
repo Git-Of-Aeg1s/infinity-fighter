@@ -6,7 +6,7 @@
   //   state.{bombs, score}
   //
   import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, hasPilot, isShipian } from './01-config.js';
-  import { clamp, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { bossEntranceActive, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul } from './07-player.js';
@@ -70,18 +70,33 @@
       phaseFx[i].t -= dt;
       if (phaseFx[i].t <= 0) phaseFx.splice(i, 1);
     }
+    // 许凯狗冲刺白光冲击推进：寿命尽即移除（生成于 14-main 冲刺秒杀循环）
+    for (let i = dashKillFx.length - 1; i >= 0; i--) {
+      dashKillFx[i].t += dt;
+      if (dashKillFx[i].t >= dashKillFx[i].max) dashKillFx.splice(i, 1);
+    }
     // 斗志昂扬增益：期间我方（含僚机）弹道飞行速度翻倍 —— 作用于所有在飞子弹，增益结束即恢复常速
     const hm = hasteMul();
     for (let i = pBullets.length - 1; i >= 0; i--) {
       const b = pBullets[i];
       b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
-      if (b.y < -10 || b.x < -20 || b.x > CANVAS_W + 20) { pBullets.splice(i, 1); continue; }   // 友方大风暴风弹可斜向飞行：横向出界一并移除
+      // 沿飞行方向加速至上限（友方大风暴风弹：暴风之眼技能6 同款风条弹道；其他我方弹无此字段不受影响）
+      if (b.accel) {
+        const sp = Math.hypot(b.vx, b.vy) || 1;
+        const ns = Math.min(b.maxSpeed || Infinity, sp + b.accel * dt);
+        b.vx *= ns / sp; b.vy *= ns / sp;
+      }
+      // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
+      if (b.lenTarget && b.len < b.lenTarget) b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
+      // 出界移除：友方大风暴风弹可斜向/朝下方 240° 扇形内飞行，横向与下边界出界一并移除
+      if (b.y < -10 || b.y > CANVAS_H + 10 || b.x < -20 || b.x > CANVAS_W + 20) { pBullets.splice(i, 1); continue; }
 
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (!enemyOnScreen(e)) continue;   // 屏幕外敌人（尚未入场 / 已离场 / 侧翼界外）不受我方子弹伤害
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (e.dying) continue;   // 渐隐消逝中的暴风之眼：死亡演出期间不再受击
+        if (e.type === 'boss' && bossEntranceActive()) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
@@ -188,10 +203,12 @@
       } else if (!b.shieldBlocked) {
         b.x += b.vx * dt; b.y += b.vy * dt;
       }
-      // 反弹光束（技能3）：触左右边界反弹，实际弹道呈"<"形折线
+      // 反弹光束（技能3）/ 技能6 暗黑子弹：触左右边界反弹，实际弹道呈"<"形折线；
+      // bounceMax > 0 时限制反弹次数（暗黑子弹每颗最多 3 次），达到上限后不再反弹、直飞出屏移除
       if (b.bounceX && ((b.x < b.r && b.vx < 0) || (b.x > CANVAS_W - b.r && b.vx > 0))) {
         b.vx *= -1;
         b.x = clamp(b.x, b.r, CANVAS_W - b.r);
+        if (b.bounceMax && ++b.bounceN >= b.bounceMax) b.bounceX = false;
       }
       // 折线光束（技能3）：记录头部轨迹，光束沿轨迹从 0 增长至全长（b.len）；
       // 转折处轨迹自然弯折——头部转向后旧段仍沿原方向保留，随尾部裁剪逐段消失
@@ -259,9 +276,10 @@
           }
         } else if (b.beamTrail) {
           // 折线光束（技能3"<"弹）撞盾：头部钉在盾面被截断，尾端继续按原速前进逐帧"磨短"——
-          //   光束整体缩向盾面后消散（修复：此前走普通弹吸收分支，整条"<"光束瞬间消失）
+          //   光束整体缩向盾面后消散（修复：此前走普通弹吸收分支，整条"<"光束瞬间消失）；
+          //   判定箱收窄（STORM2.s3ShieldR < 弹体半径）：擦盾边缘不再被咬住，仅真正触及盾面才被截断
           if (!b.shieldBlocked) {
-            const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y, b.r);
+            const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y, STORM2.s3ShieldR);
             if (hit) {
               b.shieldBlocked = true; b.sbX = hit.x; b.sbY = hit.y;
               const over = Math.hypot(b.x - hit.x, b.y - hit.y);   // 本帧越过盾面的距离：从轨迹末端回退
@@ -427,10 +445,16 @@
       spawnParticles(p.x, p.y, '#ffb545', 12, 160);
     } else if (p.kind === 'shield') {
       // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
-      player.shield = SHIELD_DURATION;
-      spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
+      // 许凯狗冲刺期间不读条：仅吸收（无得分），护盾效果跳过
+      if (state.pilotDashT <= 0) {
+        player.shield = SHIELD_DURATION;
+        player.shieldMax = SHIELD_DURATION;   // 读条分母同步
+        spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
+      }
     } else if (p.kind === 'berserk') {
-      pickupBerserk();
+      // 许凯狗冲刺期间不读条：仅吸收得分（+100），不进入暴走
+      if (state.pilotDashT > 0) state.score += Math.round(100 * diffMods().scoreMul);
+      else pickupBerserk();
     } else {
       pickupKit();
     }
@@ -439,6 +463,12 @@
   function updatePowerups(dt) {
     for (let i = powerups.length - 1; i >= 0; i--) {
       const p = powerups[i];
+      // 许凯狗冲刺：道具无视距离立刻被自身吸收（量子护盾 / 暴走等读条效果在 applyPowerupPickup 内跳过）
+      if (state.pilotDashT > 0 && player.alive) {
+        applyPowerupPickup(p);
+        powerups.splice(i, 1);
+        continue;
+      }
       // 磁吸：比水晶更易被吸引（半径更大、拉力更强），吸附后直奔机身
       // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
       let magnetized = false;
@@ -486,6 +516,14 @@
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
+      // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 凌漓等量表冻结不计（见 updatePilotStatus）
+      if (state.pilotDashT > 0 && player.alive) {
+        state.score += Math.round(c.val * diffMods().scoreMul);
+        state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
+        spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
+        crystals.splice(i, 1);
+        continue;
+      }
       // 磁吸：靠近玩家时被吸附（吸附后直奔机身中心判定点）
       // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
       if (c.absorbDelay != null && c.absorbDelay > 0) {
@@ -566,7 +604,7 @@
   const berserkBurst = { active: false, t: 0, duration: 0.7, x: 0, y: 0, big: false };
 
   // 高能爆弹火圈：自场地中心急速扩大至全场的橙黄色火环（全部模式统一表现）
-  const bombBurst = { active: false, t: 0, duration: 0.55 };
+  const bombBurst = { active: false, t: 0, duration: 0.55, big: false };   // big：可莉绷绷炸弹——扩散波大幅加宽
 
   export {
     enemyDamageMul, updateBullets, POWERUP_MAGNET_RADIUS, spawnPowerup, applyPowerupPickup, updatePowerups,

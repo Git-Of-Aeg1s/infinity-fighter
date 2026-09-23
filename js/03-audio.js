@@ -36,6 +36,12 @@
   let bgmUnlocked = false;    // 浏览器自动播放限制：首次交互后解锁
   let audioMuted = false;     // 全局静音：音乐(BGM) + 音效(警报) 总开关，由标题栏右侧按钮切换
   let resultDone = false;     // 结算曲是否已自然播完（播完后结算页转主界面轮播）
+  // 结算曲"单次展示单次起播"会话闩：记录本次结算展示（胜利页 / 失败页）内已起播过的结算曲 key。
+  // 阻断两类重播竞态：①目标曲被切走又切回（如瞬时 target=null 后恢复）时 switchTrack 会从头重启；
+  // ②曲目自然播完的瞬间，'ended' 事件任务若晚于下一帧 rAF 才执行，续播分支会对已停在结尾的元素
+  //   调 play()——对已结束的媒体元素 play() 按规范回到起点，即"胜利曲连续播两遍"。
+  // 新的结算展示上升沿 / 展示结束（下降沿）时清空，同一次展示内换成另一首结算曲仍允许（失败曲先响→胜利页弹出）。
+  let resultSession = null;
   let resultFade = null;      // 结算曲淡出中：{ key, audio, t0, from }
   let prevResultShown = false;   // 上一帧是否处于结算展示（胜利页 / 失败页）：上升沿重置 resultDone，避免上一局遗留导致本局结算曲不播
 
@@ -100,13 +106,14 @@
 
   // 切换当前曲目（立即起播，遵循解锁 / 暂停 / 静音）；被切走的结算曲若未播完走快速淡出
   function switchTrack(key) {
+    if (key === bgmCurrent) return;   // 同曲幂等：重复切换会对已起播曲目重置从头播放（结算曲双播的诱因之一）
     if (bgmCurrent) {
       const prev = bgmAudios[bgmCurrent];
       if (RESULT_TRACKS.includes(bgmCurrent) && !prev.paused) startResultFade();
       else { prev.pause(); prev.currentTime = 0; }
     }
     bgmCurrent = key;
-    if (RESULT_TRACKS.includes(key)) resultDone = false;
+    if (RESULT_TRACKS.includes(key)) { resultDone = false; resultSession = key; }
     const a = bgmAudios[key];
     if (a && bgmUnlocked && !state.paused && !audioMuted) a.play().catch(() => {});
   }
@@ -168,10 +175,11 @@
     // 结算展示上升沿：新一局结算开始 → 允许结算曲重新起播（清掉上一局自然播完遗留的 resultDone，
     // 否则上一局结算曲播完后 resultDone 恒为 true，下一局胜利页会直接跳主界面轮播、胜利曲不响）
     const resultShown = state.victoryOverlay || state.mode === 'gameover';
-    if (resultShown && !prevResultShown) resultDone = false;
+    if (resultShown && !prevResultShown) { resultDone = false; resultSession = null; }
     prevResultShown = resultShown;
+    if (!resultShown) resultSession = null;   // 结算展示结束：会话闩复位（下一局 / 重开后再胜可正常起播）
     let target;
-    if (state.victoryOverlay && !resultDone) {
+    if (state.victoryOverlay && !resultDone && resultSession !== 'victory') {
       // 胜利窗口可见：任意情况（正常通关 / BOSS 试炼 / 图鉴挑战）下窗口弹出即播胜利曲，
       // 判定优先级最高（不受 mode / bossFlow 阶段影响）；播完转主界面轮播
       target = 'victory';
@@ -186,7 +194,7 @@
       } else {
         target = 'battle_normal_1';
       }
-    } else if (state.mode === 'gameover' && !resultDone) {
+    } else if (state.mode === 'gameover' && !resultDone && resultSession !== 'defeat') {
       target = 'defeat';    // 失败结算：先播失败曲（播完转主界面轮播）
     } else {
       // 主界面 / 结算曲播完后的结算页：主界面随机轮播
@@ -207,8 +215,9 @@
     if (!a || !bgmUnlocked) return;
     if (state.paused || audioMuted) {
       if (!a.paused) a.pause();
-    } else if (a.paused && !bgmRestart) {
-      a.play().catch(() => {});   // 重起播静默期内不自动续播（stepBGMRestart 到点重起）
+    } else if (a.paused && !a.ended && !bgmRestart) {
+      a.play().catch(() => {});   // 重起播静默期内不自动续播（stepBGMRestart 到点重起）；
+                                  // 已自然播完（ended）的结算曲绝不自动续播——play() 会回到起点重播（双播根因）
     }
   }
 

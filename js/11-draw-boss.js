@@ -734,11 +734,11 @@
     // 大型龙卷（技能2）：俯视白色风暴旋涡 —— 以 assets/storm-eye.png 原图为本体（同 BOSS 手法），
     // 矢量特效降为低透明度点缀（旋臂/柔光），不再用暗底盘与纯黑眼遮盖原图；中心仅微光提亮
     // 外形为正圆（碰撞体 w=h），整体逆时针旋转
-  function drawTornado(e) {
+  function drawTornado(e, spinMul = 1) {
       ctx.save();
       ctx.translate(e.x, e.y);
       const R = e.w * 0.5;
-      const rot = -state.time * 1.9;   // 逆时针（canvas 角度递减）
+      const rot = -state.time * 1.9 * spinMul;   // 逆时针（canvas 角度递减）；spinMul：友方大风暴 ×2
       const pulse = 1 + Math.sin(state.time * 3.1) * 0.015;   // 轻微呼吸缩放
       ctx.scale(pulse, pulse);
 
@@ -1837,7 +1837,7 @@
   // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）；
   // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
   //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
-  function drawS2Beam(x, y, ang, len, halfW, alpha, root) {
+  function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap) {
     if (len <= 0.5) return;
     ctx.save();
     ctx.translate(x, y);
@@ -1859,6 +1859,16 @@
     ctx.lineTo(0, w0 * 1.9);
     ctx.closePath();
     ctx.fill();
+    // 头端圆帽（外辉光层）：外层端面此前为平截竖边、超出内层圆帽裸露在外，呈"被截断"感——补同心半圆收圆
+    ctx.beginPath();
+    ctx.arc(len, 0, halfW * 1.9, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    if (tailCap) {
+      // 尾端圆帽（外辉光层）：半圆向后凸出，消除尾端平截（技能6 重现光束尾部悬在场地中）
+      ctx.beginPath();
+      ctx.arc(0, 0, w0 * 1.9, Math.PI / 2, Math.PI * 1.5);
+      ctx.fill();
+    }
     const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
     g2.addColorStop(0, 'rgba(120, 190, 255, 0.85)');
     g2.addColorStop(0.5, '#d8ecff');
@@ -1873,6 +1883,12 @@
     ctx.lineTo(0, w0);
     ctx.closePath();
     ctx.fill();
+    if (tailCap) {
+      // 尾端圆帽（内芯层）
+      ctx.beginPath();
+      ctx.arc(0, 0, w0, Math.PI / 2, Math.PI * 1.5);
+      ctx.fill();
+    }
     if (root) {
       // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
       const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
@@ -2032,12 +2048,13 @@
         }
       }
     } else if (s.id === 1) {
-      // 技能2 蓄力预警：四喷口各一圈蓝色预警波（中心在各自喷口位置，自 200px 收缩 0.8s）——
-      //   按发射顺序先后出现（第 k 发的喷口光环晚 k×0.13s 开始收缩，完成后留 0.2s 该喷口发射）
-      if (s.t < STORM2.s2Charge + 3 * STORM2.s2Gap) {
+      // 技能2 蓄力预警：四喷口各一圈蓝色预警波（中心在各自喷口位置，自 200px 收缩）——
+      //   按发射顺序先后出现（第 k 发的喷口光环晚 k×0.13s 开始收缩，完成后留 0.2s 该喷口发射）；
+      //   蓄力/收缩时长随技能实例（s.charge / s.ringDur）——诗篇连携时 1.6s / 1.2s，收缩速度变慢
+      if (s.t < s.charge + 3 * STORM2.s2Gap) {
         for (let k = 0; k < 4; k++) {
           const nz = storm2Nozzle(e, s.order[k]);
-          drawS2WarnWave(nz.x, nz.y, STORM2.s2RingR0, 0.2 + k * STORM2.s2Gap, STORM2.s2RingDur, s.t);
+          drawS2WarnWave(nz.x, nz.y, STORM2.s2RingR0, 0.2 + k * STORM2.s2Gap, s.ringDur, s.t);
         }
       }
       for (const b of s.beams) {
@@ -2172,7 +2189,7 @@
     for (const b of e.s6Beams) {
       const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
       const len = b.effLen != null ? b.effLen : (b.len || 0);
-      drawS2Beam(b.x, b.y, b.ang, len, STORM2.s6R, clamp(b.faint ? vis * 0.45 : vis, 0, 1));
+      drawS2Beam(b.x, b.y, b.ang, len, STORM2.s6R, clamp(b.faint ? vis * 0.45 : vis, 0, 1), false, true);   // tailCap：尾端圆帽，消除悬空光束两端的平截感
     }
   }
 

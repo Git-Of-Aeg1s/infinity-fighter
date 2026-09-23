@@ -3,9 +3,9 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：12-ui(1 名) 14-main(1 名)
   //
-  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, setDifficulty } from './01-config.js';
+  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, setDifficulty } from './01-config.js';
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
-  import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
+  import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
   import { drawEnemy } from './10-draw-world.js';
@@ -196,15 +196,15 @@ boss_storm: {
         '<b>造型</b>：X 形四臂——左上-右上、右下-左下夹角 <b>120°</b>，同侧上下臂夹角 <b>60°</b>，上臂较短、下臂较长；中央为<b>灰色装甲机体</b>，中下方镶嵌<b>白蓝 → 深蓝的电弧能量球</b>，雷电沿机体导管泵向四臂端头的发射缝隙。<br />' +
         '<b>数值</b>：HP <b>32000</b>（真我），尺寸约 <b>43% 屏宽</b>，碰撞伤害 <b>40</b>（接触一次性）；悬停移速显著高于旧日之歌，并伴有一定程度的上下浮动。<br />' +
         '<b>击败掉落</b>：80 颗水晶（继承一阶段）+ 20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池（灰 + 蓝标记：护盾 6%；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。击败后通关。<br />' +
-        '概念：操纵雷电的飞舰搅动宇宙能量，卷起第一阶段的风暴。<b>6 种技能乱序释放</b>（间隔 = 暴风之眼的 75%；玩家暴走期间间隔额外减半；本机受到暴走伤害 -30%；血量 70% 掉落暴走道具；<b>技能3/6 光束可被守愿者白盾截断，技能1/2 激光无视白盾</b>）：<br />' +
+        '概念：操纵雷电的飞舰搅动宇宙能量，卷起第一阶段的风暴。<b>6 种技能乱序释放</b>（间隔 = 暴风之眼的 75%；玩家暴走期间间隔额外减半；本机受到暴走伤害 -30%；血量 70% 掉落暴走道具；<b>技能3/6 光束可被守愿者白盾截断（盾判定箱收窄——仅真正触及盾面才被截断，擦盾掠过可穿过）</b>，技能1/2 激光无视白盾</b>）：<br />' +
         '<b>技能1</b> 停止移动，中心电弧球明显预警蓄力 <b>1.2s</b> 后向下发射强力电弧激光（<b>60 伤害</b>，具象 -40%）；光束<b>宽大</b>、周身<b>电弧狂乱缠绕</b><br />' +
         '<b>技能2</b> 停止移动，四臂喷口<b>按发射顺序先后各现一圈收缩预警波</b>，激涌蓄力 1.2s 后向下发射电弧激光（随机一个先发射、随后快速随机跟上，<b>50 伤害</b>）<br />' +
         '<b>技能3</b> 仅在<b>场地正中</b>向斜下发射四道电弧光束（左右镜像对称，触左右边界<b>反弹</b>，弹道呈"&lt;"形折线，25 伤害，<b>弹速 +80%</b>，释放后下一次技能间隔<b>额外 -70%</b>）；光束沿头部轨迹<b>从 0 增长</b>至全长，转折处沿折线自然弯折<br />' +
         '<b>技能4</b> 中心能量球连续快速连射 <b>40~70</b> 发雷电长条弹——每发均为<b>直射弹</b>、飞行中不扭动，仅朝向逐发变化（按蛇形曲线采样），弹点集合整体呈"先左后右、越摆越宽"的流线轨迹；四喷口外<b>始终</b>各现一圈 <b>14~20</b> 枚雷电子弹（<b>间隔 0.8~1.5s 依次浮现</b>，停留原处 1s 后向对应方向爆开；<b>爆开初速为雷电长条弹速度的 60~80% 或 120~140% 随机取档，同圈一致</b>，20 伤害）；<b>70% 血以下强化</b>：蛇形雷条持续 <b>+50%</b>（多射 50%），雷环增至 <b>6 圈</b>——随机两个喷口各生成第二次；雷环<b>必然在蛇形雷条射完前全部爆开</b>，迟到的雷环立即补齐、并与在场未爆雷环一同立刻爆开（初速 / 最终速度 <b>+30%</b>）<br />' +
         '<b>技能5</b> 周身雷电环缠绕（缓慢旋转明灭），下方 30% 区域随机 5 处依次雷击（雷电环<b>恒定大小渐显聚能</b>——先慢后快，预警 1.2s、区域半径为焦香螺旋桨火环的 <b>80%</b>，<b>40 伤害</b>；落雷瞬间<b>白光与蓝点光爆闪</b>，击中中心外扩一圈 <b>14~20</b> 枚雷电子弹）<br />' +
         '<b>技能6</b> 四喷口沿臂方向直射电弧光束出屏 → 光束于<b>左右边界</b>重现（与臂向光束<b>同长</b>，预警后<b>自 0 增长</b>、增长较慢），以约 <b>1.7s 抵达底边</b>的速度射向目标，左右两侧<b>镜像对称</b>；<b>每边每轮 2 条</b>（同边两束夹角 ≥<b>15°</b>）、恒定 <b>3 轮</b>（<b>轮次间隔 1.5s</b>，不随血量变化）；释放后<b>下一次技能间隔 -50%</b>（28 伤害）<br />' +
-        '<b>诗篇难度独特修正</b>：<b>技能1</b> 释放期间不再停止移动，激光连续射出 <b>5 次</b>（上一发射完前即开始下次预警，射完随机 0.1~0.5s 后立刻射出下一发），首次蓄力期间自身移速逐渐提升至 <b>200%</b>、5 次射完后快速衰减；<b>技能2</b> 有 <b>50%</b> 概率同时释放技能6（连携时臂向光束<b>变淡</b>、臂向蓄力与汇聚预警时长 <b>+50%</b>，连携的技能6 随技能2收束无缝继续），未连携则下一次技能间隔 <b>-90%</b>；<b>技能3</b> 连续快速释放<b>两次</b>（间隔 0.5~1s，第二轮重新随机角度）；<b>技能4</b> 雷环固定 <b>8 圈</b>（生成间隔 -40%）；<b>技能5</b> 落点扩展至<b>下方 60% 区域</b>、轰击错峰 -10%；<b>技能6</b> 释放瞬间<b>四个雷电喷口处</b>立即触发雷霆打击（无预警、伤害减半、外扩雷环子弹数减半）。<br />' +
-        '<b>入场</b>：一阶段「暴风之眼」<b>轰然消散</b>（白雾爆发 + 双冲击波环外扩）→ <b>中央雷电风暴轰鸣</b>约 1.6s（落雷密集震屏，中央凝聚出电弧能量球）→ 电球骤亮收缩<b>汇入机体</b>，风暴编织者现身（全程约 3.2s，期间无敌、不释放技能）。',
+        '<b>诗篇难度独特修正</b>：<b>技能1</b> 释放期间不再停止移动，激光连续射出 <b>5 次</b>（上一发射完前即开始下次预警，射完随机 0.1~0.5s 后立刻射出下一发），首次蓄力起自身移速逐渐提升至 <b>200%</b>（加速度减半、约 2s 爬满）、5 次射完后快速衰减；<b>技能2</b> 有 <b>50%</b> 概率同时释放技能6（连携时臂向光束<b>变淡</b>、臂向蓄力与汇聚预警时长 <b>+50%</b>，连携的技能6 随技能2收束无缝继续），<b>连携时蓄力延长至 1.6s</b>（预警圈收缩速度相应变慢），未连携则下一次技能间隔 <b>-60%</b>；<b>技能3</b> 连续快速释放<b>两次</b>（间隔 <b>1~1.5s</b>，第二轮重新随机角度，释放结束后下一次技能间隔 <b>+30%</b>）；<b>技能4</b> 雷环固定 <b>8 圈</b>（生成间隔 -40%）；<b>技能5</b> 落点扩展至<b>下方 60% 区域</b>、轰击错峰 -10%；<b>技能6</b> 释放瞬间<b>四个雷电喷口处</b>立即触发雷霆打击（无预警、伤害减半、外扩雷环子弹数减半）。<br />' +
+        '<b>入场</b>：一阶段「暴风之眼」<b>轰然消散</b>（白雾爆发 + 双冲击波环外扩）→ <b>中央雷电风暴轰鸣</b>约 2.1s（落雷密集震屏，中央凝聚出电弧能量球）→ 电球骤亮收缩<b>汇入机体</b>，风暴编织者现身（全程约 3.7s，期间无敌、不释放技能）。',
     },
   };
 
@@ -902,12 +902,13 @@ boss_storm: {
     return rows;
   }
 
-  // 真我级（3类）行：槽位权重（普通炮艇三色为独立条目，槽位抽取直接决定涂装）；0 = 该阶段不出场
+  // 真我级（3类）行：槽位权重（普通炮艇三色为独立条目，槽位抽取直接决定涂装；
+  // 御4 Lv1~10 由 0→10 线性过渡，表中取各档起始等级值）；0 = 该阶段不出场
   function infoSpecial3Rows() {
     return SPECIAL3_POOL.map(it => ({
       canvas: infoShipCanvas(it.ency),
       label: it.name,
-      vals: tierMask(INFO_TIERS.map(t => t.lv < 11 ? it.wLow : it.wHigh)),
+      vals: tierMask(INFO_TIERS.map(t => Math.round(special3Weight(it, t.lv)))),
     }));
   }
 
@@ -990,9 +991,9 @@ boss_storm: {
     const cards = [
       // 难度修正：以真我为默认基准描述（数值与 01-config DIFFICULTIES mods 同步）；
       // BOSS 不写单技能细节——诗篇仅标注"技能加强"，统一修正单独成卡
-      { h: '难度修正 · 真我', p: '<b>基准难度</b>。怪物数值、BOSS 与玩家规则均为基准值。' },
+      { h: '难度修正 · 真我', p: '<b>基准难度</b>。怪物数值、BOSS 与玩家规则均为基准值。<b>火力 Lv1 时</b>：1/2 类道具掉率削减修正<b>失效</b>；<b>Lv2 时</b>效果<b>减弱 50%</b>（1类 ×0.5→×0.75 / 2类 ×0.75→×0.875；BOSS 战 1类波 ×0.3 照常）。' },
       { h: '难度修正 · 具象', p: '总刷怪量 / 同屏数量约 <b>-50~60%</b>（波次刷新间隔约为真我 <b>×1.8</b>、满场压力基准 <b>×0.75</b>）；非 BOSS 敌机<b>血量 -20%</b>、首次攻击延迟 <b>+0.5~1.8s</b>、攻击间隔 <b>+25%</b>；1/2 类与 BOSS 战 1类波的道具掉率削减修正<b>失效</b>。<b>BOSS：伤害 -40%、技能释放间隔 +50%、不连发同种技能</b>（技能组同基准）。玩家侧：<b>无敌时间 +50%</b>、导弹命中改为<b>固定 50 伤害</b>（取消秒杀 / 80% 血量规则）、<b>受击不掉武器等级</b>、得分 <b>×0.8</b>。' },
-      { h: '难度修正 · 诗篇', p: '<b>BOSS 血量 ×1.6</b>；全体 BOSS 受到<b>暴走(Lv5)伤害 -10%</b>（与 BOSS 专属减免取最高、不叠加）；<b>BOSS 技能加强</b>（旧日之歌 / 暴风之眼技能组深度改版，此处不展开）；得分 <b>×1.2</b>；波次刷新间隔约为真我 <b>×0.77</b>（刷怪更密集，总刷怪量约 <b>+30%</b>）。<b>高能爆弹：初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%</b>。' },
+      { h: '难度修正 · 诗篇', p: '<b>BOSS 血量 ×1.6</b>；全体 BOSS 受到<b>暴走(Lv5)伤害 -10%</b>（与 BOSS 专属减免取最高、不叠加）；<b>BOSS 技能加强</b>（旧日之歌 / 暴风之眼技能组深度改版，此处不展开）；得分 <b>×1.2</b>；波次刷新间隔约为真我 <b>×0.77</b>（刷怪更密集，总刷怪量约 <b>+30%</b>）。<b>高能爆弹：初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%</b>。<b>火力 Lv1 时</b>：1/2 类道具掉率削减修正<b>失效</b>；<b>Lv2 时</b>效果<b>减弱 50%</b>（BOSS 战 1类波 ×0.3 照常）。' },
       { h: '加血套件节流（诗篇）', p: '任意两次<b>加血套件</b>（普通敌人掉落）之间至少间隔 <b>8s</b>。冷却期内掉落判定照常进行，但加血环节概率变为 <b>50%</b> 且敌人<b>不掉落</b>（改为"预触发"计数）；冷却结束后若预触发 ≥1，击杀的<b>第一个敌人必定掉落一个</b>加血套件（随后计数清零）。每次实际掉落（含 BOSS 战脚本化加血）都会重置 8s 计时。' },
       { h: 'BOSS 统一修正（全难度）', p: 'BOSS 战期间<b>每 6~12s 强制刷新一波 1类</b>（不走压力系统）：击杀<b>不加分、不掉水晶</b>、道具掉率 ×0.3（具象下该削减失效）。玩家火力 <b>Lv1 对 BOSS 武器伤害 +20%</b>（逆境补偿，高能爆弹不受影响）；进入 BOSS 战<b>重置受击掉级计数</b>（掉级阈值全场景统一 3 次）。' },
       { h: '双编队组合波', p: '<b>Lv5 起</b>有概率在同一波内追加一个编队（追加位不含炮艇编队）：<b>Lv5~10 概率由 10% 线性升至 30%、Lv11~20 由 10% 线性升至 40%</b>。' },
@@ -1000,6 +1001,7 @@ boss_storm: {
       { h: 'BOSS 击败后固定首波', p: '击败 BOSS 后先缓冲 <b>2s</b>，随后固定刷出一波 <b>1类长队</b>——自左或右入场、横穿战场自另一侧离场，本波不含紫电；自首波刷新起 <b>4s</b> 观察期后恢复正常刷怪。2s 与 4s 均不计入关卡推进。' },
       { h: '紫自爆流', p: '左右两侧各 7 架纵列斜扫穿越，以紫电（亡语向下垂直射一发）为主，<b>每波 40%~60% 替换为白影</b>（无攻击）。' },
       { h: '斗志昂扬横穿', p: '每次<b>关卡提升</b>时 4% 概率自屏幕左/右侧横穿一架斗志昂扬（增益无人机，余弦上下浮动）；击毁后我方攻速/弹速翻倍 8s。击败 BOSS 引发的跳变升级不触发。' },
+      { h: '闪避无敌衰减', p: '驾驶员的<b>闪避</b>（哈基米大王：暴走期间及结束后 4s 内）触发时<b>不受伤害</b>，但获得的<b>无敌时长仅为正常受击无敌的 70%</b>（真我基准 0.84s；具象难度的无敌 +50% 加成同步放大）。受击反馈（震屏 / 闪白 / 红晕）照常触发，闪避成功即清零累积加成。' },
     ];
     for (const c of cards) {
       const div = document.createElement('div');
@@ -1175,6 +1177,7 @@ boss_storm: {
       div.className = 'info-wave-card';
       const h = document.createElement('h4');
       const glyph = document.createElement('span');
+      if (a.sym) glyph.className = 'glyph-sym';   // ∞（洄）字形换 Corbel 修左右不对称
       glyph.textContent = a.glyph + ' ';
       glyph.style.color = a.color;
       h.append(glyph, document.createTextNode(a.name + (a.default ? '（默认）' : '')));
@@ -1185,6 +1188,29 @@ boss_storm: {
     }
   }
 
+  // ---------- 驾驶员：PILOTS 注册表驱动（desc 详细机制文案；与主菜单卡片简短文案 brief 区分） ----------
+  function renderInfoPilots() {
+    infoBody.innerHTML = '';
+    for (const id in PILOTS) {
+      const p = PILOTS[id];
+      if (p.empty) continue;   // 「无驾驶员」为同名互斥的内部回退值，不作条目展示
+      const div = document.createElement('div');
+      div.className = 'info-wave-card info-pilot-card';
+      const h = document.createElement('h4');
+      const glyph = document.createElement('span');
+      glyph.textContent = p.glyph;   // 标题不加空格（长名 + 槽位标注需控制行宽）
+      glyph.style.color = p.color;
+      h.append(glyph, document.createTextNode(p.name
+        + (p.slot === 'main' ? '（主驾驶员' : '（副驾驶员')
+        + (p.default ? '·默认）' : '）')));
+      const body = document.createElement('p');
+      body.innerHTML = p.desc;
+      div.append(h, body);
+      infoBody.appendChild(div);
+    }
+    infoAppendNote('主 / 副驾驶员各装备一名、效果同时生效（同名不可同时占据两槽）。默认主驾驶员可莉、副驾驶员小艺。天秀忧郁王子、陵落技能均按 <b>Q</b> 释放，左下角量表显示充能 / 冷却。');
+  }
+
   function buildInfoTabs() {
     infoTabs.innerHTML = '';
     const defs = [
@@ -1193,6 +1219,7 @@ boss_storm: {
       { id: 'mods',     name: '特殊修正' },
       { id: 'fighters', name: '战机&僚机' },
       { id: 'armors',   name: '护甲' },
+      { id: 'pilots',   name: '驾驶员' },
     ];
     for (const d of defs) {
       const b = document.createElement('button');
@@ -1205,6 +1232,7 @@ boss_storm: {
     else if (infoTab === 'waves') renderInfoWaves();
     else if (infoTab === 'fighters') renderInfoPlanes();
     else if (infoTab === 'armors') renderInfoArmors();
+    else if (infoTab === 'pilots') renderInfoPilots();
     else renderInfoMods();
   }
 
@@ -1229,5 +1257,5 @@ boss_storm: {
     buildWeightTable, infoAppendNote, INFO_TIER_NOTE, infoSideRows, infoStrikerRows, infoSpecial3Rows,
     infoCapitalRows, infoFormationRows, renderInfoWeights, renderInfoWaves, renderInfoMods, INFO_FIRE_LEVELS,
     fmtDps, planeDps, wingmanDps, infoFighterCanvas, buildDpsTable, renderInfoPlanes,
-    buildInfoTabs, openInfoModal, closeInfoModal,
+    buildInfoTabs, openInfoModal, closeInfoModal, renderInfoPilots,
   };
