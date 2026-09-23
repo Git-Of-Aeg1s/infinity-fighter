@@ -5,11 +5,11 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, isShipian } from './01-config.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, hasPilot, isShipian } from './01-config.js';
   import { clamp, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
-  import { armorSkillGain } from './07-player.js';
+  import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
 
 
@@ -17,6 +17,8 @@
   // 返回对敌人 e 的伤害倍率；isWing 标识该伤害是否来自僚机弹幕。
   function enemyDamageMul(e, isWing) {
     let mul = 1;
+    // 大无垠之王：BOSS 战累积的造成伤害提升（怒意蔓延，见 07-player updatePilotStatus 累积 / 06-enemy killEnemy 清算）
+    mul *= kingDmgBonusMul();
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
     // 暴鸰：玩家处于其炸弹爆圈内时对暴鸰增伤 35%（无论炸弹是否已投出）
@@ -73,7 +75,7 @@
     for (let i = pBullets.length - 1; i >= 0; i--) {
       const b = pBullets[i];
       b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
-      if (b.y < -10) { pBullets.splice(i, 1); continue; }
+      if (b.y < -10 || b.x < -20 || b.x > CANVAS_W + 20) { pBullets.splice(i, 1); continue; }   // 友方大风暴风弹可斜向飞行：横向出界一并移除
 
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
@@ -85,7 +87,8 @@
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
-          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing);
+          // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
+          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing) * princeOtherDmgMul(!!b.princeStorm);
           e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
@@ -389,7 +392,10 @@
         }
       }
       if (hitPlayer) {
-        damagePlayer(b.dmg);
+        // 伤害来源标记（驾驶员效果挂点）：暴风之眼本体弹幕 / 其召唤的大型龙卷风弹 → src 'storm'
+        const src = (b.owner && (b.owner.type === 'tornado' ||
+                    (b.owner.type === 'boss' && b.owner.bossId === 'storm'))) ? 'storm' : null;
+        damagePlayer(b.dmg, 1, false, false, src);
         if (!b.laser) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
       }
     }
@@ -405,6 +411,13 @@
 
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
   function applyPowerupPickup(p) {
+    // 小艺：拾取任意道具（水晶不走本路径）恢复生命——血量低于 35% 时回复量提升（森灵之力）
+    if (hasPilot('xiaoyi') && player.alive) {
+      const maxHp = player.maxHp || PLAYER_CFG.maxHp;
+      const heal = player.hp < maxHp * PILOTS.xiaoyi.pickupHealLowPct ? PILOTS.xiaoyi.pickupHealLow : PILOTS.xiaoyi.pickupHeal;
+      player.hp = Math.min(maxHp, player.hp + heal);
+      spawnParticles(player.x, player.y - 12, '#8ce36b', 6, 120);
+    }
     if (p.kind === 'hp') {
       player.hp = clamp(player.hp + 40, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
@@ -489,10 +502,13 @@
           // 近距直吸：本帧位移即可抵达玩家时直接结算（高速拉取一帧可能越过拾取窗口）
           if (bossPull && dist <= pull * dt + 8) {
             state.score += Math.round(c.val * diffMods().scoreMul);
+        state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表（updatePilotStatus 差分时扣除）
             // 七日澜心：按水晶【得分】等比填充技能量表（普通 +10 / 巨型 +500）——
             // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
             // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
             armorSkillGain(c.val, c.firstBoss);
+            // 凌漓：隐藏计数表按水晶得分充能（无首轮 BOSS 加成；BOSS 水晶 fromBoss 不计入）
+            if (hasPilot('lingli') && !c.fromBoss) state.lingliGauge += c.val;
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -506,6 +522,7 @@
           Math.abs(c.x - player.x) < player.w / 2 + c.r &&
           Math.abs(c.y - player.y) < player.h / 2 + c.r) {
         state.score += Math.round(c.val * diffMods().scoreMul);
+        state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表（updatePilotStatus 差分时扣除）
         // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
         armorSkillGain(c.val, c.firstBoss);
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);

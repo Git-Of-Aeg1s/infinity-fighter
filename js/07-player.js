@@ -5,8 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, demo, flash, hurt, lives, score}
   //
-  import { ARMOR_SKILLS, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, HANSHUANG, PLAYER_CFG, SHIELD_DURATION, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentWingman, diffMods, invulnDiffMul } from './01-config.js';
-  import { bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, eBullets, enemyOnScreen, enemies, hasteMul, hpFill, keys, menuScreen, pBullets, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnArmorGlyphFx, spawnParticles, state, tryBulwarkCheatDeath, wingmen } from './02-core.js';
+  import { ARMOR_SKILLS, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, HANSHUANG, PILOTS, PLAYER_CFG, PRINCE_STORM, SHIELD_DURATION, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotHuiHealMul } from './01-config.js';
+  import { bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, eBullets, enemyOnScreen, enemies, friendStorms, hasteMul, hpFill, keys, menuScreen, pBullets, particles, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnArmorGlyphFx, spawnParticles, state, tryBulwarkCheatDeath, wingmen } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { clearMissiles, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
@@ -134,7 +134,7 @@
     const dmgMul = solo ? 1 + STARSLAYER.soloBonus : 1;
     const killed = [];
     for (const { e, isMain } of targets) {
-      let dmg = lvl.dmg * dmgMul * enemyDamageMul(e, false);
+      let dmg = lvl.dmg * dmgMul * enemyDamageMul(e, false) * princeOtherDmgMul(false);   // 天秀：暴风之眼战期间其余伤害 -50%（斩击属于"其余伤害"）
       if (e.type === 'boss') dmg *= 1 + STARSLAYER.bossBonus;   // 对 BOSS 伤害 +20%
       e.hp -= dmg;
       // 斩击击碎虚化护盾：护盾碎裂消散、立即恢复可伤（斩击本就无视虚化）
@@ -585,6 +585,17 @@
     updateDelayedShots(dt);   // Lv4 半拍补射队列推进（暂停时不推进，重开时清空）
     // 掉命等待重生
     if (!player.alive) {
+      // 埃逸：死亡蓄力自爆——蓄力粒子向机体汇聚，归零触发清屏自爆（含 BOSS；见 aiyiSelfDestruct）
+      if (hasPilot('aiyi') && player.aiyiChargeT > 0) {
+        player.aiyiChargeT = Math.max(0, player.aiyiChargeT - dt);
+        if (Math.random() < 0.6) {
+          const a = Math.random() * Math.PI * 2, d = rand(30, 70);
+          particles.push({ x: player.x + Math.cos(a) * d, y: player.y + Math.sin(a) * d,
+            vx: -Math.cos(a) * d * 3, vy: -Math.sin(a) * d * 3,
+            life: 0.3, age: 0, color: '#ff4d6d', size: rand(1.5, 3) });
+        }
+        if (player.aiyiChargeT <= 0) aiyiSelfDestruct();
+      }
       if (state.lives > 0) {
         player.respawnTimer -= dt;
         if (player.respawnTimer <= 0) respawnPlayer();
@@ -615,6 +626,19 @@
         }
     player.x = clamp(player.x, player.w / 2, CANVAS_W - player.w / 2);
     player.y = clamp(player.y, player.h / 2, CANVAS_H - player.h / 2);
+
+    // 许凯狗：开场高能冲刺视觉——机身拖出金白色气浪（判定与无敌由 resetGame / 14-main 驱动）
+    if (state.pilotDashT > 0) {
+      for (let k = 0; k < 2; k++) {
+        particles.push({
+          x: player.x + rand(-14, 14), y: player.y + rand(-4, 30),
+          vx: rand(-30, 30), vy: rand(120, 260),
+          life: rand(0.25, 0.45), age: 0,
+          color: Math.random() < 0.5 ? '#ffd166' : '#ffffff',
+          size: rand(1.5, 3.2),
+        });
+      }
+    }
 
     // 自动开火（Lv5 即暴走：使用暴走弹道与射速）
     // BOSS 出场演出期间停止攻击，展开完毕后立即恢复
@@ -668,6 +692,8 @@
         player.berserk = 0;
         player.weapon = 4;
         spawnParticles(player.x, player.y, '#7ce7ff', 16, 200);
+        // 哈基米大王：暴走结束后的 4s 内闪避仍然生效（覆盖后暴走的最危险窗口）
+        if (hasPilot('hajimi')) state.hajimiTailT = PILOTS.hajimi.tailDur;
       }
     }
     if (player.shield > 0 && !pauseTimers) {
@@ -713,12 +739,12 @@
         }
       }
     }
-    // 洄：每 2 秒恢复 1 生命（不超过当前装甲最大生命）
+    // 洄：每 2 秒恢复 1 生命（不超过当前装甲最大生命）；小艺连携：治疗效果 ×1.35（pilotHuiHealMul）
     if (currentArmor.id === 'hui') {
       player.regenT = (player.regenT || 0) + dt;
       if (player.regenT >= currentArmor.regenInterval) {
         player.regenT = 0;
-        if (player.alive) player.hp = Math.min(player.maxHp, player.hp + currentArmor.regenHp);
+        if (player.alive) player.hp = Math.min(player.maxHp, player.hp + currentArmor.regenHp * pilotHuiHealMul());
       }
     }
   }
@@ -743,7 +769,9 @@
 
   function respawnPlayer() {
     player.alive = true;
-    player.hp = player.maxHp || armorMaxHp();   // 当前装甲下的每条命最大 HP
+    player.maxHp = armorMaxHp();      // 重生复原生命上限（陵落上限债务随死亡清偿）
+    player.lingluoMaxDebt = 0;
+    player.hp = player.maxHp;   // 当前装甲下的每条命最大 HP
     player.x = CANVAS_W / 2;
     player.y = CANVAS_H - 90;
     player.invuln = 2 * invulnDiffMul();   // 具象：所有来源的无敌时间 +50%（含登场/重生保护）
@@ -768,12 +796,55 @@
     }
   }
 
-  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false) {
+  // 玩家受伤统一入口。src = 伤害来源标记（驾驶员效果挂点）：
+  //   'storm'      来自暴风之眼的弹幕（风弹等投射物）
+  //   'stormAoe'   来自暴风之眼的瞬时区域打击（风波 / 风柱）
+  //   'stormCrash' 来自暴风之眼本体 / 其召唤的大型龙卷的碰撞伤害
+  //   'aoe'        瞬时区域伤害（暴鸰爆炸 / 破片范围伤害 / 风暴编织者雷霆轰击）
+  //   'missile'    导弹伤害（先兆者导弹）
+  //   天秀忧郁王子：'storm'/'stormAoe' 削减 -50%、'stormCrash' -60%，受击触发增益（50% 闪避 + 攻速 +80% + 量表 +18%，5s）
+  //   可莉：'aoe' / 'stormAoe' 瞬时区域伤害 -30%、'missile' 导弹伤害 -30%
+  //   （长条激光 / 持续灼烧 / 撞击伤害不打标，天然不适用）；哈基米 50% 闪避增益对所有来源生效
+  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false, src = null) {
     if (!player.alive) return false;
     if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
     // 天枢圣盾：无敌期间免疫破片导弹的"无视无敌"穿透（ignoreInvuln 仅破片后续导弹使用）
     if (ignoreInvuln && player.invuln > 0 && currentArmor.id === 'tianshu') return false;
     if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（无视无敌 ≠ 无视护盾）
+    // 天秀忧郁王子：暴风之眼伤害削减 + 受击触发增益（在任何结算前套用削减）
+    const isStormSrc = src === 'storm' || src === 'stormAoe' || src === 'stormCrash';
+    if (isStormSrc && hasPilot('tianxiu')) {
+      amount *= 1 - (src === 'stormCrash' ? PILOTS.tianxiu.stormCrashCut : PILOTS.tianxiu.stormDmgCut);
+      triggerStormHitBuff();
+    }
+    // 可莉：瞬时区域伤害 / 导弹伤害削减（'stormAoe' 同时属于天秀与可莉的适用范围，两个乘区各自乘算）
+    if (hasPilot('keli') && (src === 'aoe' || src === 'missile' || src === 'stormAoe')) {
+      amount *= 1 - (src === 'missile' ? PILOTS.keli.missileCut : PILOTS.keli.aoeCut);
+    }
+    // 天秀忧郁王子：50% 闪避（增益期间对所有来源生效；闪避不受击、不进入受击无敌帧）
+    if (state.princeDodgeT > 0 && Math.random() < 0.5) {
+      spawnParticles(player.x, player.y, '#ffffff', 8, 150);
+      spawnParticles(player.x, player.y, '#dff3ff', 6, 110);
+      return false;
+    }
+    // 大无垠之王：BOSS 战累积的受到伤害提升（怒意的代价）
+    if (hasPilot('king') && state.kingTaken > 0) amount *= 1 + state.kingTaken;
+    // 哈基米大王：暴走期 20% 概率闪避（失败 +5% 累积、成功清零；加成跨暴走保留——只在成功时清零）。
+    // 闪避效果延长至暴走结束后 4s（tailDur，覆盖后暴走的最危险窗口）；概率累积仅在暴走期间进行。
+    // 闪避不受伤害，但正常触发受击无敌与受击反馈（"正常触发无敌效果"）
+    if (hasPilot('hajimi') && (player.weapon === 5 || state.hajimiTailT > 0)) {
+      if (Math.random() < PILOTS.hajimi.dodgeBase + state.hajimiDodgeBonus) {
+        state.hajimiDodgeBonus = 0;
+        player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;
+        shake(3, 0.15);
+        player.hitFxT = 0.28;
+        state.hurt = Math.min(1, state.hurt + 0.3);
+        playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.4, r: 16, seed: Math.random() * 10 });
+        spawnParticles(player.x, player.y, '#ff9ab5', 10, 170);
+        return true;
+      }
+      if (player.weapon === 5) state.hajimiDodgeBonus += PILOTS.hajimi.dodgeBonusStep;
+    }
     // 祈星：受到伤害时 30% 概率伤害减半，单次伤害 >40 时概率提升到 60%（概率走注册表）；触发时核心处图标演出
     if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? currentArmor.halveChanceBig : currentArmor.halveChance)) {
       amount *= 0.5;
@@ -816,13 +887,67 @@
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.55, r: 26, seed: Math.random() * 10 });   // 掉命：更大的爆闪冲击环
       shake(16, 0.6);
-      if (state.lives <= 0) {
-        setTimeout(() => endGame(), 700);
-      } else {
-        player.respawnTimer = PLAYER_CFG.respawnTime;
-      }
+      handlePlayerDeath();
     }
     return true;
+  }
+
+  // 掉命后统一收尾（damagePlayer / 06-enemy BOSS 接触 / 焦香灼烧三条死亡路径共用）：
+  //   常规：最后一条命 → 700ms 后失败结算；仍有余命 → 重生倒计时
+  //   埃逸：任何掉命都先置蓄力自爆（updatePlayer 推进）；最后一条命不进失败结算——
+  //         延后到自爆结算完成后，若自爆击杀 BOSS 带来胜利（bossFlow.victoryDelay）则跳过失败结算
+  function handlePlayerDeath() {
+    if (hasPilot('aiyi')) {
+      player.aiyiChargeT = PILOTS.aiyi.chargeDur;
+      if (state.lives <= 0) state.aiyiFinalDeath = true;
+    }
+    if (state.lives <= 0) {
+      if (!hasPilot('aiyi')) setTimeout(() => endGame(), 700);
+    } else {
+      player.respawnTimer = PLAYER_CFG.respawnTime;
+    }
+  }
+
+  // 埃逸：死亡自爆——蓄力结束后结算：
+  //   最后一条命（aiyiFinalDeath）：秒杀当前屏幕所有敌人（含 BOSS），可能带来胜利；
+  //   非最后一条命：秒杀全部非 BOSS 敌人，并对场上 BOSS 造成 6000 固定伤害（BOSS 击杀走正常击毁流程）。
+  // 被自爆击杀的敌人仅得 20% 分数（killEnemy 经 state.aiyiSelfDestruct 结算；嵌套连锁期间保持置位）。
+  // 最后一条命的死亡：结算完成后若自爆未带来胜利（无 victoryDelay），再进失败结算
+  function aiyiSelfDestruct() {
+    spawnParticles(player.x, player.y, '#ffffff', 50, 420);
+    spawnParticles(player.x, player.y, '#ff4d6d', 40, 380);
+    spawnParticles(player.x, player.y, '#ffb545', 30, 320);
+    shake(18, 0.8);
+    state.flash = 0.5;
+    const finalBlow = state.aiyiFinalDeath;   // 最后一条命才能炸死 BOSS
+    state.aiyiSelfDestruct = true;
+    for (let pass = 0; pass < 6; pass++) {
+      let swept = false;
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        if (e && !e._deathSettled && (finalBlow || e.type !== 'boss')) { killEnemy(i); swept = true; }
+      }
+      if (!swept) break;
+    }
+    // 非最后一条命：BOSS 不被秒杀，改为吃 6000 固定伤害（真实结算，若因此击杀走正常击毁流程）
+    if (!finalBlow) {
+      const killed = [];
+      for (const e of enemies) {
+        if (e.type !== 'boss' || e.dying) continue;
+        e.hp -= PILOTS.aiyi.bossDmg;
+        spawnParticles(e.x, e.y, '#ffffff', 24, 280);
+        if (e.hp <= 0) killed.push(e);
+      }
+      for (const t of killed) {
+        const j = enemies.indexOf(t);
+        if (j >= 0) killEnemy(j);
+      }
+    }
+    state.aiyiSelfDestruct = false;
+    if (state.aiyiFinalDeath) {
+      state.aiyiFinalDeath = false;
+      if (!bossFlow.victoryDelay) setTimeout(() => endGame(), 600);   // 自爆未带来胜利：进失败结算
+    }
   }
 
   // 测试模式（图鉴挑战）受伤入口：供绕过 damagePlayer 的持续伤害源使用（BOSS 接触 / 焦香灼烧 / 先兆者导弹）。
@@ -896,6 +1021,270 @@
     return true;
   }
 
+  // ---------- 天秀忧郁王子：暴风之眼对策 + 白色量表 + 友方大风暴 ----------
+
+  // 当前是否处于暴风之眼 BOSS 战（本体存活、非渐隐演出期；不含风暴编织者）
+  function stormBossFightActive() {
+    return enemies.some(e => e.type === 'boss' && e.bossId === 'storm' && !e.dying);
+  }
+
+  // 受到暴风之眼伤害后的增益触发：50% 闪避 + 攻速 +80%（并入 hasteMul）+ 量表 +18%，持续 5s（重复受击刷新时长）
+  function triggerStormHitBuff() {
+    if (!hasPilot('tianxiu')) return;
+    state.princeDodgeT = PILOTS.tianxiu.stormBuffDur;
+    state.princeHasteT = PILOTS.tianxiu.stormBuffDur;
+    state.princeGauge = Math.min(1, state.princeGauge + PILOTS.tianxiu.gaugeHitGain);
+    spawnParticles(player.x, player.y, '#dff3ff', 16, 220);
+    shake(3, 0.15);
+  }
+
+  // 暴风之眼伤害削减倍率（仅天秀忧郁王子生效）：kind='storm' 技能弹幕 -50% / 'stormCrash' 碰撞 -60%
+  // 供 06-enemy 的暴风之眼接触持续掉血路径使用（弹幕路径在 damagePlayer 内部处理）
+  function pilotStormContactMul(kind) {
+    if (!hasPilot('tianxiu')) return 1;
+    return 1 - (kind === 'stormCrash' ? PILOTS.tianxiu.stormCrashCut : PILOTS.tianxiu.stormDmgCut);
+  }
+
+  // 暴风之眼战期间我方其余伤害 -50%（友方大风暴及其风弹不受此削减、另享 ×3 加成）。
+  // isStormBullet = 该伤害是否来自友方大风暴系统（风弹 / 主体接触）
+  function princeOtherDmgMul(isStormBullet) {
+    if (!hasPilot('tianxiu') || isStormBullet) return 1;
+    return stormBossFightActive() ? (1 - PILOTS.tianxiu.otherDmgCut) : 1;
+  }
+
+  // 大无垠之王：BOSS 战累积的造成伤害倍率（怒意蔓延——主炮/僚机/斩击/爆弹/友方风暴均生效）
+  function kingDmgBonusMul() {
+    return (hasPilot('king') && state.kingDmg > 0) ? 1 + state.kingDmg : 1;
+  }
+
+  // 驾驶员逐帧状态推进（14-main 主循环调用，位于 updateCrystals 之后）：
+  //   陵落：Q 技能冷却倒计时（开局技力条为空 = 冷却满值起步）
+  //   大无垠之王：BOSS 战期间累积 造成伤害 +1%/2s、受到伤害 +1%/4s（多阶段切换 ×phaseKeep / 阶段结束清零见 06-enemy killEnemy）
+  //   天秀：白色量表充能——非水晶得分差分（水晶得分经 princeCrystalGain 扣除）+ BOSS 战按秒充能
+  //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；闪避 / 攻速增益倒计时
+  function updatePilotStatus(dt) {
+    // 陵落：生命上限债务恢复（每秒 +2，不回当前血量，恢复至装甲基准为止）
+    if (player.lingluoMaxDebt > 0) {
+      const rec = Math.min(player.lingluoMaxDebt, PILOTS.lingluo.maxHpRegen * dt);
+      player.maxHp += rec;
+      player.lingluoMaxDebt -= rec;
+    }
+    // 哈基米大王：暴走结束后的闪避存续倒计时
+    if (state.hajimiTailT > 0) state.hajimiTailT = Math.max(0, state.hajimiTailT - dt);
+    if (hasPilot('lingluo') && state.lingluoCdT > 0) {
+      state.lingluoCdT = Math.max(0, state.lingluoCdT - dt);
+    }
+    if (hasPilot('king') && bossFlow.stage === 'fight') {
+      state.kingDmg += PILOTS.king.dmgRate * dt;
+      state.kingTaken += PILOTS.king.takenRate * dt;
+    }
+    // 大狗：每隔 14~22s 召唤一波 8 颗导弹雨（自下而上，见 launchDagouWave）
+    if (hasPilot('dagou')) {
+      state.dagouMissT -= dt;
+      if (state.dagouMissT <= 0) {
+        state.dagouMissT = rand(PILOTS.dagou.waveIvMin, PILOTS.dagou.waveIvMax);
+        launchDagouWave();
+      }
+    }
+    // 凌漓：隐藏计数表——填满 3200 分立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）；
+    // 连携七日澜心（同时装备该护甲）：澜心量表充满的瞬间（跨过 1）额外释放一次同款冲击波，
+    // 且凌漓计数减少 1000（不足 1000 则减到负数）
+    if (hasPilot('lingli')) {
+      if (state.lingliGauge >= PILOTS.lingli.gaugeFull) {
+        state.lingliGauge = 0;
+        lingliBurst();
+      }
+      const ag = state.armorSkillGauge || 0;
+      if (currentArmor.id === 'lanxin' && state.lingliArmorGaugePrev < 1 && ag >= 1) {
+        lingliBurst();
+        state.lingliGauge -= PILOTS.lingli.lanxinDrain;
+      }
+      state.lingliArmorGaugePrev = ag;
+    }
+    if (state.princeDodgeT > 0) state.princeDodgeT = Math.max(0, state.princeDodgeT - dt);
+    if (state.princeHasteT > 0) state.princeHasteT = Math.max(0, state.princeHasteT - dt);
+    if (!hasPilot('tianxiu')) return;
+    if (bossFlow.stage === 'fight' && player.alive) {
+      const rate = stormBossFightActive() ? PILOTS.tianxiu.stormCharge : PILOTS.tianxiu.bossCharge;
+      state.princeGauge = Math.min(1, state.princeGauge + rate * dt);
+    }
+    const delta = state.score - state.princeScoreBase - state.princeCrystalGain;
+    state.princeScoreBase = state.score;
+    state.princeCrystalGain = 0;
+    if (delta > 0) state.princeGauge = Math.min(1, state.princeGauge + delta / PILOTS.tianxiu.gaugeFull);
+  }
+
+  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子按 E 释放友方大风暴；陵落按 Q 强行暴走
+  function triggerPilotSkill(keyName = 'e') {
+    if (state.mode !== 'playing' || state.paused) return false;
+    // 天秀忧郁王子：量表满时向前方召唤友方大风暴——暴风之眼同款风暴的我方版
+    if (hasPilot('tianxiu') && keyName === 'e') {
+      if (state.princeGauge < 1) return false;
+      state.princeGauge = 0;
+      friendStorms.push({
+        x: player.x, y: player.y - 34,
+        t: 0, dur: PRINCE_STORM.dur,
+        rot: Math.random() * Math.PI * 2,
+        fireT: 0.3, hitT: PRINCE_STORM.tickIv,
+      });
+      spawnParticles(player.x, player.y, '#dff3ff', 26, 260);
+      shake(5, 0.25);
+      return true;
+    }
+    // 陵落：按 Q 触发暴走——立刻损失 40 生命（不会致死）；冷却 40s（开局技力条为空不能释放）。
+    // 暴走中再次触发（剩余 x 秒）：暴走时间重设为 默认持续 + y（y = min{1, x}），比单纯续时略多、不至溢出
+    if (hasPilot('lingluo') && keyName === 'q') {
+      if (!player.alive || state.lingluoCdT > 0) return false;
+      state.lingluoCdT = PILOTS.lingluo.cd;
+      // 代价：扣除 40 生命上限（血条缩短，下限 1）并至少扣除 40 当前生命（不低于 1，
+      // 超出新上限的部分裁剪）；上限随后每秒回 2（不回当前血量，重生/重开复原）
+      const cut = Math.min(PILOTS.lingluo.hpCost, player.maxHp - 1);
+      player.maxHp -= cut;
+      player.lingluoMaxDebt += cut;
+      player.hp = Math.max(1, Math.min(player.hp - PILOTS.lingluo.hpCost, player.maxHp));
+      spawnParticles(player.x, player.y, '#ff4d6d', 20, 240);
+      spawnParticles(player.x, player.y, '#c084fc', 16, 200);
+      if (player.weapon === 5) {
+        const y = Math.min(1, player.berserk);
+        player.berserk = BERSERK.duration + y;
+        player.berserkBanner = 1.0;
+        tryChengyueShield();   // 澄月：暴走续时判定一次（与 pickupBerserk 同约定）
+      } else {
+        player.weapon = 5;
+        player.berserk = BERSERK.duration;
+        player.berserkBanner = 2.0;
+        tryChengyueShield();   // 澄月：新触发暴走判定一次
+        shake(5, 0.25);
+        berserkBurst.active = true;
+        berserkBurst.t = 0;
+        berserkBurst.x = player.x;
+        berserkBurst.y = player.y;
+        berserkBurst.big = true;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // 凌漓：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
+  // 与澜心护盾消失的差异：不震屏（crystalBurst 冲击波环视觉完全一致）
+  function lingliBurst() {
+    crystalBurst.active = true;
+    crystalBurst.t = 0;
+    crystalBurst.x = player.x;
+    crystalBurst.y = player.y;
+    clearEnemyBulletsNear(player.x, player.y, 250);
+    spawnParticles(player.x, player.y, '#FFC0CB', 20, 200);
+  }
+
+  // 大狗：召唤一波 8 颗导弹雨——均匀分布（屏宽 / count 等分），中间两发先射出、随后向两侧
+  // 两两错峰（相邻两拍间隔 launchGap，很小）；导弹自下而上射出，白蓝渐变先兆者同款（绘制见 09-draw-ships）
+  function launchDagouWave() {
+    const cfg = PILOTS.dagou;
+    const n = cfg.count;
+    for (let k = 0; k < n; k++) {
+      const x = (k + 0.5) * CANVAS_W / n;
+      // 发射序：按距屏幕中线的远近两两配对（k=3/4 → 第 0 拍，2/5 → 1，1/6 → 2，0/7 → 3）
+      const order = Math.abs((n - 1) / 2 - k) - 0.5;
+      dagouMissiles.push({ x, y: CANVAS_H + 24, vy: -cfg.speed, r: cfg.r, delay: order * cfg.launchGap });
+    }
+    spawnParticles(CANVAS_W / 2, CANVAS_H - 8, '#9fd0ff', 14, 170);
+    shake(3, 0.15);
+  }
+
+  // 大狗导弹雨推进：发射延迟归零后上行飞行；命中首个敌人（含 BOSS）即小范围溅射并移除
+  function updateDagouMissiles(dt) {
+    for (let i = dagouMissiles.length - 1; i >= 0; i--) {
+      const m = dagouMissiles[i];
+      if (m.delay > 0) { m.delay -= dt; continue; }
+      m.y += m.vy * dt;
+      if (Math.random() < 0.6) spawnParticles(m.x + rand(-2, 2), m.y + m.r * 2.5, '#9fd0ff', 1, 40);   // 尾焰余粒
+      let hit = false;
+      for (const e of enemies) {
+        if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+        if (Math.abs(m.x - e.x) < e.w / 2 + m.r && Math.abs(m.y - e.y) < e.h / 2 + m.r) { hit = true; break; }
+      }
+      if (hit) {
+        dagouMissileBlast(m.x, m.y);
+        dagouMissiles.splice(i, 1);
+        continue;
+      }
+      if (m.y < -40) dagouMissiles.splice(i, 1);
+    }
+  }
+
+  // 大狗导弹溅射：对命中点周围小范围内的敌人造成 600 伤害（BOSS 500；大无垠之王累积增伤同样生效）
+  function dagouMissileBlast(x, y) {
+    const cfg = PILOTS.dagou;
+    spawnParticles(x, y, '#dff3ff', 20, 260);
+    spawnParticles(x, y, '#7fb8ff', 14, 220);
+    shake(4, 0.2);
+    const killed = [];
+    for (const e of enemies) {
+      if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+      if (Math.hypot(e.x - x, e.y - y) > cfg.blastR + Math.max(e.w, e.h) / 2) continue;
+      e.hp -= (e.type === 'boss' ? cfg.bossDmg : cfg.dmg) * kingDmgBonusMul();
+      if (e.hp <= 0) killed.push(e);
+    }
+    for (const t of killed) {
+      const j = enemies.indexOf(t);
+      if (j >= 0) killEnemy(j);
+    }
+  }
+
+  // 友方大风暴推进：向上缓慢推进 + 自转；周期性朝最近敌人射出风弹（我方 pBullets 弹道）；
+  // 主体接触伤害按 tick 周期对范围内敌人结算。暴风之眼战期间伤害 ×stormFightDmgMul（+200%）
+  function updateFriendStorms(dt) {
+    const mul = stormBossFightActive() ? PRINCE_STORM.stormFightDmgMul : 1;
+    for (let i = friendStorms.length - 1; i >= 0; i--) {
+      const s = friendStorms[i];
+      s.t += dt;
+      s.y -= PRINCE_STORM.riseSpd * dt;
+      s.rot += dt * 1.6;
+      // 风弹：朝最近的可伤害敌人（无目标则竖直向上）
+      s.fireT -= dt;
+      if (s.fireT <= 0 && s.t > 0.3) {
+        s.fireT = PRINCE_STORM.fireIv;
+        let tgt = null, bestD = Infinity;
+        for (const e of enemies) {
+          if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+          const d = Math.hypot(e.x - s.x, e.y - s.y);
+          if (d < bestD) { bestD = d; tgt = e; }
+        }
+        const base = tgt ? Math.atan2(tgt.y - s.y, tgt.x - s.x) : -Math.PI / 2;
+        for (let k = 0; k < PRINCE_STORM.bulletCount; k++) {
+          const ang = base + (k - (PRINCE_STORM.bulletCount - 1) / 2) * PRINCE_STORM.spreadDeg * Math.PI / 180;
+          pBullets.push({
+            x: s.x, y: s.y,
+            vx: Math.cos(ang) * PRINCE_STORM.bulletSpeed,
+            vy: Math.sin(ang) * PRINCE_STORM.bulletSpeed,
+            r: 4.5, dmg: PRINCE_STORM.bulletDmg * mul, color: '#dff3ff',
+            princeStorm: true, lv: 1,
+          });
+        }
+        spawnParticles(s.x, s.y, '#dff3ff', 3, 90);
+      }
+      // 主体接触伤害（可被御4力场削减；虚化敌人不受影响）
+      s.hitT -= dt;
+      if (s.hitT <= 0) {
+        s.hitT = PRINCE_STORM.tickIv;
+        const killed = [];
+        for (const e of enemies) {
+          if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+          if (Math.hypot(e.x - s.x, e.y - s.y) > PRINCE_STORM.r + Math.max(e.w, e.h) / 2) continue;
+          e.hp -= PRINCE_STORM.tickDmg * mul * yu4AuraMul(e) * kingDmgBonusMul();   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴
+          if (Math.random() < 0.4) spawnParticles(e.x + rand(-8, 8), e.y + rand(-8, 8), '#dff3ff', 1, 80);
+          if (e.hp <= 0) killed.push(e);
+        }
+        for (const t of killed) {
+          const j = enemies.indexOf(t);
+          if (j >= 0) killEnemy(j);
+        }
+      }
+      if (s.t >= s.dur || s.y < -PRINCE_STORM.r - 40) friendStorms.splice(i, 1);
+    }
+  }
+
   // 拾取升级套件：升火力；抵达 Lv5 即进入暴走；暴走期间拾取重置倒计时
   function pickupKit() {
     state.score += Math.round(50 * diffMods().scoreMul);
@@ -967,10 +1356,11 @@
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
       } else {
-        let dmg = BOMB_DAMAGE_BASE + e.maxHp * BOMB_DAMAGE_RATIO;
-        // 诗篇：高能爆弹对 BOSS 伤害 -25%（mods.bombBossDmgMul，缺省不乘）
+        let dmg = (BOMB_DAMAGE_BASE + e.maxHp * BOMB_DAMAGE_RATIO) * pilotBombDmgMul() * kingDmgBonusMul();   // 可莉：绷绷炸弹 ×1.5；大无垠之王：BOSS 战累积增伤
+        // 诗篇：高能爆弹对 BOSS 伤害 -25%（mods.bombBossDmgMul，缺省不乘）；
+        // 可莉：绷绷炸弹无视该难度修正（bombIgnoreDiffCut）
         const bbMul = diffMods().bombBossDmgMul;
-        if (e.type === 'boss' && bbMul != null) dmg *= bbMul;
+        if (e.type === 'boss' && bbMul != null && !hasPilot('keli')) dmg *= bbMul;
         e.hp -= dmg;
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
@@ -1103,4 +1493,7 @@
     segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, beamClipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
     accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
+    handlePlayerDeath, aiyiSelfDestruct, stormBossFightActive, triggerStormHitBuff, pilotStormContactMul,
+    princeOtherDmgMul, updatePilotStatus, triggerPilotSkill, updateFriendStorms, kingDmgBonusMul,
+    updateDagouMissiles,
   };

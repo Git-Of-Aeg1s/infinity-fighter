@@ -206,14 +206,14 @@
   const STORM2_SHIP = {
     s1: {
       shots: 5,              // 激光连续射出次数
-      charge2: 1.0,          // 第 2~5 次预警时长（s）：与首发一致（必大于 gapMax，保证预警在上一发射完前开始）
+      charge2: 0.8,          // 第 2~5 次预警时长（s）：与预警圈收缩时长（ring2Dur）一致——收缩到核心瞬间即发射（必大于 gapMax，保证预警在上一发射完前开始）
       ring2R0: 300,          // 第 2~5 次预警圈起始半径（与首发一致，特效不减弱）
       ring2Dur: 0.8,         // 第 2~5 次预警圈收缩时长（与首发一致）
       gapMin: 0.1, gapMax: 0.5,   // 上一发射完到下一发开火的间隔
       spdMulMax: 2.0,        // 首次蓄力期间逐渐提升到的移速倍率（200%）
       spdDecay: 6,           // 5 次射完后移速加成的衰减速率（指数系数/s）
     },
-    s2: { linkS6Chance: 0.5, noLinkCdMul: 0.1 },   // 技能2：50% 同时释放技能6；未连携则下次技能间隔 ×0.1（-90%）
+    s2: { linkS6Chance: 0.5, noLinkCdMul: 0.1, linkRounds: 1, linkDur: 1.5 },   // 技能2：50% 同时释放技能6——仅 1 轮重现光束（连携时间轴 1.5s = 0.95 汇聚 + 0.45 预警 + 0.1 缓冲，不按独立释放 3 轮 4.6s 计）；未连携则下次技能间隔 ×0.1（-90%）
     s3: { secondMin: 0.5, secondMax: 1.0 },        // 技能3：第二回释放间隔（s）
     s4: { rings: 8, ringGapMul: 0.6 },             // 技能4：雷环固定 8 圈；生成间隔 ×0.6（-40%）
     s5: { zoneTop: 0.40, volleyGapMul: 0.9 },      // 技能5：落点区域扩展到下方 60%（top = 0.40 屏高）；轰击错峰 ×0.9
@@ -535,6 +535,9 @@
       burnR: 100, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
       brief: '战机周身围绕火环，灼烧接近敌人',
       desc: '自身环绕焦香同款火环（半径 100，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害' },
+    standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8',
+      brief: '标准配置，没有任何效果',
+      desc: '标准护甲。<br>没有任何效果。' },
   };
   let currentArmor = ARMORS.watch;   // 默认装甲：群星守望（无按钮无资源管理、击杀即触发清弹，对新最无脑直观）
   // 装甲写入入口：与 setPlane/setWingman/setDifficulty 同约定——顶层 let 的写操作必须经由 setter
@@ -650,6 +653,153 @@
     barLen: 26, barR: 3.4,                      // 长条弹长度 / 半宽
     volleyGap: 0.11,                            // 一轮内两 volley 间隔（连续发射两次）
     flameLenMul: 0.65,                          // Lv1~4 尾焰长度系数（-35%，仅长度、亮度不变）；Lv5 暴走不受影响
+  };
+
+  // ---------- 驾驶员系统 ----------
+  // 主界面选择、整场战斗生效的驾驶员（战斗修正 + 装备连携）。注册表键序 = 主菜单卡片展示顺序。
+  // brief = 主菜单卡片简短文案；desc = 详细数值文案（后续可接入数值图鉴）。
+  // 效果键（缺省安全回退，与 diffMods 同约定）：
+  //   bombDmgMul    可莉：高能爆弹（绷绷炸弹）伤害倍率
+  //   bombStartAdd  可莉：初始爆弹额外数量
+  //   dashDur/dashLv 许凯狗：开场冲刺时长（s）/ 结束时跳到的关卡等级
+  //   chargeDur/scoreMul 埃逸：死亡蓄力自爆时长（s）/ 自爆击杀的得分倍率
+  //   gaugeFull/bossCharge/stormCharge 天秀忧郁王子：量表所需非水晶分数 / BOSS 战每秒充能 / 暴风之眼战每秒充能
+  //   stormDmgCut/stormCrashCut 天秀：来自暴风之眼的伤害削减（普通/碰撞）
+  //   stormBuffDur/hasteBoost/gaugeHitGain 天秀：受暴风之眼伤害后的增益时长/攻速倍率/量表增益
+  //   otherDmgCut 天秀：暴风之眼战期间其余我方伤害削减（友方大风暴不受此削减、另享 PRINCE_STORM.stormFightDmgMul）
+  const PILOTS = {
+    none: {
+      id: 'none', name: '无驾驶员', empty: true,
+      desc: '不携带驾驶员出击。',
+    },
+    keli: {
+      id: 'keli', name: '可莉', glyph: '✹', color: '#ff7a45', slot: 'main',
+      bombDmgMul: 1.5, bombStartAdd: 1, bombIgnoreDiffCut: true,   // 绷绷炸弹无视诗篇爆弹对 BOSS 的伤害减少
+      // aoeCut/missileCut：受到的瞬时区域伤害 / 导弹伤害削减
+      // （瞬时区域 = 暴鸰爆炸 / 破片范围伤害 / 风暴编织者雷霆轰击 / 暴风之眼区域打击；
+      //   导弹 = 先兆者导弹；长条激光 / 持续灼烧 / 撞击伤害不适用）
+      aoeCut: 0.3, missileCut: 0.3,
+      brief: '绷绷炸弹 ×1.5 且无视诗篇减伤；区域伤害与导弹伤害 -30%',
+      desc: '可莉爱用绷绷炸弹。绷绷炸弹替代高能爆弹<br>伤害为高能爆弹的 150%<br>初始额外拥有 1 颗绷绷炸弹<br>无视诗篇难度的爆弹对 BOSS 伤害减少<br>受到的瞬时区域伤害 -30%<br>（暴鸰爆炸 / 破片范围伤害 / 雷霆轰击 /<br>暴风之眼区域打击）<br>受到的导弹伤害 -30%（先兆者导弹）<br>（长条激光 / 持续灼烧 / 撞击不适用）',
+    },
+    xukaigou: {
+      id: 'xukaigou', name: '许凯狗', glyph: '⇈', color: '#ffd166', slot: 'main',
+      dashDur: 6, dashLv: 7,
+      brief: '开场高能冲刺：无敌横扫，1s/级，结束直升 Lv7',
+      desc: '许凯狗元气磅礴。开场进行 6s 高能冲刺（期间无敌）<br>来袭敌人出场即被击溃（道具正常掉落）<br>升级时间缩短至 1s（每级刷怪量与正常一致）<br>冲刺结束时等级直接跳至 Lv7',
+    },
+    aiyi: {
+      id: 'aiyi', name: '埃逸', glyph: '✸', color: '#ff4d6d', slot: 'main',
+      chargeDur: 1.2, scoreMul: 0.2, bossDmg: 6000,   // bossDmg：非最后一条命自爆对 BOSS 的固定伤害
+      brief: '死亡时蓄力自爆：终局可秒杀全场含 BOSS，仅得 20% 分数',
+      desc: '埃逸能流奔涌。死亡时短暂蓄力 1.2s 后自爆<br>最后一条命：秒杀当前屏幕所有敌人（含 BOSS）<br>非最后一条命：秒杀全部非 BOSS 敌人，<br>并对 BOSS 造成 6000 伤害<br>被自爆击杀的敌人仅获得 20% 分数<br>最后一条命的自爆击杀最终 BOSS 仍算作胜利<br>（结算标题"自爆成功"）',
+    },
+    tianxiu: {
+      id: 'tianxiu', name: '天秀忧郁王子', glyph: '☯', color: '#dff3ff', slot: 'sub',
+      gaugeFull: 40000, bossCharge: 0.02, stormCharge: 0.06,
+      stormDmgCut: 0.5, stormCrashCut: 0.6,
+      stormBuffDur: 5, hasteBoost: 1.8, gaugeHitGain: 0.18,
+      otherDmgCut: 0.5,
+      brief: '白色量表充能后按 E 召唤友方大风暴；自带暴风之眼对策',
+      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 40000 充满<br>（BOSS 战 +2%/s；暴风之眼战 +6%/s）<br>满时按 E：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>受暴风之眼伤害后：50% 闪避 + 攻速 +80% +<br>量表 +18%（持续 5s）<br>暴风之眼战期间：友方大风暴伤害 ×3、其余我方伤害 -50%',
+    },
+    king: {
+      id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffd166', slot: 'sub',
+      // dmgRate/takenRate：BOSS 战期间每秒累积的 造成伤害/受到伤害 提升（1%/2s 与 1%/4s）
+      // phaseKeep：多阶段 BOSS 切换（暴风之眼→风暴编织者）时两项累积增伤的留存比例（-75%）
+      dmgRate: 0.005, takenRate: 0.0025, phaseKeep: 0.25,
+      brief: '怒意蔓延：BOSS 战越战越勇，也越战越脆',
+      desc: '大无垠之王怒意蔓延。BOSS 战期间：每经过 2s 造成伤害 +1%，<br>每经过 4s 受到伤害 +1%（可无限累积）<br>多阶段 BOSS 切换时（暴风之眼→风暴编织者）<br>两项累积各减少 75%<br>BOSS 阶段结束时立刻失去全部累积',
+    },
+    wenjiuke: {
+      id: 'wenjiuke', name: '温酒客', glyph: '醉', color: '#c9a0ff', slot: 'sub',
+      brief: '隐匿于黑暗，神秘无比',
+      desc: '温酒客隐匿于黑暗神秘无比。温酒客很神秘，<br>没有任何技能。<br>（待最终决战版本设计）',
+    },
+    xiaoyi: {
+      id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub',
+      pickupHeal: 12, pickupHealLow: 18, pickupHealLowPct: 0.35,   // 拾取道具回血 / 低血回血 / 低血阈值（水晶不算）
+      huiHealMul: 1.35,   // 连携洄：洄的治疗效果 ×1.35
+      brief: '森灵之力：拾取道具恢复生命；洄的治疗 +35%',
+      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 12 生命<br>血量低于 35% 时改为恢复 18 生命<br>同时装备护甲「洄」时：<br>洄的治疗效果增加 35%',
+    },
+    lingluo: {
+      id: 'lingluo', name: '陵落', glyph: '✵', color: '#c084fc', slot: 'main',
+      // cd：Q 技能冷却（s，开局技力条为空）/ hpCost：每次触发同时扣除的生命上限与当前生命（下限 1）
+      // maxHpRegen：生命上限恢复速率（每秒，不回当前血量）
+      cd: 40, hpCost: 40, maxHpRegen: 2,
+      brief: '按 Q 强行暴走：代价为 40 生命上限+40 生命，40s 冷却',
+      desc: '陵落掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后以每秒 2 点回复（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
+    },
+    hajimi: {
+      id: 'hajimi', name: '哈基米大王', glyph: '喵', color: '#ff9ab5', slot: 'main',
+      dodgeBase: 0.2, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
+      brief: '狂暴出击：暴走期 20% 闪避（延至结束后 4s），失败则概率累积',
+      desc: '哈基米大王狂暴出击。暴走期间 20% 概率闪避受到的伤害<br>（闪避不受伤害、但正常触发受击无敌）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
+    },
+    dagou: {
+      id: 'dagou', name: '大狗', glyph: '汪', color: '#7fb8ff', slot: 'main',
+      // 导弹雨：waveIv 召唤间隔（s）/ count 每波数量 / dmg 对命中目标及小范围敌人的伤害（BOSS 为 bossDmg）
+      // blastR 溅射半径 / speed 上行速度 / launchGap 相邻两发的发射间隔（s，中间两发先出、向两侧两两错开）
+      waveIvMin: 14, waveIvMax: 22, count: 8,
+      dmg: 600, bossDmg: 500, blastR: 70, speed: 950, launchGap: 0.1, r: 10,
+      brief: '叫叫叫：每隔 14~22s 自下而上召唤一波 8 颗导弹雨',
+      desc: '大狗叫叫叫。每隔 14~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>导弹为白蓝色渐变的先兆者同款<br>对命中目标及周围小范围敌人造成 600 伤害<br>（对 BOSS 降低为 500）',
+    },
+    lingli: {
+      id: 'lingli', name: '凌漓', glyph: '⚔', color: '#f5b8d0', slot: 'sub',
+      // 隐藏计数表（不显示于 HUD）：gaugeFull 填满所需水晶分数（类比七日澜心，无首轮 BOSS 加成、
+      // BOSS 水晶不计入）；填满立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）。
+      // lanxinDrain：连携七日澜心——澜心量表充满瞬间额外释放一次，并从本表扣除的水晶分数（可扣至负数）
+      gaugeFull: 3200, lanxinDrain: 1000,
+      brief: '隐藏计数表：水晶 3200 分充满即放淡粉冲击波；连携澜心',
+      desc: '折光穹顶之剑，通天之十四塔。拥有独立隐藏计数表<br>（不显示，逻辑类似七日澜心：按水晶得分充能，<br>无首轮 BOSS 加成且 BOSS 水晶不计入）<br>填满 3200 分后立刻清空并释放淡粉冲击波<br>（清除 250px 内所有敌方子弹，不震屏）<br>同时装备七日澜心护甲时：澜心量表充满的瞬间<br>也立刻释放一次同款冲击波，<br>且凌漓计数减少 1000（不足 1000 则减到负数）',
+    },
+    hudike: {
+      id: 'hudike', name: '胡笛客', glyph: '笛', color: '#8a9bb0', slot: 'main',
+      brief: '卑鄙无耻，没有任何效果',
+      desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
+    },
+    xiaoyang: {
+      id: 'xiaoyang', name: '萧杨', glyph: '萧', color: '#7a8a6e', slot: 'sub',
+      brief: '阴险狡诈，没有任何效果',
+      desc: '萧杨阴险狡诈。<br>没有任何效果。',
+    },
+  };
+  // ---------- 主/副驾驶员槽位 ----------
+  // 每名驾驶员归属 slot（'main' 主驾驶员 / 'sub' 副驾驶员，暂定分野、可随设计调整）；
+  // 可同时装备主副各一名，效果同时生效。战斗逻辑经 hasPilot(id) 判定（任一槽位命中即生效），
+  // 不区分主副——待主/副差异设计明确后再在此扩展。
+  let currentPilotMain = PILOTS.none;   // 主驾驶员（默认空；写操作经 setPilotMain）
+  let currentPilotSub = PILOTS.none;    // 副驾驶员（默认空；写操作经 setPilotSub）
+  function setPilotMain(p) { currentPilotMain = p; }
+  function setPilotSub(p) { currentPilotSub = p; }
+  // 当前是否装备了指定驾驶员（主副任一槽位命中即 true）
+  function hasPilot(id) { return currentPilotMain.id === id || currentPilotSub.id === id; }
+  // 当前生效驾驶员的注册表条目聚合（效果键读取用：任一槽位携带该键即生效，主槽优先）
+  function pilotEntry(id) {
+    if (currentPilotMain.id === id) return currentPilotMain;
+    if (currentPilotSub.id === id) return currentPilotSub;
+    return null;
+  }
+  // 可莉：绷绷炸弹伤害倍率 / 初始额外爆弹数
+  function pilotBombDmgMul() { return (pilotEntry('keli') || {}).bombDmgMul || 1; }
+  function pilotBombStartAdd() { return (pilotEntry('keli') || {}).bombStartAdd || 0; }
+  // 小艺连携洄：洄的治疗效果倍率（回血 / BOSS 击败回血均乘算）
+  function pilotHuiHealMul() {
+    const x = pilotEntry('xiaoyi');
+    return (x && currentArmor.id === 'hui' && currentArmor.regenHp) ? x.huiHealMul : 1;
+  }
+
+  // 天秀忧郁王子：友方大风暴（暴风之眼同款风暴的我方版，按 E 释放）
+  //   dur 存留时长（s）/ riseSpd 向上推进速度 / r 判定与视觉半径
+  //   tickDmg/tickIv 主体接触伤害与间隔 / fireIv 风弹轮间隔 / bulletCount/spreadDeg 每轮风弹数与夹角
+  //   stormFightDmgMul 暴风之眼战期间的伤害倍率（+200%）/ bulletAlphaStormFight 暴风之眼战中我方风弹透明度（与敌弹样式相同，压透明度区分）
+  const PRINCE_STORM = {
+    dur: 7, riseSpd: 130, r: 110,
+    tickDmg: 60, tickIv: 0.2,
+    fireIv: 0.55, bulletCount: 2, bulletDmg: 20, bulletSpeed: 480, spreadDeg: 8,
+    stormFightDmgMul: 3, bulletAlphaStormFight: 0.35,
   };
 
   // 守愿者白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
@@ -1324,6 +1474,8 @@
     DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isShipian, invulnDiffMul, bossDmgMul, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP,
     DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, currentArmor, setArmor, armorMaxHp,
+    PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
+    pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, PRINCE_STORM,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,
     BAOLING, JIAOXIANG, DOUZHI, FASHI_A1, FASHI_A2, POPIAN,

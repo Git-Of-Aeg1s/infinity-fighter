@@ -303,6 +303,13 @@ canvas#game {
   box-shadow: 0 0 6px rgba(124, 231, 255, 0.35), inset 0 0 3px rgba(124, 231, 255, 0.3);
 }
 
+/* 可莉（驾驶员）：绷绷炸弹 HUD 图标红橙火花主题着色 */
+.bomb-icons.klee .bomb-icon {
+  border-color: #ff7a45;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 165, 90, 0.6), rgba(255, 90, 40, 0.1) 72%);
+  box-shadow: 0 0 6px rgba(255, 122, 69, 0.45), inset 0 0 3px rgba(255, 122, 69, 0.35);
+}
+
 /* 引信火花：圆球右上角的小亮点 */
 .bomb-icon::after {
   content: '';
@@ -455,6 +462,28 @@ canvas#game {
 }
 
 .skill-gauge.hidden { display: none; }
+
+/* 驾驶员量表（天秀忧郁王子白色计数表）：与装甲量表同款式，白色主题 */
+.pilot-gauge {
+  --skill-color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.22));
+}
+
+/* 驾驶员面板：主/副槽位分区标题 */
+.pilot-slot-label {
+  width: 100%;
+  margin: 2px 0 4px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: rgba(255, 213, 128, 0.75);
+  text-align: left;
+}
+
+/* 装备框驾驶员副槽摘要：小一号的淡色文字 */
+.loadout-value-sm {
+  font-size: 10px;
+  opacity: 0.75;
+}
 
 /* 量表环：conic-gradient 按填充角度渲染（updateHUD 逐帧写入） */
 .skill-gauge-ring {

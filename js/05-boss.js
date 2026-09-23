@@ -603,7 +603,7 @@
       // 风旋机体碰撞（预警阶段尚无实体，不判定）
       if (state.stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
           Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + PLAYER_CFG.hitRadius) {
-        damagePlayer(STORM.vortexDmg * bossDmgMul());
+        damagePlayer(STORM.vortexDmg * bossDmgMul(), 1, false, false, 'storm');   // src 'storm'：天秀忧郁王子暴风之眼伤害削减挂点
       }
     } else if (s.id === 7) {
       // 技能8「双子旋臂」：两个环上弹幕点持续喷射旋臂风弹
@@ -688,7 +688,7 @@
           f.hit = true;   // 无敌期间处于带内同样消耗本次判定：风波掠过，不结算也不补判——
           // （否则无敌结束时会被"迟到"的风波命中：出现时无敌跳过判定、静止玩家在无敌结束后被判中）
           if (player.invuln <= 0) {
-            damagePlayer(STORM.windDmg * bossDmgMul());
+            damagePlayer(STORM.windDmg * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             // 击退：竖直推离风波带（玩家在带下方则下推、上方则上推）+ 向入射侧回推的固定分量
             // （不能用 player - 采样点：c.x 恒等于 player.x，会导致 dx=0、方向退化）
             const vdir = ((player.y + PLAYER_CFG.hitOffsetY) - c.y) >= 0 ? 1 : -1;
@@ -706,7 +706,7 @@
         if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER_CFG.hitRadius) {
           p.hit = true;   // 无敌期间处于柱内同样消耗本次判定：光柱掠过，不结算也不补判
           if (player.invuln <= 0) {
-            damagePlayer(STORM.pillarDmg * bossDmgMul());
+            damagePlayer(STORM.pillarDmg * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             knockbackPlayer(player.x - p.x, 0, 420);
           }
         }
@@ -780,6 +780,7 @@
       beamTrail: opts.beamTrail || false,   // 折线光束：记录头部轨迹，光束沿轨迹从 0 增长、转折自然弯折（技能3）
       bounceX: opts.bounceX || false,  // 触左右边界反弹（技能3）
       seed: opts.seed != null ? opts.seed : ((Math.random() * 1e9) | 0),   // 电弧闪频种子（渲染步进用）
+      owner: opts.owner != null ? opts.owner : bossBulletOwner,   // 发射者归属（opts 显式指定优先，如大型龙卷；否则取 updateBoss 期间的 BOSS 标记）——天秀忧郁王子"来自暴风之眼的伤害"判定用
     });
   }
 
@@ -815,7 +816,7 @@
   //   技能5 雷霆打击：周身雷电环演出，下方 30% 区域随机 5 处依次雷击（40 伤害，雷电积聚预警 1.2s，
   //         区域半径 = 焦香螺旋桨火环 JIAOXIANG.auraR；击中中心外扩一圈 14~20 枚雷电子弹）
   //   技能6 重现光束：四喷口沿臂方向直射光束出屏 → 光束于机体上方左右两点重现，每边每轮 2 条、恒定 3 轮
-  //         （同边两束夹角 ≥15°，轮次间隔 1.5s）；重现光束弹速 ×0.6；撞守愿者白盾被一次性咬合吃掉（盾移开不恢复）；
+  //         （同边两束夹角 ≥15°，轮次间隔 1.5s；诗篇技能2 连携时仅 1 轮、时间轴 1.5s）；重现光束弹速 ×0.6；撞守愿者白盾被一次性咬合吃掉（盾移开不恢复）；
   //         技能本体 4.6s 收束，飞行光束存于 e.s6Beams 独立存活（不拖长技能间隔）
   //
   // 四臂/喷口几何：与 11-draw-boss drawStormBossII 的绘制常量保持一致（改动需双侧同步）
@@ -1083,7 +1084,7 @@
   function fireS2Strike(x, y, dmgMul, cntMul, sm = 1) {
     if (player.alive && player.invuln <= 0 && player.shield <= 0 &&
         Math.hypot(player.x - x, (player.y + PLAYER_CFG.hitOffsetY) - y) < S2_STRIKE_R) {
-      damagePlayer(STORM2.s5Dmg * dmgMul * bossDmgMul());
+      damagePlayer(STORM2.s5Dmg * dmgMul * bossDmgMul(), 1, false, false, 'aoe');   // 雷霆轰击（瞬时区域伤害）：可莉 -30% 挂点
     }
     spawnStorm2Ring(x, y, 6, 0, sm, STORM2.s5RingDecelMul, 1, null, cntMul);
     spawnParticles(x, y, '#eaf6ff', 18, 260);
@@ -1109,7 +1110,7 @@
   }
 
   // 技能6 阶段逻辑（id 5 主释放 / 诗篇技能2 连携子状态共用）：p 携带 { t, armFired, pointsAt, ptT, shot, targets }；
-  //   连携（p.linked）：臂向光束蓄力（延迟）与汇聚预警时长 ×1.5、臂向光束变淡（faint）；
+  //   连携（p.linked）：臂向光束蓄力（延迟）与汇聚预警时长 ×1.5、臂向光束变淡（faint）、重现光束仅 1 轮；
   //   光束统一写入 e.s6Beams（BOSS 实体级，由 updateS6Beams 独立驱动推进/判定/绘制）
   function runS6Phase(e, p, sm, dt) {
     if (!e.s6Beams) e.s6Beams = [];
@@ -1127,7 +1128,7 @@
       spawnParticles(ball.x, ball.y, '#bfe6ff', 12, 200);
       shake(6, 0.25);
     }
-    // 阶段2：光束于左右边界重现（汇聚预兆，连携时 ×1.5），每边每轮 2 条（同边两束夹角 ≥15°）、恒定 3 轮：
+    // 阶段2：光束于左右边界重现（汇聚预兆，连携时 ×1.5），每边每轮 2 条（同边两束夹角 ≥15°）、恒定 3 轮（连携仅 1 轮，见下）：
     //   左右镜像对称；重现光束与臂向光束同长（640），以慢速（×0.6，约 1.7s 抵底）沿瞄准方向飞行，命中一次
     if (!p.pointsAt && p.t >= 0.95) {
       p.pointsAt = true;
@@ -1136,7 +1137,9 @@
       const py0 = e.y - 26;
       p.targets = [pickStorm2Aims(py0), pickStorm2Aims(py0), pickStorm2Aims(py0)];   // 每轮各抽一对角度
     }
-    if (p.pointsAt && p.shot < 3) {
+    //   连携（p.linked）仅 1 轮（STORM2_SHIP.s2.linkRounds），时间轴按 linkDur（1.5s）收束，不按 3 轮 4.6s 计
+    const rounds = p.linked ? STORM2_SHIP.s2.linkRounds : 3;
+    if (p.pointsAt && p.shot < rounds) {
       p.ptT -= dt;
       if (p.ptT <= 0) {
         p.ptT = 1.5;   // 两轮之间间隔 1.5s（预警 → 光束自 0 增长并飞抵 → 下一轮）
@@ -1358,11 +1361,17 @@
     }
 
     if (s.t >= s.dur) {
-      // 诗篇：技能2 连携的技能6 未放完——随技能2收束无缝转为独立技能6（保留时间轴与轮次进度，不重置冷却）
-      if (s.id === 1 && s.s6 && s.s6.t < 4.6) {
-        e.skill = { id: 5, t: s.s6.t, dur: 4.6, armFired: true, pointsAt: s.s6.pointsAt,
-          ptT: s.s6.ptT, shot: s.s6.shot, targets: s.s6.targets, spMul: s.spMul || 1,
-          linked: true, warnDur: s.s6.warnDur, carried: true };
+      // 诗篇：技能2 连携的技能6 未放完——随技能2收束无缝转为独立技能6（保留时间轴与轮次进度，不重置冷却）；
+      //   连携仅 1 轮（linkDur 1.5s < 技能2 自身时长 2.19s），正常随技能2收束即结束、不再转入独立技能6
+      if (s.id === 1 && s.s6) {
+        const ld = s.s6.linked ? STORM2_SHIP.s2.linkDur : 4.6;
+        if (s.s6.t < ld) {
+          e.skill = { id: 5, t: s.s6.t, dur: ld, armFired: true, pointsAt: s.s6.pointsAt,
+            ptT: s.s6.ptT, shot: s.s6.shot, targets: s.s6.targets, spMul: s.spMul || 1,
+            linked: true, warnDur: s.s6.warnDur, carried: true };
+        } else {
+          e.skill = null;
+        }
       } else {
         e.skill = null;
       }
@@ -1424,7 +1433,18 @@
     });
   }
 
+  // BOSS 弹幕归属标记（驾驶员伤害来源判定用）：updateBoss 推进期间置为当前 BOSS 实体，
+  // pushBossBullet 生成的弹携带 owner —— 08-entities 命中判定据此识别"来自暴风之眼的弹幕"（天秀忧郁王子）
+  let bossBulletOwner = null;
+
   function updateBoss(e, dt) {
+    const prevOwner = bossBulletOwner;
+    bossBulletOwner = e;
+    try { updateBossBody(e, dt); }
+    finally { bossBulletOwner = prevOwner; }   // 无论分支如何返回都恢复：避免污染同帧后续 pushBossBullet（如大型龙卷开火）的归属
+  }
+
+  function updateBossBody(e, dt) {
     e.t += dt;
     if (e.bossId === 'storm') { updateBossStorm(e, dt); return; }   // 暴风之眼走独立状态机
     if (e.bossId === 'storm2') { updateBossStorm2(e, dt); return; }   // 风暴编织者（雷电飞舰）

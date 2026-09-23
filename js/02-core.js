@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime}
   //
-  import { CANVAS_H, CANVAS_W, DOUZHI, PLAYER_CFG, STAR_COUNT, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, DOUZHI, PILOTS, PLAYER_CFG, STAR_COUNT, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
 
 
   // ---------- DOM ----------
@@ -33,6 +33,11 @@
   // 七日澜心（装甲技能）圆形计数表：左下角生命值上方量表（12-ui updateHUD 渲染填充角度）
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
+  // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 E 释放友方大风暴）
+  // 陵落复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
+  const pilotGauge = document.getElementById('pilotGauge');
+  const pilotGaugeRing = document.getElementById('pilotGaugeRing');
+  const pilotGaugeKey = document.getElementById('pilotGaugeKey');
 
   const overlay = document.getElementById('overlay');
   const overlayTitle = document.getElementById('overlayTitle');
@@ -48,6 +53,8 @@
   const diffLabel = document.getElementById('diffLabel');     // HUD 左上角当前难度标签
   const wingmanGrid = document.getElementById('wingmanGrid');
   const armorGrid = document.getElementById('armorGrid');
+  const pilotGridMain = document.getElementById('pilotGridMain');   // 主驾驶员卡片网格
+  const pilotGridSub = document.getElementById('pilotGridSub');     // 副驾驶员卡片网格
   const bossTestRow = document.getElementById('bossTestRow');
   const retrialBtn = document.getElementById('retrialBtn');   // 胜利结算页「再次挑战」（仅试炼/挑战模式显示）
   const gameoverHomeBtn = document.getElementById('gameoverHomeBtn');   // 失败结算页「返回主界面」
@@ -92,6 +99,23 @@
     hpKitBanked: 0,        // 诗篇加血节流：冷却期内"预触发"计数（50%/杀；冷却结束后第一个敌人必掉一个并清零）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
+    pilotDashT: 0,         // 许凯狗：开场高能冲刺剩余时长（s；resetGame 置位，14-main 递减与调度）
+    princeDodgeT: 0,       // 天秀忧郁王子：50% 闪避增益剩余时长（受暴风之眼伤害后 5s，见 07-player damagePlayer）
+    princeHasteT: 0,       // 天秀忧郁王子：攻速 +80% 增益剩余时长（与闪避同窗触发；乘区并入 hasteMul）
+    princeGauge: 0,        // 天秀忧郁王子：白色量表（0~1；非水晶得分 40000 充满，BOSS 战按秒充能；按 E 释放友方大风暴）
+    princeScoreBase: 0,    // 天秀忧郁王子：上一帧分数快照（逐帧差分 = 非水晶得分增量）
+    princeCrystalGain: 0,  // 天秀忧郁王子：本帧水晶得分累计（08-entities 水晶拾取写入，差分时扣除 → 只计非水晶得分）
+    aiyiSelfDestruct: false,  // 埃逸：自爆结算中（killEnemy 得分按 20% 结算；嵌套连锁期间保持置位）
+    aiyiFinalDeath: false,    // 埃逸：最后一条命的死亡（endGame 延后到自爆结算之后；若自爆带来胜利则跳过）
+    selfDestructVictory: false, // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就占位标记见 06-enemy killEnemy）
+    lingluoCdT: 0,         // 陵落：Q 技能冷却剩余（s；开局 = PILOTS.lingluo.cd，技力条为空）
+    kingDmg: 0,            // 大无垠之王：BOSS 战累积的造成伤害提升（小数，0.05 = +5%；阶段结束清零）
+    kingTaken: 0,          // 大无垠之王：BOSS 战累积的受到伤害提升（多阶段切换 ×phaseKeep）
+    hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
+    hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
+    dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 14~22s 随机初值）
+    lingliGauge: 0,        // 凌漓：隐藏计数表（水晶分数累计，3200 填满；不显示于 HUD）
+    lingliArmorGaugePrev: 0, // 凌漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
@@ -158,6 +182,8 @@
     slashGapT: 0,      // 暴走三连斩：距下一击的间隔计时
     bladeFlashT: 0,    // 双刃攻击闪光计时（doSlash 置位，updateStarslayer 衰减，paintStarslayer 读取）
     berserkSpread: 0,  // 暴走刃帆变形进度 0~1（updateStarslayer 驱动，paintStarslayer 读取）
+    aiyiChargeT: 0,    // 埃逸：死亡蓄力自爆倒计时（damagePlayer 掉命时置位，updatePlayer 递减，归零触发自爆）
+    lingluoMaxDebt: 0, // 陵落：被扣除的生命上限余量（每秒回 2 直至清零；重生/重开复原）
   };
 
   /** @type {Array} */ const enemies = [];
@@ -184,6 +210,8 @@
   /** @type {Array} */ const phaseFx = [];   // 碎盾特效（群星之杀斩碎虚化护盾：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片）
   /** @type {Array} */ const watchClearFx = [];   // 群星守望消弹特效（淡黄光粒连线 + 原位迸粒，低图层：绘制于子弹之下）
   /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
+  /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 E 释放，向上推进 + 风弹 + 主体接触伤害）
+  /** @type {Array} */ const dagouMissiles = []; // 大狗：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
@@ -320,8 +348,13 @@
            e.y + e.h / 2 > 0 && e.y - e.h / 2 < CANVAS_H;
   }
 
-  // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时返回 2，否则 1）
-  function hasteMul() { return state.hasteT > 0 ? DOUZHI.buffMul : 1; }
+  // 斗志昂扬增益倍率：击毁后 8s 内我方攻速 / 弹道飞行速度翻倍（hasteT > 0 时 ×2）；
+  // 天秀忧郁王子：受暴风之眼伤害后的攻速增益期间再 ×hasteMul（+80%），两者乘算
+  function hasteMul() {
+    let m = state.hasteT > 0 ? DOUZHI.buffMul : 1;
+    if (state.princeHasteT > 0) m *= PILOTS.tianxiu.hasteBoost;
+    return m;
+  }
 
   // 按权重从池中随机取一个 id（weights 缺失的 id 视为 1）——BOSS 技能加权随机用
   function weightedPick(pool, weights) {
@@ -452,18 +485,18 @@
   export {
     canvas, ctx, setCtx, DPR, hpFill, scoreText,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
-    douzhiBar, douzhiFill, skillGauge, skillGaugeRing,
+    douzhiBar, douzhiFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey,
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
-    wingmanGrid, armorGrid, bossTestRow,
+    wingmanGrid, armorGrid, pilotGridMain, pilotGridSub, bossTestRow,
     retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dagouMissiles,
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, hasteMul, weightedPick, spawnParticles,

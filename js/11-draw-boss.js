@@ -1834,25 +1834,56 @@
     return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
   }
   // 电弧光束：自 (x,y) 沿 ang 延伸 len 的光柱——外辉光 + 蓝体淡白芯主体 + 沿主轴锯齿电弧（默认绘制）；
-  // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）
-  function drawS2Beam(x, y, ang, len, halfW, alpha) {
+  // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）；
+  // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
+  //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
+  function drawS2Beam(x, y, ang, len, halfW, alpha, root) {
     if (len <= 0.5) return;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
     ctx.globalAlpha = alpha;
+    const w0 = root ? halfW * 0.22 : halfW;   // 根部宽度（root 时收为细点）
+    const tw = root ? Math.min(len * 0.6, halfW * 3.2) : 0;   // 收束段长度（至全宽）
     const g = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
     g.addColorStop(0, 'rgba(111, 184, 255, 0)');
     g.addColorStop(0.5, 'rgba(111, 184, 255, 0.45)');
     g.addColorStop(1, 'rgba(111, 184, 255, 0)');
     ctx.fillStyle = g;
-    ctx.fillRect(0, -halfW * 1.9, len, halfW * 3.8);
+    ctx.beginPath();
+    ctx.moveTo(0, -w0 * 1.9);
+    if (root) ctx.lineTo(tw, -halfW * 1.9);
+    ctx.lineTo(len, -halfW * 1.9);
+    ctx.lineTo(len, halfW * 1.9);
+    if (root) ctx.lineTo(tw, halfW * 1.9);
+    ctx.lineTo(0, w0 * 1.9);
+    ctx.closePath();
+    ctx.fill();
     const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
     g2.addColorStop(0, 'rgba(120, 190, 255, 0.85)');
     g2.addColorStop(0.5, '#d8ecff');
     g2.addColorStop(1, 'rgba(120, 190, 255, 0.85)');
     ctx.fillStyle = g2;
-    ctx.fillRect(0, -halfW, len, halfW * 2);
+    ctx.beginPath();
+    ctx.moveTo(0, -w0);
+    if (root) ctx.lineTo(tw, -halfW);
+    ctx.lineTo(len, -halfW);
+    ctx.lineTo(len, halfW);
+    if (root) ctx.lineTo(tw, halfW);
+    ctx.lineTo(0, w0);
+    ctx.closePath();
+    ctx.fill();
+    if (root) {
+      // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
+      const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
+      rg.addColorStop(0, 'rgba(235, 249, 255, 0.9)');
+      rg.addColorStop(0.45, 'rgba(170, 220, 255, 0.45)');
+      rg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(0, 0, halfW * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // 头端圆帽 + 白蓝热斑：矩形端头收为圆头，避免生硬截断感
     ctx.beginPath();
     ctx.arc(len, 0, halfW, -Math.PI / 2, Math.PI / 2);
@@ -1959,7 +1990,7 @@
         const life = s.shipian ? s.pt : s.t - STORM2.s1Charge;
         const vis = life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / (STORM2.s1BeamDur - 0.12);
         const a = clamp(vis, 0, 1) * 0.95;
-        drawS2Beam(ball.x, ball.y, Math.PI / 2, CANVAS_H - ball.y + 30, STORM2.s1R, a);
+        drawS2Beam(ball.x, ball.y, Math.PI / 2, CANVAS_H - ball.y + 30, STORM2.s1R, a, true);   // root：自能量球核心收束发出，避免顶部截断
         // 周身狂乱电流（lightning-2 细流光弧）：10 枚沿光束左右边缘高速环绕游走、剧烈明灭
         if (lightningImgThin) {
           const asp = (lightningImgThin.naturalWidth / lightningImgThin.naturalHeight) || 0.2;

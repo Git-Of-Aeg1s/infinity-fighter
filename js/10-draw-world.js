@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, currentArmor } from './01-config.js';
-  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
+  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PRINCE_STORM, currentArmor } from './01-config.js';
+  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, drawNebulae, drawStars, eBullets, enemies, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
   import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
@@ -570,6 +570,28 @@
 
   function drawBullets() {
     for (const b of pBullets) {
+      // 天秀忧郁王子：友方大风暴风弹——暴风之眼同款风白椭圆风条（小号简化版）；
+      // 暴风之眼 BOSS 战中敌我风弹样式相同，我方风弹整体压至 bulletAlphaStormFight（0.35）透明度区分
+      if (b.princeStorm) {
+        const stormFight = enemies.some(e => e.type === 'boss' && e.bossId === 'storm' && !e.dying);
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(Math.atan2(b.vy, b.vx));
+        ctx.globalAlpha = stormFight ? PRINCE_STORM.bulletAlphaStormFight : 0.95;
+        const hl = 11, rr = b.r;
+        const wg = ctx.createLinearGradient(-hl, 0, hl, 0);
+        wg.addColorStop(0, 'rgba(223, 243, 255, 0.15)');
+        wg.addColorStop(0.5, '#ffffff');
+        wg.addColorStop(1, '#dff3ff');
+        ctx.fillStyle = wg;
+        ctx.shadowColor = '#dff3ff';
+        ctx.shadowBlur = 9;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, hl, rr, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
       if (b.wing) {
         // 僚机长条弹幕：沿飞行方向，尾→头渐变；尾焰长度/亮度随 flameMul（0~1）增长，暴走（=1）最强
         //   群星允诺：旋转胶囊体（暖色尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）
@@ -1347,6 +1369,63 @@
     ctx.restore();
   }
 
+  // 天秀忧郁王子：友方大风暴——暴风之眼同款俯视旋涡的我方版（三层旋臂 + 风暴眼 + 外虚线环），
+  // 白蓝色调；存留末段渐隐。绘制于僚机之后、子弹之前（不遮挡我方弹幕）
+  function drawFriendStorms() {
+    for (const s of friendStorms) {
+      const fadeIn = clamp(s.t / 0.4, 0, 1);
+      const fadeOut = clamp((s.dur - s.t) / 0.5, 0, 1);
+      const a = Math.min(fadeIn, fadeOut);
+      if (a <= 0) continue;
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.rot);
+      // 整体辉光（白蓝径向渐变）
+      const glow = ctx.createRadialGradient(0, 0, s.r * 0.1, 0, 0, s.r);
+      glow.addColorStop(0, `rgba(223, 243, 255, ${(0.30 * a).toFixed(3)})`);
+      glow.addColorStop(0.55, `rgba(180, 220, 255, ${(0.14 * a).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(180, 220, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(0, 0, s.r, 0, Math.PI * 2); ctx.fill();
+      // 三层旋臂（对数螺旋弧线，转速随层错开）
+      ctx.lineCap = 'round';
+      const arms = [
+        { mul: 0.95, lw: 3.2, col: `rgba(223, 243, 255, ${(0.75 * a).toFixed(3)})`, rot: 0 },
+        { mul: 0.82, lw: 2.2, col: `rgba(190, 228, 255, ${(0.55 * a).toFixed(3)})`, rot: 2.1 },
+        { mul: 0.68, lw: 1.6, col: `rgba(255, 255, 255, ${(0.45 * a).toFixed(3)})`, rot: 4.2 },
+      ];
+      for (const L of arms) {
+        ctx.strokeStyle = L.col;
+        ctx.lineWidth = L.lw;
+        ctx.shadowColor = '#dff3ff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        for (let k = 0; k <= 26; k++) {
+          const t = k / 26;
+          const ang = L.rot + t * 2.4;
+          const r = s.r * L.mul * (0.22 + 0.78 * t);
+          const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+          k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      // 风暴眼（白核）+ 外圈旋转虚线环
+      const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, s.r * 0.18);
+      eye.addColorStop(0, `rgba(255, 255, 255, ${(0.95 * a).toFixed(3)})`);
+      eye.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = eye;
+      ctx.beginPath(); ctx.arc(0, 0, s.r * 0.18, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(223, 243, 255, ${(0.4 * a).toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([8, 12]);
+      ctx.lineDashOffset = -state.time * 30;
+      ctx.beginPath(); ctx.arc(0, 0, s.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
   function render() {
     // 抖动
     ctx.save();
@@ -1388,10 +1467,12 @@
     drawStarslayerBeam();   // 群星之杀：机头淡白锁定光束（敌机之上、玩家之下）
     drawPlayer();
     drawWingmen();
+    drawFriendStorms();   // 天秀忧郁王子：友方大风暴（僚机之上、子弹之下）
     drawTrailGhosts();
     drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
     drawBullets();
     drawMissiles();
+    drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
     drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）

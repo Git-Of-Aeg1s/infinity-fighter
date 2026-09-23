@@ -235,6 +235,23 @@ try {
   frames(120);
   sample('二次开局 120 帧');
 
+  // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
+  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 陵落 Q 技能），
+  // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 E/Q → 暂停返回主界面
+  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'lingluo', 'hajimi', 'dagou', 'lingli', 'hudike', 'xiaoyang']) {
+    const allCards = [...elements.pilotGridMain.children, ...elements.pilotGridSub.children];
+    const card = allCards.find(c => c.dataset && c.dataset.pilot === pid);
+    if (!card) { errors.push({ key: '驾驶员卡片缺失', stack: 'pilotGrid 中未找到卡片 ' + pid }); continue; }
+    card.click();
+    elements.startBtn.click();                  // 以该驾驶员开局
+    frames(200);                                // ≈3.3s：出怪 / 冲刺秒杀 / 开火 / 拾取 / HUD
+    key('e'); frames(5); key('e', false);       // 驾驶员技能键 E（量表未满 / 无技能驾驶员时为空操作）
+    key('q'); frames(5); key('q', false);       // 驾驶员技能键 Q（陵落：冷却未结束时为空操作）
+    key('p'); frames(5);                        // 暂停
+    elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
+    sample('驾驶员 ' + pid + ' 主路径');
+  }
+
   // 怪物图鉴：打开即构建列表 + 全部条目缩略图（drawEncyPreview → 嵌套 withPreviewCtx）
   // 入口按钮现为主菜单静态元素（index.html 内 id=encyEntryBtn），由 getElementById 获取
   const encyBtn = documentStub.getElementById('encyEntryBtn');

@@ -5,16 +5,16 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
   import { armorGlyphFx, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, encyClose, enemies, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
-  import { clearMissiles, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, tryChengyueShield, updateDemo, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
+  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildArmorCards, buildDiffCards, buildPlaneCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
   import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
@@ -47,6 +47,8 @@
     if (k === 'r') resetGame(true, { keepTest: true });
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
+    if (k === 'e' && state.mode === 'playing' && !state.paused) triggerPilotSkill('e');   // 驾驶员技能（天秀忧郁王子：友方大风暴；量表满方可触发）
+    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（陵落：强行暴走；冷却结束方可触发）
     // 作弊：切换武器等级（测试用）。需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为标识）才能用 1~5 切换。
     // 武装按键在任意界面状态均可触发（菜单 / 暂停 / 结算中皆可按 0）；图鉴挑战模式同样需要武装（门控统一）。
     // "+" 立刻再召唤一个测试目标
@@ -102,6 +104,26 @@
       const lvCfg = SPAWN_PHASE_LEVEL[bossFlow.phase] || SPAWN_PHASE_LEVEL[SPAWN_PHASE_LEVEL.length - 1];
       const lvPhaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
       levelFlow.level = lvCfg.base + Math.floor(Math.min(bossFlow.timer, lvPhaseTime) / lvCfg.step);
+
+      // 许凯狗：开场高能冲刺（PILOTS.xukaigou）——
+      //   等级 1s/级（开局 1 级起步，封顶 dashLv）；冲刺期间无敌由 resetGame 覆盖；
+      //   出场即秒：所有非 BOSS 敌人（含增生分裂 / 召唤衍生体）出生即被击溃，走完整击杀流程（道具正常掉落）；
+      //   刷怪量与正常一致：冲刺阶段刷怪间隔 ÷SPAWN_PHASE_LEVEL.step（见下方 spawnTimer 赋值处）；
+      //   冲刺结束：bossFlow.timer 对齐到 dashLv 对应时刻（1 + 30/5 = 7 → 直接衔接 Lv7，刷怪期总长不变）
+      if (state.pilotDashT > 0) {
+        state.pilotDashT = Math.max(0, state.pilotDashT - dt);
+        levelFlow.level = Math.min(PILOTS.xukaigou.dashLv,
+          1 + Math.floor((PILOTS.xukaigou.dashDur - state.pilotDashT) / 1));
+        levelFlow.prevLevel = levelFlow.level;   // 冲刺期升级不触发斗志昂扬判定
+        bossFlow.timer = 0;
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const e = enemies[i];
+          if (e && e.type !== 'boss' && !e._deathSettled) killEnemy(i);
+        }
+        if (state.pilotDashT <= 0) {
+          bossFlow.timer = (PILOTS.xukaigou.dashLv - lvCfg.base) * lvCfg.step;
+        }
+      }
 
       // 关卡提升时：每次升级有 DOUZHI.spawnChance 概率从屏幕左/右侧生成一架斗志昂扬横穿（挑战模式不生成）；
       // 击败 BOSS 引发的阶段跳变升级除外（douzhiSkipOnce，见 killEnemy）
@@ -217,8 +239,13 @@
           // 基础波间隔随难度倍率放大：真我 ×1.3（总刷怪量/同屏数量 ≈ -23%）、具象 ×2.3（≈ -55%）
           const base = Math.max(0.55, 2.1 - (levelFlow.level - 1) * 0.15)
             * (diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1);
-          // 高于阈值时下一波间隔放大（较慢）；低于阈值保持基础间隔并叠加加速流逝 → 迅速补怪
-          levelFlow.spawnTimer = rand(base * 0.7, base * 1.3) * (pressure >= threshold ? SPAWN_SLOW_MUL : 1);
+          if (state.pilotDashT > 0) {
+            // 许凯狗冲刺阶段：升级 5 倍速（1s/级）→ 刷怪间隔同比 ÷5，保证每级刷怪量与正常刷怪一致
+            levelFlow.spawnTimer = (base / SPAWN_PHASE_LEVEL[0].step) * rand(0.8, 1.2);
+          } else {
+            // 高于阈值时下一波间隔放大（较慢）；低于阈值保持基础间隔并叠加加速流逝 → 迅速补怪
+            levelFlow.spawnTimer = rand(base * 0.7, base * 1.3) * (pressure >= threshold ? SPAWN_SLOW_MUL : 1);
+          }
           levelFlow.lowPressureT = 0;
         }
 
@@ -260,6 +287,9 @@
       updateZoneMarks(dt);   // 暴风之眼：区域标记倒计时 / 风流 / 风柱
       updatePowerups(dt);
       updateCrystals(dt);
+      updateFriendStorms(dt);   // 天秀忧郁王子：友方大风暴推进（风弹 / 主体接触伤害 / 生命周期）
+      updateDagouMissiles(dt);  // 大狗：导弹雨推进（错峰发射 / 上行飞行 / 命中溅射）
+      updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 陵落冷却 / 大狗计时
       updateParticles(dt);
       updateStars(dt);
       updateNebulae(dt);
@@ -273,7 +303,7 @@
           state.victoryOverlay = true;
           resultAchieve.classList.remove('hidden');   // 胜利结算页显示「获得成就」区（暂停页在 togglePause 内隐藏）
           showOverlay(
-            '胜利',
+            state.selfDestructVictory ? '自爆成功' : '胜利',   // 埃逸：自爆击杀 BOSS 的胜利结算改用专属标题（成就占位见 06-enemy killEnemy）
             `击坠 <b style="color:#ffb545">${bossFlow.defeatedName || ''}</b>！` +
             (state.challenge ? '<br />' : '<br /><br />') +   // 挑战模式无得分行：不插空行（避免三行间距过大）
             `<span class="result-stats">` +
@@ -448,6 +478,7 @@
   buildPlaneCards();
   buildWingmanCards();
   buildArmorCards();
+  buildPilotCards();   // 驾驶员选择卡片（PILOTS 注册表驱动，panelPilot 面板）
   initMenuPanels();   // 主菜单装备四框 ↔ 展开面板绑定 + 当前配置摘要
   resetGame(false);
   fitStage();

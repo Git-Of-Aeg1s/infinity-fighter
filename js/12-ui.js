@@ -5,8 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { ARMOR_SKILLS, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPlane, currentWingman, diffMods, setArmor, setDifficulty, setPlane, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
+  import { ARMOR_SKILLS, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setWingman } from './01-config.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, friendStorms, gameoverHomeBtn, hpFill, infoEntryBtn, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { delayedShots, initWingmen } from './07-player.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
@@ -64,13 +64,33 @@
       skillGauge.classList.toggle('ready', frac >= 1);
       skillGauge.style.setProperty('--skill-color', skillDef.color);
     }
+    // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表（按 E）/ 陵落 Q 冷却（按 Q，满格 = 可释放）
+    const pilotGaugeMode = (currentPilotMain.id === 'tianxiu' || currentPilotSub.id === 'tianxiu') ? 'tianxiu'
+      : (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? 'lingluo' : null;
+    const showPilotGauge = !!pilotGaugeMode && state.mode === 'playing';
+    pilotGauge.classList.toggle('hidden', !showPilotGauge);
+    if (showPilotGauge) {
+      let frac, ready;
+      if (pilotGaugeMode === 'tianxiu') {
+        frac = clamp(state.princeGauge || 0, 0, 1);
+        ready = frac >= 1;
+      } else {
+        frac = clamp(1 - state.lingluoCdT / PILOTS.lingluo.cd, 0, 1);
+        ready = state.lingluoCdT <= 0 && player.alive;
+      }
+      pilotGaugeRing.style.background = `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+      pilotGauge.classList.toggle('ready', ready);
+      if (pilotGaugeKey) pilotGaugeKey.textContent = pilotGaugeMode === 'tianxiu' ? 'E' : 'Q';
+    }
+    // 可莉：绷绷炸弹 HUD 图标着色（红橙火花主题）
+    bombIcons.classList.toggle('klee', currentPilotMain.id === 'keli' || currentPilotSub.id === 'keli');
   }
   // ---------- 流程控制 ----------
   function resetGame(autoStart = false, opts = {}) {
     state.score = 0;
     levelFlow.level = 1;
     const bombStart = diffMods().bombStart;
-    state.bombs = bombStart != null ? bombStart : 1;   // 诗篇：初始不带高能爆弹（mods.bombStart）
+    state.bombs = (bombStart != null ? bombStart : 1) + pilotBombStartAdd();   // 诗篇：初始不带高能爆弹（mods.bombStart）；可莉：初始额外 1 颗绷绷炸弹
     state.lives = PLAYER_CFG.lives;
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
@@ -94,6 +114,28 @@
     state.hpKitBanked = 0;    // 诗篇加血节流预触发计数清零
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
     state.armorSkillGauge = 0;    // 装甲技能量表（七日澜心）重开归零
+    // 驾驶员运行态重置：许凯狗冲刺（测试 / 图鉴挑战直接开 BOSS 战，不进入冲刺阶段）
+    state.pilotDashT = ((currentPilotMain.id === 'xukaigou' || currentPilotSub.id === 'xukaigou') && !state.testBoss && !state.challenge)
+      ? PILOTS.xukaigou.dashDur : 0;
+    // 天秀忧郁王子：量表与增益全部归零
+    state.princeGauge = 0; state.princeDodgeT = 0; state.princeHasteT = 0;
+    state.princeScoreBase = 0; state.princeCrystalGain = 0;
+    // 陵落：Q 技能冷却满值起步（开局技力条为空，不能立刻释放）；大狗：导弹雨计时取 14~22s 随机初值
+    state.lingluoCdT = (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? PILOTS.lingluo.cd : 0;
+    state.dagouMissT = (currentPilotMain.id === 'dagou' || currentPilotSub.id === 'dagou')
+      ? rand(PILOTS.dagou.waveIvMin, PILOTS.dagou.waveIvMax) : 0;
+    // 哈基米大王：闪避累积加成与尾部闪避计时清零；凌漓：隐藏计数表与澜心量表快照归零
+    state.hajimiDodgeBonus = 0;
+    state.hajimiTailT = 0;
+    state.lingliGauge = 0;
+    state.lingliArmorGaugePrev = 0;
+    player.lingluoMaxDebt = 0;   // 陵落：生命上限债务清零（player.maxHp 已在下方按装甲复原）
+    // 大无垠之王：BOSS 战累积增伤清零
+    state.kingDmg = 0; state.kingTaken = 0;
+    // 埃逸：自爆相关状态归零
+    state.aiyiSelfDestruct = false; state.aiyiFinalDeath = false; state.selfDestructVictory = false;
+    player.aiyiChargeT = 0;
+    friendStorms.length = 0;      // 友方大风暴随重开清空
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
@@ -159,7 +201,7 @@
     player.hp = player.maxHp;
     player.cooldown = 0;
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
-    player.invuln = 1.0;
+    player.invuln = state.pilotDashT > 0 ? state.pilotDashT : 1.0;   // 许凯狗：开局无敌覆盖整个冲刺阶段（不闪动）
     player.invulnBlink = false;   // 开局无敌不闪动：清掉上一局残留的受击闪动标记（登场/重生无敌保持机体完整可见）
     player.alive = true;
     player.weapon = (state.testBoss || state.challenge) ? 4 : (currentPlane.startWeapon || 1);   // BOSS 试炼 / 图鉴挑战：默认火力 Lv4
@@ -251,13 +293,22 @@
     document.querySelectorAll('.loadout-box, .pilot-diamond').forEach(b => b.classList.remove('open'));
   }
 
-  // 框内当前配置摘要 + 当前形象缩略图（副武器/驾驶员未实装：静态占位，不在刷新范围）
+  // 框内当前配置摘要 + 当前形象缩略图（副武器未实装：静态占位，不在刷新范围）
   function refreshLoadout() {
     const planeVal = document.getElementById('loadoutPlaneVal');
     const armorVal = document.getElementById('loadoutArmorVal');
     const wingmanVal = document.getElementById('loadoutWingmanVal');
+    const pilotVal = document.getElementById('loadoutPilotVal');
     if (planeVal) planeVal.textContent = currentPlane.name;
     if (armorVal) armorVal.textContent = currentArmor.name;
+    // 驾驶员菱形框摘要：主驾驶员名 + 副驾驶员名（副行为空则只显示主）；悬停提示含双槽详情
+    const pilotDiamond = document.querySelector('.pilot-diamond');
+    const pilotSubVal = document.getElementById('loadoutPilotSubVal');
+    if (pilotVal) pilotVal.textContent = currentPilotMain.empty ? '无' : currentPilotMain.name;
+    if (pilotSubVal) pilotSubVal.textContent = currentPilotSub.empty ? '' : '副·' + currentPilotSub.name;
+    if (pilotDiamond) pilotDiamond.title =
+      '主驾驶员：' + (currentPilotMain.empty ? '无' : currentPilotMain.name) +
+      '／副驾驶员：' + (currentPilotSub.empty ? '无' : currentPilotSub.name);
     // 装甲名正下方的半透明图标（绝对定位，不挤动文字）：随当前装甲同步图案与颜色
     const armorGlyph = document.getElementById('loadoutArmorGlyph');
     if (armorGlyph) {
@@ -524,7 +575,55 @@
     }
   }
 
+  // ---------- 驾驶员选择页面 ----------
+  // 驾驶员注册表（PILOTS，见 01-config）驱动：主界面菱形框面板按 主/副 两个槽位分区生成卡片
+  // （各含"无驾驶员"空选项；同名驾驶员不可同时占据两槽——选中一侧会自动从另一侧卸下）。
+  // 效果经各战斗挂点 hasPilot(id) 判定（任一槽位命中即生效）
+  function buildPilotCards() {
+    buildPilotGrid(pilotGridMain, 'main');
+    buildPilotGrid(pilotGridSub, 'sub');
+  }
+
+  function buildPilotGrid(grid, slot) {
+    const equipped = slot === 'main' ? currentPilotMain : currentPilotSub;
+    grid.innerHTML = '';
+    for (const id in PILOTS) {
+      const p = PILOTS[id];
+      if (!p.empty && p.slot !== slot) continue;   // 各槽位只列出归属该槽位的驾驶员（none 恒显示）
+      const card = document.createElement('div');
+      card.className = 'armor-card pilot-card' + (p.id === equipped.id ? ' selected' : '') + (p.empty ? ' wingman-none' : '');
+      card.dataset.pilot = p.id;
+      if (!p.empty) {
+        const glyph = document.createElement('div');
+        glyph.className = 'armor-card-glyph';
+        glyph.textContent = p.glyph;
+        glyph.style.color = p.color;
+        card.appendChild(glyph);
+      }
+      const name = document.createElement('div');
+      name.className = 'armor-card-name';
+      name.textContent = p.name;
+      const desc = document.createElement('div');
+      desc.className = 'armor-card-desc';
+      desc.innerHTML = p.desc;   // 卡片直接展示完整数值文案（驾驶员条目较少，不区分 brief/desc）
+      card.append(name, desc);
+      card.addEventListener('click', () => {
+        // 槽位写入 + 同名互斥：选中一侧时从另一侧卸下同名驾驶员
+        if (slot === 'main') {
+          setPilotMain(p);
+          if (currentPilotSub.id === p.id) setPilotSub(PILOTS.none);
+        } else {
+          setPilotSub(p);
+          if (currentPilotMain.id === p.id) setPilotMain(PILOTS.none);
+        }
+        buildPilotCards();   // 重渲染两侧网格的选中态（简单可靠）
+        refreshLoadout();    // 菱形框摘要同步
+      });
+      grid.appendChild(card);
+    }
+  }
+
   export {
     updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
-    buildWingmanCards, buildPlaneCards, initMenuPanels, togglePause, endGame,
+    buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, endGame,
   };

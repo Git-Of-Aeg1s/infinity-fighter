@@ -49,12 +49,17 @@
         </div>
       </div>
 
-      <!-- 左下角：装甲技能量表（七日澜心，生命值上方） + 心心 + HP 条 -->
+      <!-- 左下角：装甲技能量表（七日澜心） + 驾驶员量表（天秀忧郁王子） + 心心 + HP 条 -->
       <div class="hud-bl">
         <!-- 护甲技能圆形计数表（七日澜心专属；按填充角度统计量表，满后按 F 触发） -->
         <div class="skill-gauge hidden" id="skillGauge" title="护甲技能量表：满后按 F 释放">
           <div class="skill-gauge-ring" id="skillGaugeRing"></div>
           <span class="skill-gauge-key">F</span>
+        </div>
+        <!-- 驾驶员量表（天秀忧郁王子白色量表按 E / 陵落 Q 冷却，按键标签随驾驶员切换） -->
+        <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
+          <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
+          <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
         </div>
         <div class="hp-row">
           <span class="lives-text" id="livesText">♥♥</span>
@@ -87,7 +92,7 @@
            底部（难度切换 + 开始游戏 | 怪物图鉴 | 右下角 ⓘ 数值与机制图鉴） -->
       <div class="menu-screen hidden" id="menuScreen">
         <!-- 版本号：主菜单右上角（与 package.json / README 版本保持同步） -->
-        <span class="menu-version">v0.3.1</span>
+        <span class="menu-version">v0.3.2</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
@@ -100,6 +105,8 @@
           <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停 / 继续</span></div>
           <div class="help-row"><span class="help-keys"><kbd>R</kbd></span><span class="help-desc">立即重开</span></div>
           <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能（七日澜心，量表满后）</span></div>
+          <div class="help-row"><span class="help-keys"><kbd>E</kbd></span><span class="help-desc">驾驶员技能（天秀忧郁王子，量表满后）</span></div>
+          <div class="help-row"><span class="help-keys"><kbd>Q</kbd></span><span class="help-desc">驾驶员技能（陵落，强行暴走，冷却结束）</span></div>
         </div>
 
         <div class="menu-hero">
@@ -127,12 +134,13 @@
               <span class="loadout-label">副武器</span>
               <span class="loadout-value">未实装</span>
             </button>
-            <!-- 驾驶员系统未实装：淡金色菱形占位，可点击展开占位面板；
+            <!-- 驾驶员菱形框：点击展开驾驶员选择面板（卡片由 12-ui buildPilotCards 按 PILOTS 注册表生成）；
                  文字样式复用装备框的 label / value 类 -->
-            <button class="pilot-diamond" data-panel="panelPilot" title="驾驶员系统开发中">
+            <button class="pilot-diamond" data-panel="panelPilot" title="主驾驶员：无／副驾驶员：无">
               <span class="pilot-face">
                 <span class="loadout-label">驾驶员</span>
-                <span class="loadout-value">未实装</span>
+                <span class="loadout-value" id="loadoutPilotVal">无</span>
+                <span class="loadout-value loadout-value-sm" id="loadoutPilotSubVal"></span>
               </span>
             </button>
           </div>
@@ -177,7 +185,10 @@
             <button class="panel-close" data-close="panelPilot" aria-label="收起">✕</button>
           </div>
           <div class="loadout-panel-body">
-            <p class="panel-placeholder">驾驶员系统开发中，敬请期待</p>
+            <div class="pilot-slot-label">主驾驶员</div>
+            <div class="armor-grid pilot-grid" id="pilotGridMain"></div>
+            <div class="pilot-slot-label">副驾驶员</div>
+            <div class="armor-grid pilot-grid" id="pilotGridSub"></div>
           </div>
         </div>
         <div class="loadout-panel hidden" id="panelWingman">

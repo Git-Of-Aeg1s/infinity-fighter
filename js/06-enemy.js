@@ -5,15 +5,14 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
   //
-  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_MUL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, hasPilot, invulnDiffMul, pilotHuiHealMul } from './01-config.js';
   import { blBombs, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
-  import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, shieldSweepHit, testDamagePlayer } from './07-player.js';
+  import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, pilotStormContactMul, shieldSweepHit, testDamagePlayer, triggerStormHitBuff } from './07-player.js';
   import { updateBossLootMarks } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
-  import { endGame } from './12-ui.js';
 
 
 
@@ -43,10 +42,14 @@
             player.shield <= 0 && player.crystalShield <= 0) {
           if (Math.random() < 0.5) spawnParticles(player.x + rand(-8, 8), player.y + rand(-8, 8), '#ff4d6d', 1, 70);
           if (e.bossId === 'storm') {
+            // 天秀忧郁王子：暴风之眼碰撞伤害 -60%（pilotStormContactMul('stormCrash')）；
+            // 持续接触期间按受击触发增益（triggerStormHitBuff 内部对非天秀为空操作）
+            const contactMul = pilotStormContactMul('stormCrash');
+            if (contactMul < 1) triggerStormHitBuff();
             if (state.challenge) {
-              testDamagePlayer(dt / 0.025 * bossDmgMul());   // ≈40 HP/s（具象：BOSS 伤害 -40%），血量 ≤0 立刻重置为满
+              testDamagePlayer(dt / 0.025 * bossDmgMul() * contactMul);   // ≈40 HP/s（具象：BOSS 伤害 -40%），血量 ≤0 立刻重置为满
             } else {
-              player.hp -= dt / 0.025 * bossDmgMul();   // ≈40 HP/s（具象：BOSS 伤害 -40%）
+              player.hp -= dt / 0.025 * bossDmgMul() * contactMul;   // ≈40 HP/s（具象：BOSS 伤害 -40%）
               if (player.hp <= 0) {
                 // 最终壁垒：每条命一次的免死同样生效于本持续接触致死路径
                 if (!tryBulwarkCheatDeath()) {
@@ -55,8 +58,7 @@
                   state.lives--;
                   spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
                   shake(16, 0.6);
-                  if (state.lives <= 0) setTimeout(() => endGame(), 700);
-                  else player.respawnTimer = PLAYER_CFG.respawnTime;
+                  handlePlayerDeath();
                 }
               }
             }
@@ -159,7 +161,9 @@
             : base2 * POPIAN.crashHighMul;
         }
         // 护盾（量子 / 水晶）期间撞机不震屏：damagePlayer 被护盾吸收返回 false，返回值决定是否给撞击反馈
-        const tookHit = crashDmg > 0 ? damagePlayer(crashDmg, ENEMY_TYPES[e.type].invulnMul || 1) : false;
+        // 大型龙卷（暴风之眼召唤物）碰撞伤害携带 src 'stormCrash'：天秀忧郁王子碰撞伤害 -60% 挂点
+        const tookHit = crashDmg > 0 ? damagePlayer(crashDmg, ENEMY_TYPES[e.type].invulnMul || 1,
+          false, false, e.type === 'tornado' ? 'stormCrash' : null) : false;
         e.hp -= 40 * yu4AuraMul(e);   // 撞机反伤为普通伤害，可被御4防御光环削减（真实伤害仅高能爆弹）
         spawnParticles(e.x, e.y, e.color, 18, 220);
         if (tookHit) shake(6, 0.25);   // 撞机冲击震屏较弱（受击本体反馈见 damagePlayer）
@@ -855,10 +859,11 @@
         e.fireTimer = rand(0.20, 0.30);
         for (let k = 0; k < 2; k++) {
           // 风条：初速低沿飞行方向加速（100.625→408.1），长度 7.2 以 150px/s 长到 42，波动渲染
+          // owner 显式传 e（大型龙卷）：天秀忧郁王子"来自暴风之眼召唤物的伤害"判定用
           pushBossBullet(e.x + rand(-e.w * 0.2, e.w * 0.2), e.y + rand(-e.h * 0.3, e.h * 0.3),
             Math.random() * Math.PI * 2, 56,
             { r: 5.6, dmg: STORM.tornadoDmg, color: STORM_WIND, len: 7.2, lenTarget: 42, growRate: 150,
-              oval: true, accel: 100.625, maxSpeed: 408.1 });
+              oval: true, accel: 100.625, maxSpeed: 408.1, owner: e });
         }
       }
       return;
@@ -1354,7 +1359,7 @@
         testDamagePlayer(flat);
         player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 受击无敌：闪动提示
       } else {
-        damagePlayer(flat);
+        damagePlayer(flat, 1, false, false, 'missile');   // 导弹伤害：可莉 -30% 挂点
       }
       shake(8, 0.35);
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
@@ -1370,7 +1375,7 @@
       return;
     }
     // 走标准 damagePlayer（isMissile=true：不计入常规受击计数、不触发掉级累计）；命中后武器等级 -1、暴走中断
-    if (damagePlayer(dmg, 1, false, true)) {
+    if (damagePlayer(dmg, 1, false, true, 'missile')) {
       if (player.weapon > 1) player.weapon--;
       player.berserk = 0;
     }
@@ -1480,12 +1485,12 @@
     const b = m.burst;
     let hitLanded = false;
     if (m.idx === 0) {
-      if (damagePlayer(POPIAN.firstDmg, 1, false, true)) { b.firstHit = true; hitLanded = true; }   // 首发成功造成伤害 → 标记，后两发无视无敌
+      if (damagePlayer(POPIAN.firstDmg, 1, false, true, 'aoe')) { b.firstHit = true; hitLanded = true; }   // 首发成功造成伤害 → 标记，后两发无视无敌（瞬时区域伤害：可莉 -30% 挂点）
     } else if (b.firstHit) {
-      damagePlayer(POPIAN.followDmg, 1, true, true);   // 无视玩家无敌时间
+      damagePlayer(POPIAN.followDmg, 1, true, true, 'aoe');   // 无视玩家无敌时间
       hitLanded = true;
     } else {
-      damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul, false, true);   // 该次受击无敌时间 -30%
+      damagePlayer(POPIAN.followDmg, POPIAN.invulnCutMul, false, true, 'aoe');   // 该次受击无敌时间 -30%
       hitLanded = true;
     }
     if (hitLanded && !b.counted) { b.counted = true; accumulateWeaponDropHit(); }   // 整轮仅计一次命中
@@ -1675,7 +1680,7 @@
     shake(11, 0.35);
     if (player.alive &&
         Math.hypot(player.x - b.tx, player.y - b.ty) <= BAOLING.blastR) {
-      damagePlayer(BAOLING.playerDmg);
+      damagePlayer(BAOLING.playerDmg, 1, false, false, 'aoe');   // 瞬时区域伤害：可莉 -30% 挂点
     }
   }
 
@@ -1700,7 +1705,7 @@
     spawnParticles(e.x, e.y, '#ffffff', 12, 240);
     if (player.alive &&
         Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) {
-      damagePlayer(BAOLING.playerDmg);
+      damagePlayer(BAOLING.playerDmg, 1, false, false, 'aoe');   // 瞬时区域伤害：可莉 -30% 挂点
     }
     for (const t of enemies) {
       if (t === e) continue;
@@ -1897,8 +1902,7 @@
       state.lives--;
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       shake(16, 0.6);
-      if (state.lives <= 0) setTimeout(() => endGame(), 700);
-      else player.respawnTimer = PLAYER_CFG.respawnTime;
+      handlePlayerDeath();
     }
   }
 
@@ -1915,9 +1919,15 @@
       const i = enemies.indexOf(e);
       if (i >= 0) enemies.splice(i, 1);
     };
+    // 埃逸自爆击杀：得分按驾驶员注册表倍率结算（20%）
+    const aiyiEntry = hasPilot('aiyi') ? (PILOTS.aiyi) : null;
+    const sdScoreMul = (state.aiyiSelfDestruct && aiyiEntry) ? (aiyiEntry.scoreMul || 1) : 1;
     // BOSS 击毁：单独结算
     if (e.type === 'boss') {
-      if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul);
+      if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
+      // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就系统未实装——
+      // TODO(成就占位)：成就 id 'aiyi_boss_selfdestruct'，待成就系统落地后在此登记解锁）
+      if (state.aiyiSelfDestruct && hasPilot('aiyi')) state.selfDestructVictory = true;
       spawnParticles(e.x, e.y, '#ffffff', 60, 380);
       spawnParticles(e.x, e.y, BOSS_BULLET.long, 40, 300);
       shake(22, 1.0);
@@ -1934,7 +1944,9 @@
             x: e.x + rand(-200, 200), y: e.y + rand(-40, 40),
             vx: rand(-80, 80), vy: rand(120, 210),
             r: giant ? 15 : 6, val: giant ? 500 : 10,
-            giant, firstBoss: firstBossCry, t: Math.random() * Math.PI * 2,
+            giant, firstBoss: firstBossCry,
+            fromBoss: true,   // BOSS 掉落水晶标记（凌漓隐藏计数表不计入，见 08-entities updateCrystals）
+            t: Math.random() * Math.PI * 2,
             absorbDelay: rand(0.35, 0.7),   // 稍微下落一段距离后再全部吸收
           });
         }
@@ -1955,9 +1967,11 @@
       // 击败第一个 BOSS（旧日之歌）：水晶磁吸半径永久 ×1.5（本场战斗持续生效，重开归 1）
       if (e.bossId === 'song') state.crystalMagnetMul = 1.5;
       // 洄：击败 BOSS 时先回复 25% 已损失生命，再回复 20 生命（两次回复合并结算、上限当前装甲最大生命）。
-      // 直接结算到 player.hp，不走道具掉落——与诗篇加血套件 8s 节流（hpKitLastT）完全无关，不触发也不受其冷却限制
+      // 直接结算到 player.hp，不走道具掉落——与诗篇加血套件 8s 节流（hpKitLastT）完全无关，不触发也不受其冷却限制。
+      // 小艺连携：洄的治疗效果 ×1.35（pilotHuiHealMul）
       if (currentArmor.id === 'hui' && currentArmor.bossKillHeal && player.alive) {
-        const bossHeal = (player.maxHp - player.hp) * (currentArmor.bossKillLostPct || 0) + currentArmor.bossKillHeal;
+        const huiMul = pilotHuiHealMul();
+        const bossHeal = ((player.maxHp - player.hp) * (currentArmor.bossKillLostPct || 0) + currentArmor.bossKillHeal) * huiMul;
         player.hp = Math.min(player.maxHp, player.hp + bossHeal);
         spawnParticles(player.x + rand(-12, 12), player.y + rand(-12, 12), '#66e39a', 20, 170);
       }
@@ -1985,6 +1999,17 @@
       } else {
         bossFlow.victoryDelay = 2.5;  // 延迟后返回主界面
         bossFlow.defeatedName = e.name;
+      }
+      // 大无垠之王：多阶段 BOSS 切换（暴风之眼→风暴编织者，stage 已被置回 fight）——
+      // 两项累积增伤各减少 75%（留存 25%）；其余情况（BOSS 阶段结束）立刻失去全部累积
+      if (hasPilot('king')) {
+        if (e.bossId === 'storm' && bossFlow.stage === 'fight') {
+          state.kingDmg *= PILOTS.king.phaseKeep;
+          state.kingTaken *= PILOTS.king.phaseKeep;
+        } else {
+          state.kingDmg = 0;
+          state.kingTaken = 0;
+        }
       }
       if (!e.dying) spliceSelf();   // 暴风之眼渐隐期间保留实体（见上方 dying 标记），其余 BOSS 立即移除
       // BOSS 被击败：强行击坠场上所有剩余敌方单位（小怪 / 护航 / 召唤物，含 BOSS 测试召唤物）
@@ -2053,7 +2078,7 @@
     }
     spawnParticles(e.x, e.y, e.color, 22, 260);
     // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率 ×0.3 照常，见 rollItemDrops）
-    if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul);
+    if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
     // 群星守望：击杀 1/2/3/4 类敌人时按概率消弹——
     // 常规战斗 30%/60%/80%/100% 清除离自身最近的一颗敌弹；
     // BOSS 战期间改用 70%/100%/100%/100% 概率表，且改为清除该敌人发出的所有在场射弹

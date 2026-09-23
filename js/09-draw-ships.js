@@ -4,7 +4,7 @@
   // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(3 名)
   //
   import { ANVIL, BAOLING, BULWARK, CANVAS_H, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, STARSLAYER, YU4, currentPlane, currentWingman } from './01-config.js';
-  import { armorGlyphFx, blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
+  import { armorGlyphFx, blBombs, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
 
 
 
@@ -4186,11 +4186,92 @@
     }
   }
 
+  // 大狗导弹雨：炮火先兆者同款导弹的自下而上版——弹头朝上 + 向下尾焰 + 高速光带拖尾，
+  // 配色换为白蓝渐变（外带天蓝辉光 + 白热内芯，贴弹体尾焰与喷流同为白蓝系）
+  function drawDagouMissiles() {
+    for (const m of dagouMissiles) {
+      if (m.delay > 0) continue;   // 未发射（错峰待发）不绘制
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      // ---- 光带拖尾：沿运动反方向（竖直向下）的光带，长度/亮度随时间闪动、轴线轻微摆动 ----
+      const flick = 0.82 + 0.18 * Math.sin(state.time * 21 + m.x * 0.7);
+      const tl = m.r * 11 * flick;
+      const sway = Math.sin(state.time * 13 + m.x * 0.9) * 4;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      // 天蓝外带（根部最亮，向外渐隐）
+      const og = ctx.createLinearGradient(0, m.r, 0, m.r + tl);
+      og.addColorStop(0, 'rgba(140,200,255,0.55)');
+      og.addColorStop(0.45, 'rgba(90,150,255,0.28)');
+      og.addColorStop(1, 'rgba(70,120,255,0)');
+      ctx.strokeStyle = og;
+      ctx.lineWidth = m.r * 2.4;
+      ctx.shadowColor = 'rgba(100,170,255,0.8)';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(0, m.r);
+      ctx.quadraticCurveTo(sway * 0.5, m.r + tl * 0.55, sway, m.r + tl);
+      ctx.stroke();
+      // 白热内芯
+      ctx.shadowBlur = 0;
+      const cg = ctx.createLinearGradient(0, m.r, 0, m.r + tl * 0.8);
+      cg.addColorStop(0, 'rgba(235,248,255,0.9)');
+      cg.addColorStop(0.4, 'rgba(170,215,255,0.5)');
+      cg.addColorStop(1, 'rgba(140,190,255,0)');
+      ctx.strokeStyle = cg;
+      ctx.lineWidth = m.r * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(0, m.r);
+      ctx.quadraticCurveTo(sway * 0.5, m.r + tl * 0.55, sway, m.r + tl * 0.8);
+      ctx.stroke();
+      // 下行喷流亮段：虚线沿拖尾向外流动（能量自弹体向后喷出）
+      ctx.strokeStyle = `rgba(190,225,255,${(0.5 * flick).toFixed(3)})`;
+      ctx.lineWidth = m.r * 0.55;
+      ctx.setLineDash([7, 13]);
+      ctx.lineDashOffset = -state.time * 300;
+      ctx.beginPath();
+      ctx.moveTo(0, m.r * 1.2);
+      ctx.quadraticCurveTo(sway * 0.5, m.r + tl * 0.55, sway, m.r + tl);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalCompositeOperation = 'source-over';
+      // ---- 贴弹体尾焰（白蓝渐变）----
+      const tg = ctx.createLinearGradient(0, m.r * 4.5, 0, 0);
+      tg.addColorStop(0, 'rgba(120,180,255,0)');
+      tg.addColorStop(1, 'rgba(200,235,255,0.85)');
+      ctx.fillStyle = tg;
+      ctx.beginPath();
+      ctx.moveTo(-m.r * 0.6, 0);
+      ctx.lineTo(m.r * 0.6, 0);
+      ctx.lineTo(m.r * 0.3, m.r * 4.5);
+      ctx.lineTo(-m.r * 0.3, m.r * 4.5);
+      ctx.closePath();
+      ctx.fill();
+      // 弹体：白蓝渐变尖头朝上（与先兆者导弹同轮廓）
+      const bg = ctx.createLinearGradient(0, -m.r * 1.7, 0, m.r);
+      bg.addColorStop(0, '#ffffff');
+      bg.addColorStop(0.5, '#bfe0ff');
+      bg.addColorStop(1, '#5b9cf0');
+      ctx.fillStyle = bg;
+      ctx.shadowColor = '#7fb8ff';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.moveTo(0, -m.r * 1.7);
+      ctx.lineTo(m.r, m.r * 0.4);
+      ctx.lineTo(m.r * 0.45, m.r);
+      ctx.lineTo(-m.r * 0.45, m.r);
+      ctx.lineTo(-m.r, m.r * 0.4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   export {
     drawWingmen, paintWingman, paintWingmanBulwark, paintStarslayer, paintShip, drawPlayer,
     drawStarslayerBeam, bladePath, drawSlashFx, drawHarbingerBody, drawHanshuangBody, drawAnvilBody,
     drawPopianBody, drawFashiMatrixBody, drawFashiArrayBody, drawJiaoxiangBody, drawFashiA1Body, drawFashiA2Body, drawYu4Body,
     drawDuskStrikerBody, paintSkull, paintBaolingBomb, drawBaolingBody, drawBaolingWarn, drawBaolingBombs,
     drawPopianWarn, drawPopianFx, drawSpellCubes, drawCubeHitFx, drawPlayerHitFx, paintDouzhiMark, paintDouzhiBox,
-    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles,
+    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles,
   };
