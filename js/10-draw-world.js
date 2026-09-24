@@ -4,7 +4,7 @@
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
   import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
-  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx } from './02-core.js';
+  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
   import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
@@ -615,8 +615,116 @@
     }
   }
 
+  // 副武器·无界飞剑：待发射飞剑（尾部下沉中的单剑 → 分裂后悬浮于槽位的各剑，射出即从波次中消失转弹体渲染）
+  function drawFeijianWaves() {
+    for (const w of feijianWaves) {
+      const split = w.t >= w.f.sinkT;
+      const appear = split ? 1 : clamp(w.t / w.f.sinkT, 0, 1);   // 凝聚渐显
+      const list = split ? w.swords.filter(s => !s.fired) : [{ ox: 0 }];
+      for (const s of list) {
+        ctx.save();
+        ctx.translate(w.x + s.ox, w.y);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45 + 0.55 * appear;
+        const L = w.f.len || 30, hw = 2.4;
+        const g = ctx.createLinearGradient(0, L / 2, 0, -L / 2);
+        g.addColorStop(0, 'rgba(120,170,255,0.15)');
+        g.addColorStop(0.55, 'rgba(160,210,255,0.75)');
+        g.addColorStop(1, 'rgba(240,250,255,1)');
+        ctx.fillStyle = g;
+        ctx.shadowColor = 'rgba(150,200,255,0.9)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(0, -L / 2);
+        ctx.lineTo(hw, -L * 0.1);
+        ctx.lineTo(hw * 0.5, L / 2);
+        ctx.lineTo(-hw * 0.5, L / 2);
+        ctx.lineTo(-hw, -L * 0.1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  // 副武器·辛国栋之怒：空间系灼烧火环（蓝→深蓝渐变流动，透明度较焦香火环更淡；两端淡入淡出）
+  function drawXinRings() {
+    for (const g of xinRings) {
+      const a = 0.5 * Math.min(clamp(g.t / 0.35, 0, 1), clamp((g.dur - g.t) / 0.5, 0, 1));
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.globalCompositeOperation = 'lighter';
+      // 主体径向渐变：中心透明 → 环带蓝 → 外缘深蓝渐隐
+      const rg = ctx.createRadialGradient(0, 0, g.r * 0.3, 0, 0, g.r);
+      rg.addColorStop(0, 'rgba(40,80,220,0)');
+      rg.addColorStop(0.72, `rgba(80,130,255,${(0.35 * a).toFixed(3)})`);
+      rg.addColorStop(0.88, `rgba(120,180,255,${(0.5 * a).toFixed(3)})`);
+      rg.addColorStop(1, 'rgba(20,40,140,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.arc(0, 0, g.r, 0, Math.PI * 2); ctx.fill();
+      // 旋转虚线环（空间流动感）
+      ctx.rotate(state.time * 0.8);
+      ctx.strokeStyle = `rgba(150,200,255,${(0.4 * a).toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([10, 14]);
+      ctx.beginPath(); ctx.arc(0, 0, g.r * 0.82, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
+
   function drawBullets() {
     for (const b of pBullets) {
+      // 副武器·无界飞剑：细长剑体（冰蓝→白渐变，剑尖朝前）+ 辉光
+      if (b.sword) {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);   // 局部 -y 为剑尖方向（弹速向上时旋转归零）
+        ctx.globalCompositeOperation = 'lighter';
+        const L = b.len || 30, hw = 2.4;
+        const g = ctx.createLinearGradient(0, L / 2, 0, -L / 2);
+        g.addColorStop(0, 'rgba(120,170,255,0.15)');
+        g.addColorStop(0.55, 'rgba(160,210,255,0.75)');
+        g.addColorStop(1, 'rgba(240,250,255,1)');
+        ctx.fillStyle = g;
+        ctx.shadowColor = 'rgba(150,200,255,0.9)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(0, -L / 2);
+        ctx.lineTo(hw, -L * 0.1);
+        ctx.lineTo(hw * 0.5, L / 2);
+        ctx.lineTo(-hw * 0.5, L / 2);
+        ctx.lineTo(-hw, -L * 0.1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+      // 副武器·极夜飞星：流动渐变蓝色追踪激光（圆头线段，无描边，辉光发光）
+      if (b.laserBolt) {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(Math.atan2(b.vy, b.vx));
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        const L = b.len || 34;
+        const g = ctx.createLinearGradient(-L / 2, 0, L / 2, 0);
+        g.addColorStop(0, 'rgba(26,63,184,0)');
+        g.addColorStop(0.5, 'rgba(120,180,255,0.9)');
+        g.addColorStop(1, 'rgba(159,232,255,0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 3.4;
+        ctx.shadowColor = 'rgba(110,170,255,0.9)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke();
+        // 流动亮带：短亮段沿弹体持续移动（渐变流动感）
+        ctx.strokeStyle = 'rgba(220,240,255,0.85)';
+        ctx.lineWidth = 1.6;
+        const off = (state.time * 46) % (L * 1.4) - L * 0.7;
+        ctx.beginPath(); ctx.moveTo(off - 8, 0); ctx.lineTo(off + 8, 0); ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       // 天秀忧郁王子：友方大风暴风弹——暴风之眼技能6 同款椭圆风条（paintWindStreakBody，与敌方风条绘制完全一致）；
       // 暴风之眼 BOSS 战中敌我风弹样式相同，我方风弹整体压至 bulletAlphaStormFight（0.35）透明度区分
       if (b.princeStorm) {
@@ -629,9 +737,10 @@
         ctx.restore();
         continue;
       }
-      if (b.wing) {
-        // 僚机长条弹幕：沿飞行方向，尾→头渐变；尾焰长度/亮度随 flameMul（0~1）增长，暴走（=1）最强
-        //   群星允诺：旋转胶囊体（暖色尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）
+      if (b.wing || b.sub) {
+        // 僚机 / 副武器长条弹幕：沿飞行方向，尾→头渐变；尾焰长度/亮度随 flameMul（0~1）增长，暴走（=1）最强
+        //   群星允诺：旋转胶囊体（暖色尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）；
+        //   副武器弹（b.sub，见 01-config SUB_WEAPONS.fire 与 07-player fireSubWeapon）复用同一胶囊体画法
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);
@@ -1609,6 +1718,8 @@
     drawAiyiFx();         // 埃逸：自爆收缩波（蓄力期）与扩散波（爆炸后）
     drawTrailGhosts();
     drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
+    drawXinRings();       // 副武器·辛国栋之怒：灼烧火环（子弹之下）
+    drawFeijianWaves();   // 副武器·无界飞剑：待发射飞剑（凝聚下沉 → 分裂悬浮）
     drawBullets();
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）

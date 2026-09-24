@@ -3,7 +3,7 @@
   console.log('[InfinityFighter] JS build: 20260924-v033-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(16 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(17 名) 13-encyclopedia(18 名) 14-main(14 名)
+  // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(43 名) 07-player(17 名) 08-entities(14 名) 09-draw-ships(16 名) 10-draw-world(5 名) 11-draw-boss(7 名) 12-ui(20 名) 13-encyclopedia(19 名) 14-main(14 名)
   //
 
 
@@ -510,7 +510,7 @@
   // 是否为诗篇难度（旧日之歌技能改版等深度改写经此门控；参数级修正走 diffMods()）
   function isShipian() { return currentDifficulty.id === 'shipian'; }
   // 是否为诗篇及更高难度档：按 DIFFICULTIES 键序（键序=难度顺序，后续新增更高难度如「长歌」排在诗篇之后自动归入）。
-  // 用于「高难度保持满强度、低难度放宽」类门控（如群星守望消弹冷却，见 06-enemy killEnemy）
+  // 用于「高难度保持满强度、低难度放宽」类门控（如群星守望低难度概率放宽，见 06-enemy killEnemy）
   function isHardTier() {
     const order = Object.keys(DIFFICULTIES);
     return order.indexOf(currentDifficulty.id) >= order.indexOf('shipian');
@@ -527,9 +527,8 @@
   // 主界面选择、整场战斗生效的机体装甲。效果键位（按需扩展）：
   //   maxHpAdd     每条命 HP 加成（PLAYER_CFG.maxHp = 100 基准；resetGame / 重生结算）
   //   invulnMul    受击 / 重生无敌时间倍率（并入 invulnDiffMul，与难度倍率乘算——天枢圣卫）
-  //   clearChance  击杀 1/2/3/4 类敌人时清除最近一颗敌弹的概率（群星守望）
-  //   clearCd      群星守望常规消弹冷却（每 0.4s 至多消除一枚，仅诗篇及更高难度生效；
-  //                低难度无冷却且概率 ×1.5 上限 100%，见 06-enemy killEnemy）
+  //   clearChance  击杀 1/2/3/4 类敌人时清除最近一颗敌弹的概率（群星守望；
+  //                低难度概率 ×1.5 上限 100%，见 06-enemy killEnemy；无内置冷却）
   // 其余装甲效果（最终壁垒免死 / 祈星减伤 / 澄月暴走护盾 / 七日澜心量表技能）为行为型逻辑，
   // 分别挂钩 07-player（damagePlayer / pickupKit / pickupBerserk / updatePlayer）与 06-enemy（killEnemy / BOSS 接触）。
   // 新增装甲只需在注册表加条目：主界面卡片自动生成（12-ui buildArmorCards）。
@@ -540,11 +539,10 @@
   const ARMORS = {
     watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff',
       default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化）
-      clearChance: { 1: 0.04, 2: 0.07, 3: 0.10, 4: 0.30 },
-      clearCd: 0.4,   // 常规消弹内置冷却（s）：每 0.4s 至多消除一枚（仅诗篇及更高难度生效，低难度无冷却）
+      clearChance: { 1: 0.05, 2: 0.08, 3: 0.15, 4: 0.50 },
       clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
       brief: '击毁敌机时概率消除弹幕',
-      desc: '击杀 1/2/3/4 类敌人时<br>4%/7%/10%/30% 立刻清除<br>一颗离自身最近的敌方子弹<br>（诗篇及更高难度每 0.4s 至多消除一枚）<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的所有在场射弹<br>诗篇以下难度：无冷却，<br>且清除概率 ×1.5（上限 100%）' },
+      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>诗篇以下难度：清除概率 ×1.5（上限 100%）' },
     tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
       maxHpAdd: 30, brief: '夏勇皮糙肉厚战机血量提升',
       desc: '血量提高 30<br>（100 → 130）' },
@@ -559,7 +557,7 @@
       desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
-      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 4s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 4.8s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
     bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
       invulnFireRateMul: 0.5,   // 免死无敌期间自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘）
       brief: '受到致命伤害时不死且短暂无敌，仅一次',
@@ -579,7 +577,7 @@
       burnTagMul: 1.5,   // 灰色 / 黑色标记敌人（enemyColorTags 含 'gray'/'black'：灰黑系特殊无人机/炮兵、幽暮与黑色 BOSS）灼烧增伤倍率
       brief: '战机周身围绕火环，灼烧接近的敌人',
       desc: '自身环绕焦香同款火环（半径 108，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害<br>对灰 / 黑标记敌人伤害 +50%' },
-    standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8',
+    standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8', noEffect: true,
       brief: '标准制式护甲<br>无效果',
       desc: '标准护甲。<br>没有任何效果。' },
   };
@@ -605,7 +603,7 @@
   const ARMOR_SKILLS = {
     // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
     // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4.8, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
   };
 
   // ---------- 群星之杀：空间斩击参数 ----------
@@ -699,6 +697,116 @@
     flameLenMul: 0.65,                          // Lv1~4 尾焰长度系数（-35%，仅长度、亮度不变）；Lv5 暴走不受影响
   };
 
+  // ---------- 副武器系统：注册表与参数 ----------
+  // 副武器是主机体直接挂载的第二种武器（区别于僚机的独立机体）：主菜单选择、整场战斗生效，
+  // 与主炮各自独立冷却、同时自动开火（BOSS 警报 / 入场演出等停火期一并锁住，见 07-player updateSubWeapon）。
+  // 注册表键序 = 主菜单卡片展示顺序。brief = 主菜单卡片简短文案；desc = 数值与机制图鉴「副武器」页详细文案。
+  // 数值定位：主炮 Lv4 裸 DPS ≈ 700、僚机双机合计 ≈ 140~230；副武器取 50~110 区间，
+  // 以"弹道形状 / 发射方式"提供差异化手感，而非单纯堆数值。
+  // standard 为有意的无效果基准选项（同标准护甲 / 胡笛客约定：供玩家选择不改变手感的原厂配置，禁止"优化"掉）。
+  // fire.kind：diag=两翼斜射直射弹 / rail=机腹贯穿重弹（走 mainPierce 穿透结算）/ homing=追踪导弹（索敌转向见 08-entities）
+  const SUB_WEAPONS = {
+    standard: {
+      id: 'standard', name: '标准挂架', noEffect: true, default: true,
+      brief: '标准制式挂架<br>无效果',
+      desc: '标准制式挂架，仅用于固定机体外板。<br>没有任何效果。',
+    },
+    liaoyuan: {
+      id: 'liaoyuan', name: '燎原双翼', glyph: '»', color: '#ffb545',
+      brief: '双翼斜射，覆盖两翼',
+      desc: '机翼挂载的双联斜射炮<br>每次向左右两翼各射出 1 发斜射弹（±24°）<br>射速较快、单发较轻<br>裸 DPS ≈ 48（主炮 Lv4 的 7%）',
+      fire: { kind: 'diag', count: 2, interval: 0.5, dmg: 12, r: 3.2, speed: 640, deg: 24, len: 26,
+              colorTail: '#8a6230', colorMid: '#ffb545', colorHead: '#ffe9a8', flameMul: 0.5 },
+    },
+    guanchuan: {
+      id: 'guanchuan', name: '贯川重炮', glyph: '☰', color: '#7ce7ff',
+      brief: '贯穿重弹，洞穿纵队',
+      desc: '机腹挂载的电磁轨道炮<br>每隔 1.5s 发射 1 发大口径重弹<br>可穿透 2 个敌人（每次穿透伤害减半）<br>裸 DPS ≈ 93（对纵列目标最高 167）',
+      fire: { kind: 'rail', count: 1, interval: 1.5, dmg: 140, r: 5, speed: 900, pierce: 2, len: 46,
+              colorTail: '#3d7d99', colorMid: '#7ce7ff', colorHead: '#eaf2ff', flameMul: 0.8 },
+    },
+    zhuihun: {
+      id: 'zhuihun', name: '追魂导弹', glyph: '➤', color: '#ff4d6d',
+      brief: '自动索敌，追踪目标',
+      desc: '机身两侧的微型导弹巢<br>每隔 1.2s 向左右各射出 1 枚追踪导弹<br>自动转向最近的敌人，无目标时直飞<br>裸 DPS ≈ 57',
+      fire: { kind: 'homing', count: 2, interval: 1.2, dmg: 34, r: 2.8, speed: 430, turnRate: 4.6, spreadDeg: 22, len: 18,
+              colorTail: '#8a3d4d', colorMid: '#ff4d6d', colorHead: '#ffd9a0', flameMul: 0.65 },
+    },
+    // 以下四款随火力等级缩放（fire.levels 按玩家火力 1~4 / 暴走 5 取参；数值与机制图鉴「副武器」页对比表格直接读取本表，
+    // 调整数值只需改这里）。攻速远低于主炮（主炮 Lv4 间隔 0.12s，副武器间隔 1~3s）。
+    feijian: {
+      id: 'feijian', name: '无界飞剑', glyph: '⚔', color: '#cfe0ff',
+      brief: '尾部凝聚飞剑，依次连射',
+      desc: '机尾凝聚一把飞剑并微微下沉<br>随后左右分裂为多把，中央先发、向两侧依次快速前射<br>每把剑对命中的首个敌人造成伤害（常规不穿透）<br>弹数与单发伤害随火力等级提升<br>暴走（Lv5）：射速与单发伤害大增<br>每把剑 50% 概率可穿透一次<br>（具体数值见下方对比表格）',
+      fire: {
+        kind: 'feijian',
+        slotGap: 11,   // 分裂后相邻飞剑间距（px）
+        sinkDist: 16,  // 尾部出现后下移距离（px）
+        sinkT: 0.22,   // 下移用时（s），到位即分裂
+        fireGap: 0.06, // 相邻发射序的间隔（s）：中央先发，向两侧交替
+        speed: 900, len: 30, r: 3,
+        levels: {
+          1: { count: 6, interval: 2.4, dmg: 16 },
+          2: { count: 7, interval: 2.4, dmg: 19 },
+          3: { count: 8, interval: 2.4, dmg: 22 },
+          4: { count: 9, interval: 2.4, dmg: 25 },
+          5: { count: 9, interval: 1.9, dmg: 40, pierceChance: 0.5 },   // 暴走：射速/伤害大增 + 50% 穿透一次
+        },
+      },
+    },
+    jixing: {
+      id: 'jixing', name: '极夜飞星', glyph: '❄', color: '#6fb8ff',
+      brief: '追踪激光，穿敌一次',
+      desc: '机体左右前方射出流动渐变蓝色的追踪激光<br>自动索敌最近目标（BOSS 战优先 BOSS 召唤的衍生敌人，其次 BOSS）<br>可穿透 1 个非 BOSS 且非 4类敌人<br>对 4类敌人（主力舰 / 法术阵列）伤害 +50%<br>伤害与射速随火力等级提升<br>暴走（Lv5）：每次 4 条激光<br>（具体数值见下方对比表格）',
+      fire: {
+        kind: 'jixing',
+        speed: 1050, turnRate: 6, len: 34, r: 3.4,
+        capVuln: 1.5,   // 对 4类敌人（capital / fashiArray）的增伤倍率
+        levels: {
+          1: { count: 2, interval: 1.7, dmg: 30 },
+          2: { count: 2, interval: 1.5, dmg: 36 },
+          3: { count: 2, interval: 1.35, dmg: 44 },
+          4: { count: 2, interval: 1.2, dmg: 52 },
+          5: { count: 4, interval: 1.05, dmg: 64 },   // 暴走：4 条激光
+        },
+      },
+    },
+    daodan: {
+      id: 'daodan', name: '捣蛋来袭', glyph: '☄', color: '#9fd0ff',
+      brief: '直射大狗同款导弹',
+      desc: '自机体直射一枚大狗导弹雨同款导弹<br>命中首个敌人即爆炸（小范围溅射）<br>伤害与射速随火力等级提升、爆炸半径略微提升<br>暴走（Lv5）：同时射出 3 发<br>（夹角 8°~13° 随机）<br>（具体数值见下方对比表格）',
+      fire: {
+        kind: 'daodan',
+        speed: 950, r: 8,
+        levels: {
+          1: { count: 1, interval: 2.4, dmg: 200, blastR: 40 },
+          2: { count: 1, interval: 2.2, dmg: 240, blastR: 44 },
+          3: { count: 1, interval: 2.0, dmg: 280, blastR: 48 },
+          4: { count: 1, interval: 1.8, dmg: 320, blastR: 52 },
+          5: { count: 3, interval: 1.5, dmg: 360, blastR: 60, spreadMin: 8, spreadMax: 13 },   // 暴走：3 发扇形
+        },
+      },
+    },
+    xinguodong: {
+      id: 'xinguodong', name: '辛国栋之怒', glyph: '❂', color: '#4d7dff',
+      brief: '怒火灼烧最高血量敌人',
+      desc: '向场上生命值最高的敌人发射空间系火环<br>（焦香螺旋桨同款火环的蓝→深蓝渐变流动版，透明度更淡）<br>火环跟随目标，持续灼烧圈内敌人（伤害恒定，不随距离变化）<br>半径远小于焦香火环<br>伤害与灼烧半径随火力等级提升<br>暴走（Lv5）：额外大幅提升；场上无敌人时不发射<br>（具体数值见下方对比表格）',
+      fire: {
+        kind: 'xinring',
+        tick: 0.25,   // 灼烧结算间隔（s）
+        levels: {
+          1: { interval: 3.0, dmg: 26, r: 44, dur: 4 },
+          2: { interval: 3.0, dmg: 32, r: 50, dur: 4 },
+          3: { interval: 3.0, dmg: 38, r: 56, dur: 4 },
+          4: { interval: 3.0, dmg: 46, r: 62, dur: 4 },
+          5: { interval: 2.5, dmg: 72, r: 80, dur: 5 },   // 暴走：额外大幅提升
+        },
+      },
+    },
+  };
+  let currentSubWeapon = SUB_WEAPONS.standard;   // 当前副武器配置（写操作经 setSubWeapon，同 currentArmor/currentWingman 约定）
+  function setSubWeapon(w) { currentSubWeapon = w; }
+
   // ---------- 驾驶员系统 ----------
   // 主界面选择、整场战斗生效的驾驶员（战斗修正 + 装备连携）。注册表键序 = 主菜单卡片展示顺序。
   // brief = 主菜单卡片简短文案；desc = 数值与机制图鉴「驾驶员」页的详细机制文案。
@@ -761,11 +869,14 @@
       waveIvMin: 10, waveIvMax: 22, count: 8,
       warnLead: 1.5, warnPeak: 0.3, warnFade: 0.35, warnH: 130 + Math.round(CANVAS_H * 0.1),
       dmg: 600, blastR: 70, speed: 950, launchGap: 0.1, r: 10,
+      // 连射链：每波发射后 chainChance 概率在 chainGap 秒后再来一波（连射波同样有概率继续连射）；
+      //   连射波伤害按 chainDmgMul 逐波乘算（第 1 波 ×1 → 第 2 波 ×0.6 → 第 3 波 ×0.36 …）
+      chainChance: 0.12, chainGap: 0.2, chainDmgMul: 0.6,
       // 分区命中：导弹位于上方 35% 屏高线以内（y ≤ lowZonePct×屏高）命中敌人才爆炸（600 溅射）；
       //   其余区域（35% 线以下）命中不爆炸，改为对命中目标直接造成 lowZoneDmg 伤害（大无垠之王累积增伤照常生效）
       lowZonePct: 0.35, lowZoneDmg: 300,
       brief: '召唤导弹打击',
-      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>对命中目标及周围小范围敌人造成 600 伤害<br>画面下方 65% 屏高线以下命中时不爆炸，<br>改为对命中目标直接造成 300 伤害',
+      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>对命中目标及周围小范围敌人造成 600 伤害<br>每波发射后有 12% 概率在 0.2s 后连射一波<br>（连射波同样有概率继续连射），<br>连射波伤害依次 ×0.6 递减<br>画面下方 65% 屏高线以下命中时不爆炸，<br>改为对命中目标直接造成 300 伤害',
     },
     // 马兴犬：Shift 加速 / CapsLock（大写锁定键）减速（同键再按恢复原速）
     maxingquan: {
@@ -775,12 +886,12 @@
       desc: '马兴犬下头至极。点击 <b>Shift</b> 切换加速 ×1.25<br><b>Caps</b>（大写锁定键）切换减速 ×0.8，<br>再次点击同键恢复原速',
     },
     wenjiuke: {
-      id: 'wenjiuke', name: '温酒客', glyph: '醉', color: '#c9a0ff', slot: 'main',
+      id: 'wenjiuke', name: '温酒客', glyph: '醉', color: '#c9a0ff', slot: 'main', whiteboard: true,
       brief: '无效果',
       desc: '温酒客隐匿于黑暗神秘无比。温酒客很神秘，<br>没有任何技能。<br>（待最终决战版本设计）',
     },
     hudike: {
-      id: 'hudike', name: '胡笛客', glyph: '笛', color: '#8a9bb0', slot: 'main',
+      id: 'hudike', name: '胡笛客', glyph: '笛', color: '#8a9bb0', slot: 'main', whiteboard: true,
       brief: '无效果',
       desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
     },
@@ -812,8 +923,10 @@
       gaugeFull: 40000, bossCharge: 0.02, stormChargeMin: 0.08, stormChargeMax: 0.12,
       stormDmgCut: 0.5, stormCrashCut: 0.6,
       otherDmgCut: 0.6,
+      // stormKillGain：友方大风暴（风弹 / 主体接触）击杀 1/2/3/4 类敌人时，量表立刻增加的百分比
+      stormKillGain: { 1: 0.004, 2: 0.008, 3: 0.016, 4: 0.032 },
       brief: '按Q召唤风暴',
-      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 40000 充满<br>（BOSS 战 +2%/s；暴风之眼战 +8%~12%/s 随机）<br>满时按 Q：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3、其余我方伤害 -60%',
+      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 40000 充满<br>（BOSS 战 +2%/s；暴风之眼战 +8%~12%/s 随机）<br>友方大风暴击杀 1/2/3/4 类敌人时<br>量表立刻增加 0.4%/0.8%/1.6%/3.2%<br>满时按 Q：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3、其余我方伤害 -60%',
     },
     lingli: {
       id: 'lingli', name: '凌漓', glyph: '⚔', color: '#f5b8d0', slot: 'sub',
@@ -831,7 +944,7 @@
       desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害，无敌时长为正常的 70%）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
     },
     xiaoyang: {
-      id: 'xiaoyang', name: '萧杨', glyph: '萧', color: '#7a8a6e', slot: 'sub',
+      id: 'xiaoyang', name: '萧杨', glyph: '萧', color: '#7a8a6e', slot: 'sub', whiteboard: true,
       brief: '无效果',
       desc: '萧杨阴险狡诈。<br>没有任何效果。',
     },
@@ -1552,6 +1665,72 @@
   const SIDE_SCORE = 50;
   const SIDE_KAMIKAZE_SCORE = 80;
 
+  // ---------- 成就系统：注册表与档位 ----------
+  // ACHIEVEMENTS 注册表驱动（键序 = 结算页 / 数值图鉴「成就」页展示顺序，同难度内按用户给定顺序）：
+  //   tier：'gray' 灰（普通）→ 'silver' 银 → 'gold' 金 → 'purple' 紫 → 'rainbow' 彩（最高稀有度）
+  //   icon：徽章中央圆形内的具体图标字符
+  //   desc：结算页悬停详情与数值图鉴「成就」页的描述文案
+  //   holders：「无垠」专属——已完成者名单（x 与名单由维护者随版本手动更新）
+  //   finalOnly：仅最终版本开放获得（受 ACHIEVEMENT_INFINITY_ENABLED 门控，当前恒不可获得）
+  // 「无垠」的"无驾驶员效果"= 主/副槽均为 无驾驶员 或 whiteboard 白板驾驶员（温酒客/胡笛客/萧杨）；
+  // "无护甲效果" = ARMORS 注册表中带 noEffect 标记的护甲（当前仅标准护甲）。
+  const ACHIEVEMENT_INFINITY_ENABLED = false;   // 「无垠」获取开关：仅最终版本置 true
+  const ACHIEVEMENT_TIERS = {
+    gray:    { name: '虚象', color: '#aab3bf' },
+    silver:  { name: '具象', color: '#d7dee7' },
+    gold:    { name: '真我', color: '#ffd166' },
+    purple:  { name: '诗篇', color: '#b28dff' },
+    rainbow: { name: '长歌', color: '#7ef0ff' },
+  };
+  const ACHIEVEMENT_TIER_ORDER = ['gray', 'silver', 'gold', 'purple', 'rainbow'];
+  const ACHIEVEMENTS = {
+    // ── 灰（虚象）──
+    deathBeforeBoss: { name: '至尊陨落', tier: 'gray', icon: '☄', desc: '陨落时还没有抵达首个BOSS。' },
+    songDeath: { name: '往日梦魇', tier: 'gray', icon: '☾', desc: '被旧日之歌BOSS击杀。' },
+    lowScoreDeath: { name: '答辩', tier: 'gray', icon: '⚠', desc: '陨落时分数不足1w。' },
+    firstBossCrashDeath: { name: '冲锋！冲锋！', tier: 'gray', icon: '➤', desc: '被第一轮BOSS的碰撞伤害击杀。' },
+    // ── 银（具象）──
+    kill200: { name: '狂暴开杀', tier: 'silver', icon: '⚔', desc: '击坠 200 架敌机。' },
+    pickup15: { name: 'UPUPUP', tier: 'silver', icon: '⬆', desc: '拾取 15 个道具。' },
+    baoling3: { name: '砰砰', tier: 'silver', icon: '💣', desc: '暴鸰殉爆一次炸死至少3个敌人。' },
+    missileDeath: { name: '打的准不如接得准', tier: 'silver', icon: '🚀', desc: '被导弹击杀过。' },
+    burnDeath: { name: '烫烫烫', tier: 'silver', icon: '🔥', desc: '被焦香螺旋桨烧死。' },
+    vortexPreDeath: { name: '哦呦', tier: 'silver', icon: '🌪', desc: '被暴风之眼发射的风旋在就位前击中。' },
+    bulwark100: { name: '守愿加护', tier: 'silver', icon: '🛡', desc: '守愿者抵挡超过100发子弹。' },
+    faceSong: { name: '直面过往', tier: 'silver', icon: '🎵', desc: '击败旧日之歌。' },
+    dagouHarbinger: { name: '叮咚', tier: 'silver', icon: '🔔', desc: '通过大狗召唤的导弹击杀至少一个炮火先兆者。' },
+    keliBombBoss: { name: '轰轰火花', tier: 'silver', icon: '💥', desc: '使用可莉的绷绷炸弹击杀任意BOSS。' },
+    qixuanwang: { name: '齐宣王', tier: 'silver', icon: '🧨', desc: '不使用绷绷炸弹或者高能爆弹，直到最终BOSS战时全部释放。' },
+    zidianHits3: { name: '饿啊', tier: 'silver', icon: '💫', desc: '被紫电侧翼艇的亡语击中至少三次。' },
+    stormCrashDeath: { name: '暴风陨落', tier: 'silver', icon: '🌀', desc: '被暴风之眼本体的碰撞伤害击杀。' },
+    // ── 金（真我）──
+    stormWithTianxiu: { name: '忧郁', tier: 'gold', icon: '🎹', desc: '使用天秀忧郁王子击败暴风之眼。' },
+    stormWithoutTianxiu: { name: '击坠风暴', tier: 'gold', icon: '🛩', desc: '不使用天秀忧郁王子的情况下，击败暴风之眼。' },
+    chixinBurnKill: { name: '烧烧烧', tier: 'gold', icon: '♨', desc: '使用炽心护甲的火环烧死至少一个寒霜或者焦香螺旋桨。' },
+    defeatStorm2: { name: '？？？', tier: 'gold', icon: '❓', desc: '击败风暴编织者。' },   // TODO(命名)：占位名，待定稿后替换
+    songPerfect: { name: '昨日，今日，明日', tier: 'gold', icon: '⏳', desc: '无伤击败旧日之歌。' },
+    douzhi2: { name: '斗志非常昂扬', tier: 'gold', icon: '⏫', desc: '击败两个及以上斗志昂扬。' },
+    laserStorm2Death: { name: '极光陨落', tier: 'gold', icon: '⚡', desc: '被风暴编织者技能1的激光击杀。' },
+    bossMarathon: { name: '持久战', tier: 'gold', icon: '⏱', desc: '胜利一场至少持续2分钟的BOSS战。' },
+    watch60: { name: '群星不灭', tier: 'gold', icon: '✧', desc: '群星守望消除 60 颗敌弹。' },
+    chixinClass1: { name: '飞蛾扑火', tier: 'gold', icon: '🦋', desc: '炽心灼烧击杀 20 个1类敌人。' },
+    baoling5: { name: '砰砰礼物', tier: 'gold', icon: '🎁', desc: '暴鸰殉爆一次炸死至少5个敌人。' },
+    lingluo3: { name: '疯狂杀戮', tier: 'gold', icon: '✵', desc: '陵落至少释放3次技能。' },
+    forgotSkill: { name: '忘了', tier: 'gold', icon: '💤', desc: '选择带有技能的护甲或驾驶员，但整局都没有使用过其技能。' },
+    // ── 紫（诗篇）──
+    dagouCheat100: { name: '捣蛋来袭', tier: 'purple', icon: '🐶', desc: '开启大狗的导弹作弊模式至少100秒。' },
+    stormPerfect: { name: '风暴航船', tier: 'purple', icon: '⛵', desc: '无伤击败暴风之眼。' },
+    storm2Perfect: { name: '赫拉之眼', tier: 'purple', icon: '👁', desc: '无伤击败风暴编织者。' },
+    aiyiFinalBoss: { name: '！？爆爆？！', tier: 'purple', icon: '🎆', desc: '埃逸最终自爆炸死最终BOSS。' },
+    watchkeeper: { name: '守望者', tier: 'purple', icon: '⚜', desc: '无伤、不作弊的情况下，使用守愿者并通关。' },
+    // ── 彩（长歌，最高稀有度）──
+    infinityFighter: { name: '无垠战机', tier: 'rainbow', icon: '✈', desc: '无伤、无守愿者、不开启作弊的情况下通关。' },
+    infinity: {
+      name: '「无垠」', tier: 'rainbow', icon: '♾', finalOnly: true, holders: [],
+      desc: '您的技术已登峰造极。无伤、无护甲效果、无驾驶员效果、无守愿者、不使用高能爆弹、不开启作弊的情况下通关。',
+    },
+  };
+
   export {
     CANVAS_W, CANVAS_H, PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     BOSS_SEQUENCE, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
@@ -1563,6 +1742,7 @@
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
     dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, PRINCE_STORM,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
+    SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,
     BAOLING, JIAOXIANG, DOUZHI, FASHI_A1, FASHI_A2, POPIAN,
     FASHI_MATRIX, FASHI_ARRAY, PRESSURE_W, PRESSURE_CAPACITY, SPAWN_SLOW_MUL, SPAWN_RUSH, SPAWN_RUSH_CAP,
@@ -1575,4 +1755,5 @@
     DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W,
     TEST_HP_CLASS1, TEST_HP_CLASS234, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE,
     BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSS_LOOT_BOTH,
+    ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED,
   };

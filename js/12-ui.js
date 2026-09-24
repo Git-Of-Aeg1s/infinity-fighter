@@ -1,13 +1,14 @@
 ﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(10 名)
+  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(11 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, friendStorms, gameoverHomeBtn, hpFill, infoEntryBtn, jingdunBar, jingdunFill, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, zoneMarks } from './02-core.js';
+  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blBombs, bombIcons, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpFill, infoEntryBtn, jingdunBar, jingdunFill, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
+  import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { delayedShots, initWingmen } from './07-player.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
@@ -133,6 +134,7 @@
     state.dagouMissT = (currentPilotMain.id === 'dagou' || currentPilotSub.id === 'dagou')
       ? dagouWaveIv(state.dagouDebugRapid) : 0;
     state.dagouWarnFadeT = 0;   // 大狗：预警蓝光渐隐计时归零
+    state.dagouChains.length = 0;   // 大狗：待发射连射链波清空
     // 哈基米大王：闪避累积加成与尾部闪避计时清零；凌漓：隐藏计数表与澜心量表快照归零
     state.hajimiDodgeBonus = 0;
     state.hajimiTailT = 0;
@@ -148,12 +150,14 @@
     friendStorms.length = 0;      // 友方大风暴随重开清空
     dashKillFx.length = 0;        // 许凯狗冲刺白光冲击特效随重开清空
     dagouMissiles.length = 0;     // 大狗导弹雨随重开清空（否则回主菜单后飞行中/待发射导弹冻结在画面上）
+    feijianWaves.length = 0;      // 副武器·无界飞剑：未发射的飞剑波随重开清空
+    xinRings.length = 0;          // 副武器·辛国栋之怒：灼烧火环随重开清空
+    state.dagouChains.length = 0;   // 大狗连射链待发射队列随重开清空
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
     player.chixinBurnT = 0;       // 炽心：灼烧计时归零
     player.regenT = 0;            // 洄：回血计时归零
-    player.watchClearCd = 0;      // 群星守望：消弹冷却归零
     player.tianshuArmedT = 0; player.tianshuCycleT = 0;   // 天枢圣卫：圣守周期归零
     player.shieldMax = 0;         // 护盾读条分母复位
     bossFlow.timer = 0;
@@ -176,6 +180,7 @@
     if (bossChallenge || state.testBoss) bossFlow.stage = 'wait';   // 跳过等待，清场后进警报（直接 wait→warn，避免开场多打一发）
     // 风暴编织者挑战 / 试炼：无警报直接召唤——BGM 延后 0.8s 起播（结算曲淡出 + 登场雷暴衔接，不再立刻重播）
     if ((bossChallenge && state.challenge.bossId === 'storm2') || state.testBoss === 'storm2') holdBGM(0.8);
+  resetAchievements();   // 成就：本局进度清零（须在 state.testBoss / state.challenge 置位之后——门控以这两项为准）
     state.flash = 0;
     state.hurt = 0;
     state.demo = false;   // 离开/进入任何局：关闭主菜单攻击演示标记（由 updateDemo 在 idle 重新置位）
@@ -224,6 +229,7 @@
     player.maxHp = armorMaxHp();   // 当前装甲下的每条命最大 HP（复合装甲 +40）
     player.hp = player.maxHp;
     player.cooldown = 0;
+    player.subCooldown = 0;   // 副武器冷却归零（标准挂架无 fire 字段时不推进，此处统一复位）
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
     player.invuln = state.pilotDashT > 0 ? state.pilotDashT : 1.0;   // 许凯狗：开局无敌覆盖整个冲刺阶段（不闪动）
     player.invulnBlink = false;   // 开局无敌不闪动：清掉上一局残留的受击闪动标记（登场/重生无敌保持机体完整可见）
@@ -309,7 +315,7 @@
     }
   }
 
-  // ---------- 装备四框 ↔ 展开面板（战机 / 装甲 / 副武器占位 / 僚机） ----------
+  // ---------- 装备四框 ↔ 展开面板（战机 / 装甲 / 副武器 / 僚机） ----------
   // 点击装备框展开对应选择面板（覆盖演示屏区域），再点同框或 ✕ 收起；单开互斥。
   // 框内第二行实时显示当前选中项名称（refreshLoadout，选择变化 / 回主菜单时刷新）。
   function closeAllPanels() {
@@ -317,14 +323,16 @@
     document.querySelectorAll('.loadout-box, .pilot-diamond').forEach(b => b.classList.remove('open'));
   }
 
-  // 框内当前配置摘要 + 当前形象缩略图（副武器未实装：静态占位，不在刷新范围）
+  // 框内当前配置摘要 + 当前形象缩略图
   function refreshLoadout() {
     const planeVal = document.getElementById('loadoutPlaneVal');
     const armorVal = document.getElementById('loadoutArmorVal');
+    const subVal = document.getElementById('loadoutSubVal');
     const wingmanVal = document.getElementById('loadoutWingmanVal');
     const pilotVal = document.getElementById('loadoutPilotVal');
     if (planeVal) planeVal.textContent = currentPlane.name;
     if (armorVal) armorVal.textContent = currentArmor.name;
+    if (subVal) subVal.textContent = currentSubWeapon.name;
     // 驾驶员菱形框摘要：主驾驶员名 + 副驾驶员名（副行为空则只显示主；有简称 short 的显示简称，悬停提示仍用全名）
     const pilotDiamond = document.querySelector('.pilot-diamond');
     const pilotSubVal = document.getElementById('loadoutPilotSubVal');
@@ -557,6 +565,8 @@
     const encyBtn = document.getElementById('encyEntryBtn');
     if (encyBtn) encyBtn.style.display = 'none';
     resultAchieve.classList.remove('hidden');   // 失败结算页同样显示「获得成就」区
+    achvEvaluateDefeat();   // 成就：失败局条件评估（忘了）
+    renderResultAchievements();   // 成就：本局获得成就徽章渲染（无成就时区块自动隐藏）
     showOverlay(
       '战机陨落',
       `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
@@ -597,6 +607,38 @@
         refreshLoadout();   // 装备框摘要同步
       });
       armorGrid.appendChild(card);
+    }
+  }
+
+  // ---------- 副武器选择页面 ----------
+  // 副武器注册表（SUB_WEAPONS，见 01-config）驱动：panelSub 面板自动生成卡片
+  // （含无效果基准选项「标准挂架」——同标准护甲 / 胡笛客的自限流约定，不作隐藏）。
+  // 开火与冷却推进见 07-player fireSubWeapon / updateSubWeapon（与主炮独立冷却、同时自动开火）
+  function buildSubWeaponCards() {
+    subGrid.innerHTML = '';
+    for (const id in SUB_WEAPONS) {
+      const w = SUB_WEAPONS[id];
+      const card = document.createElement('div');
+      card.className = 'armor-card' + (w.id === currentSubWeapon.id ? ' selected' : '');
+      card.dataset.sub = w.id;
+      const glyph = document.createElement('div');
+      glyph.className = 'armor-card-glyph';
+      glyph.textContent = w.glyph || '□';
+      glyph.style.color = w.color || '#9fb4d8';
+      const name = document.createElement('div');
+      name.className = 'armor-card-name';
+      name.textContent = w.name;
+      const desc = document.createElement('div');
+      desc.className = 'armor-card-desc';
+      desc.innerHTML = w.brief || w.desc;   // 卡片用简短文案（brief）；详细数值见数值与机制图鉴「副武器」页
+      card.append(glyph, name, desc);
+      card.addEventListener('click', () => {
+        setSubWeapon(w);
+        subGrid.querySelectorAll('.armor-card').forEach(el =>
+          el.classList.toggle('selected', el.dataset.sub === w.id));
+        refreshLoadout();   // 装备框摘要同步
+      });
+      subGrid.appendChild(card);
     }
   }
 
@@ -650,5 +692,5 @@
 
   export {
     updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
-    buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, endGame,
+    buildSubWeaponCards, buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, endGame,
   };

@@ -10,6 +10,7 @@
   import { makeEnemy, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
+  import { achvNoteBossSpawned } from './02-achievements.js';
 
   // BOSS 技能释放间隔难度倍率（具象：+50%，技能更稀疏）——覆盖三个 BOSS 的全部 skillCd 赋值点
   function bossSkillIv(base) { return base * (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1); }
@@ -21,6 +22,7 @@
     if (player.weapon < 3) player.weapon = 3;
     player.hitCount = 0;
     const B = BOSSES[id] || BOSSES.song;
+    achvNoteBossSpawned(B.id);   // 成就：登记当前 BOSS、开战计时与无伤标记（挑战 / 测试模式内部忽略）
     // 暴风之眼：第一阶段为白色龙卷风暴（风暴之风汇聚成旋涡入场）
     if (B.id === 'storm') {
       const hp = resolveBossHp(STORM);   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）
@@ -603,7 +605,8 @@
       // 风旋机体碰撞（预警阶段尚无实体，不判定）
       if (state.stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
           Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + PLAYER_CFG.hitRadius) {
-        damagePlayer(STORM.vortexDmg * bossDmgMul(), 1, false, false, 'storm');   // src 'storm'：天秀忧郁王子暴风之眼伤害削减挂点
+        // src 'storm'：天秀忧郁王子暴风之眼伤害削减挂点；成就死因：就位前（fly 飞抵段）= vortexPre（哦呦）
+        damagePlayer(STORM.vortexDmg * bossDmgMul(), 1, false, false, 'storm', v.phase === 'fly' ? 'vortexPre' : 'vortex');
       }
     } else if (s.id === 7) {
       // 技能8「双子旋臂」：两个环上弹幕点持续喷射旋臂风弹
@@ -1249,7 +1252,7 @@
               strikeVis(s.pt / STORM2.s1BeamDur, 0.12) >= 0.35 &&
               Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
               player.y + PLAYER_CFG.hitOffsetY > ball.y) {
-            damagePlayer(STORM2.s1Dmg * bossDmgMul());
+            damagePlayer(STORM2.s1Dmg * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
           }
           if (s.pt >= STORM2.s1BeamDur) {
             s.shot++;
@@ -1278,7 +1281,7 @@
             strikeVis(life / STORM2.s1BeamDur, 0.12) >= 0.35 &&
             Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
             py > ball.y && py < ball.y + beamLen) {
-          damagePlayer(STORM2.s1Dmg * bossDmgMul());
+          damagePlayer(STORM2.s1Dmg * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
         }
       }
     } else if (s.id === 1) {

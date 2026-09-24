@@ -13,6 +13,7 @@
   import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
   import { updateBossLootMarks } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
+  import { achvBaolingBlastBegin, achvBaolingBlastEnd, achvNoteDamage, achvNoteWatchClear, achvOnBossKilled, achvOnDeath, achvOnKill, unlockAchievement } from './02-achievements.js';
 
 
 
@@ -48,6 +49,7 @@
               testDamagePlayer(dt / 0.025 * bossDmgMul() * contactMul);   // ≈40 HP/s（具象：BOSS 伤害 -40%），血量 ≤0 立刻重置为满
             } else {
               player.hp -= dt / 0.025 * bossDmgMul() * contactMul;   // ≈40 HP/s（具象：BOSS 伤害 -40%）
+              achvNoteDamage();   // 成就：暴风之眼本体持续接触受伤
               if (player.hp <= 0) {
                 // 最终壁垒：每条命一次的免死同样生效于本持续接触致死路径
                 if (!tryBulwarkCheatDeath()) {
@@ -56,6 +58,7 @@
                   state.lives--;
                   spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
                   shake(16, 0.6);
+                  achvOnDeath('crash:storm', state.lives <= 0);   // 成就：暴风陨落 / 至尊陨落等死因结算
                   handlePlayerDeath();
                 }
               }
@@ -67,7 +70,7 @@
               testDamagePlayer(cDmg);
               player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 接触后照常给受击无敌帧
             } else {
-              damagePlayer(cDmg);
+              damagePlayer(cDmg, 1, false, false, null, 'crash:' + e.bossId);   // 成就死因：BOSS 碰撞（冲锋！冲锋！/ 暴风陨落 / 往日梦魇）
             }
           }
         }
@@ -1712,6 +1715,8 @@
     }
     // 结算被炸毁的敌人（重入由 killEnemy 的 _deathSettled 拦截；身份删除防索引错位；
     // 多轮清扫：嵌套结算中的 splice 会让单轮倒序遍历漏掉部分 hp<=0 敌人，反复扫至无遗漏）
+    // 殉爆窗口：成就「砰砰 / 砰砰礼物」——单次爆炸击杀数统计（嵌套殉爆经暂存互不影响）
+    achvBaolingBlastBegin();
     for (let pass = 0; pass < 4; pass++) {
       let swept = false;
       for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1721,6 +1726,7 @@
       }
       if (!swept) break;
     }
+    achvBaolingBlastEnd();
   }
 
   // ---------- 斗志昂扬死亡演出 ----------
@@ -1910,6 +1916,7 @@
       return;
     }
     player.hp -= dps * dt;
+    achvNoteDamage();   // 成就：焦香灼烧受伤
     if (Math.random() < 0.35) spawnParticles(player.x + rand(-8, 8), player.y + rand(-8, 8), near ? '#ff4500' : '#ff7a18', 1, 70);
     if (player.hp <= 0) {
       player.hp = 0;
@@ -1917,6 +1924,7 @@
       state.lives--;
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       shake(16, 0.6);
+      achvOnDeath('burn:jiaoxiang', state.lives <= 0);   // 成就：烫烫烫等死因结算
       handlePlayerDeath();
     }
   }
@@ -1929,6 +1937,7 @@
     // 其它暴鸰的殉爆波及会再次调用 killEnemy——不拦截会造成两只暴鸰互相重入引爆（无限递归、海量爆炸卡死）
     if (e._deathSettled) return;
     e._deathSettled = true;
+    achvOnKill(e);   // 成就：击杀计数与来源击杀（斗志非常昂扬 / 叮咚 / 烧烧烧）
     // 按对象身份移除：连锁殉爆嵌套结算期间数组索引会错位，按调用时的 index 删除会误删其它敌人或漏删自身
     const spliceSelf = () => {
       const i = enemies.indexOf(e);
@@ -1939,10 +1948,14 @@
     const sdScoreMul = (state.aiyiSelfDestruct && aiyiEntry) ? (aiyiEntry.scoreMul || 1) : 1;
     // BOSS 击毁：单独结算
     if (e.type === 'boss') {
+      achvOnBossKilled(e.bossId);   // 成就：BOSS 击杀（直面过往 / 忧郁 / 击坠风暴 / 无伤系列 / 轰轰火花 / 持久战计时）
       if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
-      // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就系统未实装——
-      // TODO(成就占位)：成就 id 'aiyi_boss_selfdestruct'，待成就系统落地后在此登记解锁）
-      if (state.aiyiSelfDestruct && hasPilot('aiyi')) state.selfDestructVictory = true;
+      // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"）；
+      // 成就「！？爆爆？！」：最终自爆（最后一条命）炸死最终 BOSS 风暴编织者
+      if (state.aiyiSelfDestruct && hasPilot('aiyi')) {
+        state.selfDestructVictory = true;
+        if (state.aiyiFinalDeath && e.bossId === 'storm2') unlockAchievement('aiyiFinalBoss');
+      }
       spawnParticles(e.x, e.y, '#ffffff', 60, 380);
       spawnParticles(e.x, e.y, BOSS_BULLET.long, 40, 300);
       shake(22, 1.0);
@@ -2098,22 +2111,18 @@
     // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率 ×0.3 照常，见 rollItemDrops）
     if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
     // 群星守望：击杀 1/2/3/4 类敌人时按概率消弹——
-    // 常规战斗 4%/7%/10%/30% 清除离自身最近的一颗敌弹（诗篇及更高难度每 0.4s 至多消除一枚，watchClearCd 冷却门控）；
+    // 常规战斗 5%/8%/15%/50% 清除离自身最近的一颗敌弹（无内置冷却）；
     // BOSS 战期间改用统一 40% 概率表，且改为清除该敌人发出的所有在场射弹
     // （每颗都带淡黄连线+迸粒演出，多弹齐清时视觉上如同一次射出多束粒子光束）；
-    // 诗篇以下难度（具象/真我；后续长歌等更高难度不受影响）：无冷却，且清除概率 ×1.5（不超过 100%）
+    // 诗篇以下难度（具象/真我；后续长歌等更高难度不受影响）：清除概率 ×1.5（不超过 100%）
     const watchCls = ENEMY_CLASS[e.type];
     const bossFight = bossFlow.stage === 'fight';
     const watchTable = bossFight ? currentArmor.clearChanceBoss : currentArmor.clearChance;
-    const watchHard = isHardTier();
     let watchChance = (watchCls && watchTable && !testMode) ? watchTable[watchCls] : 0;
-    if (watchChance && !watchHard) watchChance = Math.min(1, watchChance * 1.5);
-    if (watchChance && (bossFight || !watchHard || (player.watchClearCd || 0) <= 0) && Math.random() < watchChance) {
-      if (bossFight) clearEnemyBulletsByOwner(e);
-      else {
-        clearNearestEnemyBullet(player.x, player.y);
-        if (watchHard) player.watchClearCd = currentArmor.clearCd || 0.4;
-      }
+    if (watchChance && !isHardTier()) watchChance = Math.min(1, watchChance * 1.5);
+    if (watchChance && Math.random() < watchChance) {
+      if (bossFight) achvNoteWatchClear(clearEnemyBulletsByOwner(e));
+      else achvNoteWatchClear(clearNearestEnemyBullet(player.x, player.y));   // 成就：群星不灭——按实际消除数计数
     }
     // 七日澜心：BOSS 战期间击杀敌人直接给量表充能 1%~3%（随机；不依赖水晶拾取，量表满后按 F 释放）
     if (!testMode && bossFight && ARMOR_SKILLS[currentArmor.id]) {

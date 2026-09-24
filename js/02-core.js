@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(14 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(15 名) 11-draw-boss(9 名) 12-ui(71 名) 13-encyclopedia(15 名) 14-main(23 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(23 名) 07-player(16 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(17 名) 11-draw-boss(9 名) 12-ui(74 名) 13-encyclopedia(15 名) 14-main(23 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -55,6 +55,7 @@
   const diffLabel = document.getElementById('diffLabel');     // HUD 左上角当前难度标签
   const wingmanGrid = document.getElementById('wingmanGrid');
   const armorGrid = document.getElementById('armorGrid');
+  const subGrid = document.getElementById('subGrid');   // 副武器卡片网格（panelSub 面板，SUB_WEAPONS 注册表驱动）
   const pilotGridMain = document.getElementById('pilotGridMain');   // 主驾驶员卡片网格
   const pilotGridSub = document.getElementById('pilotGridSub');     // 副驾驶员卡片网格
   const bossTestRow = document.getElementById('bossTestRow');
@@ -121,7 +122,9 @@
     hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
     dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
     dagouDebugRapid: false,   // 大狗：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；跨局保留）
+    dagouChains: [],         // 大狗：连射链待发射队列 { t, lv }（每波发射后按 chainChance 追加；resetGame 清空）
     dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
+    dagouChains: [],       // 大狗：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv）
     lingliGauge: 0,        // 凌漓：隐藏计数表（水晶分数累计，2400 填满；不显示于 HUD）
     lingliArmorGaugePrev: 0, // 凌漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
@@ -168,6 +171,7 @@
     maxHp: PLAYER_CFG.maxHp,   // 当前装甲下的每条命最大 HP（装甲 maxHpAdd 见 ARMORS / armorMaxHp）
     kbT: 0, kbVx: 0, kbVy: 0,   // 风暴风流/风柱命中的击退（短暂位移、快速衰减）
     cooldown: 0,
+    subCooldown: 0,    // 副武器冷却（与主炮独立；标准挂架无 fire 字段时不推进）
     invuln: 0,
     alive: true,
     weapon: 1,         // 火力等级 1~4
@@ -183,7 +187,6 @@
     regenT: 0,         // 洄：回血计时（每 2s +1 HP）
     tianshuCycleT: 0,  // 天枢圣卫：圣守周期计时（无敌结束后起算，满 guardCycle=20s 展开圣守窗口，见 07-player）
     tianshuArmedT: 0,  // 天枢圣卫：圣守窗口剩余时间（>0 期间受击在结算前免除；窗口与无敌期间周期均不计时）
-    watchClearCd: 0,   // 群星守望：常规消弹冷却（每 0.4s 至多消除一枚，见 ARMORS.watch.clearCd）
     respawnTimer: 0,   // 掉命后重生倒计时
     enterT: 0,         // 主菜单开局飞入剩余时长（>0 时操控锁定、y 由飞入缓动驱动；resetGame 自主菜单开局置位）
     enterFromY: 0,     // 开局飞入出发 y（主菜单演示屏站位）
@@ -226,7 +229,9 @@
   /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
   /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 Q 释放，向上推进 + 风弹 + 主体接触伤害）
   /** @type {Array} */ const dashKillFx = [];   // 许凯狗冲刺：被击杀敌机身上的白光冲击（扩散白环 + 渐隐闪核，生成于 14-main 秒杀循环，绘制见 10-draw-world drawDashKillFx）
-  /** @type {Array} */ const dagouMissiles = []; // 大狗：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款）
+  /** @type {Array} */ const dagouMissiles = []; // 大狗：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款；副武器「捣蛋来袭」直射弹复用本数组，带 sub 标记）
+  /** @type {Array} */ const feijianWaves = [];  // 副武器·无界飞剑：待发射飞剑波（尾部下沉 → 分裂悬浮 → 中央先发依次前射，见 07-player updateFeijianWaves）
+  /** @type {Array} */ const xinRings = [];      // 副武器·辛国栋之怒：跟随最高血量敌人的空间系灼烧火环（蓝→深蓝渐变，见 07-player updateXinRings）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
@@ -484,18 +489,24 @@
       const b = eBullets[best];
       spawnWatchClearFx(x, y, b);
       eBullets.splice(best, 1);
+      return 1;   // 返回实际消除数（成就「群星不灭」计数）
     }
+    return 0;
   }
 
   // 清除指定敌人发出的、仍在场上的所有敌方子弹（群星守望：BOSS 战期间击杀非 BOSS 敌人触发）。
-  // 每颗子弹都走同款连线+迸粒演出——多弹齐清时视觉上如同从核心一次射出多束粒子光束
+  // 每颗子弹都走同款连线+迸粒演出——多弹齐清时视觉上如同从核心一次射出多束粒子光束。
+  // 返回实际消除的子弹数（成就「群星不灭」计数）
   function clearEnemyBulletsByOwner(owner) {
+    let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
       if (b.owner !== owner) continue;
       spawnWatchClearFx(player.x, player.y, b);
       eBullets.splice(i, 1);
+      n++;
     }
+    return n;
   }
 
   // 装甲触发图标演出（祈星减伤 / 澄月得盾共用）：机体核心处一枚装甲字符图标，
@@ -530,14 +541,14 @@
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
-    wingmanGrid, armorGrid, pilotGridMain, pilotGridSub, bossTestRow,
+    wingmanGrid, armorGrid, subGrid, pilotGridMain, pilotGridSub, bossTestRow,
     retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings,
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, hasteMul, weightedPick, spawnParticles,

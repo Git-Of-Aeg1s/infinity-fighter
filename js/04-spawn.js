@@ -374,6 +374,18 @@
   // 对称编队：2类组成箭头/V 字，从上方对称俯冲
   function spawnStrikerVee() {
     const cx = CANVAS_W / 2;
+    // Lv11 起 2.5% 概率：整支 V 字队替换为 7 架同排布的暴鸰（精英波——7 枚引导炸弹 + 潜在连锁殉爆，
+    // 场面压力瞬时 +28，压力系统会自然放缓后续刷怪作为缓冲）
+    if (levelFlow.level >= 11 && Math.random() < 0.025) {
+      makeEnemy('baoling', cx, -46, {});
+      for (let k = 1; k <= 3; k++) {
+        const dx = k * 56;
+        const y = -46 - k * 42;
+        makeEnemy('baoling', cx - dx, y, {});
+        makeEnemy('baoling', cx + dx, y, {});
+      }
+      return;
+    }
     if (rollFashiA1()) spawnFashiA1(cx, -46);
     else if (rollPopian()) spawnPopian(cx, -46);
     else if (rollFashiMatrix()) spawnFashiMatrix(cx, -46);

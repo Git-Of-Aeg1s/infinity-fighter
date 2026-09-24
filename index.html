@@ -96,7 +96,7 @@
            底部（难度切换 + 开始游戏 | 怪物图鉴 | 右下角 ⓘ 数值与机制图鉴） -->
       <div class="menu-screen hidden" id="menuScreen">
         <!-- 版本号：主菜单右上角（与 package.json / README 版本保持同步） -->
-          <span class="menu-version">v0.3.3</span>
+          <span class="menu-version">v0.3.4</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
@@ -120,7 +120,7 @@
         <!-- 攻击演示屏：DOM 仅绘制边框与轻底色，机体 / 弹道 / 暴走动画由画布绘制（07-player updateDemo 驱动） -->
         <div class="demo-screen" id="demoScreen"></div>
 
-        <!-- 装备区：战机（高框含形象）| 护甲 + 副武器（占位）+ 驾驶员菱形（占位）| 僚机（高框含形象） -->
+        <!-- 装备区：战机（高框含形象）| 护甲 + 副武器 + 驾驶员菱形（占位）| 僚机（高框含形象） -->
         <div class="loadout-row">
           <button class="loadout-box loadout-tall" data-panel="panelPlane">
             <span class="loadout-label">战机</span>
@@ -135,7 +135,7 @@
             </button>
             <button class="loadout-box loadout-quad" data-panel="panelSub">
               <span class="loadout-label">副武器</span>
-              <span class="loadout-value">未实装</span>
+              <span class="loadout-value" id="loadoutSubVal">标准挂架</span>
             </button>
             <!-- 驾驶员菱形框：点击展开驾驶员选择面板（卡片由 12-ui buildPilotCards 按 PILOTS 注册表生成）；
                  文字样式复用装备框的 label / value 类 -->
@@ -179,7 +179,7 @@
             <button class="panel-close" data-close="panelSub" aria-label="收起">✕</button>
           </div>
           <div class="loadout-panel-body">
-            <p class="panel-placeholder">副武器系统开发中，敬请期待</p>
+            <div class="armor-grid" id="subGrid"></div>
           </div>
         </div>
         <div class="loadout-panel hidden" id="panelPilot">
@@ -277,6 +277,7 @@
   <!-- 游戏脚本：ES modules，显式 import/export 声明依赖；按序号加载保持执行顺序（01 常量 → 14 启动入口），
        跨模块可变绑定（ctx / currentPlane / currentWingman）的写操作必须经由所有者模块暴露的 setter -->
   <script type="module" src="./js/01-config.js"></script>
+  <script type="module" src="./js/02-achievements.js"></script>
   <script type="module" src="./js/02-core.js"></script>
   <script type="module" src="./js/03-audio.js"></script>
   <script type="module" src="./js/04-spawn.js"></script>

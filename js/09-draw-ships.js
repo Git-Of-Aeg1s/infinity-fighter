@@ -4253,6 +4253,7 @@
       if (m.delay > 0) continue;   // 未发射（错峰待发）不绘制
       ctx.save();
       ctx.translate(m.x, m.y);
+      if (m.rot) ctx.rotate(m.rot);   // 捣蛋来袭（副武器直射弹）：按弹道方向倾斜（0 = 竖直向上的大狗导弹雨）
       // ---- 光带拖尾：沿运动反方向（竖直向下）的光带，长度/亮度随时间闪动、轴线轻微摆动 ----
       const flick = 0.82 + 0.18 * Math.sin(state.time * 21 + m.x * 0.7);
       const tl = m.r * 11 * flick;

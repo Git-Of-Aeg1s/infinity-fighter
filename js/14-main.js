@@ -14,7 +14,8 @@
   import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { achvEvaluateVictory, achvNoteCheat, renderResultAchievements } from './02-achievements.js';
   import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
@@ -25,6 +26,7 @@
   // 切到 Lv5 与自然暴走同样触发澄月判定（tryChengyueShield，BOSS 战限一次的门控照常生效）
   function debugSetWeapon(n) {
     if (!player.alive) return;
+    achvNoteCheat();   // 成就：武器等级直设属作弊（无垠 / 无垠战机排除）
     if (n === 5) {
       player.weapon = 5;
       player.berserk = BERSERK.duration;
@@ -52,13 +54,17 @@
     // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
     if (k === '9' && state.mode === 'playing' && hasPilot('dagou')) {
       state.dagouDebugRapid = !state.dagouDebugRapid;
-      if (state.dagouDebugRapid) state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
+      if (state.dagouDebugRapid) {
+        state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
+        achvNoteCheat();   // 成就：作弊开关（无垠 / 无垠战机排除）
+      }
       console.log('[debug] 大狗 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
     }
     // 天秀连发风暴开关：装备天秀时战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭
     if (k === '8' && state.mode === 'playing' && hasPilot('tianxiu')) {
       state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
       state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
+      if (state.tianxiuDebugSpam) achvNoteCheat();   // 成就：作弊开关（无垠 / 无垠战机排除）
       console.log('[debug] 天秀 rapid 风暴: ' + (state.tianxiuDebugSpam ? 'ON（0.4~1.4s/个）' : 'OFF'));
     }
     // 马兴犬：Shift 加速 / CapsLock 减速（同键再按恢复原速）——不再使用 Ctrl（按住 Ctrl 时按 W 会触发浏览器关闭标签页，无法拦截）
@@ -337,7 +343,9 @@
           bossFlow.victoryDelay = 0;
           state.mode = 'idle';
           state.victoryOverlay = true;
+          achvEvaluateVictory();   // 成就：胜利条件评估（持久战 / 无垠战机 / 「无垠」）
           resultAchieve.classList.remove('hidden');   // 胜利结算页显示「获得成就」区（暂停页在 togglePause 内隐藏）
+          renderResultAchievements();   // 成就：本局获得成就徽章渲染（无成就时区块自动隐藏）
           showOverlay(
             state.selfDestructVictory ? '自爆成功' : '胜利',   // 埃逸：自爆击杀 BOSS 的胜利结算改用专属标题（成就占位见 06-enemy killEnemy）
             `击坠 <b style="color:#ffb545">${bossFlow.defeatedName || ''}</b>！` +
@@ -514,6 +522,7 @@
   buildPlaneCards();
   buildWingmanCards();
   buildArmorCards();
+  buildSubWeaponCards();   // 副武器选择卡片（SUB_WEAPONS 注册表驱动，panelSub 面板）
   buildPilotCards();   // 驾驶员选择卡片（PILOTS 注册表驱动，panelPilot 面板）
   initMenuPanels();   // 主菜单装备四框 ↔ 展开面板绑定 + 当前配置摘要
   resetGame(false);

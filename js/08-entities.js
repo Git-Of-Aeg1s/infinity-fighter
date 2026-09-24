@@ -9,16 +9,19 @@
   import { bossEntranceActive, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
-  import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul } from './07-player.js';
+  import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
+  import { achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
   // 返回对敌人 e 的伤害倍率；isWing 标识该伤害是否来自僚机弹幕。
-  function enemyDamageMul(e, isWing) {
+  function enemyDamageMul(e, isWing, capVuln) {
     let mul = 1;
     // 大无垠之王：BOSS 战累积的造成伤害提升（怒意蔓延，见 07-player updatePilotStatus 累积 / 06-enemy killEnemy 清算）
     mul *= kingDmgBonusMul();
+    // 副武器·极夜飞星：对 4类敌人（主力舰 / 法术阵列）增伤（capVuln 取自弹体 b.capVuln，注册表 1.5）
+    if (capVuln && (e.type === 'capital' || e.type === 'fashiArray')) mul *= capVuln;
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
     // 暴鸰：玩家处于其炸弹爆圈内时对暴鸰增伤 35%（无论炸弹是否已投出）
@@ -86,6 +89,31 @@
         const ns = Math.min(b.maxSpeed || Infinity, sp + b.accel * dt);
         b.vx *= ns / sp; b.vy *= ns / sp;
       }
+      // 副武器·追魂导弹 / 极夜飞星：朝最近的合格敌人限角速度转向（turnRate rad/s），无目标时保持直飞。
+      // 索敌规则与主炮/僚机一致：屏幕外 / 虚化 / 濒死 / 登场虚化 BOSS 不索敌；
+      // 极夜飞星（subFirst）额外优先级：BOSS 战中 BOSS 召唤的衍生敌人（非 BOSS 目标）> BOSS
+      if (b.homing) {
+        let tgt = null, bestD = Infinity;
+        let tgtSub = null, bestSubD = Infinity;
+        for (const e of enemies) {
+          if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
+          if (e.type === 'boss' && bossEntranceActive()) continue;
+          const dx = e.x - b.x, dy = e.y - b.y, d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; tgt = e; }
+          if (b.subFirst && e.type !== 'boss' && d < bestSubD) { bestSubD = d; tgtSub = e; }
+        }
+        if (b.subFirst && tgtSub) tgt = tgtSub;
+        if (tgt) {
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const cur = Math.atan2(b.vy, b.vx), want = Math.atan2(tgt.y - b.y, tgt.x - b.x);
+          let diff = want - cur;
+          if (diff > Math.PI) diff -= Math.PI * 2;
+          else if (diff < -Math.PI) diff += Math.PI * 2;
+          const maxTurn = b.turnRate * dt;
+          const na = cur + clamp(diff, -maxTurn, maxTurn);
+          b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
+        }
+      }
       // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
       if (b.lenTarget && b.len < b.lenTarget) b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
       // 出界移除：友方大风暴风弹可斜向/朝下方 240° 扇形内飞行，横向与下边界出界一并移除
@@ -103,7 +131,7 @@
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
           // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
-          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing) * princeOtherDmgMul(!!b.princeStorm);
+          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm);
           e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
@@ -115,7 +143,10 @@
             pierce = true; b.mainPierce--; b.weakened = true;
           }
           if (!pierce) pBullets.splice(i, 1);
-          if (e.hp <= 0) killEnemy(j);
+          if (e.hp <= 0) {
+            if (b.princeStorm) princeStormKillGain(e);   // 天秀：风暴风弹击杀 → 量表立刻充能
+            killEnemy(j);
+          }
           break;
         }
       }
@@ -361,6 +392,7 @@
           const hit = shieldSweepHit(sx1, sy1, sx2, sy2, b.r);
           if (hit) {
             spawnParticles(hit.x, hit.y, '#eaf6ff', 6, 150);
+            achvWingmanBlock();   // 成就：守愿加护——白盾挡弹计数
             eBullets.splice(i, 1); continue;
           }
         }
@@ -413,7 +445,11 @@
         // 伤害来源标记（驾驶员效果挂点）：暴风之眼本体弹幕 / 其召唤的大型龙卷风弹 → src 'storm'
         const src = (b.owner && (b.owner.type === 'tornado' ||
                     (b.owner.type === 'boss' && b.owner.bossId === 'storm'))) ? 'storm' : null;
-        damagePlayer(b.dmg, 1, false, false, src);
+        // 成就死因：BOSS 弹幕按 owner 归属（往日梦魇——旧日之歌弹幕击杀）
+        const achvCause = (b.owner && b.owner.type === 'boss') ? ('boss:' + b.owner.bossId) : null;
+        const tookHit = damagePlayer(b.dmg, 1, false, false, src, achvCause);
+        // 成就：饿啊——被紫电侧翼艇亡语弹击中计数（仅实际造成伤害的命中）
+        if (tookHit && b.owner && b.owner.deathShot) achvZidianHit();
         if (!b.laser) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
       }
     }
@@ -429,6 +465,7 @@
 
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
   function applyPowerupPickup(p) {
+    achvNotePickup();   // 成就：UPUPUP——道具拾取计数（水晶不走本路径不计）
     // 小艺：拾取任意道具（水晶不走本路径）恢复生命——血量低于 35% 时回复量提升（森灵之力）
     if (hasPilot('xiaoyi') && player.alive) {
       const maxHp = player.maxHp || PLAYER_CFG.maxHp;

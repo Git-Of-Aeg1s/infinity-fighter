@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：12-ui(1 名) 14-main(1 名)
   //
-  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, setDifficulty } from './01-config.js';
+  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, STORM2, SUB_WEAPONS, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, diffMods, resolveBossHp, setDifficulty } from './01-config.js';
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
@@ -11,6 +11,7 @@
   import { drawEnemy } from './10-draw-world.js';
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';
+  import { renderInfoAchievements } from './02-achievements.js';
 
 
 
@@ -22,9 +23,14 @@
     { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray'] },
 
     { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2'] },
+
+    // 衍生级：由母体敌人产生 / 召唤，不独立入场；母体条目 desc 内的对应名称可点击跳转至此（反向跳转见条目 parent 字段）
+    { name: '衍生级', entries: ['escort', 'tornado'] },
   ];
   
   // 每种颜色变体独立成条目；type 用于绘制/生成，variant/behavior 用于强制指定变体/行为
+  // BOSS 条目的 bossId → 01-config 血量注册表（resolveBossHp 按当前难度解析 hpByDiff）
+  const BOSS_HP_SRC = { song: BOSS, storm: STORM, storm2: STORM2 };
   const ENCY_DATA = {
     side_pass: {
       name: '白影侧翼艇', type: 'side', behavior: 'pass', color: '#f0f0f5', hp: 1, score: 50,
@@ -44,9 +50,8 @@
     },
     prolifera: {
       name: '增生侧翼艇', type: 'prolifera', color: '#7fe8c9', hp: 1, score: 50,
-      // 衍生敌人无独立条目：卫护飞船连同图像一并在本条目中展示（详情大图右侧）
-      child: { type: 'escort', color: '#6a5ce0' },
-      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 2~3 个卫护飞船</b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。<hr /><b>衍生 · 卫护飞船</b>：<b>深蓝紫渐变机体、边缘泛紫色光芒</b>（与水晶的浅蓝明显区分）；<b>无攻击</b>，随母舰航向漂移；碰撞 4.8、造成无敌时间 0.48s。<b>出厂随机虚化护盾：80% 不带盾 / 15% 概率 0.1s / 4% 概率 0.15s / 1% 概率 0.25s</b>（虚化期间不受伤害、我方炮弹穿过）。击毁后 <b>80% 掉 1 个水晶、20% 掉 2 个</b>。',
+      // 衍生体（卫护飞船）已独立成「衍生级」条目：desc 内名称可点击跳转（互链见 escort.parent）
+      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 2~3 个<span class="ency-link" data-ency="escort">卫护飞船</span></b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。',
     },
     striker_crimson: {
       name: '赤红突击艇', type: 'striker', variant: 'crimson', color: '#ff3b30', hp: 48, score: 150,
@@ -174,13 +179,18 @@
         '<b>技能4</b> 双管乱射长条弹（血量＞50% 为 270° 大范围散射、≤50% 收敛到下半球）<br />' +
         '血量 70%：在<b>最左侧</b>召唤一位炮火先兆者并掉落暴走道具（各一次）；<b>血量 40%</b>：在<b>最右侧</b>再召唤一位炮火先兆者（就位后同样固定靠边、不巡航）；&lt;50% 技能间隔减半。<br />' +
         '<b>击败掉落</b>：48 颗水晶 + 20% 高能爆弹 + 必掉暴走道具，并参与通用道具掉落池（黑色标记：套件 / 护盾按基础值；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。',
+      // 分难度注解（真我为基准不显示；数据与 01-config DIFFICULTIES / SONG_SHIP 同步）
+      diffNotes: {
+        juxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与真我一致。',
+        shipian: '技能释放间隔 = 真我的 <b>40%</b>。<b>技能1</b>：恒 <b>4 条</b>旋转双曲线弹流（初始方向/角速度逐条随机，当前指向水平以上时角速度大幅增加、以下较为减小）；时长：≥70% 血 +25%、<70% 血 <b>×3</b>；释放其他技能时概率<b>连携技能1</b>（≥70% 血 20% / <70% 血 30% / <35% 血 50%，连携不享时长加成）。<b>技能2</b>：<b>7 轮</b>大子弹散射（缺失 10%~20%），首轮必定慢速、其余随机 3 轮快速（弹速 ×1.4~1.7）。<b>技能3</b>：<b>2 部位锁定标记 + 2 部位持续追踪</b>（随机分配，四部位射击间隔独立随机）。<b>技能4</b>：≥70% 血 270° 散射 + 射速 +100%；<70% 血 360° 单发 + 射速 +200%，并每 0.7~1.7s 向下扇形圆弹幕（8~14 发）。<b>技能5</b>：任意位置可释放——六发<b>暗黑子弹</b>全部锁定「玩家释放瞬间的竖直直线」，翼/炮/甲三组高度交错、轨迹交叉成笼。<b>技能6</b>：预约制——仅在中线过零前释放，三组各随机偏角 ±75°（下方 150° 扇区）、左右严格镜像对称，触壁反弹最多 3 次。',
+      },
     },
 boss_storm: {
       name: '暴风之眼', type: 'boss', color: '#dff3ff', hp: 46000, score: 9000, bossId: 'storm',
       quote: '天秀忧郁之风',   // 图鉴引言（颜色与标题一致）
       desc: '第二波 BOSS。第一阶段为占屏宽 80% 的白色龙卷风暴，逆时针旋转、小幅漂移，整个风暴区域均可受击。7 种技能乱序释放：<br />' +
         '<b>技能1</b> 风波呼啸：从一侧射入 3~4 道横向弯曲风波（弯在下方、可不对称，宽度较风流稍宽），标记约 1.1s 后<b>整条瞬时显现</b>，共两轮（第二轮换另一侧）；技能结束后下一次技能间隔 ×0.25。<b>28 伤害 + 击退</b><br />' +
-        '<b>技能2</b> 蓄力后向正前方推出<b>大型龙卷</b>（约占屏宽 30%，可击毁、缓慢下移，随机 360° 快速射出 16 伤害风弹，碰撞 32 伤害；<b>对主机弹幕减伤 50%、受僚机伤害 +150%</b>——僚机是其弱点）<br />' +
+        '<b>技能2</b> 蓄力后向正前方推出<b><span class="ency-link" data-ency="tornado">大型龙卷</span></b>（约占屏宽 30%，可击毁、缓慢下移，随机 360° 快速射出 16 伤害风弹，碰撞 32 伤害；<b>对主机弹幕减伤 50%、受僚机伤害 +150%</b>——僚机是其弱点）<br />' +
         '<b>技能3</b> 连续随机选定 5 处召唤<b>垂直风柱</b>（约 14% 屏宽，标记 1.3s 后落下，18 伤害 + 击退）<br />' +
         '<b>技能4</b> 漩涡状弹幕（4 条臂），前半程逆时针旋转、后半程顺时针旋转<br />' +
         '<b>技能5</b> 两轮乱射风条（首轮 12 处、次轮 9 处，下方 120° 区域）+ 每轮一枚中心瞄准玩家；部分风弹随机强化（尺寸 / 伤害提升）<br />' +
@@ -188,6 +198,11 @@ boss_storm: {
         '<b>技能7</b> 涡流风旋：落点预警后自机体飞抵屏幕下方 80% 高度处，悬停自转 5s、双旋臂喷出密集风条后快速消散；风旋机体碰撞 12 伤害。预警期间落点处有<b>大范围快速收缩的淡红色圆圈</b>（周期性）反复提示。<br />' +
         '血量 70%：在最侧边召唤一位炮火先兆者并掉落暴走道具（各一次）。<br />' +
         '<b>击败后</b>：不掉落水晶、得分 6000；风暴轰然消散，直接召唤二阶段「风暴编织者」（20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池照常）。',
+      // 分难度注解（真我为基准不显示；数据与 01-config DIFFICULTIES / STORM_SHIP 同步）
+      diffNotes: {
+        juxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与真我一致。',
+        shipian: '<b>技能1</b>：脱离技能轮换——每 10~16s <b>独立释放</b>一轮风波（单轮 3~4 道、随机一侧），不占用技能槽、不影响技能释放间隔。<b>技能2</b>：大型龙卷血量 <b>6000</b>（真我 3200），受僚机伤害加成额外 +150%（与基础加算、不乘算）。<b>技能3</b>：共 <b>6 轮</b>射击，每轮同时射出 <b>2 个风柱</b>（位置至少相差 10% 屏宽），轮间隔 +50%。<b>技能4</b>：总时长 <b>9s</b>，期间自身减伤 25%、旋转速度 +40%、风弹射速 +60%、风弹长度 +30%；初始方向顺/逆时针随机，期间随机改变 2~3 次方向。<b>技能5</b>：两轮风弹 <b>14/11</b> 发；普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不减慢）。<b>技能6</b>：追加一组<b>镜像三旋臂</b>（两射击点关于竖直中轴精确镜像、转向相反，任意时刻保持镜像）。<b>技能7</b>：涡流风旋改为<b>三旋臂</b>，风弹射速 +25%、最大转速 2.3 rad/s（真我 2.625）。另有<b>技能8「双子旋臂」</b>加入技能池——距风暴中心 30%~80% 半径环内随机两点（间距 ≥70px）绕中心公转，各以 50% 概率发出三旋臂或四旋臂，持续 6s（旋臂自转方向随机且两点独立）。',
+      },
     },
     boss_storm2: {
       name: '风暴编织者', type: 'boss', color: '#8fd4ff', hp: 32000, score: 6000, bossId: 'storm2',
@@ -203,12 +218,30 @@ boss_storm: {
         '<b>技能4</b> 中心能量球连续快速连射 <b>40~70</b> 发雷电长条弹——每发均为<b>直射弹</b>、飞行中不扭动，仅朝向逐发变化（按蛇形曲线采样），弹点集合整体呈"先左后右、越摆越宽"的流线轨迹；四喷口外<b>始终</b>各现一圈 <b>14~20</b> 枚雷电子弹（<b>间隔 0.8~1.5s 依次浮现</b>，停留原处 1s 后向对应方向爆开；<b>爆开初速为雷电长条弹速度的 60~80% 或 120~140% 随机取档，同圈一致</b>，20 伤害）；<b>70% 血以下强化</b>：蛇形雷条持续 <b>+50%</b>（多射 50%），雷环增至 <b>6 圈</b>——随机两个喷口各生成第二次；雷环<b>必然在蛇形雷条射完前全部爆开</b>，迟到的雷环立即补齐、并与在场未爆雷环一同立刻爆开（初速 / 最终速度 <b>+30%</b>）<br />' +
         '<b>技能5</b> 周身雷电环缠绕（缓慢旋转明灭），下方 30% 区域随机 5 处依次雷击（雷电环<b>恒定大小渐显聚能</b>——先慢后快，预警 1.2s、区域半径为焦香螺旋桨火环的 <b>80%</b>，<b>40 伤害</b>；落雷瞬间<b>白光与蓝点光爆闪</b>，击中中心外扩一圈 <b>14~20</b> 枚雷电子弹）<br />' +
         '<b>技能6</b> 四喷口沿臂方向直射电弧光束出屏 → 光束于<b>左右边界</b>重现（与臂向光束<b>同长</b>，预警后<b>自 0 增长</b>、增长较慢），以约 <b>1.7s 抵达底边</b>的速度射向目标，左右两侧<b>镜像对称</b>；<b>每边每轮 2 条</b>（同边两束夹角 ≥<b>15°</b>）、恒定 <b>3 轮</b>（<b>轮次间隔 1.5s</b>，不随血量变化）；释放后<b>下一次技能间隔 -50%</b>（28 伤害）<br />' +
-        '<b>诗篇难度独特修正</b>：<b>技能1</b> 释放期间不再停止移动，激光连续射出 <b>5 次</b>（上一发射完前即开始下次预警，射完随机 0.1~0.5s 后立刻射出下一发），首次蓄力起自身移速逐渐提升至 <b>200%</b>（加速度减半、约 2s 爬满）、5 次射完后快速衰减；<b>技能2</b> 有 <b>50%</b> 概率同时释放技能6（连携时臂向光束<b>变淡</b>、臂向蓄力与汇聚预警时长 <b>+50%</b>，连携的技能6 随技能2收束无缝继续），<b>连携时蓄力延长至 1.6s</b>（预警圈收缩速度相应变慢），未连携则下一次技能间隔 <b>-60%</b>；<b>技能3</b> 连续快速释放<b>两次</b>（间隔 <b>1~1.5s</b>，第二轮重新随机角度，释放结束后下一次技能间隔 <b>+30%</b>）；<b>技能4</b> 雷环固定 <b>8 圈</b>（生成间隔 -40%）；<b>技能5</b> 落点扩展至<b>下方 60% 区域</b>、轰击错峰 -10%；<b>技能6</b> 释放瞬间<b>四个雷电喷口处</b>立即触发雷霆打击（无预警、伤害减半、外扩雷环子弹数减半）。<br />' +
         '<b>入场</b>：一阶段「暴风之眼」<b>轰然消散</b>（白雾爆发 + 双冲击波环外扩）→ <b>中央雷电风暴轰鸣</b>约 2.1s（落雷密集震屏，中央凝聚出电弧能量球）→ 电球骤亮收缩<b>汇入机体</b>，风暴编织者现身（全程约 3.7s，期间无敌、不释放技能）。',
+      // 分难度注解（真我为基准不显示；数据与 01-config DIFFICULTIES / STORM2_SHIP 同步）
+      diffNotes: {
+        juxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与真我一致。',
+        shipian: '技能释放间隔统一 <b>×1.4</b>（+40%；连中同技能 ×0.2 / 技能3 / 技能6 等额外乘区在其上照常叠加）。<b>技能1</b> 释放期间不再停止移动，激光连续射出 <b>5 次</b>（上一发射完前即开始下次预警，射完随机 0.1~0.5s 后立刻射出下一发），首次蓄力起自身移速逐渐提升至 <b>200%</b>（加速度减半、约 2s 爬满）、5 次射完后快速衰减；<b>技能2</b> 有 <b>50%</b> 概率同时释放技能6（连携时臂向光束<b>变淡</b>、臂向蓄力与汇聚预警时长 <b>+50%</b>，连携的技能6 随技能2收束无缝继续），<b>连携时蓄力延长至 1.6s</b>（预警圈收缩速度相应变慢），未连携则下一次技能间隔 <b>-60%</b>；<b>技能3</b> 连续快速释放<b>两次</b>（间隔 <b>1~1.5s</b>，第二轮重新随机角度，释放结束后下一次技能间隔 <b>+30%</b>）；<b>技能4</b> 雷环固定 <b>8 圈</b>（生成间隔 -40%）；<b>技能5</b> 落点扩展至<b>下方 60% 区域</b>、轰击错峰 -10%；<b>技能6</b> 释放瞬间<b>四个雷电喷口处</b>立即触发雷霆打击（无预警、伤害减半、外扩雷环子弹数减半）。',
+      },
+    },
+
+    // ---------- 衍生级：由母体敌人产生 / 召唤，不独立入场 ----------
+    // parent = 母体图鉴条目（详情页「母体」字样可点击跳回；母体 desc 内的本体名称反向跳转至此）
+    escort: {
+      name: '卫护飞船', type: 'escort', color: '#6a5ce0', hp: 1, score: 20,
+      parent: 'prolifera', derived: true,
+      desc: '增生侧翼艇阵亡时分裂出的衍生体（每艘分裂 <b>2~3</b> 个）：<b>深蓝紫渐变小三角、边缘泛紫色光芒</b>（与水晶的浅蓝明显区分）。<b>无攻击</b>，沿母舰原航向漂移；碰撞 4.8、造成的无敌时间仅为常规的 <b>40%</b>（0.48s）。<b>出厂随机虚化护盾：80% 不带盾 / 15% 概率 0.1s / 4% 概率 0.15s / 1% 概率 0.25s</b>（虚化期间不受伤害、我方炮弹穿过；守愿者弹对其无限穿透）。击毁后 <b>80% 掉 1 个水晶、20% 掉 2 个</b>（仅掉水晶，不参与通用道具掉落池）。不计入场面压力。',
+    },
+    tornado: {
+      name: '大型龙卷', type: 'tornado', color: '#eaf6ff', hp: 3200, score: 0,
+      parent: 'boss_storm', derived: true,
+      desc: '暴风之眼技能2 召唤的衍生体：蓄力后自机体前方推出，<b>约占屏宽 30%</b>，可击毁、<b>缓慢下移直至脱离战场</b>（轻微左右摇摆），随机 360° 快速射出 <b>16 伤害风条</b>，碰撞 <b>32</b> 伤害。<b>受到战机主武器伤害 -50%、受僚机伤害 +150%</b>（僚机是其弱点）；<b>守愿者弹每次命中判定两次伤害</b>。<b>不掉落水晶与道具</b>（诗篇难度血量 <b>6000</b>）。不计入场面压力。',
     },
   };
 
   let encyCurrentGrade = 0;
+  let encySelectedEntry = null;   // 当前选中条目：图鉴内切换难度时重渲染其详情（BOSS 血量 / 技能组随难度变化）
 
   function buildEncyclopedia() {
     encyTabs.innerHTML = '';
@@ -222,8 +255,9 @@ boss_storm: {
     selectEncGrade(0);
   }
 
-  function selectEncGrade(idx) {
+  function selectEncGrade(idx, selectId) {
     encyCurrentGrade = idx;
+    encySelectedEntry = null;   // 分页切换未选中条目时清空（跳转路径稍后经卡片 click 重新写入）
     // 高亮 tab
     encyTabs.querySelectorAll('.ency-tab').forEach((t, i) => {
       t.classList.toggle('active', i === idx);
@@ -241,39 +275,63 @@ boss_storm: {
       card.addEventListener('click', () => {
         encyList.querySelectorAll('.ency-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
+        encySelectedEntry = entryId;
         showEncyDetail(entryId);
       });
       encyList.appendChild(card);
     });
     // 清空详情
     encyDetail.innerHTML = '<p class="ency-placeholder">← 选择一个敌人查看详情</p>';
+    // 跨条目跳转：指定条目时自动选中其卡片并展示详情（衍生级 ↔ 母体互链）
+    if (selectId != null) {
+      const i = grade.entries.indexOf(selectId);
+      if (i >= 0) encyList.children[i].click();
+    }
+  }
+
+  // 图鉴跨条目跳转：定位条目所在分页并选中展示（详情页 .ency-link 的点击入口）
+  function jumpToEncyEntry(entryId) {
+    const gi = ENCY_GRADES.findIndex(g => g.entries.includes(entryId));
+    if (gi >= 0) selectEncGrade(gi, entryId);
   }
 
   function showEncyDetail(entryId) {
     const d = ENCY_DATA[entryId];
+    encySelectedEntry = entryId;   // 记录当前条目：图鉴内切换难度时重渲染（BOSS 血量 / 技能组随难度变化）
     const gradeName = ENCY_GRADES[encyCurrentGrade].name;
     const isBoss = d.type === 'boss';
-    // BOSS 页面：试炼（正常战斗）+ 测试该敌人（爆弹无限）；普通敌人页面：仅测试该敌人
+    // BOSS 血量按当前难度解析（hpByDiff 分难度表，见 01-config resolveBossHp）
+    const hp = isBoss ? resolveBossHp(BOSS_HP_SRC[d.bossId]) : d.hp;
+    // 分难度注解：真我为基准不显示；具象显示通用削弱；诗篇显示技能组改版（BOSS 专属）
+    const diffNote = isBoss && d.diffNotes ? (d.diffNotes[currentDifficulty.id] || '') : '';
+    // BOSS 页面：试炼（正常战斗）+ 测试该敌人（爆弹无限）；普通敌人页面：仅测试该敌人；
+    // 衍生敌人（derived）：由母体产生 / 召唤，无法独立入场，不提供测试
     // （风暴编织者技能已实装：与其他 BOSS 一致提供试炼 / 测试入口；专属登场动画待单独设计）
     const actionHtml = isBoss
       ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
          <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
          <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（每枚炸掉 60% 最大血量）</div>`
-      : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
+      : d.derived
+        ? `<div class="ency-challenge-hint">衍生敌人：由母体产生 / 召唤，不提供独立测试</div>`
+        : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
     encyDetail.innerHTML = `
       <div class="ency-detail-name" style="color:${d.color}">${d.name}</div>
       ${d.quote ? `<div class="ency-detail-quote" style="color:${d.color}">${d.quote}</div>` : ''}
-      <div class="ency-detail-grade">${gradeName}</div>
+      <div class="ency-detail-grade">${gradeName}${d.parent ? ` · 母体：<span class="ency-link" data-ency="${d.parent}">${ENCY_DATA[d.parent].name}</span>` : ''}</div>
       <canvas class="ency-detail-canvas" id="encyPreview" width="220" height="140"></canvas>
       <div class="ency-stats">
-        <div class="ency-stat">HP<b>${d.hp}</b></div>
+        <div class="ency-stat">HP<b>${hp}</b></div>
         <div class="ency-stat">分数<b>${d.score}</b></div>
       </div>
-      <div class="ency-detail-desc">${d.lore ? `<div class="ency-detail-lore">${d.lore}</div><div class="ency-lore-divider"></div>` : ''}${d.desc}</div>
+      <div class="ency-detail-desc">${d.lore ? `<div class="ency-detail-lore">${d.lore}</div><div class="ency-lore-divider"></div>` : ''}${d.desc}${diffNote ? `<hr /><div class="ency-diff-note"><b>${currentDifficulty.name} · 技能组修正</b><br />${diffNote}</div>` : ''}</div>
       ${actionHtml}
     `;
     // 绘制预览（220×140 大图）
     drawEncyPreview(d, document.getElementById('encyPreview'));
+    // 跨条目跳转链接（衍生级 ↔ 母体互链）：点击切换分页并选中目标条目
+    encyDetail.querySelectorAll('.ency-link').forEach(el => {
+      el.addEventListener('click', () => jumpToEncyEntry(el.dataset.ency));
+    });
     const trialBtn = document.getElementById('encyTrialBtn');
     if (isBoss && !d.previewOnly && trialBtn) {
       trialBtn.addEventListener('click', () => startBossTrial(entryId));
@@ -420,16 +478,11 @@ boss_storm: {
           pctx.imageSmoothingQuality = 'high';
           pctx.drawImage(img.off, cx - dw / 2, cy - dw / 2, dw, dw);
         };
-        if (d.child && !small) {
-          // 含衍生敌人（详情大图）：主敌居左，衍生体居右下一同展示（衍生体无独立图鉴条目）
-          // 衍生体沿用主敌的缩放并按游戏内 drawScale 比值折算，保证图中体型比例与实战一致
-          const s1 = clamp(fit, 0.4, 1.7) * 0.78;
-          const s2 = s1 * (ENEMY_TYPES[d.child.type].drawScale / et.drawScale);
-          blit(drawOffscreen(d), LW * 0.35, LH * 0.46, s1);
-          blit(drawOffscreen(d.child), LW * 0.75, LH * 0.60, s2);
-        } else {
+        {
           const z = d.pvZoom || 1;   // 条目级预览缩放（法术阵列等视觉紧凑的敌机放大展示，缩略图不放大）
-          const scale = small ? fit : clamp(fit * z, 0.4, 1.7 * z);   // 缩略图不设缩放上下限，保证 4 类等大体型完整入图
+          // 缩略图：不设下限（4 类等大体型完整入图），但设与详情图一致的 1.7 上限——
+          // 卫护飞船等极小碰撞盒的 fit 高达 7，无上限会放大到溢出卡片画布
+          const scale = small ? Math.min(fit, 1.7) : clamp(fit * z, 0.4, 1.7 * z);
           blit(drawOffscreen(d), LW / 2, LH / 2, scale);
         }
       }
@@ -451,6 +504,8 @@ boss_storm: {
         if (d.wip || d.id === currentDifficulty.id) return;
         setDifficulty(d);
         syncDifficultyUI();
+        // 难度切换重渲染当前详情：BOSS 血量（hpByDiff）与技能组注解随难度变化
+        if (encySelectedEntry) showEncyDetail(encySelectedEntry);
       });
     });
     syncDifficultyUI();
@@ -1110,7 +1165,7 @@ boss_storm: {
     return cvs;
   }
 
-  // DPS 表构建（行首预览 + 名称，列为火力等级）
+  // DPS 表构建（行首预览 + 名称，列为火力等级；canvas 可选——副武器参数表无预览图）
   function buildDpsTable(headers, rows) {
     const table = document.createElement('table');
     table.className = 'info-table';
@@ -1126,7 +1181,7 @@ boss_storm: {
       const tr = document.createElement('tr');
       const td0 = document.createElement('td');
       td0.className = 'info-ship-cell';
-      td0.appendChild(r.canvas);
+      if (r.canvas) td0.appendChild(r.canvas);
       const span = document.createElement('span');
       span.textContent = r.label;
       td0.appendChild(span);
@@ -1188,6 +1243,72 @@ boss_storm: {
     }
   }
 
+  // ---------- 副武器：SUB_WEAPONS 注册表驱动（desc 详细数值文案；与主菜单卡片简短文案 brief 区分） ----------
+  // 副武器按火力等级取参（fire.levels 键控；无 levels 用固定 fire——燎原/贯川/追魂不随火力变化）
+  function subWeaponLv(w, lv) {
+    return w.fire.levels ? (w.fire.levels[lv] || w.fire.levels[1]) : w.fire;
+  }
+  // 副武器裸 DPS：常规弹 = 弹数 × 单发伤害 ÷ 间隔；辛国栋之怒 = 灼烧 DPS（火环存续期内对圈内单一目标的每秒伤害）
+  function subWeaponDps(w, lv) {
+    const c = subWeaponLv(w, lv);
+    if (w.fire.kind === 'xinring') return c.dmg;
+    return (c.count || 1) * c.dmg / c.interval;
+  }
+  // 关键参数行（字符串单元格；数值全部取自注册表，调整 01-config 即自动同步）
+  function pushSubParamRows(rows, w) {
+    const vals = sel => INFO_FIRE_LEVELS.map(lv => { const c = subWeaponLv(w, lv); return sel(c); });
+    const fmt = v => v;
+    const kind = w.fire.kind;
+    if (kind === 'feijian') {
+      rows.push({ label: w.name + '·单发伤害', fmt, vals: vals(c => String(c.dmg)) });
+      rows.push({ label: w.name + '·剑数 / 间隔(s)', fmt, vals: vals(c => `${c.count} / ${c.interval}`) });
+    } else if (kind === 'jixing') {
+      rows.push({ label: w.name + '·单发伤害', fmt, vals: vals(c => String(c.dmg)) });
+      rows.push({ label: w.name + '·激光数 / 间隔(s)', fmt, vals: vals(c => `${c.count} / ${c.interval}`) });
+    } else if (kind === 'daodan') {
+      rows.push({ label: w.name + '·爆炸伤害', fmt, vals: vals(c => String(c.dmg)) });
+      rows.push({ label: w.name + '·弹数 / 爆炸半径 / 间隔(s)', fmt, vals: vals(c => `${c.count} / ${c.blastR} / ${c.interval}`) });
+    } else if (kind === 'xinring') {
+      rows.push({ label: w.name + '·灼烧 DPS', fmt, vals: vals(c => String(c.dmg)) });
+      rows.push({ label: w.name + '·半径 / 持续(s) / 间隔(s)', fmt, vals: vals(c => `${c.r} / ${c.dur} / ${c.interval}`) });
+    } else {
+      // 早期三款（不随火力等级变化）：单行固定值
+      const c = w.fire;
+      rows.push({ label: w.name + '·单发伤害×弹数 / 间隔(s)', fmt, vals: INFO_FIRE_LEVELS.map(() => `${c.dmg}×${c.count || 1} / ${c.interval}`) });
+    }
+  }
+
+  function renderInfoSubs() {
+    infoBody.innerHTML = '';
+    for (const id in SUB_WEAPONS) {
+      const w = SUB_WEAPONS[id];
+      const div = document.createElement('div');
+      div.className = 'info-wave-card';
+      const h = document.createElement('h4');
+      const glyph = document.createElement('span');
+      glyph.textContent = (w.glyph || '□') + ' ';
+      glyph.style.color = w.color || '#9fb4d8';
+      h.append(glyph, document.createTextNode(w.name + (w.default ? '（默认）' : '')));
+      const p = document.createElement('p');
+      p.innerHTML = w.desc;
+      div.append(h, p);
+      infoBody.appendChild(div);
+    }
+    // ---------- 对比表格：裸 DPS（Lv1~Lv5）+ 关键参数（数值取自 SUB_WEAPONS 注册表，调整配置自动同步） ----------
+    const headers = ['副武器', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5 暴走' : 'Lv' + lv)];
+    const dpsRows = [];
+    const paramRows = [];
+    for (const id in SUB_WEAPONS) {
+      const w = SUB_WEAPONS[id];
+      if (!w.fire) continue;   // 标准挂架（无效果）不进表
+      dpsRows.push({ label: w.name, vals: INFO_FIRE_LEVELS.map(lv => subWeaponDps(w, lv)) });
+      pushSubParamRows(paramRows, w);
+    }
+    infoBody.appendChild(buildDpsTable(headers, dpsRows));
+    infoBody.appendChild(buildDpsTable(['副武器 / 参数', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5' : 'Lv' + lv)], paramRows));
+    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜飞星对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为持续灼烧：表中 DPS 为火环存续期间对圈内单一目标的每秒伤害；<b>捣蛋来袭</b>为爆炸溅射：命中密集 / 纵列目标时实际收益更高；<b>极夜飞星</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>每剑仅命中首个敌人（暴走 50% 概率穿透一次）。暴走（Lv5）为限时形态。');
+  }
+
   // ---------- 驾驶员：PILOTS 注册表驱动（desc 详细机制文案；与主菜单卡片简短文案 brief 区分） ----------
   function renderInfoPilots() {
     infoBody.innerHTML = '';
@@ -1219,7 +1340,9 @@ boss_storm: {
       { id: 'mods',     name: '特殊修正' },
       { id: 'fighters', name: '战机&僚机' },
       { id: 'armors',   name: '护甲' },
+      { id: 'subs',     name: '副武器' },
       { id: 'pilots',   name: '驾驶员' },
+      { id: 'achievements', name: '成就' },
     ];
     for (const d of defs) {
       const b = document.createElement('button');
@@ -1232,7 +1355,9 @@ boss_storm: {
     else if (infoTab === 'waves') renderInfoWaves();
     else if (infoTab === 'fighters') renderInfoPlanes();
     else if (infoTab === 'armors') renderInfoArmors();
+    else if (infoTab === 'subs') renderInfoSubs();
     else if (infoTab === 'pilots') renderInfoPilots();
+    else if (infoTab === 'achievements') renderInfoAchievements();
     else renderInfoMods();
   }
 
@@ -1250,7 +1375,7 @@ boss_storm: {
   infoClose.addEventListener('click', closeInfoModal);
 
   export {
-    ENCY_GRADES, ENCY_DATA, encyCurrentGrade, buildEncyclopedia, selectEncGrade, showEncyDetail,
+    ENCY_GRADES, ENCY_DATA, encyCurrentGrade, buildEncyclopedia, selectEncGrade, showEncyDetail, jumpToEncyEntry,
     startChallenge, startBossTrial, previewCtxDepth, withPreviewCtx, drawEncyPreview, openEncyclopedia,
     closeEncyclopedia, initEncyDiffButtons, infoTab, infoWeightKind, INFO_TIERS, INFO_TIERS_LIVE, tierMask,
     INFO_FORMATIONS, INFO_SIDE_KINDS, INFO_CAPITAL_KINDS, fmtInfoW, infoShipCanvas,
