@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{waveSeq}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isShipian, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4, currentArmor, diffMods } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isZhenwo, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4, currentArmor, diffMods } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -23,7 +23,7 @@
     return VARIANTS.striker.map(v => ({ id: v.id, w: tier[v.id] }));
   }
 
-  // 非BOSS敌人首攻延迟的难度加成（具象：初始攻击间隔 +0.5~1.8s）——
+  // 非BOSS敌人首攻延迟的难度加成（虚象：初始攻击间隔 +0.5~1.8s）——
   // mods.enemyFirstFireAdd 为 [min, max] 秒区间（rand 取值）或固定秒数，0/缺省 = 不加；
   // 覆盖全部非BOSS敌人：makeEnemy 的 fireTimer 与不走 fireTimer 的状态机型（法术大师A1/A2 的 firstAt、破片的 atkT）
   function firstFireAdd() {
@@ -33,8 +33,7 @@
   }
 
   // 按权重随机选取变体
-  // 幽暮突击艇出现率按关卡调整：Lv11 前为基础权重（12%）的 10%，Lv11 起为 40%；
-  // 缩减的概率按比例摊给其余变体，保证幽暮出现率精确达标
+  // 幽暮突击艇出现率（按分档权重表归一）：Lv11 前权重 2/107 ≈ 1.9%，Lv11 起权重 5/40 = 12.5%
   function pickVariant(type) {
     if (type === 'striker') {
       // 分档原始权重（Lv1~10 / Lv11~20），按总和归一后抽取
@@ -73,9 +72,9 @@
   function makeEnemy(type, x, y, opts = {}) {
     const cfg = ENEMY_TYPES[type];
     const diff = diffMods();
-    // 血量难度倍率（具象：所有非BOSS怪物血量 -20%）；不再有关卡血量加成
+    // 血量难度倍率（虚象：所有非BOSS怪物血量 -20%）；不再有关卡血量加成
     const hpMul = diff.enemyHpMul != null ? diff.enemyHpMul : 1;
-    // 首次攻击延迟难度加成（具象：所有非BOSS怪物初始攻击间隔 +0.5~1.8s，见 firstFireAdd）
+    // 首次攻击延迟难度加成（虚象：所有非BOSS怪物初始攻击间隔 +0.5~1.8s，见 firstFireAdd）
     const ffa = firstFireAdd();
     // 2/3/4 类选取变体（不同颜色 + 不同技能）；opts.variant 可强制指定（图鉴挑战用）
     const variant = (type === 'striker' || type === 'gunship' || type === 'capital')
@@ -133,8 +132,8 @@
     } else if (type === 'prolifera') {
       e.score = SIDE_SCORE;
     }
-    // 诗篇：暴风之眼技能2 召唤的大型龙卷血量 6000（真我基准 3200）
-    if (type === 'tornado' && isShipian()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
+    // 真我：暴风之眼技能2 召唤的大型龙卷血量 6000（具象基准 3600）
+    if (type === 'tornado' && isZhenwo()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
     // 测试模式：敌方不再无敌 —— 按 1~4 类统一血量（1类 4000 / 2~4类 10000；BOSS 保持注册表血量）
     if (state.challenge && type !== 'boss') {
       const testHp = (type === 'side' || type === 'prolifera' || type === 'escort') ? TEST_HP_CLASS1 : TEST_HP_CLASS234;
@@ -189,13 +188,6 @@
     if (type === 'side' && e.behavior === 'moon') {
       e.moonFireT = rand(SIDE_MOON.fireDelay[0], SIDE_MOON.fireDelay[1]);
       e.moonFired = false;
-    }
-    // 卫护飞船（增生侧翼艇衍生）：出厂随机虚化护盾 —— 80% 不带盾 / 15% 0.1s / 4% 0.15s / 1% 0.25s
-    if (type === 'escort') {
-      const pr = Math.random();
-      if (pr < 0.15) { e.shielded = true; e.phase = 0.1; }
-      else if (pr < 0.19) { e.shielded = true; e.phase = 0.15; }
-      else if (pr < 0.20) { e.shielded = true; e.phase = 0.25; }
     }
     // 暴鸰（自爆无人机）：0 巡航下压 / 1 停车锁定（预警倒计时）/ 2 投弹后原地停留 / 3 继续俯冲
     if (type === 'baoling') {
@@ -519,7 +511,7 @@
     return Math.min(0.30, 0.20 + (levelFlow.level - 10) * 0.01);
   }
 
-  // 4类主力舰强制刷新上限（同上，节奏更慢）；随难度刷怪间隔倍率同步放大（真我 ×1.3 / 具象 ×2.3）
+  // 4类主力舰强制刷新上限（同上，节奏更慢）；随难度刷怪间隔倍率同步放大（具象 ×1.3 / 虚象 ×2.3）
   function capitalMaxWait() {
     const sim = diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1;
     return Math.max(10, 34 - (levelFlow.level - 3) * 1.5) * sim;  // Lv3 34s → Lv10 23.5s → Lv16 14.5s

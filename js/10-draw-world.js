@@ -4,10 +4,10 @@
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
   import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
-  import { bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
+  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
-  import { drawBoss, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
+  import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
 
@@ -615,113 +615,290 @@
     }
   }
 
-  // 副武器·无界飞剑：待发射飞剑（尾部下沉中的单剑 → 分裂后悬浮于槽位的各剑，射出即从波次中消失转弹体渲染）
+  // 飞剑单剑绘制（待发射悬浮 / 飞行弹体共用）：剑身尖锥（冰蓝→白渐变，尾部略短）+ 短小十字护手
+  // + 等宽短剑柄；三段填充在连接处精确对接（无重叠无缝隙），暴走（Lv5）剑身不变色，
+  // 以**单一连续路径**描出剑身 + 护手 + 剑柄的一体金红流动边框（连接处不出现断开 / 叠亮的边框特效）。
+  // 整体透明度 0.7、BOSS 战期间 0.6；拖尾暴走金红且更长。
+  // trail 为拖尾长度（px，0 = 无——悬浮待发射的剑不拖尾）；rot 为剑尖朝向（局部 -y 为剑尖，弹速向上时 rot=0）
+  function paintFeijianSword(x, y, rot, len, hw, alpha, berserk, trail) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalCompositeOperation = 'lighter';
+    const bossFight = state.mode === 'playing' && enemies.some(e => e.type === 'boss');
+    ctx.globalAlpha = (bossFight ? 0.6 : 0.7) * clamp(alpha, 0, 1);
+    const L = len || 30, h = hw || 2.4;
+    const baseY = L * 0.28;            // 剑身基部（尾部略短）
+    const gHalf = h * 0.25;            // 护手半厚
+    const guardX = h * 1.1;            // 护手半长（短十字）
+    const hiltTop = baseY + gHalf;     // 剑柄顶部（护手下缘，精确对接）
+    const hiltTopX = h * 0.33;         // 剑柄顶部半宽（与护手下缘对接）
+    const hiltLen = h * 2.2;           // 剑柄长（+50%：1.47h → 2.2h）
+    const tailY = baseY + hiltLen;     // 剑柄末端
+    // 拖尾：自剑柄末端沿飞行反方向延伸的渐隐光带（暴走更长更亮）
+    if (trail > 0) {
+      const tg = ctx.createLinearGradient(0, tailY, 0, tailY + trail);
+      if (berserk) {
+        tg.addColorStop(0, 'rgba(255,175,90,0.55)');
+        tg.addColorStop(1, 'rgba(255,140,60,0)');
+      } else {
+        tg.addColorStop(0, 'rgba(150,200,255,0.45)');
+        tg.addColorStop(1, 'rgba(120,170,255,0)');
+      }
+      ctx.strokeStyle = tg;
+      ctx.lineWidth = h * 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, tailY);
+      ctx.lineTo(0, tailY + trail);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 5;
+    // ---- 三段填充（连接处精确对接）----
+    // 剑身：冰蓝→白渐变（暴走不变色）
+    const g = ctx.createLinearGradient(0, hiltTop, 0, -L / 2);
+    g.addColorStop(0, 'rgba(120,170,255,0.15)');
+    g.addColorStop(0.55, 'rgba(160,210,255,0.75)');
+    g.addColorStop(1, 'rgba(240,250,255,1)');
+    ctx.fillStyle = g;
+    ctx.shadowColor = 'rgba(150,200,255,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, -L / 2);
+    ctx.lineTo(h, -L * 0.1);
+    ctx.lineTo(h * 0.55, baseY - gHalf);
+    ctx.lineTo(-h * 0.55, baseY - gHalf);
+    ctx.lineTo(-h, -L * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    // 护手：横杆（半透明淡蓝，两态同色——暴走不变色）
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = 'rgba(150,195,255,0.6)';
+    ctx.fillRect(-guardX, baseY - gHalf, guardX * 2, gHalf * 2);
+    // 剑柄：自护手下缘延伸的等宽半透明短柄（尾端不再收窄；尾部仅按渐变更淡）
+    const hg = ctx.createLinearGradient(0, hiltTop, 0, tailY);
+    hg.addColorStop(0, 'rgba(150,195,255,0.6)');
+    hg.addColorStop(1, 'rgba(120,170,255,0.22)');
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.moveTo(-hiltTopX, hiltTop);
+    ctx.lineTo(hiltTopX, hiltTop);
+    ctx.lineTo(hiltTopX, tailY);
+    ctx.lineTo(-hiltTopX, tailY);
+    ctx.closePath();
+    ctx.fill();
+    // ---- 暴走：单一连续路径的一体金红流动边框（剑身 + 护手 + 剑柄轮廓，连接处无断开 / 叠亮）----
+    if (berserk) {
+      ctx.strokeStyle = `hsla(${(28 + 14 * Math.sin(state.time * 6.5)).toFixed(1)}, 100%, 62%, ${(0.65 + 0.25 * Math.sin(state.time * 9)).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.shadowColor = 'rgba(255,150,60,0.9)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(0, -L / 2);                       // 剑尖
+      ctx.lineTo(h, -L * 0.1);                     // 剑身右缘
+      ctx.lineTo(h * 0.55, baseY - gHalf);
+      ctx.lineTo(guardX, baseY - gHalf);           // 护手上缘
+      ctx.lineTo(guardX, baseY + gHalf);           // 护手右端
+      ctx.lineTo(hiltTopX, hiltTop);               // 护手下缘 → 剑柄右缘
+      ctx.lineTo(hiltTopX, tailY);                 // 剑柄右缘（等宽）
+      ctx.lineTo(-hiltTopX, tailY);                // 柄尾
+      ctx.lineTo(-hiltTopX, hiltTop);              // 剑柄左缘
+      ctx.lineTo(-guardX, baseY + gHalf);          // 护手下缘
+      ctx.lineTo(-guardX, baseY - gHalf);          // 护手左端
+      ctx.lineTo(-h * 0.55, baseY - gHalf);        // 护手上缘 → 剑身左缘
+      ctx.lineTo(-h, -L * 0.1);
+      ctx.closePath();                             // 回到剑尖
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 副武器·无界飞剑：单剑自机尾后方飞出（凝聚渐显 + 微微后移下沉）→ 迅速左右分裂渐显、
+  // 各剑滑入全屏均分槽位（splitT 内 easeOut 插值）→ 就位等待，按发射序依次射出（转弹体渲染）
   function drawFeijianWaves() {
     for (const w of feijianWaves) {
-      const split = w.t >= w.f.sinkT;
-      const appear = split ? 1 : clamp(w.t / w.f.sinkT, 0, 1);   // 凝聚渐显
-      const list = split ? w.swords.filter(s => !s.fired) : [{ ox: 0 }];
-      for (const s of list) {
-        ctx.save();
-        ctx.translate(w.x + s.ox, w.y);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.45 + 0.55 * appear;
-        const L = w.f.len || 30, hw = 2.4;
-        const g = ctx.createLinearGradient(0, L / 2, 0, -L / 2);
-        g.addColorStop(0, 'rgba(120,170,255,0.15)');
-        g.addColorStop(0.55, 'rgba(160,210,255,0.75)');
-        g.addColorStop(1, 'rgba(240,250,255,1)');
-        ctx.fillStyle = g;
-        ctx.shadowColor = 'rgba(150,200,255,0.9)';
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(0, -L / 2);
-        ctx.lineTo(hw, -L * 0.1);
-        ctx.lineTo(hw * 0.5, L / 2);
-        ctx.lineTo(-hw * 0.5, L / 2);
-        ctx.lineTo(-hw, -L * 0.1);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
+      const f = w.f;
+      const fade = w.dieT != null ? clamp(w.dieT / 0.3, 0, 1) : 1;   // 警报 / BOSS 登场：快速消散渐隐
+      if (w.t < f.sinkT) {
+        // 段1：单剑凝聚于机尾后方并后移（下沉）
+        paintFeijianSword(w.x, w.y, 0, f.len, f.r, clamp(w.t / f.sinkT, 0, 1) * fade, w.berserk, 0);
+      } else {
+        // 段2：已分裂——各剑自波次中心向各自槽位移动（渐显），就位后等待发射序
+        const p = clamp((w.t - f.sinkT) / f.splitT, 0, 1);
+        const ease = 1 - Math.pow(1 - p, 3);   // easeOutCubic：迅速滑出、平滑就位
+        for (const s of w.swords) {
+          if (s.fired) continue;
+          paintFeijianSword(w.x + (s.ax - w.x) * ease, w.y, 0, f.len, f.r, p * fade, w.berserk, 0);
+        }
       }
     }
   }
 
-  // 副武器·辛国栋之怒：空间系灼烧火环（蓝→深蓝渐变流动，透明度较焦香火环更淡；两端淡入淡出）
+  // 副武器·辛国栋之怒：空间系穿透灼烧火环——焦香螺旋桨火环同款结构
+  // （辉光 + 三层波形火舌 + 上升火星 + 稳定边界环，见 drawPlayerFireRing 同构实现），
+  // 配色为玫红→粉流动渐变（按用户参考图），整体透明度 0.8；
+  // 入场较快渐显 0.25s；警报 / BOSS 登场动画期间按 dieT 快速消散（渐隐）
   function drawXinRings() {
     for (const g of xinRings) {
-      const a = 0.5 * Math.min(clamp(g.t / 0.35, 0, 1), clamp((g.dur - g.t) / 0.5, 0, 1));
+      const fade = g.dieT != null ? clamp(g.dieT / 0.3, 0, 1) : 1;
+      const a = 0.8 * clamp(g.t / 0.25, 0, 1) * fade;
+      const r = g.r;
       ctx.save();
       ctx.translate(g.x, g.y);
-      ctx.globalCompositeOperation = 'lighter';
-      // 主体径向渐变：中心透明 → 环带蓝 → 外缘深蓝渐隐
-      const rg = ctx.createRadialGradient(0, 0, g.r * 0.3, 0, 0, g.r);
-      rg.addColorStop(0, 'rgba(40,80,220,0)');
-      rg.addColorStop(0.72, `rgba(80,130,255,${(0.35 * a).toFixed(3)})`);
-      rg.addColorStop(0.88, `rgba(120,180,255,${(0.5 * a).toFixed(3)})`);
-      rg.addColorStop(1, 'rgba(20,40,140,0)');
-      ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(0, 0, g.r, 0, Math.PI * 2); ctx.fill();
-      // 旋转虚线环（空间流动感）
-      ctx.rotate(state.time * 0.8);
-      ctx.strokeStyle = `rgba(150,200,255,${(0.4 * a).toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([10, 14]);
-      ctx.beginPath(); ctx.arc(0, 0, g.r * 0.82, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.globalAlpha = a;
+      // 玫红辉光（从中心向外淡出的径向渐变）
+      const glow = ctx.createRadialGradient(0, 0, r * 0.15, 0, 0, r);
+      glow.addColorStop(0, 'rgba(255, 45, 110, 0.13)');
+      glow.addColorStop(0.5, 'rgba(255, 30, 90, 0.08)');
+      glow.addColorStop(0.85, 'rgba(230, 20, 80, 0.05)');
+      glow.addColorStop(1, 'rgba(230, 20, 80, 0)');
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = glow; ctx.fill();
+      // 三层波形火舌（焦香同款：各层不同半径/振幅/速度/相位，玫红→粉流动跳动）
+      const tongues = 40;
+      const layers = [
+        { lr: r * 0.92, amp: 4.0, spd: 2.2, ph: 0,    color: 'rgba(255, 45, 110, 0.55)', lw: 2.4 },
+        { lr: r * 0.96, amp: 3.0, spd: -1.6, ph: 1.3, color: 'rgba(255, 105, 160, 0.4)', lw: 1.8 },
+        { lr: r * 0.88, amp: 5.0, spd: 3.0, ph: 2.7,  color: 'rgba(255, 175, 205, 0.28)', lw: 1.2 },
+      ];
+      for (const L of layers) {
+        ctx.beginPath();
+        for (let k = 0; k <= tongues; k++) {
+          const an = (k / tongues) * Math.PI * 2;
+          const wave = Math.sin(an * 6 + state.time * L.spd + L.ph) * L.amp
+                     + Math.sin(an * 11 - state.time * L.spd * 0.7 + L.ph * 2) * L.amp * 0.5;
+          const rr = L.lr + wave;
+          if (k === 0) ctx.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
+          else ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = L.color;
+        ctx.lineWidth = L.lw;
+        ctx.stroke();
+      }
+      // 上升火星（12 颗粉白亮点沿光环内随机位置缓慢上飘，循环重置）
+      ctx.fillStyle = 'rgba(255, 160, 200, 0.85)';
+      for (let k = 0; k < 12; k++) {
+        const seed = k * 137.508;   // 黄金角分布
+        const sa = (seed % (Math.PI * 2));
+        const sr = r * (0.4 + 0.5 * ((seed * 0.618) % 1));
+        const rise = ((state.time * 28 + seed * 3) % 50) - 25;   // 循环上升偏移
+        const sx = Math.cos(sa) * sr + Math.sin(state.time * 1.2 + k) * 2;
+        const sy = Math.sin(sa) * sr - rise;
+        const sparkR = 1.0 + Math.sin(state.time * 4 + k * 2) * 0.4;
+        if (Math.hypot(sx, sy) < r) {
+          ctx.beginPath(); ctx.arc(sx, sy, sparkR, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      // 稳定边界环（最外层玫红描边，标识光环范围）
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 80, 140, 0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
       ctx.restore();
     }
   }
 
+  // 圆角弹体路径（手工 arc 实现，不依赖 roundRect——旧浏览器内核无此 API 会静默回退直角）：
+  // 标准圆角矩形：四角各自 90° 圆弧 + 四条直边。此前实现误用"单个半圆 arc"拼形，
+  // 圆角 < 半宽时右侧被斜线拉出凸块（非对称）——该 bug 下 0.4/0.65 的观感均失真
+  function bulletPath(x, y, w, ph, rad) {
+    const rr = Math.min(rad, w / 2, ph / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);                                 // 顶边
+    ctx.arc(x + w - rr, y + rr, rr, -Math.PI / 2, 0);          // 右上角
+    ctx.lineTo(x + w, y + ph - rr);                            // 右边
+    ctx.arc(x + w - rr, y + ph - rr, rr, 0, Math.PI / 2);      // 右下角
+    ctx.lineTo(x + rr, y + ph);                                // 底边
+    ctx.arc(x + rr, y + ph - rr, rr, Math.PI / 2, Math.PI);    // 左下角
+    ctx.lineTo(x, y + rr);                                     // 左边
+    ctx.arc(x + rr, y + rr, rr, Math.PI, Math.PI * 1.5);       // 左上角
+    ctx.closePath();
+  }
+
   function drawBullets() {
     for (const b of pBullets) {
-      // 副武器·无界飞剑：细长剑体（冰蓝→白渐变，剑尖朝前）+ 辉光
+      // 副武器·无界飞剑（飞行弹体）：与待发射悬浮剑同画法（paintFeijianSword，含护手 / 剑柄 / 拖尾），
+      // 朝向取弹速方向；暴走拖尾略微增长（26 → 38）；装备陵落时带微弱追踪（转向由 08-entities homing 完成）；
+      // 警报 / BOSS 登场动画期间按 dieT 快速消散渐隐
       if (b.sword) {
-        ctx.save();
-        ctx.translate(b.x, b.y);
-        ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);   // 局部 -y 为剑尖方向（弹速向上时旋转归零）
-        ctx.globalCompositeOperation = 'lighter';
-        const L = b.len || 30, hw = 2.4;
-        const g = ctx.createLinearGradient(0, L / 2, 0, -L / 2);
-        g.addColorStop(0, 'rgba(120,170,255,0.15)');
-        g.addColorStop(0.55, 'rgba(160,210,255,0.75)');
-        g.addColorStop(1, 'rgba(240,250,255,1)');
-        ctx.fillStyle = g;
-        ctx.shadowColor = 'rgba(150,200,255,0.9)';
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(0, -L / 2);
-        ctx.lineTo(hw, -L * 0.1);
-        ctx.lineTo(hw * 0.5, L / 2);
-        ctx.lineTo(-hw * 0.5, L / 2);
-        ctx.lineTo(-hw, -L * 0.1);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
+        const fade = b.dieT != null ? clamp(b.dieT / 0.3, 0, 1) : 1;
+        paintFeijianSword(b.x, b.y, Math.atan2(b.vy, b.vx) + Math.PI / 2, b.len, b.r, fade, b.berserk, b.berserk ? 38 : 26);
         continue;
       }
-      // 副武器·极夜飞星：流动渐变蓝色追踪激光（圆头线段，无描边，辉光发光）
+      // 副武器·极夜流光：淡蓝→蓝渐变的粗直射激光（头部蓝最深、尾部渐隐，内芯亮带峰值偏上、不贴头部）；
+      // 视觉宽度 ≈ 风暴编织者雷电长条弹 × 1.25（r 5.75 → 宽 11.5）；
+      // 外形：头部半圆圆帽、两侧直线、尾部以贝塞尔曲线圆滑收束成尖（宽度与透明度同步收窄，无生硬截断）；
+      // 出手时以初始光束长 40 现身，长度以二次缓动（大加速度）长到全长；
+      // 暴走（Lv5）内部完全不变（蓝体白芯），仅最外圈边框描边换为金红渐变
       if (b.laserBolt) {
         ctx.save();
         ctx.translate(b.x, b.y);
         ctx.rotate(Math.atan2(b.vy, b.vx));
         ctx.globalCompositeOperation = 'lighter';
-        ctx.lineCap = 'round';
-        const L = b.len || 34;
-        const g = ctx.createLinearGradient(-L / 2, 0, L / 2, 0);
-        g.addColorStop(0, 'rgba(26,63,184,0)');
-        g.addColorStop(0.5, 'rgba(120,180,255,0.9)');
-        g.addColorStop(1, 'rgba(159,232,255,0)');
-        ctx.strokeStyle = g;
-        ctx.lineWidth = 3.4;
-        ctx.shadowColor = 'rgba(110,170,255,0.9)';
-        ctx.shadowBlur = 10;
-        ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke();
-        // 流动亮带：短亮段沿弹体持续移动（渐变流动感）
-        ctx.strokeStyle = 'rgba(220,240,255,0.85)';
-        ctx.lineWidth = 1.6;
-        const off = (state.time * 46) % (L * 1.4) - L * 0.7;
-        ctx.beginPath(); ctx.moveTo(off - 8, 0); ctx.lineTo(off + 8, 0); ctx.stroke();
+        const A = 0.8;   // 激光统一透明度
+        const L = b.len || 0;
+        if (L > 2) {
+          const hw = 5.75;              // 半宽（与判定 r 一致）
+          const headC = L / 2 - hw;     // 头部圆帽圆心（圆帽顶点恰在 L/2）
+          const tailX = -L / 2;         // 尾尖
+          const bodyX = tailX + hw * 2.4;   // 尾锥结束、直线段起点
+          // 光束外形路径：尾尖 → 贝塞尔上缘 → 上直线 → 头部半圆 → 下直线 → 贝塞尔下缘 → 闭合
+          const beam = () => {
+            ctx.beginPath();
+            ctx.moveTo(tailX, 0);
+            ctx.quadraticCurveTo(tailX + hw * 0.9, -hw * 0.62, bodyX, -hw);
+            ctx.lineTo(headC, -hw);
+            ctx.arc(headC, 0, hw, -Math.PI / 2, Math.PI / 2);
+            ctx.lineTo(bodyX, hw);
+            ctx.quadraticCurveTo(tailX + hw * 0.9, hw * 0.62, tailX, 0);
+            ctx.closePath();
+          };
+          const g = ctx.createLinearGradient(tailX, 0, L / 2, 0);   // 本体渐变（两态各自配色：内部与边框同风格）
+          if (b.berserk) {
+            // 暴走内部：淡淡的渐变金红（微白），头部更亮金红
+            g.addColorStop(0, 'rgba(255,210,165,0)');
+            g.addColorStop(0.4, 'rgba(255,195,145,0.25)');
+            g.addColorStop(0.75, 'rgba(252,155,100,0.42)');
+            g.addColorStop(1, 'rgba(255,175,110,0.5)');
+          } else {
+            // 常态内部：蓝色渐变，头部渐白（不纯白）——与边框同风格
+            g.addColorStop(0, 'rgba(140,190,255,0)');
+            g.addColorStop(0.4, 'rgba(110,165,250,0.5)');
+            g.addColorStop(0.75, 'rgba(75,130,238,0.9)');
+            g.addColorStop(1, 'rgba(150,190,252,0.95)');
+          }
+          ctx.shadowColor = b.berserk ? 'rgba(255,150,60,0.8)' : 'rgba(110,170,255,0.7)';
+          ctx.shadowBlur = 12;
+          // 边框描边：常态为蓝 → 头端渐白（偏白蓝、不纯白）的描边；暴走仅边框换金红（尾浅金 → 头红），内部蓝体白芯不变
+          // （颜色整体调淡：alpha 降低 + 暴走金红提亮）
+          beam();
+          let edgeG;
+          if (b.berserk) {
+            edgeG = ctx.createLinearGradient(tailX, 0, L / 2, 0);
+            edgeG.addColorStop(0, 'rgba(255,205,140,0)');
+            edgeG.addColorStop(0.4, 'rgba(255,185,115,0.5)');
+            edgeG.addColorStop(1, 'rgba(255,165,100,0.9)');
+          } else {
+            edgeG = ctx.createLinearGradient(tailX, 0, L / 2, 0);
+            edgeG.addColorStop(0, 'rgba(140,190,255,0)');
+            edgeG.addColorStop(0.4, 'rgba(115,170,252,0.55)');
+            edgeG.addColorStop(0.75, 'rgba(170,205,253,0.8)');
+            edgeG.addColorStop(1, 'rgba(225,240,255,0.9)');
+          }
+          ctx.strokeStyle = edgeG;
+          ctx.lineWidth = b.berserk ? 3 : 2.5;
+          ctx.globalAlpha = A * 0.55;
+          ctx.stroke();
+          // 本体填充（常态蓝头渐白 / 暴走淡金红头更亮）
+          beam();
+          ctx.fillStyle = g;
+          ctx.globalAlpha = A * 0.95;
+          ctx.fill();
+          // 内芯亮带：已按需求整体移除（观察无白芯效果；恢复时还原三层渐变描线 6/3/1.3px）
+        }
         ctx.restore();
         continue;
       }
@@ -806,9 +983,12 @@
       }
       // 弹体渐变与坐标无关（仅颜色/半径），缓存复用；平移到弹位置后按局部坐标绘制
       // 混乱将至穿透后的子弹（weakened）：弹体缩短、整体变暗、配色转冷蓝（与满威力弹明显区分）
+      // 弹体长度：非暴走 ×1.3（6r → 7.8r）、暴走 ×1.2（6r → 7.2r）；穿透弱化弹维持原缩短比例；
+      // 四角磨平：圆角 0.5×半宽（常规弹约 1.5px 倒角）
       const wk = !!b.weakened;
-      const top = b.y - b.r * (wk ? 1.9 : 3);
-      const h = b.r * (wk ? 3.8 : 6);
+      const isBer = !!b.berserk;
+      const h = b.r * (wk ? 3.8 : isBer ? 7.2 : 7.8);
+      const top = b.y - h / 2;   // 弹体中心对准弹位（判定点保持居中）
       ctx.globalAlpha = wk ? 0.72 : 1;
       { // 子弹尾焰：金橙火舌 + 暖光晕，长度随发射时武器等级增长（Lv1~5，暴走弹最长）
         // 暴走尾焰：弹体后方（飞行反方向）的金橙渐变火舌 + 外围暖光晕（仅暴走期发射的弹携带）
@@ -835,7 +1015,7 @@
       }
       ctx.save();
       ctx.translate(b.x, top);
-      ctx.fillStyle = cachedGrad(`p|${b.color}|${b.r}|${wk ? 'w' : 'n'}`, () => {
+      ctx.fillStyle = cachedGrad(`p|${b.color}|${b.r}|${wk ? 'w' : 'n'}${isBer ? 'b' : ''}`, () => {
         const g = ctx.createLinearGradient(0, 0, 0, h);
         g.addColorStop(0, wk ? '#9fc6ff' : '#ff6ec7');   // 上：粉色（穿透后转冷蓝）
         g.addColorStop(1, b.color);     // 下：本体色
@@ -843,12 +1023,14 @@
       });
       ctx.shadowColor = b.color;
       ctx.shadowBlur = wk ? 4 : 8;
-      ctx.fillRect(-b.r, 0, b.r * 2, h);
+      bulletPath(-b.r, 0, b.r * 2, h, b.r * 0.5);
+      ctx.fill();
       ctx.restore();
       ctx.shadowBlur = 0;
       ctx.strokeStyle = `rgba(255, 255, 255, ${wk ? 0.55 : 0.8})`;   // 描边
       ctx.lineWidth = 1;
-      ctx.strokeRect(b.x - b.r, top, b.r * 2, h);
+      bulletPath(b.x - b.r, top, b.r * 2, h, b.r * 0.5);
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
     for (const b of eBullets) {
@@ -1002,7 +1184,8 @@
         continue;
       }
       if (b.len) {
-        // 长条弹：沿飞行方向的渐变胶囊体（b.oval 时为椭圆体风条——与友方大风暴风弹共用 paintWindStreakBody）
+        // 长条弹：沿飞行方向的渐变圆角长条体（b.oval 时为椭圆体风条——与友方大风暴风弹共用 paintWindStreakBody）；
+        // 四角磨平：圆角 0.65×半宽（比玩家主炮弹的 0.5 略圆）
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
         ctx.translate(b.x, b.y);
@@ -1010,18 +1193,22 @@
         if (b.oval) {
           paintWindStreakBody(b);
         } else {
+          // 长条弹渐变：头端红（b.color——炮艇/主力舰 #ff4d2e、旧日之歌 #ff7a45）→ 中段近白 → 尾端略带红光的暖白
+          // （半透明收尾柔化入背景，不再像旧版 0.15 透明度那样发黑）；描边同款略带红光的白
           const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
-          g.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-          g.addColorStop(0.5, '#ffffff');
-          g.addColorStop(1, b.color);
+          g.addColorStop(0, 'rgba(255, 231, 219, 0.6)');   // 尾端：略带红光的暖白
+          g.addColorStop(0.5, '#fff3ec');                  // 中段：红光白
+          g.addColorStop(1, b.color);                      // 头端：红
           ctx.fillStyle = g;
           ctx.shadowColor = b.color;
           ctx.shadowBlur = 9;
-          ctx.fillRect(-b.len / 2, -b.r, b.len, b.r * 2);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
+          ctx.fill();
           ctx.shadowBlur = 0;
-          ctx.strokeStyle = 'rgba(255, 235, 220, 0.9)';   // 描边
+          ctx.strokeStyle = 'rgba(255, 235, 220, 0.9)';   // 描边：略带红光的白
           ctx.lineWidth = 1;
-          ctx.strokeRect(-b.len / 2, -b.r, b.len, b.r * 2);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
+          ctx.stroke();
         }
         ctx.restore();
       } else {
@@ -1050,7 +1237,7 @@
           ctx.globalAlpha = ga;
         }
         if (b.bossRound) {
-          // BOSS 圆形弹幕（诗篇·旧日之歌技能4 扇形弹）：白核 → 主色径向渐变，
+          // BOSS 圆形弹幕（真我·旧日之歌技能4 扇形弹）：白核 → 主色径向渐变，
           // 与长条弹的"白热中段 → 主色头端"同色系，避免平涂主色 + 红辉光造成的偏红观感
           ctx.fillStyle = cachedGrad(`bround|${b.color}|${b.r}`, () => {
             const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
@@ -1503,6 +1690,29 @@
     ctx.restore();
   }
 
+  // 爆炸冲击圈（大狗导弹雨 / 捣蛋来袭）：蓝色扩散环自爆点扩张至波及半径后渐隐，
+  // 直观指示溅射范围（生成见 07-player dagouMissileBlast / 02-core spawnBlastRing，推进见 14-main）
+  function drawBlastRings() {
+    for (const r of blastRings) {
+      const p = clamp(r.t / r.dur, 0, 1);
+      const rad = r.r * (0.35 + 0.65 * p);
+      const a = 0.8 * (1 - p);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = r.color;
+      ctx.shadowColor = r.color;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, rad, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = a * 0.25;
+      ctx.lineWidth = 5;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // 天秀忧郁王子：友方大风暴——暴风之眼同款俯视旋涡的我方版（三层旋臂 + 风暴眼 + 外虚线环），
   // 白蓝色调；存留末段渐隐。绘制于僚机之后、子弹之前（不遮挡我方弹幕）
   // 大狗导弹雨预警：发射前 warnLead 秒屏幕下方自下而上渐显淡蓝光带（峰值 warnPeak，克制可见），
@@ -1723,6 +1933,7 @@
     drawBullets();
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
+    drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
     drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）
@@ -1733,6 +1944,7 @@
     drawSlashFx();        // 群星之杀：空间斩击特效（交叉斩痕 + 冲击环，渐隐）
     drawDashKillFx();     // 许凯狗冲刺：被击杀敌机白光冲击（扩散白环 + 渐隐闪核）
     drawParticles();
+    drawBossBars();       // BOSS 顶部血条：顶层绘制（实体/弹幕/粒子之上）——BOSS 靠上时机体不再遮挡血条
     drawChallengeBar();   // 测试模式：顶部测试目标血条（图鉴挑战·敌人测试）
 
     // BOSS 警报演出（全屏覆盖层）

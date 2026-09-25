@@ -5,13 +5,13 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, hasPilot, isShipian } from './01-config.js';
-  import { bossEntranceActive, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, enemyDmgMul, hasPilot, isZhenwo } from './01-config.js';
+  import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
-  import { achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
+  import { achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -20,7 +20,7 @@
     let mul = 1;
     // 大无垠之王：BOSS 战累积的造成伤害提升（怒意蔓延，见 07-player updatePilotStatus 累积 / 06-enemy killEnemy 清算）
     mul *= kingDmgBonusMul();
-    // 副武器·极夜飞星：对 4类敌人（主力舰 / 法术阵列）增伤（capVuln 取自弹体 b.capVuln，注册表 1.5）
+    // 副武器·极夜流光：对 4类敌人（主力舰 / 法术阵列）增伤（capVuln 取自弹体 b.capVuln，注册表 1.5）
     if (capVuln && (e.type === 'capital' || e.type === 'fashiArray')) mul *= capVuln;
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
@@ -29,9 +29,9 @@
         Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) mul *= 1 + BAOLING.vuln;
     if (e.type === 'harbinger' && isWing) mul *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
     if (e.type === 'tornado') {
-      // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；诗篇：僚机易伤额外 +150%（加算，不乘算）
+      // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；真我：僚机易伤额外 +150%（加算，不乘算）
       mul *= isWing
-        ? (1 + STORM.tornadoWingVuln + (isShipian() ? STORM_SHIP.s2.wingVulnAdd : 0))
+        ? (1 + STORM.tornadoWingVuln + (isZhenwo() ? STORM_SHIP.s2.wingVulnAdd : 0))
         : (1 - STORM.tornadoMainDR);
     }
     // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
@@ -42,7 +42,7 @@
     if (e.type === 'popian' && player.weapon <= 2) mul *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
     // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
     if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
-    // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%；诗篇难度全体 BOSS -10%——
+    // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%；真我难度全体 BOSS -10%——
     // 同时存在多个暴走减免修正时取最高（不叠加）。主炮/僚机弹幕/空间斩击均生效；高能爆弹为真实伤害不经此处
     if (e.type === 'boss' && player.weapon >= 5) {
       let dr = e.bossId === 'storm2' ? STORM2.berserkDR : 0;
@@ -50,8 +50,8 @@
       if (mod > dr) dr = mod;
       if (dr > 0) mul *= (1 - dr);
     }
-    // 暴风之眼（诗篇）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
-    if (e.type === 'boss' && e.bossId === 'storm' && isShipian() && e.skill && e.skill.id === 3) {
+    // 暴风之眼（真我）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
+    if (e.type === 'boss' && e.bossId === 'storm' && isZhenwo() && e.skill && e.skill.id === 3) {
       mul *= (1 - STORM_SHIP.s4.dr);
     }
     // 焦香螺旋桨：登场 2s 内受到的伤害 -30%（入场保护，主武器与僚机弹幕均生效）
@@ -89,20 +89,17 @@
         const ns = Math.min(b.maxSpeed || Infinity, sp + b.accel * dt);
         b.vx *= ns / sp; b.vy *= ns / sp;
       }
-      // 副武器·追魂导弹 / 极夜飞星：朝最近的合格敌人限角速度转向（turnRate rad/s），无目标时保持直飞。
-      // 索敌规则与主炮/僚机一致：屏幕外 / 虚化 / 濒死 / 登场虚化 BOSS 不索敌；
-      // 极夜飞星（subFirst）额外优先级：BOSS 战中 BOSS 召唤的衍生敌人（非 BOSS 目标）> BOSS
+      // 副武器·无界飞剑（装备陵落驾驶员时）的微弱追踪：朝最近的合格敌人限角速度转向（turnRate rad/s），
+      // 无目标时保持直飞。索敌规则与主炮/僚机一致：屏幕外 / 虚化 / 濒死 / 登场虚化 BOSS 不索敌
+      // （极夜流光已改为"发射前标记目标位置、直射不转向"，不再走此逻辑）
       if (b.homing) {
         let tgt = null, bestD = Infinity;
-        let tgtSub = null, bestSubD = Infinity;
         for (const e of enemies) {
           if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
           if (e.type === 'boss' && bossEntranceActive()) continue;
           const dx = e.x - b.x, dy = e.y - b.y, d = dx * dx + dy * dy;
           if (d < bestD) { bestD = d; tgt = e; }
-          if (b.subFirst && e.type !== 'boss' && d < bestSubD) { bestSubD = d; tgtSub = e; }
         }
-        if (b.subFirst && tgtSub) tgt = tgtSub;
         if (tgt) {
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const cur = Math.atan2(b.vy, b.vx), want = Math.atan2(tgt.y - b.y, tgt.x - b.x);
@@ -116,8 +113,27 @@
       }
       // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
       if (b.lenTarget && b.len < b.lenTarget) b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
+      // 极夜流光出手生长：初始光束长 len0（40），以二次缓动（大加速度）在 growDur 内长到全长 lenFull
+      if (b.growDur != null && b.growT < b.growDur) {
+        b.growT += dt;
+        const gp = clamp(b.growT / b.growDur, 0, 1);
+        b.len = b.len0 + (b.lenFull - b.len0) * gp * gp;
+      }
+      // 极夜流光暴走：光束上金红光芒流动伴随的少量粒子撒落
+      if (b.laserBolt && b.berserk && Math.random() < 0.25) {
+        spawnParticles(b.x + rand(-4, 4), b.y + rand(-4, 4), Math.random() < 0.5 ? '#ffb060' : '#ff7a45', 1, 30);
+      }
+      // 警报 / BOSS 登场动画：飞行中的飞剑弹快速消散（常规位移照常，提前渐隐移除并停止命中）
+      if (b.sword && b.dieT == null && (bossFlow.stage === 'warn' || bossEntranceActive())) b.dieT = 0.3;
+      if (b.dieT != null) {
+        b.dieT -= dt;
+        if (b.dieT <= 0) pBullets.splice(i, 1);
+        continue;   // 消散期间：跳过索敌与命中结算（常规位移已在上方完成）
+      }
       // 出界移除：友方大风暴风弹可斜向/朝下方 240° 扇形内飞行，横向与下边界出界一并移除
       if (b.y < -10 || b.y > CANVAS_H + 10 || b.x < -20 || b.x > CANVAS_W + 20) { pBullets.splice(i, 1); continue; }
+      // 消散中的飞剑弹不再命中敌人
+      if (b.dieT != null) continue;
 
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
@@ -155,7 +171,7 @@
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
       if (b.ax) b.vx += b.ax * dt;   // 弧线弹（1/4 双曲线弹道）
-      // 旋转弹（诗篇·旧日之歌技能1 旋转弧线流）：速度方向按角速度逐帧旋转——
+      // 旋转弹（真我·旧日之歌技能1 旋转弧线流）：速度方向按角速度逐帧旋转——
       // 当前指向水平以上（屏幕坐标 vy<0）时角速度大幅增加、水平以下较为减小（倍率由弹体自带，缺省见下）
       if (b.angVel) {
         const w = b.angVel * (b.vy < 0 ? (b.spinUp || 2.8) : (b.spinDown || 0.55));
@@ -308,9 +324,9 @@
         } else if (b.beamTrail) {
           // 折线光束（技能3"<"弹）撞盾：头部钉在盾面被截断，尾端继续按原速前进逐帧"磨短"——
           //   光束整体缩向盾面后消散（修复：此前走普通弹吸收分支，整条"<"光束瞬间消失）；
-          //   判定箱收窄（STORM2.s3ShieldR < 弹体半径）：擦盾边缘不再被咬住，仅真正触及盾面才被截断
+          //   盾判定按弹体半径（b.r）：与其他射弹同一套白盾几何，无额外收窄
           if (!b.shieldBlocked) {
-            const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y, STORM2.s3ShieldR);
+            const hit = shieldSweepHit(b.x - b.vx * dt, b.y - b.vy * dt, b.x, b.y, b.r);
             if (hit) {
               b.shieldBlocked = true; b.sbX = hit.x; b.sbY = hit.y;
               const over = Math.hypot(b.x - hit.x, b.y - hit.y);   // 本帧越过盾面的距离：从轨迹末端回退
@@ -398,10 +414,11 @@
         }
       }
       // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
-      // 七日澜心水晶护盾：同样消解气泡内敌弹（粉色迸散）
+      // 七日澜心水晶护盾：同样消解气泡内敌弹（粉色迸散）——成就「云心」按结晶护盾期间的消解数计数
       if (!b.laser && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r &&
           (player.shield > 0 || player.crystalShield > 0)) {
+        if (player.crystalShield > 0) achvNoteLanxinAbsorb();
         spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 6, 140);
         eBullets.splice(i, 1);
         continue;
@@ -447,7 +464,9 @@
                     (b.owner.type === 'boss' && b.owner.bossId === 'storm'))) ? 'storm' : null;
         // 成就死因：BOSS 弹幕按 owner 归属（往日梦魇——旧日之歌弹幕击杀）
         const achvCause = (b.owner && b.owner.type === 'boss') ? ('boss:' + b.owner.bossId) : null;
-        const tookHit = damagePlayer(b.dmg, 1, false, false, src, achvCause);
+        // BOSS 及其召唤物（大型龙卷）伤害在发射时已乘 bossDmgMul，不吃非BOSS敌人增伤
+        const bossOwned = b.owner && (b.owner.type === 'boss' || b.owner.type === 'tornado');
+        const tookHit = damagePlayer(b.dmg * (bossOwned ? 1 : enemyDmgMul()), 1, false, false, src, achvCause);
         // 成就：饿啊——被紫电侧翼艇亡语弹击中计数（仅实际造成伤害的命中）
         if (tookHit && b.owner && b.owner.deathShot) achvZidianHit();
         if (!b.laser) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
@@ -460,6 +479,8 @@
 
   // 生成道具（非水晶类通用）：下落 + 随机左右漂移（碰边反弹）+ 易被磁吸
   function spawnPowerup(x, y, kind, r) {
+    // 防御性守卫：非有限坐标的道具会在绘制端产生 NaN（真实画布静默不绘制 → 道具凭空消失），直接拒绝生成
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { console.error('spawnPowerup 拒绝非有限坐标：', kind, x, y); return; }
     powerups.push({ x, y, kind, r, vy: rand(72, 99), vx: rand(-46, 46) });   // 1.8x 原速(40~55)
   }
 
@@ -478,7 +499,7 @@
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
       const cap = diffMods().bombCap;
-      state.bombs = Math.min(state.bombs + 1, cap != null ? cap : MAX_BOMBS);   // 诗篇：上限 2（mods.bombCap）
+      state.bombs = Math.min(state.bombs + 1, cap != null ? cap : MAX_BOMBS);   // 真我：上限 2（mods.bombCap）
       spawnParticles(p.x, p.y, '#ffb545', 12, 160);
     } else if (p.kind === 'shield') {
       // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏

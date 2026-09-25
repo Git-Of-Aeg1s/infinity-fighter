@@ -54,13 +54,32 @@ const universal = new Proxy(function () {}, {
   get(_t, prop) {
     if (prop === Symbol.toPrimitive) return () => 0;
     if (prop === 'width' || prop === 'height') return 0;
-    return universal;
+    if (prop === 'then') return undefined;   // 防 thenable 误判
+    return validateFn(prop);
   },
   set() { return true; },
   apply() { return universal; },
 });
 
-// 2D 上下文桩：所有方法 no-op，所有属性可写
+// 画布参数校验：真实 Canvas2D 对 非有限坐标 / 负半径 会抛异常（每帧抛错 → 游戏表现为冻结）。
+// 无头桩默认不校验会漏掉这类缺陷——按真实语义对最易出错的调用做参数检查
+const validateCache = new Map();
+function validateFn(prop) {
+  if (!validateCache.has(prop)) {
+    const fn = (...args) => {
+      const nums = args.filter(v => typeof v === 'number');
+      const bad = msg => { throw new Error('CTX ' + prop + ' ' + msg + '：' + args.map(v => typeof v === 'number' ? v.toFixed(2) : String(v)).join(', ')); };
+      if (nums.some(v => !Number.isFinite(v))) bad('非有限参数');
+      if ((prop === 'createRadialGradient' && (args[2] < 0 || args[5] < 0)) || ((prop === 'arc' || prop === 'ellipse') && args[2] < 0)) bad('负半径');
+      return universal;   // 调用结果仍返回万能桩（createLinearGradient 等返回值需可继续调用 addColorStop）
+    };
+    fn[Symbol.toPrimitive] = () => 0;   // 属性读取被当数值使用时按 0 处理（与旧行为一致，如 measureText 的包围盒）
+    validateCache.set(prop, fn);
+  }
+  return validateCache.get(prop);
+}
+
+// 2D 上下文桩：所有方法 no-op（但经参数校验），所有属性可写
 const CTX = universal;
 
 function makeCanvas() {
@@ -250,6 +269,23 @@ try {
     elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
     sample('驾驶员 ' + pid + ' 主路径');
   }
+
+  // 副武器系统：逐个选中副武器跑主路径（主菜单演示发射 → 开局战斗 → 重开），
+  // 覆盖 buildSubWeaponCards 卡片选中 / fireSubWeapon 各 kind / updateXinRings / updateFeijianWaves /
+  // updateDagouMissiles（捣蛋）与 resetGame 副武器初始冷却（捣蛋 / 辛国栋）
+  const subCards = [...elements.subGrid.children];
+  for (const card of subCards) {
+    const sid = card.dataset && card.dataset.sub;
+    if (!sid) continue;
+    card.click();
+    frames(240);                                // 主菜单演示：updateDemo 发射副武器弹道
+    elements.startBtn.click();
+    frames(400);                                // 战斗：发射 / 命中 / 灼烧 / 爆炸
+    key('r'); frames(120);                      // R 重开（resetGame 副武器初始冷却路径）
+    elements.pauseHomeBtn.click(); frames(10);  // 返回主界面（下一把换装）
+    sample('副武器 ' + sid + ' 主路径');
+  }
+  if (!subCards.length) errors.push({ key: '副武器卡片缺失', stack: 'subGrid 无卡片（buildSubWeaponCards 未执行？）' });
 
   // 怪物图鉴：打开即构建列表 + 全部条目缩略图（drawEncyPreview → 嵌套 withPreviewCtx）
   // 入口按钮现为主菜单静态元素（index.html 内 id=encyEntryBtn），由 getElementById 获取

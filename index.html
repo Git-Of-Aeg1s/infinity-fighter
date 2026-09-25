@@ -61,6 +61,8 @@
           <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
           <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
         </div>
+        <!-- 大无垠之王：BOSS 战累积增伤读数（位于血条上方、量表之下，flex 列排布不与量表重叠；向上取整整数百分比） -->
+        <div class="king-bonus hidden" id="kingBonus" title="大无垠之王：BOSS 战累积增伤（怒意蔓延）"></div>
         <div class="hp-row">
           <span class="lives-text" id="livesText">♥♥</span>
           <div class="hp-bar">
@@ -108,7 +110,7 @@
           <div class="help-row"><span class="help-keys"><kbd>Space</kbd></span><span class="help-desc">高能爆弹：清除全部敌弹 + 全场伤害</span></div>
           <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停 / 继续</span></div>
           <div class="help-row"><span class="help-keys"><kbd>R</kbd></span><span class="help-desc">立即重开</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能（七日澜心，量表满后）</span></div>
+          <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能</span></div>
           <div class="help-row"><span class="help-keys"><kbd>Q</kbd></span><span class="help-desc">副驾驶员技能</span></div>
         </div>
 
@@ -135,7 +137,8 @@
             </button>
             <button class="loadout-box loadout-quad" data-panel="panelSub">
               <span class="loadout-label">副武器</span>
-              <span class="loadout-value" id="loadoutSubVal">标准挂架</span>
+              <span class="loadout-value" id="loadoutSubVal">无界飞剑</span>
+              <span class="loadout-sub-glyph" id="loadoutSubGlyph"></span>
             </button>
             <!-- 驾驶员菱形框：点击展开驾驶员选择面板（卡片由 12-ui buildPilotCards 按 PILOTS 注册表生成）；
                  文字样式复用装备框的 label / value 类 -->
@@ -244,9 +247,9 @@
           <h2>怪物图鉴</h2>
           <!-- 快捷切换难度：三选一按钮组（静态标记，保证始终渲染；选中/置灰/提示由 13-encyclopedia 依 DIFFICULTIES 初始化） -->
           <div class="ency-diff-group" id="encyDiffGroup">
+            <button class="ency-diff-btn" data-diff="xuxiang">虚象</button>
             <button class="ency-diff-btn" data-diff="juxiang">具象</button>
             <button class="ency-diff-btn" data-diff="zhenwo">真我</button>
-            <button class="ency-diff-btn" data-diff="shipian">诗篇</button>
           </div>
           <button class="ency-close" id="encyClose">✕</button>
         </div>

@@ -5,8 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
-  import { armorGlyphFx, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
@@ -20,8 +20,10 @@
 
 
   // ---------- 输入 ----------
-  // 武器等级切换作弊开关：true=需先按 0 武装再用 1~5 切换（右上角音量键微微变亮作为已武装标识）
-  const WEAPON_CHEAT_REQUIRE_ARM = true;
+  // 作弊武装开关（预留）：true=需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为已武装标识）
+  // 才能使用作弊键 1~5 / 8 / 9；false=作弊键直接生效，按 0 不做任何事（音量键标识也不会变化）。
+  // 当前为 false——三种作弊键均无需武装。
+  const WEAPON_CHEAT_REQUIRE_ARM = false;
   // 直接设定武器等级（调试/作弊）：Lv5 视为暴走，需同时给予暴走倒计时，否则下一帧会回落 Lv4；
   // 切到 Lv5 与自然暴走同样触发澄月判定（tryChengyueShield，BOSS 战限一次的门控照常生效）
   function debugSetWeapon(n) {
@@ -50,9 +52,11 @@
     if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发）
-    // 大狗导弹雨连发开关：装备大狗时战斗中按 9 切换 0.2~1s 间隔，再按恢复 10~22s。
-    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
-    if (k === '9' && state.mode === 'playing' && hasPilot('dagou')) {
+    // 大狗导弹雨连发开关（作弊键，不要求装备大狗——任意驾驶员均可触发）：
+    // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备大狗时：开启即启用整套导弹雨系统并以连发间隔运行）。
+    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应；
+    // WEAPON_CHEAT_REQUIRE_ARM = true 时需先按 0 武装（预留机制，见顶部开关说明）
+    if (k === '9' && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
       state.dagouDebugRapid = !state.dagouDebugRapid;
       if (state.dagouDebugRapid) {
         state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
@@ -60,8 +64,10 @@
       }
       console.log('[debug] 大狗 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
     }
-    // 天秀连发风暴开关：装备天秀时战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭
-    if (k === '8' && state.mode === 'playing' && hasPilot('tianxiu')) {
+    // 天秀连发风暴开关（作弊键，不要求装备天秀忧郁王子——任意驾驶员均可触发）：
+    // 战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭；
+    // WEAPON_CHEAT_REQUIRE_ARM = true 时需先按 0 武装（预留机制，见顶部开关说明）
+    if (k === '8' && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
       state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
       state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
       if (state.tianxiuDebugSpam) achvNoteCheat();   // 成就：作弊开关（无垠 / 无垠战机排除）
@@ -74,10 +80,10 @@
     if (k === 'capslock' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
       state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedSlow ? 1 : PILOTS.maxingquan.speedSlow;
     }
-    // 武器等级切换：需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为标识）才能用 1~5 切换。
-    // 武装按键在任意界面状态均可触发（菜单 / 暂停 / 结算中皆可按 0）；图鉴挑战模式同样需要武装（门控统一）。
-    // "+" 立刻再召唤一个测试目标
-    if (k === '0' && !state.cheatArm) {
+    // 作弊武装（预留机制）：WEAPON_CHEAT_REQUIRE_ARM = true 时按 0 武装（任意界面可按）后 1~5 / 8 / 9 才生效，
+    // 右上角音量键微微变亮作为已武装标识；当前开关为 false——按 0 完全无动作（音量键标识不变）。
+    // "+" 立刻再召唤一个测试目标（非作弊，保持原样）
+    if (k === '0' && WEAPON_CHEAT_REQUIRE_ARM && !state.cheatArm) {
       state.cheatArm = true;
       musicToggle.classList.add('cheat-armed');   // 已武装标识：音量键边框提亮
     }
@@ -134,6 +140,7 @@
       //   等级 1s/级（开局 1 级起步，封顶 dashLv）；冲刺期间无敌由 resetGame 覆盖；
       //   机体自动在屏高 20%~50% 大幅上下摆动（updatePlayer 驱动）、我方全程停火（playerFireLocked）；
       //   出场即秒：敌机进场 60%~80%（逐机随机）即被强制击杀（enemyEnterFrac），走完整击杀流程（道具正常掉落）；
+      //   撞上 BOSS：每 0.1s 造成 2000 + 4% BOSS 最大血量伤害（正常流程冲刺期无 BOSS，仅试炼残留 / 特殊时序下可撞到）；
       //   刷怪间隔 ÷3（等级 1s/级；节奏介于正常与旧 ÷5 之间——旧 ÷5 每级刷怪量对齐的设计导致刷怪量爆炸）；
       //   冲刺结束：bossFlow.timer 对齐到 dashLv 对应时刻（1 + 30/5 = 7 → 直接衔接 Lv7，刷怪期总长不变）
       if (state.pilotDashT > 0) {
@@ -151,6 +158,22 @@
               // 白光冲击特效：被冲刺击杀的敌机身上炸开扩散白环 + 闪核（绘制见 10-draw-world drawDashKillFx）
               dashKillFx.push({ x: e.x, y: e.y, t: 0, max: 0.35, r: Math.max(e.w, e.h) * 0.55 });
               killEnemy(i);
+            }
+          }
+        }
+        // 冲刺撞 BOSS：每 0.1s 一跳（逐 BOSS 独立计时），伤害 2000 + 4% BOSS 最大血量；
+        // 登场虚化期间（警报 / 入场动画，bossEntranceActive）BOSS 不可受击——跳过
+        const dashBoss = enemies.find(en => en.type === 'boss' && !en.dying && !en._deathSettled && !bossEntranceActive());
+        if (dashBoss &&
+            Math.abs(player.x - dashBoss.x) < (dashBoss.w + PLAYER_CFG.w) / 2 &&
+            Math.abs(player.y - dashBoss.y) < (dashBoss.h + PLAYER_CFG.h) / 2) {
+          dashBoss._dashHitT = (dashBoss._dashHitT || 0) - dt;
+          if (dashBoss._dashHitT <= 0) {
+            dashBoss._dashHitT = 0.1;
+            dashBoss.hp -= 2000 + dashBoss.maxHp * 0.04;
+            if (dashBoss.hp <= 0) {
+              const bi = enemies.indexOf(dashBoss);
+              if (bi >= 0) killEnemy(bi);
             }
           }
         }
@@ -215,8 +238,10 @@
 
       // BOSS 战斗期间（全难度）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
       // 不受压力系统与场上存怪影响；本波敌人道具掉率 ×0.3（见 04-spawn / 06-enemy）
-      // 警报演出（warn）至我方可开火（BOSS combatReady）前不计时——强制波首刷自可开火起 6~12s 后才出现
-      if (bossFlow.stage === 'fight' && !playerFireLocked()) {
+      // 警报演出（warn）至我方可开火（BOSS combatReady）前不计时——强制波首刷自可开火起 6~12s 后才出现；
+      // bossEntranceActive 双保险：暴风之眼被击败后的本体渐隐窗口（storm 仍 combatReady、storm2 未就绪）
+      // playerFireLocked 返回 false，若不封锁会在清场后再度刷出 1类，成为风暴编织者登场时的残留
+      if (bossFlow.stage === 'fight' && !playerFireLocked() && !bossEntranceActive()) {
         levelFlow.bossMinionT += dt;
         // BOSS 战 1类强制波间隔固定（6~12s）：明确不受任何刷怪调整影响（不随难度 spawnIntervalMul 缩放）
         if (levelFlow.bossMinionT >= levelFlow.bossMinionNext) {
@@ -247,7 +272,7 @@
           bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
         // bossVictoryDelay > 0：最终 BOSS 已被击坠、正在等待胜利结算——冻结刷怪，避免结算前刷出新怪
         // ---------- 场面压力刷新系统（替代固定冷却） ----------
-        // 压力比 = 场上敌人权重和 / 满场基准（具象 ×0.75：更早超阈值 → 更早进入慢速刷新，压低同屏数量）；
+        // 压力比 = 场上敌人权重和 / 满场基准（虚象 ×0.75：更早超阈值 → 更早进入慢速刷新，压低同屏数量）；
         // 低于阈值 → 直接/加速刷新，高于阈值 → 较慢（间隔有限，拖得太长仍会刷新）
         const threshold = spawnPressureThreshold();
         const pressure = fieldPressureW() / (PRESSURE_CAPACITY * (diffMods().pressureCapacityMul != null ? diffMods().pressureCapacityMul : 1));
@@ -275,7 +300,7 @@
             spawnJiaoxiang();
             enemies[enemies.length - 1].waveTag = levelFlow.waveSeq;
           }
-          // 基础波间隔随难度倍率放大：真我 ×1.3（总刷怪量/同屏数量 ≈ -23%）、具象 ×2.3（≈ -55%）
+          // 基础波间隔随难度倍率放大：具象 ×1.3（总刷怪量/同屏数量 ≈ -23%）、虚象 ×2.3（≈ -55%）
           const base = Math.max(0.55, 2.1 - (levelFlow.level - 1) * 0.15)
             * (diffMods().spawnIntervalMul != null ? diffMods().spawnIntervalMul : 1);
           if (state.pilotDashT > 0) {
@@ -352,8 +377,9 @@
             (state.challenge ? '<br />' : '<br /><br />') +   // 挑战模式无得分行：不插空行（避免三行间距过大）
             `<span class="result-stats">` +
             (state.challenge ? '' : `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />`) +
-            `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b><br />` +
-            `抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b></span>`,
+            `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>` +
+            (state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`) +
+            `</span>`,
             '返回主界面'
           );
           // BOSS 试炼 / 图鉴挑战胜利：额外提供「再次挑战」（重开同一目标）；正常流程胜利不显示
@@ -413,6 +439,10 @@
       for (let i = armorGlyphFx.length - 1; i >= 0; i--) {   // 装甲触发图标演出推进
         armorGlyphFx[i].t += dt;
         if (armorGlyphFx[i].t >= armorGlyphFx[i].dur) armorGlyphFx.splice(i, 1);
+      }
+      for (let i = blastRings.length - 1; i >= 0; i--) {   // 爆炸冲击圈（大狗导弹雨）推进
+        blastRings[i].t += dt;
+        if (blastRings[i].t >= blastRings[i].dur) blastRings.splice(i, 1);
       }
       if (berserkBurst.active) {
         berserkBurst.t += dt;

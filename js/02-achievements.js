@@ -5,6 +5,8 @@
 // 依赖：01-config（ACHIEVEMENTS 注册表与装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
 // 共享状态：成就进度收敛于本模块 achv 域（不经 state / bossFlow / levelFlow），随局重置经 resetAchievements
 //   （12-ui resetGame 在 state.testBoss / state.challenge 置位之后调用——门控以这两项为准）
+//   例外：state.achvBulwarkLowBoss（最后一搏）由 02-core tryBulwarkCheatDeath 写入——02-core 不得反向 import 本模块，
+//   故经 state 中转，本模块只读并在 resetAchievements / achvOnBossKilled 消费
 //
 // 死亡原因标记（cause，damagePlayer 第 6 参 / 特殊死亡路径手工传入）：
 //   'missile'        先兆者导弹击杀（damagePlayer 内由 src='missile' 派生）
@@ -48,6 +50,18 @@
     baolingKills: 0,     // 当前殉爆窗口击杀数
     _baolingPrev: 0,     // 外层殉爆窗口计数暂存（嵌套殉爆互不影响）
     killSrc: null,       // 击杀来源标记（'dagou' | 'chixin' | 'bomb-keli'；同步窗口内消费）
+    songDown: false,     // 第一轮 BOSS（旧日之歌）已被击败（萎靡不振——击败前掉命判定）
+    chengyueDry: 0,      // 澄月：连续暴走未触发护盾的判定次数（非非 ≥5；触发护盾即清零）
+    maxinSlowT: 0,       // 马兴犬低速模式连续时长（s；鳖爬 ≥30）
+    maxinFastT: 0,       // 马兴犬高速模式连续时长（s；冲刺冲刺 ≥120）
+    huiHealTotal: 0,     // 洄累计治疗量（时流回溯 ≥100；含每 2s 回复与击败 BOSS 回复）
+    lanxinShieldBoss: false, // 当前结晶护盾开启于 BOSS 战（云心）
+    lanxinShieldAbsorb: 0,   // 当前结晶护盾存续期间气泡消解的敌弹数（云心）
+    dagouChain3N: 0,     // 大狗：完成「连射 3 轮」的链序列数（欧欧欧 ≥2）
+    dagouChain4N: 0,     // 大狗：完成「连射 4 轮」的链序列数（！？欧欧？！ ≥1）
+    _dagouSeqC3: false,  // 当前链序列已计 3 轮（同序列 4 轮不重复计 3 轮）
+    _dagouSeqC4: false,  // 当前链序列已计 4 轮
+    auraFieldKills: 0,   // 御4力场 / 铁砧光圈内击坠数（其实是打不到 ≥12）
   };
 
   // 测试 / 图鉴挑战模式不产出任何成就
@@ -84,6 +98,10 @@
   function achvOnDeath(cause, finalDeath) {
     if (!achvGateOk()) return;
     if (cause === 'missile') unlockAchievement('missileDeath');   // 每条命均可
+    // 铜皮难顶：装备铜皮夏勇时被击坠（每条命均可）
+    if (currentArmor.id === 'tongpi') unlockAchievement('tongpiDeath');
+    // 萎靡不振：使用许凯狗时，第一轮 BOSS（旧日之歌）被击败前掉命（每条命均可）
+    if (hasPilot('xukaigou') && !achv.songDown) unlockAchievement('xukaiPreBossDeath');
     if (!finalDeath) return;
     if (typeof cause === 'string' && cause.startsWith('crash:')) {
       const bid = cause.slice(6);
@@ -123,7 +141,7 @@
   }
 
   // 暴鸰殉爆结算窗口（06-enemy detonateBaoling 在清扫循环前后调用；嵌套殉爆以暂存互不影响）。
-  // 窗口结束时按单次爆炸击杀数判定：≥5 砰砰礼物 / ≥3 砰砰
+  // 窗口结束时按单次爆炸击坠数独立判定：≥6 砰砰礼物 / ≥3 砰砰（非互斥——≥6 时两者同时解锁）
   function achvBaolingBlastBegin() {
     achv._baolingPrev = achv.baolingKills;
     achv.baolingKills = 0;
@@ -133,8 +151,8 @@
     const n = achv.baolingKills;
     achv.baolingWindow = false;
     achv.baolingKills = achv._baolingPrev || 0;
-    if (n >= 5) unlockAchievement('baoling5');
-    else if (n >= 3) unlockAchievement('baoling3');
+    if (n >= 3) unlockAchievement('baoling3');
+    if (n >= 6) unlockAchievement('baoling5');
   }
 
   // 道具拾取（08-entities applyPowerupPickup；水晶不走该路径不计；UPUPUP ≥15）
@@ -149,6 +167,13 @@
     if (!achvGateOk() || !n) return;
     achv.watchClears += n;
     if (achv.watchClears >= 60) unlockAchievement('watch60');
+  }
+
+  // 支援光环内击坠上报（06-enemy killEnemy 判定 inSupportAura 后调用；其实是打不到 ≥12）
+  function achvNoteAuraFieldKill() {
+    if (!achvGateOk()) return;
+    achv.auraFieldKills++;
+    if (achv.auraFieldKills >= 12) unlockAchievement('inFieldKill12');
   }
 
   // 陵落 Q 技能成功释放（07-player triggerPilotSkill；疯狂杀戮 ≥3）
@@ -174,15 +199,23 @@
     // 持久战：记录本段 BOSS 战时长（登场起算；暴风之眼 / 风暴编织者各算一段，取最长）
     const dur = Math.max(0, state.time - (achv.bossStartAt || 0));
     if (dur > achv.bossDurMax) achv.bossDurMax = dur;
-    // 无伤击败（各段独立判定）
-    if (achv.bossNoHit[bossId]) {
+    // 无伤击败（各段独立判定；须整局未开启过作弊——昨日今日明日 / 风暴航船 / 赫拉之眼）
+    if (achv.bossNoHit[bossId] && !achv.cheatUsed) {
       if (bossId === 'song') unlockAchievement('songPerfect');
       else if (bossId === 'storm') unlockAchievement('stormPerfect');
       else if (bossId === 'storm2') unlockAchievement('storm2Perfect');
     }
-    if (bossId === 'song') unlockAchievement('faceSong');
+    if (bossId === 'song') {
+      unlockAchievement('faceSong');
+      achv.songDown = true;   // 萎靡不振：第一轮 BOSS 已被击败（此后掉命不再判定）
+    }
     else if (bossId === 'storm') unlockAchievement(hasPilot('tianxiu') ? 'stormWithTianxiu' : 'stormWithoutTianxiu');
     else if (bossId === 'storm2') unlockAchievement('defeatStorm2');
+    // 最后一搏：不死触发瞬间登记的低血量 BOSS 被击败（登记见 02-core tryBulwarkCheatDeath）
+    if (state.achvBulwarkLowBoss && state.achvBulwarkLowBoss === bossId) {
+      unlockAchievement('bulwarkLastBlow');
+      state.achvBulwarkLowBoss = null;
+    }
     // 轰轰火花：绷绷炸弹击杀任意 BOSS（useBomb 设置的 killSrc 同步窗口内）
     if (achv.killSrc === 'bomb-keli') unlockAchievement('keliBombBoss');
   }
@@ -228,6 +261,113 @@
     if (achv.zidianHits >= 3) unlockAchievement('zidianHits3');
   }
 
+  // 澄月护盾判定结果（07-player tryChengyueShield；非非：连续 5 次暴走判定均未触发护盾，触发即清零）
+  function achvNoteChengyueRoll(triggered) {
+    if (!achvGateOk()) return;
+    if (triggered) { achv.chengyueDry = 0; return; }
+    achv.chengyueDry++;
+    if (achv.chengyueDry >= 5) unlockAchievement('chengyueDry5');
+  }
+
+  // 哈基米大王当前闪避概率上报（07-player 闪避失败累积步进后调用；哦非非 ≥60%）
+  function achvNoteHajimiDodge(p) {
+    if (!achvGateOk()) return;
+    if (p >= 0.6 - 0.0001) unlockAchievement('hajimiDodge60');
+  }
+
+  // 祈星减半生效且原伤害 ≥50（07-player damagePlayer 减半分支；繁星赐福）
+  function achvNoteQixingBigHalve() {
+    if (!achvGateOk()) return;
+    unlockAchievement('qixingBigHalve');
+  }
+
+  // 马兴犬移速模式逐帧上报（07-player updatePilotStatus；mul <1 低速 / >1 高速 / 否则复位。
+  // 连续计时：低速 ≥30s 鳖爬 / 高速 ≥120s 冲刺冲刺；切换模式即清零对方与自身）
+  function achvNoteMaxinSpeed(mul, dt) {
+    if (!achvGateOk()) return;
+    if (mul < 1) {
+      achv.maxinSlowT += dt;
+      achv.maxinFastT = 0;
+      if (achv.maxinSlowT >= 30) unlockAchievement('maxinSlow30');
+    } else if (mul > 1) {
+      achv.maxinFastT += dt;
+      achv.maxinSlowT = 0;
+      if (achv.maxinFastT >= 120) unlockAchievement('maxinFast120');
+    } else {
+      achv.maxinSlowT = 0;
+      achv.maxinFastT = 0;
+    }
+  }
+
+  // 洄治疗量上报（07-player 每 2s 回复 / 06-enemy 击败 BOSS 回复，均按实际结算量；时流回溯 ≥100）
+  function achvNoteHuiHeal(amount) {
+    if (!achvGateOk() || !(amount > 0)) return;
+    achv.huiHealTotal += amount;
+    if (achv.huiHealTotal >= 100) unlockAchievement('huiHeal100');
+  }
+
+  // 七日澜心结晶护盾开启（07-player triggerArmorSkill；云心：BOSS 战中开启 + 存续期消除 ≥60 发）
+  function achvNoteLanxinShieldStart(bossFight) {
+    if (!achvGateOk()) return;
+    achv.lanxinShieldBoss = !!bossFight;
+    achv.lanxinShieldAbsorb = 0;
+  }
+
+  // 结晶护盾气泡消解敌弹计数（08-entities 护盾消解分支，仅结晶护盾期间；云心）
+  function achvNoteLanxinAbsorb() {
+    if (!achvGateOk()) return;
+    achv.lanxinShieldAbsorb++;
+  }
+
+  // 结晶护盾消失：扩散波消弹数上报，与存续期消解数合并判定（07-player 护盾到期分支；云心 ≥60）
+  function achvNoteLanxinShieldEnd(cleared) {
+    if (!achvGateOk()) return;
+    if (achv.lanxinShieldBoss && achv.lanxinShieldAbsorb + (cleared || 0) >= 60) unlockAchievement('lanxinShield60');
+    achv.lanxinShieldBoss = false;
+    achv.lanxinShieldAbsorb = 0;
+  }
+
+  // 凌漓弹幕清除冲击波上报（07-player lingliBurst；清除空气：实际消除数为 0）
+  function achvNoteLingliBurst(cleared) {
+    if (!achvGateOk()) return;
+    if (!cleared) unlockAchievement('lingliAirClear');
+  }
+
+  // 大无垠之王增伤累积上报（07-player updatePilotStatus BOSS 战累积处；陷入疯狂 ≥50% / 彻底疯狂 ≥80%）
+  function achvNoteKingDmg(v) {
+    if (!achvGateOk()) return;
+    if (v >= 0.5) unlockAchievement('kingMad50');
+    if (v >= 0.8) unlockAchievement('kingMad80');
+  }
+
+  // 陵落 Q 技能开启后血量降为 1（07-player triggerPilotSkill 扣血结算后调用；命定之死）
+  function achvNoteLingluoHp1() {
+    if (!achvGateOk()) return;
+    unlockAchievement('lingluoHp1');
+  }
+
+  // 大狗导弹连射链上报（07-player launchDagouWave；lv = 连射层级，0/缺省 = 常规波——新序列起点）。
+  // 「连射 N 轮」= 单条链序列总发射 N 波（1 轮常规 + N-1 次连射，序列自常规波起算、跨序列不累计）：
+  //   欧欧欧 = 达成 2 次「连射 3 轮」（1 常规 + 2 连射，lv 达 2）；！？欧欧？！ = 达成 1 次「连射 4 轮」（lv 达 3）
+  function achvNoteDagouChain(lv) {
+    if (!achvGateOk()) return;
+    if (!lv || lv < 1) {   // 常规波：开启新链序列
+      achv._dagouSeqC3 = false;
+      achv._dagouSeqC4 = false;
+      return;
+    }
+    if (lv >= 2 && !achv._dagouSeqC3) {
+      achv._dagouSeqC3 = true;
+      achv.dagouChain3N++;
+      if (achv.dagouChain3N >= 2) unlockAchievement('dagouChain3');
+    }
+    if (lv >= 3 && !achv._dagouSeqC4) {
+      achv._dagouSeqC4 = true;
+      achv.dagouChain4N++;
+      if (achv.dagouChain4N >= 1) unlockAchievement('dagouChain4');
+    }
+  }
+
   // 胜利结算评估（14-main 胜利分支，showOverlay 之前调用）——持久战 / 守望者 / 无垠战机 / 「无垠」/ 忘了
   function achvEvaluateVictory() {
     if (!achvGateOk()) return;
@@ -237,6 +377,10 @@
     if (!achv.damageTaken && !achv.cheatUsed && currentWingman.id === 'bulwark') unlockAchievement('watchkeeper');
     if (!achv.damageTaken && noBulwark && !achv.cheatUsed) unlockAchievement('infinityFighter');
     const pilotClean = (p) => p.empty || p.whiteboard;
+    // 白板驾驶员通关：温酒客（九克之王）/ 胡笛客（卑鄙笛客）/ 萧杨（阴险萧杨）
+    if (hasPilot('wenjiuke')) unlockAchievement('wenjiukeWin');
+    if (hasPilot('hudike')) unlockAchievement('hudikeWin');
+    if (hasPilot('xiaoyang')) unlockAchievement('xiaoyangWin');
     if (ACHIEVEMENT_INFINITY_ENABLED && !achv.damageTaken && !achv.cheatUsed && !achv.bombUsedEver &&
         noBulwark && currentArmor.noEffect && pilotClean(currentPilotMain) && pilotClean(currentPilotSub)) {
       unlockAchievement('infinity');
@@ -276,6 +420,19 @@
     achv.baolingKills = 0;
     achv._baolingPrev = 0;
     achv.killSrc = null;
+    achv.songDown = false;
+    achv.chengyueDry = 0;
+    achv.maxinSlowT = 0;
+    achv.maxinFastT = 0;
+    achv.huiHealTotal = 0;
+    achv.lanxinShieldBoss = false;
+    achv.lanxinShieldAbsorb = 0;
+    achv.dagouChain3N = 0;
+    achv.dagouChain4N = 0;
+    achv._dagouSeqC3 = false;
+    achv._dagouSeqC4 = false;
+    achv.auraFieldKills = 0;
+    state.achvBulwarkLowBoss = null;   // 最后一搏：低血 BOSS 登记（02-core tryBulwarkCheatDeath 写入）
   }
 
   // ─── 展示：徽章 DOM / 悬停详情 / 结算页 / 数值图鉴「成就」页 ───
@@ -304,8 +461,8 @@
   function achvTipHtml(id) {
     const a = ACHIEVEMENTS[id];
     const tier = ACHIEVEMENT_TIERS[a.tier];
+    // （等级行已按要求移除——档位信息由徽章配色自明）
     let html = '<div class="achv-tip-name" style="color:' + tier.color + '">' + a.name + '</div>'
-      + '<div class="achv-tip-tier">等级：' + tier.name + '</div>'
       + '<div class="achv-tip-desc">' + a.desc + '</div>';
     if (a.holders) {
       html += '<div class="achv-tip-holders">' +
@@ -336,13 +493,15 @@
   }
 
   // 结算页「获得成就」区渲染（胜利 / 失败结算通用；本局无成就时隐藏区块）
+  // 档位按稀有度从高到低排列（长歌 → 虚象），同档内保持注册表键序
   function renderResultAchievements() {
     if (!resultAchieve) return;
     const area = resultAchieve.querySelector('.result-achieve-area');
     if (!achvGateOk() || !area) { resultAchieve.classList.add('hidden'); return; }
     area.innerHTML = '';
     let any = false;
-    for (const tier of ACHIEVEMENT_TIER_ORDER) {
+    for (let t = ACHIEVEMENT_TIER_ORDER.length - 1; t >= 0; t--) {
+      const tier = ACHIEVEMENT_TIER_ORDER[t];
       for (const id in ACHIEVEMENTS) {
         if (ACHIEVEMENTS[id].tier !== tier || !achv.unlocked[id]) continue;
         const badge = buildAchvBadge(id);
@@ -354,11 +513,26 @@
     resultAchieve.classList.toggle('hidden', !any);
   }
 
-  // 数值与机制图鉴「成就」页（13-encyclopedia 调度）：按档位分组全量收录
+  // 数值与机制图鉴「成就」页（13-encyclopedia 调度）：按档位分组收录 + 档位筛选标签
+  let infoAchvTier = 'all';   // 当前选中的档位筛选（'all' = 全部；仅图鉴 UI 局部状态，不归 state 域）
   function renderInfoAchievements() {
     if (!infoBody) return;
     infoBody.innerHTML = '';
+    // 档位筛选标签：样式复用「怪物权重」页的 subtabs / chip（切换后仅渲染对应档位分组）
+    const chips = document.createElement('div');
+    chips.className = 'info-subtabs';
+    const defs = [{ id: 'all', name: '全部' },
+      ...ACHIEVEMENT_TIER_ORDER.map(t => ({ id: t, name: ACHIEVEMENT_TIERS[t].name }))];
+    for (const d of defs) {
+      const b = document.createElement('button');
+      b.className = 'info-chip' + (infoAchvTier === d.id ? ' active' : '');
+      b.textContent = d.name;
+      b.addEventListener('click', () => { infoAchvTier = d.id; renderInfoAchievements(); });
+      chips.appendChild(b);
+    }
+    infoBody.appendChild(chips);
     for (const tier of ACHIEVEMENT_TIER_ORDER) {
+      if (infoAchvTier !== 'all' && tier !== infoAchvTier) continue;   // 筛选：仅渲染选中档位
       const meta = ACHIEVEMENT_TIERS[tier];
       const head = document.createElement('h3');
       head.className = 'info-achv-tier-head';
@@ -396,4 +570,7 @@
     achvZidianHit, achvBaolingBlastBegin, achvBaolingBlastEnd, achvNotePickup, achvNoteWatchClear,
     achvNoteLingluoSkill, achvNoteArmorSkillUsed, achvNotePilotSkillUsed, achvEvaluateVictory,
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,
+    achvNoteChengyueRoll, achvNoteHajimiDodge, achvNoteQixingBigHalve, achvNoteMaxinSpeed, achvNoteHuiHeal,
+    achvNoteLanxinShieldStart, achvNoteLanxinAbsorb, achvNoteLanxinShieldEnd, achvNoteLingliBurst,
+    achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill,
   };

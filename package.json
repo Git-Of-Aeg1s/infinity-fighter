@@ -1,6 +1,6 @@
 {
   "name": "infinity-fighter",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "type": "module",
   "description": "大无垠战机 · 纯前端 Canvas 纵版射击 Demo（零外部依赖）",

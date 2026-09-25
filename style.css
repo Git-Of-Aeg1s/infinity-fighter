@@ -142,6 +142,19 @@ canvas#game {
   text-shadow: 0 0 8px rgba(77, 208, 255, 0.5);
 }
 
+/* 大无垠之王：BOSS 战累积增伤读数（金色 = PILOTS.king.color；hud-bl 列内位于量表之下 / 血条之上）
+   显示 / 隐藏由 12-ui stepKingBonusFade 驱动：透明度渐显渐隐，hidden 仅在渐隐完成后挂上回收布局 */
+.king-bonus {
+  color: #ffd166;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(255, 209, 102, 0.55);
+}
+
+.king-bonus.hidden {
+  display: none;
+}
+
 .hp-row {
   margin-bottom: 4px;   /* 位于血条上方 */
   display: flex;
@@ -477,6 +490,19 @@ canvas#game {
 
 .result-achieve.hidden { display: none; }
 
+/* 结算页徽章略大于全局基准（27×38）：每行 8 枚仍可容纳，展示更清晰 */
+.result-achieve-area .achv-badge {
+  width: 32px;
+  height: 45px;
+}
+
+.result-achieve-area .achv-glyph {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  transform: translateY(-5px);   /* 随尺寸同步上移，圆形图标保持在标签主体内 */
+}
+
 /* ---------- 装甲技能圆形计数表（七日澜心，左下角生命值上方） ---------- */
 .skill-gauge {
   --skill-color: #FFC0CB;
@@ -624,7 +650,8 @@ canvas#game {
 .demo-screen {
   position: absolute;
   top: calc(15% - 10.4px); /* 上边界上移 10.4px = 左上角 ? 按钮（26px 高）的 40%；01-config DEMO_TOP 已同步 */
-  height: 51%;             /* 底边界不变：15% + 51% = 66% */
+  height: calc(51% + 10.4px); /* 高度补回上移量：底边界恒为 15% + 51% = 66%，与画布 DEMO_BOTTOM 对齐
+                                 （v0.3.1 起仅上移 top 未补高度，底边曾缩至 66%-10.4px，群星之杀长尾焰越出边框 10.7px） */
   left: 10px;
   right: 10px;
   border: 1px solid rgba(120, 180, 255, 0.30);
@@ -828,11 +855,12 @@ canvas#game {
   text-overflow: ellipsis;
 }
 
-/* 护甲装备框：当前装甲图标——完全显示（不透明），置于装甲名下方的空区
+/* 护甲 / 副武器装备框：当前图标——完全显示（不透明），置于名称下方的空区
    （文字行与高框对齐后腾出的空间：名字块底 ≈ border 1 + padding 8 + label 13.3
      + gap 3 + value 17.3 ≈ 42.6px，内底 ≈ 81px，空区高 ≈ 38.4px，
      30px 字号图标在空区内垂直居中 → top ≈ 42.6 + 4.2 ≈ 46.8；⛨（最终壁垒）等字形在字面框内偏上，统一再下移 1px 视觉微调） */
-.loadout-armor-glyph {
+.loadout-armor-glyph,
+.loadout-sub-glyph {
   position: absolute;
   left: 50%;
   top: 46.8px;
@@ -1109,7 +1137,7 @@ canvas#game {
   justify-content: center;
 }
 
-/* ---------- 难度选择（具象 / 真我 / 诗篇）：紧凑胶囊组，置于开始按钮上方 ---------- */
+/* ---------- 难度选择（虚象 / 具象 / 真我 + 诗篇占位）：紧凑胶囊组，置于开始按钮上方 ---------- */
 .diff-grid {
   display: flex;
   gap: 6px;
@@ -1122,14 +1150,14 @@ canvas#game {
   align-items: center;      /* 文本上下居中（中文字形在默认行框内易偏下） */
   justify-content: center;
   line-height: 1;
-  padding: 4px 14px;
+  padding: 4px 9px;
   border-radius: 999px;
   color: var(--text);
   background: rgba(12, 18, 34, 0.72);
   border: 1px solid rgba(120, 200, 255, 0.22);
   font-size: 12px;
-  letter-spacing: 2px;
-  text-indent: 2px;
+  letter-spacing: 1px;
+  text-indent: 1px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -1144,7 +1172,7 @@ canvas#game {
   box-shadow: 0 0 14px rgba(77, 208, 255, 0.35);
 }
 
-/* 未实装难度（具象 / 诗篇）：展示但不可选择 */
+/* 未实装难度（如下一档「诗篇」）：展示但不可选择 */
 .diff-card.locked {
   opacity: 0.55;
   cursor: not-allowed;
@@ -1161,19 +1189,6 @@ canvas#game {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
-}
-
-.diff-badge {
-  position: absolute;
-  top: -8px;
-  right: -6px;
-  font-size: 9px;
-  color: var(--accent-warm);
-  border: 1px solid rgba(255, 181, 69, 0.45);
-  border-radius: 999px;
-  padding: 0 5px;
-  letter-spacing: 1px;
-  background: rgba(8, 13, 28, 0.9);
 }
 
 /* HUD 左上角当前难度标签（战斗中显示）——样式与上方 score-panel 一致（同背景/边框/圆角/内距） */
@@ -2075,18 +2090,20 @@ kbd {
 
 /* ---------- 成就系统（结算页徽章 + 数值图鉴「成就」页 + 悬停详情） ---------- */
 /* 徽章：标签造型背景（clip-path 切出价签轮廓，**尖角向下**）+ 中央圆形具体图标；
-   五档背景：虚象（灰）→ 具象（银，金属流光）→ 真我（金，金属流光）→ 诗篇（紫，窄彩边框+淡淡流光）
-   → 长歌（彩，白色主体 + 较宽的虹彩流动边框——参考皇室战争传奇卡边框，随机漂移 + 星芒闪烁） */
+   五档背景：虚象（灰）→ 具象（银，金属流光）→ 真我（金，金属流光）
+   → 诗篇（紫，3px 亮紫流光边框 + 淡紫深紫流动主体，两层 ±60° 硬边晶体切面网格反向游走）
+   → 长歌（彩，彩色内芯 + 较宽的虹彩流动边框——参考皇室战争传奇卡边框，随机漂移 + 星芒闪烁，
+     最外缘 1px 白色泛光提亮轮廓） */
 .achv-badge {
   position: relative;
-  width: 40px;
+  width: 27px;
   height: 38px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  clip-path: polygon(0% 0%, 100% 0%, 100% 76%, 50% 100%, 0% 76%);
-  background: linear-gradient(135deg, #97a1af 0%, #5d6673 100%);
+  clip-path: polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%);
+  background: linear-gradient(135deg, #707a87 0%, #3e4551 100%);
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
   cursor: default;
 }
@@ -2096,7 +2113,7 @@ kbd {
   content: '';
   position: absolute;
   inset: 0;
-  clip-path: polygon(0% 0%, 100% 0%, 100% 76%, 50% 100%, 0% 76%);
+  clip-path: polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%);
   pointer-events: none;
 }
 
@@ -2104,14 +2121,14 @@ kbd {
   position: relative;   /* 抬到 ::before 内体之上 */
   z-index: 1;
   transform: translateY(-4px);   /* 尖角向下：圆形图标在标签主体内略上移 */
-  width: 25px;
-  height: 25px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #ffffff 0%, #dfe6ee 70%, #c4cdd8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 10px;
   line-height: 1;
   color: #2c3440;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -2149,52 +2166,59 @@ kbd {
   animation: achvSheen 7s linear infinite;
 }
 
-/* 紫：2px 窄边框 + 暗紫主体淡淡流光（低频；边框与主体同步无缝流动——无循环重置跳变） */
+/* 诗篇（紫）：3px 亮紫流光边框（粗于银/金的 2px）+ 深紫暗芯——
+   与真我（金）"整枚金属流光"刻意区分：暗芯近乎静止、仅边框明亮流动，凸显更高稀有度 */
 .achv-purple {
   background: linear-gradient(115deg,
-    #5b2a9d 0%, #8f55e8 25%, #c9a6ff 50%, #7b3ff2 75%, #5b2a9d 100%);
+    #8b5cf6 0%, #e9d5ff 22%, #b78cff 45%, #f3e8ff 60%, #a366ff 80%, #8b5cf6 100%);
   background-size: 260% 100%;
   animation: achvSheen 9s linear infinite;
 }
 
 .achv-purple::before {
-  inset: 2px;
-  background: linear-gradient(115deg,
-    #4a1f83 0%, #7b3ff2 25%, #b388ff 50%, #6a30d9 75%, #4a1f83 100%);
-  background-size: 260% 100%;
-  animation: achvSheen 9s linear infinite;
+  inset: 3px;
+  /* 内体：淡紫↔深紫流动渐变主体 + 两层 ±60° 硬边切面网格——
+     两层网格反向平移即得"几何碎晶在其中游走"的晶体感（周期 = 平铺尺寸整数倍，无缝循环） */
+  background:
+    repeating-linear-gradient(60deg,
+      rgba(233, 213, 255, 0.14) 0 8px,
+      rgba(255, 255, 255, 0) 8px 24px),
+    repeating-linear-gradient(-60deg,
+      rgba(139, 92, 246, 0.22) 0 10px,
+      rgba(255, 255, 255, 0) 10px 30px),
+    linear-gradient(115deg,
+      #24104d 0%, #5b34b8 22%, #b794ff 45%, #38196f 68%, #7c4fe0 86%, #24104d 100%);
+  background-size: 48px 48px, 60px 60px, 260% 100%;
+  animation: achvPurpleFlow 11s linear infinite;
 }
 
-/* 彩：略淡虹彩内芯 + 较宽虹彩流动边框（4px）——皇室战争传奇卡式；
+/* 彩：彩色虹彩内芯 + 较宽虹彩流动边框（4px）——皇室战争传奇卡式；
    边框色微微发白（粉彩虹彩），不规则漂移、低频（alternate 往返无接缝跳变）；
-   内芯为淡虹彩晶面切光，流动周期与边框刻意错开（8.5s vs 13s，两表不同步、缓慢错拍） */
+   最外缘叠 1px 白色泛光，令轮廓边缘更亮；
+   内芯为饱和彩芯（色相相对边框整体偏移），同样走不规则漂移流动（无横条纹理）——
+   周期 10s vs 边框 13s、漂移关键帧序列亦不同，两层永不同步 */
 .achv-rainbow {
   background: linear-gradient(115deg,
     #9cc5ff 0%, #a5e5ff 20%, #c3aaff 40%, #ffb3e2 60%, #ffe9b0 80%, #9cc5ff 100%);
   background-size: 420% 100%;
   animation: achvDrift 13s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9)) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
 }
 
 .achv-rainbow::before {
   inset: 4px;
-  /* 内芯：淡虹彩渐变（流动）+ 晶面切光（静止） */
-  background:
-    repeating-linear-gradient(60deg,
-      rgba(156, 197, 255, 0.15) 0 5px,
-      rgba(255, 255, 255, 0) 5px 13px,
-      rgba(255, 179, 226, 0.11) 5px 6px,
-      rgba(255, 255, 255, 0) 6px 14px),
-    linear-gradient(115deg,
-      #eaf2ff 0%, #f1eaff 25%, #ffeff8 50%, #fff8ea 75%, #eaf2ff 100%);
-  background-size: auto, 260% 100%;
-  animation: achvCoreFlow 8.5s linear infinite;
+  /* 内芯：饱和彩虹渐变，不规则漂移流动（关键帧与边框不同序列、周期错开） */
+  background: linear-gradient(115deg,
+    #5fd6c8 0%, #6fb0ff 20%, #a68bff 40%, #ff8fd0 60%, #ffc46b 80%, #5fd6c8 100%);
+  background-size: 420% 100%;
+  animation: achvCoreDrift 10s ease-in-out infinite alternate;
 }
 
 .achv-rainbow::after {
   content: '✦';
   position: absolute;
   top: 3px;
-  right: 8px;
+  right: 5px;
   z-index: 1;
   font-size: 10px;
   color: #ffffff;
@@ -2209,10 +2233,21 @@ kbd {
   100% { background-position: 162.5% 0; }
 }
 
-/* 彩内芯：晶面层静止（首层 position 恒 0 0），淡虹彩层低频流动（周期与边框 13s 错开） */
-@keyframes achvCoreFlow {
-  0% { background-position: 0 0, 0% 0; }
-  100% { background-position: 0 0, 162.5% 0; }
+/* 诗篇内体：切面网格一 +48px / 网格二 -60px（各自一个平铺周期，反向游走）+ 主体淡紫深紫流光 */
+@keyframes achvPurpleFlow {
+  0%   { background-position: 0 0, 0 0, 0% 0; }
+  100% { background-position: 48px 0, -60px 0, 162.5% 0; }
+}
+
+/* 彩内芯漂移：与边框 achvDrift 不同的非均匀关键帧序列 + 不同周期（10s vs 13s）——两层错拍 */
+@keyframes achvCoreDrift {
+  0%   { background-position: 82% 0; }
+  16%  { background-position: 24% 0; }
+  33%  { background-position: 90% 0; }
+  47%  { background-position: 38% 0; }
+  61%  { background-position: 96% 0; }
+  76%  { background-position: 14% 0; }
+  100% { background-position: 55% 0; }
 }
 
 /* 不规则漂移：关键帧位置非均匀、方向往复，配合 ease-in-out 呈"随机涌动"观感 */
@@ -2236,13 +2271,13 @@ kbd {
 .achv-tooltip {
   position: fixed;
   z-index: 999;
-  max-width: 270px;
+  max-width: 290px;
   padding: 10px 13px;
   background: rgba(10, 14, 24, 0.95);
   border: 1px solid rgba(124, 231, 255, 0.35);
   border-radius: 8px;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.6;
   pointer-events: none;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
@@ -2250,8 +2285,7 @@ kbd {
 
 .achv-tooltip.hidden { display: none; }
 
-.achv-tip-name { font-weight: 700; font-size: 14px; letter-spacing: 1px; }
-.achv-tip-tier { opacity: 0.75; margin: 2px 0 4px; }
+.achv-tip-name { font-weight: 700; font-size: 15.5px; letter-spacing: 1px; }
 .achv-tip-desc { line-height: 1.6; }
 .achv-tip-holders { margin-top: 4px; color: var(--accent-warm); }
 .achv-tip-locked { margin-top: 4px; color: #ff9ab5; }
@@ -2272,14 +2306,19 @@ kbd {
 }
 
 .info-achv-row .achv-badge {
-  width: 46px;
+  width: 31px;
   height: 42px;
 }
 
 .info-achv-row .achv-glyph {
-  width: 27px;
-  height: 27px;
-  font-size: 14px;
+  width: 21px;
+  height: 21px;
+  font-size: 11px;
 }
 
 .info-achv-card h4 { margin: 0; letter-spacing: 1px; }
+
+/* 名称与徽章圆形图标的圆心对齐：徽章盒高 42px，flex 居中把名称对到盒中心 21px 处，
+   而圆形图标（.achv-glyph）自带 translateY(-4px) 上移、圆心在 17px 处——名称同步上移 4px，
+   使其垂直中心落在圆心的水平高度上 */
+.info-achv-row h4 { transform: translateY(-4px); }

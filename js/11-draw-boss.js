@@ -1,7 +1,7 @@
 ﻿// 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(5 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(6 名) 13-encyclopedia(1 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
@@ -205,7 +205,7 @@
         ctx.shadowBlur = 14;
         ctx.beginPath(); ctx.arc(0, 0, R * 0.99, 0, Math.PI * 2); ctx.stroke();
         ctx.shadowBlur = 0;
-        // 旋转高亮弧：随旋臂数分段（真我双臂相隔 180° / 诗篇三旋臂相隔 120°，与喷臂数一致）
+        // 旋转高亮弧：随旋臂数分段（具象双臂相隔 180° / 真我三旋臂相隔 120°，与喷臂数一致）
         const rimArms = v.arms || 2;
         for (let a = 0; a < rimArms; a++) {
           const step = Math.PI * 2 / rimArms;
@@ -546,8 +546,6 @@
       }
       ctx.restore();
 
-      // 顶部血条：最后绘制 → 图层高于暴风之眼本体
-      if (e.phase === 'combat' && !e.dying) drawStormBar(e);
     }
   
     // 暴风之眼顶部专用血条：长六边形风蓝主题（同旧日之歌设计语言）+ 登场横向展开 +
@@ -1527,25 +1525,6 @@
           ctx.stroke();
         }
       }
-      // 现身冲击环：现身瞬间自机身外扩的雷电冲击波（快外扩 + 内侧残影环）
-      const rp0 = p - EN.dissipate - EN.storm;
-      if (rp0 >= 0 && e.revealRing) {
-        const rq = clamp(rp0 / e.revealRing.dur, 0, 1);
-        if (rq < 1) {
-          const rad = 40 + 320 * (1 - Math.pow(1 - rq, 2));
-          ctx.globalAlpha = 0.6 * (1 - rq);
-          ctx.strokeStyle = '#bfe6ff';
-          ctx.lineWidth = 4 * (1 - rq) + 1;
-          ctx.beginPath();
-          ctx.ellipse(ex, ey, rad, rad * 0.72, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.globalAlpha = 0.28 * (1 - rq);
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.ellipse(ex, ey, rad * 0.85, rad * 0.61, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
       // 落雷（lightning-4 素材 / 程序化回退）：周身白光衬托 + 紫调归入主色调（hue-rotate）
       if (e.bolts && e.bolts.length) {
         for (const b of e.bolts) {
@@ -1601,10 +1580,569 @@
       }
       ctx.restore();
     }
+    // 现身扩散波：血条开始出现瞬间（电球缩没、进入战斗）自机身外扩的雷电冲击波——
+    //   自带计时器（05-boss combat 进入时创建并逐帧推进），跨入场/战斗阶段绘制
+    if (e.revealRing && !e.ency) {
+      const rq = clamp(e.revealRing.t / e.revealRing.dur, 0, 1);
+      if (rq < 1) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const rad = 40 + 400 * (1 - Math.pow(1 - rq, 2));
+        ctx.globalAlpha = 0.8 * (1 - rq);
+        ctx.strokeStyle = '#bfe6ff';
+        ctx.lineWidth = 5 * (1 - rq) + 1.5;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, rad, rad * 0.72, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.42 * (1 - rq);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, rad * 0.88, rad * 0.63, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
 
-    // ---- (8) 顶部 BOSS 血条（风暴编织者版：青金白热电浆——区别于暴风之眼的深海蓝）----
-    // 两端收尖长六边形 + 中央 lightning-ring 电核 + 锯齿电弧沿条游走 + 边缘环绕电弧 + 名字/血量计数
-    if (e.phase === 'combat' && !e.ency) {
+  // ---------- 风暴编织者：技能演出（世界坐标；状态机见 05-boss runStorm2Skill） ----------
+  // 落雷素材调色：lightning-4 主色调偏紫，经 hue-rotate 归入游戏主色调（青蓝）并轻微提亮
+  const S2_BOLT_FILTER = 'hue-rotate(-30deg) saturate(1.15) brightness(1.06)';
+  function s2Seeded(seed) {
+    let s = (seed * 9973 + 479) % 233280;
+    return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  }
+  // 电弧光束：自 (x,y) 沿 ang 延伸 len 的光柱——外辉光 + 蓝体淡白芯主体 + 沿主轴锯齿电弧（默认绘制）；
+  // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）；
+  // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
+  //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
+  function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap) {
+    if (len <= 0.5) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.globalAlpha = alpha;
+    const w0 = root ? halfW * 0.22 : halfW;   // 根部宽度（root 时收为细点）
+    const tw = root ? Math.min(len * 0.6, halfW * 3.2) : 0;   // 收束段长度（至全宽）
+    const g = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
+    g.addColorStop(0, 'rgba(111, 184, 255, 0)');
+    g.addColorStop(0.5, 'rgba(111, 184, 255, 0.45)');
+    g.addColorStop(1, 'rgba(111, 184, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -w0 * 1.9);
+    if (root) ctx.lineTo(tw, -halfW * 1.9);
+    ctx.lineTo(len, -halfW * 1.9);
+    ctx.lineTo(len, halfW * 1.9);
+    if (root) ctx.lineTo(tw, halfW * 1.9);
+    ctx.lineTo(0, w0 * 1.9);
+    ctx.closePath();
+    ctx.fill();
+    // 头端圆帽（外辉光层）：外层端面此前为平截竖边、超出内层圆帽裸露在外，呈"被截断"感——补同心半圆收圆
+    ctx.beginPath();
+    ctx.arc(len, 0, halfW * 1.9, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    if (tailCap) {
+      // 尾端圆帽（外辉光层）：半圆向后凸出，消除尾端平截（技能6 重现光束尾部悬在场地中）
+      ctx.beginPath();
+      ctx.arc(0, 0, w0 * 1.9, Math.PI / 2, Math.PI * 1.5);
+      ctx.fill();
+    }
+    const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
+    g2.addColorStop(0, 'rgba(120, 190, 255, 0.85)');
+    g2.addColorStop(0.5, '#d8ecff');
+    g2.addColorStop(1, 'rgba(120, 190, 255, 0.85)');
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.moveTo(0, -w0);
+    if (root) ctx.lineTo(tw, -halfW);
+    ctx.lineTo(len, -halfW);
+    ctx.lineTo(len, halfW);
+    if (root) ctx.lineTo(tw, halfW);
+    ctx.lineTo(0, w0);
+    ctx.closePath();
+    ctx.fill();
+    if (tailCap) {
+      // 尾端圆帽（内芯层）
+      ctx.beginPath();
+      ctx.arc(0, 0, w0, Math.PI / 2, Math.PI * 1.5);
+      ctx.fill();
+    }
+    if (root) {
+      // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
+      const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
+      rg.addColorStop(0, 'rgba(235, 249, 255, 0.9)');
+      rg.addColorStop(0.45, 'rgba(170, 220, 255, 0.45)');
+      rg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(0, 0, halfW * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 头端圆帽 + 白蓝热斑：矩形端头收为圆头，避免生硬截断感
+    ctx.beginPath();
+    ctx.arc(len, 0, halfW, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    const hgl = ctx.createRadialGradient(len, 0, 1, len, 0, halfW * 1.7);
+    hgl.addColorStop(0, 'rgba(235, 249, 255, 0.95)');
+    hgl.addColorStop(0.45, 'rgba(170, 220, 255, 0.5)');
+    hgl.addColorStop(1, 'rgba(120, 190, 255, 0)');
+    ctx.fillStyle = hgl;
+    ctx.beginPath();
+    ctx.arc(len, 0, halfW * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    if (len > 12) {
+      // 锯齿电弧：沿光束主轴双 pass（蓝辉外弧 + 白热细芯），每 1/12s 换一次形状
+      const seg = Math.max(4, Math.floor(len / 26));
+      const rnd = s2Seeded(Math.floor(state.time * 12) * 31 + seg * 17 + ((x * 7 + y * 3) | 0) % 97);
+      for (const [w2, col] of [[2.6, 'rgba(143, 212, 255, 0.55)'], [1.1, 'rgba(255, 255, 255, 0.9)']]) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = w2;
+        ctx.shadowColor = '#bfe6ff';
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (let k = 1; k <= seg; k++) {
+          const px = (k / seg) * len;
+          const py = (rnd() * 2 - 1) * halfW * 1.4 * Math.sin(Math.PI * k / seg);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  // 蓝色预警波（技能1/2 蓄力）：自半径 r0 处向中心收缩的圆环波——
+  // 带两圈拖尾残影（收缩方向的后像在外侧）、亮度随收缩进度从不明显渐增；t0 为收缩起始时刻
+  function drawS2WarnWave(x, y, r0, t0, dur, t) {
+    if (t < t0) return;
+    const p = clamp((t - t0) / dur, 0, 1);
+    const r = r0 * (1 - p);
+    if (r < 2) return;
+    ctx.save();
+    ctx.shadowColor = '#7cd8ff';
+    for (const [mul, w2, a] of [[1.10, 1.4, 0.16], [1.05, 2.2, 0.34], [1, 3, 1]]) {
+      ctx.strokeStyle = `rgba(159, 216, 255, ${(a * (0.18 + 0.82 * p)).toFixed(3)})`;
+      ctx.lineWidth = w2;
+      ctx.beginPath();
+      ctx.arc(x, y, r * mul, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawStorm2SkillFx(e) {
+    const s = e.skill, T = state.time;
+
+    if (s.id === 0) {
+      // 技能1：电弧球蓄力预警 → 向下强力电弧激光（真我：移动中连射 5 次，预警跨发重叠）
+      const ball = storm2BallPos(e);
+      const firing = s.zhenwo ? s.st === 1 : s.fired;
+      if (!firing) {
+        const p = s.zhenwo
+          ? (s.shot === 0 ? clamp(s.pt / STORM2.s1Charge, 0, 1) : clamp(s.pt / STORM2_SHIP.s1.charge2, 0, 1))
+          : clamp(s.t / STORM2.s1Charge, 0, 1);
+        const tEl = s.zhenwo ? s.pt : s.t;   // 蓄力段已进行时间
+        ctx.save();
+        if (s.zhenwo && s.shot > 0) {
+          // 真我第 2~5 次：小预警环（自 150px 收缩 0.4s）
+          drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.pt);
+        } else {
+          // 首发大环：蓝色收缩圆环波（自 300px 向中心收缩 0.8s，带拖尾残影、越收越明显）
+          drawS2WarnWave(ball.x, ball.y, STORM2.s1RingR0, 0, STORM2.s1RingDur, tEl);
+          // 预警柱：淡蓝色竖直参考带（收缩完成后显现；仅向下方延伸，不越过能量球）
+          if (tEl >= STORM2.s1RingDur) {
+            ctx.globalAlpha = clamp((tEl - STORM2.s1RingDur) / (STORM2.s1Charge - STORM2.s1RingDur), 0, 1) * 0.9;
+            ctx.fillStyle = 'rgba(143, 212, 255, 0.12)';
+            ctx.fillRect(ball.x - STORM2.s1R, ball.y, STORM2.s1R * 2, CANVAS_H - ball.y);
+          }
+          ctx.globalAlpha = 1;
+        }
+        // 球体增亮罩（电弧球随蓄力增亮）
+        const gg = ctx.createRadialGradient(ball.x, ball.y, 2, ball.x, ball.y, 30);
+        gg.addColorStop(0, `rgba(235, 249, 255, ${(0.35 + 0.45 * p).toFixed(3)})`);
+        gg.addColorStop(1, 'rgba(160, 210, 255, 0)');
+        ctx.fillStyle = gg;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, 30, 0, Math.PI * 2);
+        ctx.fill();
+        // 汇聚小电弧（外缘 → 球心）
+        const rnd = s2Seeded(Math.floor(T * 14) + 5);
+        ctx.strokeStyle = 'rgba(190, 232, 255, 0.85)';
+        ctx.lineWidth = 1.4;
+        for (let k = 0; k < 4; k++) {
+          const a = rnd() * Math.PI * 2, r0 = 40 + rnd() * 26;
+          ctx.beginPath();
+          ctx.moveTo(ball.x + Math.cos(a) * r0, ball.y + Math.sin(a) * r0);
+          ctx.lineTo(ball.x + Math.cos(a) * 8, ball.y + Math.sin(a) * 8);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        // 强力电弧激光：竖直光柱（亮起 → 渐隐）+ 雷电素材贴片（lightning-4）+ 边缘狂乱电流
+        const life = s.zhenwo ? s.pt : s.t - STORM2.s1Charge;
+        const vis = life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / (STORM2.s1BeamDur - 0.12);
+        const a = clamp(vis, 0, 1) * 0.95;
+        drawS2Beam(ball.x, ball.y, Math.PI / 2, CANVAS_H - ball.y + 30, STORM2.s1R, a, true);   // root：自能量球核心收束发出，避免顶部截断
+        // 周身狂乱电流（lightning-2 细流光弧）：10 枚沿光束左右边缘高速环绕游走、剧烈明灭
+        if (lightningImgThin) {
+          const asp = (lightningImgThin.naturalWidth / lightningImgThin.naturalHeight) || 0.2;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let k = 0; k < 10; k++) {
+            const side = k % 2 === 0 ? -1 : 1;
+            const ph = T * 2.6 + k * 1.9;
+            const yy = ball.y + 26 + ((ph * 130) % Math.max(60, (CANVAS_H - ball.y + 30) - 52));
+            const wob = Math.sin(ph * 3.1);
+            const xx = ball.x + side * (STORM2.s1R + 8 + 7 * wob);
+            const sl = 46 + 16 * Math.sin(ph * 2.3);
+            ctx.save();
+            ctx.translate(xx, yy);
+            ctx.rotate(side * (0.6 + 0.5 * wob));
+            ctx.globalAlpha = 0.5 + 0.35 * Math.sin(ph * 3.7);
+            ctx.drawImage(lightningImgThin, -sl * asp / 2, -sl / 2, sl * asp, sl);
+            ctx.restore();
+          }
+          ctx.restore();
+        }
+        if (lightningImgBig) {
+          const asp = (lightningImgBig.naturalWidth / lightningImgBig.naturalHeight) || 0.3;
+          const rnd = s2Seeded(Math.floor(T * 11) * 13 + 3);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let k = 0; k < 2; k++) {
+            const w2 = STORM2.s1R * (2.4 + rnd() * 1.2) * asp * 2;
+            const yOff = Math.max(0, rnd() * 30 - 15) * 0.5;   // 贴片顶端不越过能量球上方
+            const top = ball.y + yOff;
+            ctx.globalAlpha = a * (0.4 + 0.4 * rnd());
+            ctx.drawImage(lightningImgBig, ball.x - w2 / 2, top, w2, CANVAS_H - ball.y - yOff + 50);
+          }
+          ctx.restore();
+        }
+        // 真我：当前发光束期间，下一发的小预警环提前亮起（跨发重叠）
+        if (s.zhenwo && s.shot < STORM2_SHIP.s1.shots - 1 && s.t >= s.nextAt - STORM2_SHIP.s1.charge2) {
+          drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.t - (s.nextAt - STORM2_SHIP.s1.charge2));
+        }
+      }
+    } else if (s.id === 1) {
+      // 技能2 蓄力预警：四喷口各一圈蓝色预警波（中心在各自喷口位置，自 200px 收缩）——
+      //   按发射顺序先后出现（第 k 发的喷口光环晚 k×0.13s 开始收缩，完成后留 0.2s 该喷口发射）；
+      //   蓄力/收缩时长随技能实例（s.charge / s.ringDur）——真我连携时 1.6s / 1.2s，收缩速度变慢
+      if (s.t < s.charge + 3 * STORM2.s2Gap) {
+        for (let k = 0; k < 4; k++) {
+          const nz = storm2Nozzle(e, s.order[k]);
+          drawS2WarnWave(nz.x, nz.y, STORM2.s2RingR0, 0.2 + k * STORM2.s2Gap, s.ringDur, s.t);
+        }
+      }
+      for (const b of s.beams) {
+        const vis = b.t < 0.10 ? b.t / 0.10 : 1 - (b.t - 0.10) / b.dur;
+        const fullLen = CANVAS_H - b.y + 30;
+        const len = b.clipD != null ? Math.min(fullLen, b.clipD) : fullLen;   // 守愿者白盾截断
+        drawS2Beam(b.x, b.y, Math.PI / 2, len, STORM2.s2R, clamp(vis, 0, 1));
+      }
+      // 真我：连携的技能6 汇聚预兆（子状态随行，连携窗口 ×1.5；光束本体由 drawS6Beams 绘制）
+      if (s.s6 && s.s6.pointsAt && s.s6.ptT > 0) {
+        const glow = 1 - s.s6.ptT / (s.s6.warnDur || 0.3);
+        for (const px of [10, CANVAS_W - 10]) {
+          const py = e.y - 26;
+          const gg = ctx.createRadialGradient(px, py, 1, px, py, 14);
+          gg.addColorStop(0, `rgba(235, 249, 255, ${(0.3 + 0.6 * glow).toFixed(3)})`);
+          gg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+          ctx.fillStyle = gg;
+          ctx.beginPath();
+          ctx.arc(px, py, 14, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (s.id === 4) {
+      // 技能5：周身雷电环（lightning-ring 素材，黑底经 lighter 混合融入画面）+ 雷击预警（同款雷电环恒定大小渐显，
+      // 先慢后快）+ 打击爆闪（周围白光 + 蓝点光闪现）
+      const R = S2_STRIKE_R;
+      const fullD = R / 0.30;   // 素材亮环带半径 ≈ 绘制边长 ×0.30：满蓄力时亮环带对齐打击区域半径
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // 周身雷电环：缓慢旋转 + 明暗脉动，下方衬一层淡径向光晕
+      const haloA = clamp(s.t / 0.4, 0, 1) * (0.5 + 0.14 * Math.sin(T * 11));
+      const hg = ctx.createRadialGradient(e.x, e.y, 30, e.x, e.y, 96);
+      hg.addColorStop(0, `rgba(190, 232, 255, ${(haloA * 0.5).toFixed(3)})`);
+      hg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, 96, 0, Math.PI * 2);
+      ctx.fill();
+      if (lightningImgRing) {
+        const d0 = 180;   // 周身雷电环（半径较初版 -40%）
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(T * 0.6);
+        ctx.globalAlpha = Math.min(1, haloA * 1.6);
+        ctx.drawImage(lightningImgRing, -d0 / 2, -d0 / 2, d0, d0);
+        ctx.restore();
+      }
+      ctx.restore();
+      for (const st of s.strikes) {
+        if (st.fired) {
+          // 打击爆闪：周围白光 + 环带蓝点光闪现（雷电轰击感）；flash 由逻辑层逐帧衰减（0.35s）
+          if (st.flash > 0) {
+            const fp = st.flash / 0.35;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const fg = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, R * 0.85);
+            fg.addColorStop(0, `rgba(245, 251, 255, ${(0.8 * fp).toFixed(3)})`);
+            fg.addColorStop(0.55, `rgba(190, 232, 255, ${(0.35 * fp).toFixed(3)})`);
+            fg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+            ctx.fillStyle = fg;
+            ctx.beginPath();
+            ctx.arc(st.x, st.y, R * 0.85, 0, Math.PI * 2);
+            ctx.fill();
+            const rnd = s2Seeded((Math.floor(st.x * 3) + Math.floor(st.y)) * 17 + 5);
+            for (let k = 0; k < 10; k++) {
+              const a = rnd() * Math.PI * 2, rr = R * (0.45 + rnd() * 0.5);
+              const sz = 1.6 + rnd() * 2.6;
+              const tw = 0.5 + 0.5 * Math.sin(T * 40 + k * 2.4);
+              ctx.globalAlpha = fp * (0.35 + 0.65 * tw);
+              ctx.fillStyle = k % 3 ? '#bfe6ff' : '#ffffff';
+              ctx.beginPath();
+              ctx.arc(st.x + Math.cos(a) * rr, st.y + Math.sin(a) * rr, sz, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+          continue;
+        }
+        if (st.t < 0) continue;   // 尚未开始积聚
+        // 雷电积聚预警：lightning-ring 亮环带贴齐判定半径 R（不裁剪——环外电弧保留）；
+        //   中心仅微微泛白，双层反向旋转的低亮环制造电弧流动感
+        const wp = clamp(st.t / STORM2.s5Warn, 0, 1);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const wg = ctx.createRadialGradient(st.x, st.y, R * 0.2, st.x, st.y, R);
+        wg.addColorStop(0, `rgba(190, 232, 255, ${(0.04 + 0.09 * wp).toFixed(3)})`);
+        wg.addColorStop(1, 'rgba(190, 232, 255, 0)');
+        ctx.fillStyle = wg;
+        ctx.beginPath();
+        ctx.arc(st.x, st.y, R, 0, Math.PI * 2);
+        ctx.fill();
+        if (lightningImgRing) {
+          const flick = 0.86 + 0.14 * Math.sin(T * 21 + st.x);
+          ctx.save();
+          ctx.translate(st.x, st.y);
+          ctx.rotate(T * 0.9 + st.x);
+          ctx.globalAlpha = (0.10 + 0.38 * wp * wp) * flick;
+          ctx.drawImage(lightningImgRing, -fullD / 2, -fullD / 2, fullD, fullD);
+          ctx.restore();
+          ctx.save();
+          ctx.translate(st.x, st.y);
+          ctx.rotate(-T * 1.5 + st.y);
+          ctx.globalAlpha = (0.06 + 0.22 * wp * wp) * flick;
+          ctx.drawImage(lightningImgRing, -fullD / 2, -fullD / 2, fullD, fullD);
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+    } else if (s.id === 5) {
+      // 技能6：重现点汇聚预兆（发射前预警，连携时窗口 ×1.5）：左右边界两点亮起电弧球
+      // （光束本体绘制在 drawS6Beams——技能 4.6s 收束后飞行光束仍需继续绘制）
+      if (s.pointsAt && s.ptT > 0) {
+        const glow = 1 - s.ptT / (s.warnDur || 0.3);
+        for (const px of [10, CANVAS_W - 10]) {
+          const py = e.y - 26;
+          const gg = ctx.createRadialGradient(px, py, 1, px, py, 14);
+          gg.addColorStop(0, `rgba(235, 249, 255, ${(0.3 + 0.6 * glow).toFixed(3)})`);
+          gg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+          ctx.fillStyle = gg;
+          ctx.beginPath();
+          ctx.arc(px, py, 14, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // 技能6 光束绘制（臂向 / 重现光束；独立于技能状态——技能收束后飞行光束继续存活绘制）：
+  // 守愿者白盾咬合后光束永久钉在盾面（b.effLen 由逻辑层 updateS6Beams 每帧写入，盾移开也不恢复）；
+  // 真我连携（carried）的臂向光束变淡（faint）
+  function drawS6Beams(e) {
+    for (const b of e.s6Beams) {
+      const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
+      const len = b.effLen != null ? b.effLen : (b.len || 0);
+      drawS2Beam(b.x, b.y, b.ang, len, STORM2.s6R, clamp(b.faint ? vis * 0.45 : vis, 0, 1), false, true);   // tailCap：尾端圆帽，消除悬空光束两端的平截感
+    }
+  }
+
+  // ---------- BOSS 顶部血条：顶层绘制（图层调高） ----------
+  // 三 BOSS 血条从各 drawBoss 函数体内移出，由 10-draw-world render() 在实体/弹幕/粒子
+  // 全部绘制完之后统一调用（drawBossBars）——图层高于一切场上元素：
+  // BOSS 靠上时机体/弹幕/粒子不再遮挡血条（原旧日之歌血条在机体绘制前画，会被本体盖住）
+  function drawSongBar(e) {
+    if (e.phase !== 'combat') return;
+      const revealP = clamp(e.barT / 0.8, 0, 1);
+      const reveal = 1 - Math.pow(1 - revealP, 3);   // easeOutCubic：以中心为基准横向展开
+      const flash = 1 - revealP;                      // 登场瞬间的紫光爆闪
+
+      const bw = 360, bh = 13;   // 高度缩短 20%（16 → 13）
+      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
+      const taper = 15;
+      const x0 = cx - bw / 2, x1 = cx + bw / 2;
+      // 长六边形轮廓（左右两端各收出一个尖点）
+      const hexPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(x0, mid);
+        ctx.lineTo(x0 + taper, top);
+        ctx.lineTo(x1 - taper, top);
+        ctx.lineTo(x1, mid);
+        ctx.lineTo(x1 - taper, bot);
+        ctx.lineTo(x0 + taper, bot);
+        ctx.closePath();
+      };
+
+      ctx.save();
+      ctx.translate(cx, 0); ctx.scale(reveal, 1); ctx.translate(-cx, 0);
+
+      // 底座 + 暗紫光芒笼罩（呼吸辉光 + 登场爆闪）
+      ctx.shadowColor = '#8b5cf6';
+      ctx.shadowBlur = 14 + Math.sin(state.time * 2.5) * 4 + flash * 22;
+      hexPath();
+      ctx.fillStyle = `rgba(26, 10, 48, ${(0.88 + flash * 0.12).toFixed(3)})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(167, 139, 250, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})`;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 内部裁剪：残血余像 → 主血量 → 刻度 → 暗紫罩染
+      ctx.save();
+      hexPath();
+      ctx.clip();
+      const ratio = clamp(e.hp / e.maxHp, 0, 1);
+      const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
+      if (trail > ratio + 0.002) {          // 刚扣除的血量以白色余条缓慢消退
+        ctx.fillStyle = 'rgba(255, 230, 240, 0.5)';
+        ctx.fillRect(x0, top, (x1 - x0) * trail, bh);
+      }
+      const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 主血量：幽紫 → 猩红 → 金橙
+      hg.addColorStop(0, '#6d28d9');
+      hg.addColorStop(0.3, '#ff4d6d');
+      hg.addColorStop(1, '#ffb545');
+      ctx.fillStyle = hg;
+      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, bh - 2.4);
+      // 能量前线：血量填充最前端的发光亮线，随血量减少而滑动
+      if (ratio > 0.005 && ratio < 1) {
+        ctx.fillStyle = 'rgba(240, 225, 255, 0.9)';
+        ctx.shadowColor = '#c4b5fd';
+        ctx.shadowBlur = 6;
+        ctx.fillRect(x0 + (x1 - x0) * ratio - 1, top + 1.2, 2, bh - 2.4);
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';          // 顶部高光
+      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, 2.5);
+      ctx.fillStyle = 'rgba(10, 4, 24, 0.55)';              // 每 10% 一道刻度
+      for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
+      const tint = ctx.createLinearGradient(0, top, 0, bot); // 暗紫罩染：血量也蒙上紫气
+      tint.addColorStop(0, 'rgba(139, 92, 246, 0.30)');
+      tint.addColorStop(0.55, 'rgba(139, 92, 246, 0.05)');
+      tint.addColorStop(1, 'rgba(46, 16, 84, 0.30)');
+      ctx.fillStyle = tint;
+      ctx.fillRect(x0, top, x1 - x0, bh);
+      ctx.restore();
+
+      ctx.restore();
+
+      // 破碎感主题：泛白紫碎块在血条周围持续剥落、漂移、消散（旧日之歌 = 空间异物）
+      if (!e.shards) {
+        e.shards = [];
+        const SHARD_COLS = ['#ece6fa', '#dcd0f6', '#cdc0f0', '#f4f0fc'];
+        for (let i = 0; i < 10; i++) {
+          const vn = 3 + Math.floor(Math.random() * 2);   // 3~4 边不规则碎形
+          const pts = [];
+          for (let k = 0; k < vn; k++) {
+            const a = (k / vn) * Math.PI * 2 + Math.random() * 0.9;
+            const rr = 0.6 + Math.random() * 0.6;
+            pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+          }
+          e.shards.push({
+            bx: rand(-bw / 2 - 26, bw / 2 + 26),   // 沿血条及两端外侧散布
+            by: rand(-14, 14),
+            sz: rand(1.6, 4.2),
+            amp: rand(2, 5),
+            fs: rand(0.5, 1.1),                    // 漂浮速度
+            ph: Math.random() * Math.PI * 2,       // 生命周期相位
+            spd: rand(0.05, 0.14),                 // 生命周期速度
+            dx: rand(-12, 12),                     // 单周期水平漂移
+            rspd: rand(-1.2, 1.2),                 // 自转速度
+            col: SHARD_COLS[Math.floor(Math.random() * SHARD_COLS.length)],
+            pts,
+          });
+        }
+      }
+      for (const s of e.shards) {
+        const cyc = (state.time * s.spd + s.ph) % 1;              // 0→1 生命周期
+        const a = Math.sin(cyc * Math.PI) * 0.85 * revealP;       // 淡入→淡出（随血条展开浮现）
+        const x = s.bx + (cyc - 0.5) * s.dx;                      // 缓慢漂移
+        const y = s.by + Math.sin(state.time * s.fs + s.ph * 3) * s.amp;
+        ctx.save();
+        ctx.translate(cx + x, mid + y);
+        ctx.rotate(state.time * s.rspd + s.ph);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = s.col;
+        ctx.shadowColor = '#b9a8f5';
+        ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.moveTo(s.pts[0][0] * s.sz, s.pts[0][1] * s.sz);
+        for (let k = 1; k < s.pts.length; k++) ctx.lineTo(s.pts[k][0] * s.sz, s.pts[k][1] * s.sz);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+
+      // 登场瞬间：碎块自血条向四周迸散（破碎感开场）
+      if (flash > 0.02) {
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + 0.35;
+          const dist = 18 + reveal * 95;
+          const px2 = cx + Math.cos(ang) * dist * 1.35;   // 横向飞得更远（血条为横长条）
+          const py2 = mid + Math.sin(ang) * dist * 0.45;
+          const sz2 = 2 + (i % 3) * 0.9;
+          ctx.save();
+          ctx.translate(px2, py2);
+          ctx.rotate(state.time * 3 + i);
+          ctx.globalAlpha = flash * (0.85 - (i % 4) * 0.1);
+          ctx.fillStyle = i % 2 ? '#e8e2f8' : '#cfc0f2';
+          ctx.shadowColor = '#b9a8f5';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.moveTo(sz2, 0);
+          ctx.lineTo(-sz2 * 0.5, sz2 * 0.7);
+          ctx.lineTo(-sz2 * 0.4, -sz2 * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // 名称与数值（展开完成后淡入）
+      const txtA = clamp((e.barT - 0.45) / 0.35, 0, 1);
+      if (txtA > 0.01) {
+        ctx.globalAlpha = txtA;
+        ctx.fillStyle = '#e6d5ff';
+        ctx.shadowColor = '#8b5cf6';
+        ctx.shadowBlur = 6;
+        ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 35);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+  }
+
+  // 风暴编织者顶部血条：两端收尖长六边形 + 中央 lightning-ring 电核 + 锯齿电弧沿条游走 +
+  // 边缘环绕电弧 + 名字/血量计数（青金白热电浆——区别于暴风之眼的深海蓝）
+  function drawStorm2Bar(e) {
+    if (e.phase !== 'combat' || e.ency) return;
+    const T = state.time;   // 原位于 drawStormBossII 内，随血条块一并移出（电核脉动 / 电弧游走时钟）
       const revealP = clamp(e.barT / 0.8, 0, 1);
       const reveal = 1 - Math.pow(1 - revealP, 3);
       const bw = 300, bh = 13;
@@ -1823,373 +2361,15 @@
           ctx.restore();
         }
       }
-    }
   }
 
-  // ---------- 风暴编织者：技能演出（世界坐标；状态机见 05-boss runStorm2Skill） ----------
-  // 落雷素材调色：lightning-4 主色调偏紫，经 hue-rotate 归入游戏主色调（青蓝）并轻微提亮
-  const S2_BOLT_FILTER = 'hue-rotate(-30deg) saturate(1.15) brightness(1.06)';
-  function s2Seeded(seed) {
-    let s = (seed * 9973 + 479) % 233280;
-    return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
-  }
-  // 电弧光束：自 (x,y) 沿 ang 延伸 len 的光柱——外辉光 + 蓝体淡白芯主体 + 沿主轴锯齿电弧（默认绘制）；
-  // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）；
-  // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
-  //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
-  function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap) {
-    if (len <= 0.5) return;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(ang);
-    ctx.globalAlpha = alpha;
-    const w0 = root ? halfW * 0.22 : halfW;   // 根部宽度（root 时收为细点）
-    const tw = root ? Math.min(len * 0.6, halfW * 3.2) : 0;   // 收束段长度（至全宽）
-    const g = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
-    g.addColorStop(0, 'rgba(111, 184, 255, 0)');
-    g.addColorStop(0.5, 'rgba(111, 184, 255, 0.45)');
-    g.addColorStop(1, 'rgba(111, 184, 255, 0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(0, -w0 * 1.9);
-    if (root) ctx.lineTo(tw, -halfW * 1.9);
-    ctx.lineTo(len, -halfW * 1.9);
-    ctx.lineTo(len, halfW * 1.9);
-    if (root) ctx.lineTo(tw, halfW * 1.9);
-    ctx.lineTo(0, w0 * 1.9);
-    ctx.closePath();
-    ctx.fill();
-    // 头端圆帽（外辉光层）：外层端面此前为平截竖边、超出内层圆帽裸露在外，呈"被截断"感——补同心半圆收圆
-    ctx.beginPath();
-    ctx.arc(len, 0, halfW * 1.9, -Math.PI / 2, Math.PI / 2);
-    ctx.fill();
-    if (tailCap) {
-      // 尾端圆帽（外辉光层）：半圆向后凸出，消除尾端平截（技能6 重现光束尾部悬在场地中）
-      ctx.beginPath();
-      ctx.arc(0, 0, w0 * 1.9, Math.PI / 2, Math.PI * 1.5);
-      ctx.fill();
-    }
-    const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
-    g2.addColorStop(0, 'rgba(120, 190, 255, 0.85)');
-    g2.addColorStop(0.5, '#d8ecff');
-    g2.addColorStop(1, 'rgba(120, 190, 255, 0.85)');
-    ctx.fillStyle = g2;
-    ctx.beginPath();
-    ctx.moveTo(0, -w0);
-    if (root) ctx.lineTo(tw, -halfW);
-    ctx.lineTo(len, -halfW);
-    ctx.lineTo(len, halfW);
-    if (root) ctx.lineTo(tw, halfW);
-    ctx.lineTo(0, w0);
-    ctx.closePath();
-    ctx.fill();
-    if (tailCap) {
-      // 尾端圆帽（内芯层）
-      ctx.beginPath();
-      ctx.arc(0, 0, w0, Math.PI / 2, Math.PI * 1.5);
-      ctx.fill();
-    }
-    if (root) {
-      // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
-      const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
-      rg.addColorStop(0, 'rgba(235, 249, 255, 0.9)');
-      rg.addColorStop(0.45, 'rgba(170, 220, 255, 0.45)');
-      rg.addColorStop(1, 'rgba(120, 190, 255, 0)');
-      ctx.fillStyle = rg;
-      ctx.beginPath();
-      ctx.arc(0, 0, halfW * 1.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // 头端圆帽 + 白蓝热斑：矩形端头收为圆头，避免生硬截断感
-    ctx.beginPath();
-    ctx.arc(len, 0, halfW, -Math.PI / 2, Math.PI / 2);
-    ctx.fill();
-    const hgl = ctx.createRadialGradient(len, 0, 1, len, 0, halfW * 1.7);
-    hgl.addColorStop(0, 'rgba(235, 249, 255, 0.95)');
-    hgl.addColorStop(0.45, 'rgba(170, 220, 255, 0.5)');
-    hgl.addColorStop(1, 'rgba(120, 190, 255, 0)');
-    ctx.fillStyle = hgl;
-    ctx.beginPath();
-    ctx.arc(len, 0, halfW * 1.7, 0, Math.PI * 2);
-    ctx.fill();
-    if (len > 12) {
-      // 锯齿电弧：沿光束主轴双 pass（蓝辉外弧 + 白热细芯），每 1/12s 换一次形状
-      const seg = Math.max(4, Math.floor(len / 26));
-      const rnd = s2Seeded(Math.floor(state.time * 12) * 31 + seg * 17 + ((x * 7 + y * 3) | 0) % 97);
-      for (const [w2, col] of [[2.6, 'rgba(143, 212, 255, 0.55)'], [1.1, 'rgba(255, 255, 255, 0.9)']]) {
-        ctx.strokeStyle = col;
-        ctx.lineWidth = w2;
-        ctx.shadowColor = '#bfe6ff';
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        for (let k = 1; k <= seg; k++) {
-          const px = (k / seg) * len;
-          const py = (rnd() * 2 - 1) * halfW * 1.4 * Math.sin(Math.PI * k / seg);
-          ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
-    }
-    ctx.restore();
-  }
-
-  // 蓝色预警波（技能1/2 蓄力）：自半径 r0 处向中心收缩的圆环波——
-  // 带两圈拖尾残影（收缩方向的后像在外侧）、亮度随收缩进度从不明显渐增；t0 为收缩起始时刻
-  function drawS2WarnWave(x, y, r0, t0, dur, t) {
-    if (t < t0) return;
-    const p = clamp((t - t0) / dur, 0, 1);
-    const r = r0 * (1 - p);
-    if (r < 2) return;
-    ctx.save();
-    ctx.shadowColor = '#7cd8ff';
-    for (const [mul, w2, a] of [[1.10, 1.4, 0.16], [1.05, 2.2, 0.34], [1, 3, 1]]) {
-      ctx.strokeStyle = `rgba(159, 216, 255, ${(a * (0.18 + 0.82 * p)).toFixed(3)})`;
-      ctx.lineWidth = w2;
-      ctx.beginPath();
-      ctx.arc(x, y, r * mul, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawStorm2SkillFx(e) {
-    const s = e.skill, T = state.time;
-
-    if (s.id === 0) {
-      // 技能1：电弧球蓄力预警 → 向下强力电弧激光（诗篇：移动中连射 5 次，预警跨发重叠）
-      const ball = storm2BallPos(e);
-      const firing = s.shipian ? s.st === 1 : s.fired;
-      if (!firing) {
-        const p = s.shipian
-          ? (s.shot === 0 ? clamp(s.pt / STORM2.s1Charge, 0, 1) : clamp(s.pt / STORM2_SHIP.s1.charge2, 0, 1))
-          : clamp(s.t / STORM2.s1Charge, 0, 1);
-        const tEl = s.shipian ? s.pt : s.t;   // 蓄力段已进行时间
-        ctx.save();
-        if (s.shipian && s.shot > 0) {
-          // 诗篇第 2~5 次：小预警环（自 150px 收缩 0.4s）
-          drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.pt);
-        } else {
-          // 首发大环：蓝色收缩圆环波（自 300px 向中心收缩 0.8s，带拖尾残影、越收越明显）
-          drawS2WarnWave(ball.x, ball.y, STORM2.s1RingR0, 0, STORM2.s1RingDur, tEl);
-          // 预警柱：淡蓝色竖直参考带（收缩完成后显现；仅向下方延伸，不越过能量球）
-          if (tEl >= STORM2.s1RingDur) {
-            ctx.globalAlpha = clamp((tEl - STORM2.s1RingDur) / (STORM2.s1Charge - STORM2.s1RingDur), 0, 1) * 0.9;
-            ctx.fillStyle = 'rgba(143, 212, 255, 0.12)';
-            ctx.fillRect(ball.x - STORM2.s1R, ball.y, STORM2.s1R * 2, CANVAS_H - ball.y);
-          }
-          ctx.globalAlpha = 1;
-        }
-        // 球体增亮罩（电弧球随蓄力增亮）
-        const gg = ctx.createRadialGradient(ball.x, ball.y, 2, ball.x, ball.y, 30);
-        gg.addColorStop(0, `rgba(235, 249, 255, ${(0.35 + 0.45 * p).toFixed(3)})`);
-        gg.addColorStop(1, 'rgba(160, 210, 255, 0)');
-        ctx.fillStyle = gg;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, 30, 0, Math.PI * 2);
-        ctx.fill();
-        // 汇聚小电弧（外缘 → 球心）
-        const rnd = s2Seeded(Math.floor(T * 14) + 5);
-        ctx.strokeStyle = 'rgba(190, 232, 255, 0.85)';
-        ctx.lineWidth = 1.4;
-        for (let k = 0; k < 4; k++) {
-          const a = rnd() * Math.PI * 2, r0 = 40 + rnd() * 26;
-          ctx.beginPath();
-          ctx.moveTo(ball.x + Math.cos(a) * r0, ball.y + Math.sin(a) * r0);
-          ctx.lineTo(ball.x + Math.cos(a) * 8, ball.y + Math.sin(a) * 8);
-          ctx.stroke();
-        }
-        ctx.restore();
-      } else {
-        // 强力电弧激光：竖直光柱（亮起 → 渐隐）+ 雷电素材贴片（lightning-4）+ 边缘狂乱电流
-        const life = s.shipian ? s.pt : s.t - STORM2.s1Charge;
-        const vis = life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / (STORM2.s1BeamDur - 0.12);
-        const a = clamp(vis, 0, 1) * 0.95;
-        drawS2Beam(ball.x, ball.y, Math.PI / 2, CANVAS_H - ball.y + 30, STORM2.s1R, a, true);   // root：自能量球核心收束发出，避免顶部截断
-        // 周身狂乱电流（lightning-2 细流光弧）：10 枚沿光束左右边缘高速环绕游走、剧烈明灭
-        if (lightningImgThin) {
-          const asp = (lightningImgThin.naturalWidth / lightningImgThin.naturalHeight) || 0.2;
-          ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          for (let k = 0; k < 10; k++) {
-            const side = k % 2 === 0 ? -1 : 1;
-            const ph = T * 2.6 + k * 1.9;
-            const yy = ball.y + 26 + ((ph * 130) % Math.max(60, (CANVAS_H - ball.y + 30) - 52));
-            const wob = Math.sin(ph * 3.1);
-            const xx = ball.x + side * (STORM2.s1R + 8 + 7 * wob);
-            const sl = 46 + 16 * Math.sin(ph * 2.3);
-            ctx.save();
-            ctx.translate(xx, yy);
-            ctx.rotate(side * (0.6 + 0.5 * wob));
-            ctx.globalAlpha = 0.5 + 0.35 * Math.sin(ph * 3.7);
-            ctx.drawImage(lightningImgThin, -sl * asp / 2, -sl / 2, sl * asp, sl);
-            ctx.restore();
-          }
-          ctx.restore();
-        }
-        if (lightningImgBig) {
-          const asp = (lightningImgBig.naturalWidth / lightningImgBig.naturalHeight) || 0.3;
-          const rnd = s2Seeded(Math.floor(T * 11) * 13 + 3);
-          ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          for (let k = 0; k < 2; k++) {
-            const w2 = STORM2.s1R * (2.4 + rnd() * 1.2) * asp * 2;
-            const yOff = Math.max(0, rnd() * 30 - 15) * 0.5;   // 贴片顶端不越过能量球上方
-            const top = ball.y + yOff;
-            ctx.globalAlpha = a * (0.4 + 0.4 * rnd());
-            ctx.drawImage(lightningImgBig, ball.x - w2 / 2, top, w2, CANVAS_H - ball.y - yOff + 50);
-          }
-          ctx.restore();
-        }
-        // 诗篇：当前发光束期间，下一发的小预警环提前亮起（跨发重叠）
-        if (s.shipian && s.shot < STORM2_SHIP.s1.shots - 1 && s.t >= s.nextAt - STORM2_SHIP.s1.charge2) {
-          drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.t - (s.nextAt - STORM2_SHIP.s1.charge2));
-        }
-      }
-    } else if (s.id === 1) {
-      // 技能2 蓄力预警：四喷口各一圈蓝色预警波（中心在各自喷口位置，自 200px 收缩）——
-      //   按发射顺序先后出现（第 k 发的喷口光环晚 k×0.13s 开始收缩，完成后留 0.2s 该喷口发射）；
-      //   蓄力/收缩时长随技能实例（s.charge / s.ringDur）——诗篇连携时 1.6s / 1.2s，收缩速度变慢
-      if (s.t < s.charge + 3 * STORM2.s2Gap) {
-        for (let k = 0; k < 4; k++) {
-          const nz = storm2Nozzle(e, s.order[k]);
-          drawS2WarnWave(nz.x, nz.y, STORM2.s2RingR0, 0.2 + k * STORM2.s2Gap, s.ringDur, s.t);
-        }
-      }
-      for (const b of s.beams) {
-        const vis = b.t < 0.10 ? b.t / 0.10 : 1 - (b.t - 0.10) / b.dur;
-        const fullLen = CANVAS_H - b.y + 30;
-        const len = b.clipD != null ? Math.min(fullLen, b.clipD) : fullLen;   // 守愿者白盾截断
-        drawS2Beam(b.x, b.y, Math.PI / 2, len, STORM2.s2R, clamp(vis, 0, 1));
-      }
-      // 诗篇：连携的技能6 汇聚预兆（子状态随行，连携窗口 ×1.5；光束本体由 drawS6Beams 绘制）
-      if (s.s6 && s.s6.pointsAt && s.s6.ptT > 0) {
-        const glow = 1 - s.s6.ptT / (s.s6.warnDur || 0.3);
-        for (const px of [10, CANVAS_W - 10]) {
-          const py = e.y - 26;
-          const gg = ctx.createRadialGradient(px, py, 1, px, py, 14);
-          gg.addColorStop(0, `rgba(235, 249, 255, ${(0.3 + 0.6 * glow).toFixed(3)})`);
-          gg.addColorStop(1, 'rgba(120, 190, 255, 0)');
-          ctx.fillStyle = gg;
-          ctx.beginPath();
-          ctx.arc(px, py, 14, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    } else if (s.id === 4) {
-      // 技能5：周身雷电环（lightning-ring 素材，黑底经 lighter 混合融入画面）+ 雷击预警（同款雷电环恒定大小渐显，
-      // 先慢后快）+ 打击爆闪（周围白光 + 蓝点光闪现）
-      const R = S2_STRIKE_R;
-      const fullD = R / 0.30;   // 素材亮环带半径 ≈ 绘制边长 ×0.30：满蓄力时亮环带对齐打击区域半径
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      // 周身雷电环：缓慢旋转 + 明暗脉动，下方衬一层淡径向光晕
-      const haloA = clamp(s.t / 0.4, 0, 1) * (0.5 + 0.14 * Math.sin(T * 11));
-      const hg = ctx.createRadialGradient(e.x, e.y, 30, e.x, e.y, 96);
-      hg.addColorStop(0, `rgba(190, 232, 255, ${(haloA * 0.5).toFixed(3)})`);
-      hg.addColorStop(1, 'rgba(120, 190, 255, 0)');
-      ctx.fillStyle = hg;
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, 96, 0, Math.PI * 2);
-      ctx.fill();
-      if (lightningImgRing) {
-        const d0 = 180;   // 周身雷电环（半径较初版 -40%）
-        ctx.save();
-        ctx.translate(e.x, e.y);
-        ctx.rotate(T * 0.6);
-        ctx.globalAlpha = Math.min(1, haloA * 1.6);
-        ctx.drawImage(lightningImgRing, -d0 / 2, -d0 / 2, d0, d0);
-        ctx.restore();
-      }
-      ctx.restore();
-      for (const st of s.strikes) {
-        if (st.fired) {
-          // 打击爆闪：周围白光 + 环带蓝点光闪现（雷电轰击感）；flash 由逻辑层逐帧衰减（0.35s）
-          if (st.flash > 0) {
-            const fp = st.flash / 0.35;
-            ctx.save();
-            ctx.globalCompositeOperation = 'lighter';
-            const fg = ctx.createRadialGradient(st.x, st.y, 2, st.x, st.y, R * 0.85);
-            fg.addColorStop(0, `rgba(245, 251, 255, ${(0.8 * fp).toFixed(3)})`);
-            fg.addColorStop(0.55, `rgba(190, 232, 255, ${(0.35 * fp).toFixed(3)})`);
-            fg.addColorStop(1, 'rgba(120, 190, 255, 0)');
-            ctx.fillStyle = fg;
-            ctx.beginPath();
-            ctx.arc(st.x, st.y, R * 0.85, 0, Math.PI * 2);
-            ctx.fill();
-            const rnd = s2Seeded((Math.floor(st.x * 3) + Math.floor(st.y)) * 17 + 5);
-            for (let k = 0; k < 10; k++) {
-              const a = rnd() * Math.PI * 2, rr = R * (0.45 + rnd() * 0.5);
-              const sz = 1.6 + rnd() * 2.6;
-              const tw = 0.5 + 0.5 * Math.sin(T * 40 + k * 2.4);
-              ctx.globalAlpha = fp * (0.35 + 0.65 * tw);
-              ctx.fillStyle = k % 3 ? '#bfe6ff' : '#ffffff';
-              ctx.beginPath();
-              ctx.arc(st.x + Math.cos(a) * rr, st.y + Math.sin(a) * rr, sz, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.restore();
-          }
-          continue;
-        }
-        if (st.t < 0) continue;   // 尚未开始积聚
-        // 雷电积聚预警：lightning-ring 亮环带贴齐判定半径 R（不裁剪——环外电弧保留）；
-        //   中心仅微微泛白，双层反向旋转的低亮环制造电弧流动感
-        const wp = clamp(st.t / STORM2.s5Warn, 0, 1);
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        const wg = ctx.createRadialGradient(st.x, st.y, R * 0.2, st.x, st.y, R);
-        wg.addColorStop(0, `rgba(190, 232, 255, ${(0.04 + 0.09 * wp).toFixed(3)})`);
-        wg.addColorStop(1, 'rgba(190, 232, 255, 0)');
-        ctx.fillStyle = wg;
-        ctx.beginPath();
-        ctx.arc(st.x, st.y, R, 0, Math.PI * 2);
-        ctx.fill();
-        if (lightningImgRing) {
-          const flick = 0.86 + 0.14 * Math.sin(T * 21 + st.x);
-          ctx.save();
-          ctx.translate(st.x, st.y);
-          ctx.rotate(T * 0.9 + st.x);
-          ctx.globalAlpha = (0.10 + 0.38 * wp * wp) * flick;
-          ctx.drawImage(lightningImgRing, -fullD / 2, -fullD / 2, fullD, fullD);
-          ctx.restore();
-          ctx.save();
-          ctx.translate(st.x, st.y);
-          ctx.rotate(-T * 1.5 + st.y);
-          ctx.globalAlpha = (0.06 + 0.22 * wp * wp) * flick;
-          ctx.drawImage(lightningImgRing, -fullD / 2, -fullD / 2, fullD, fullD);
-          ctx.restore();
-        }
-        ctx.restore();
-      }
-    } else if (s.id === 5) {
-      // 技能6：重现点汇聚预兆（发射前预警，连携时窗口 ×1.5）：左右边界两点亮起电弧球
-      // （光束本体绘制在 drawS6Beams——技能 4.6s 收束后飞行光束仍需继续绘制）
-      if (s.pointsAt && s.ptT > 0) {
-        const glow = 1 - s.ptT / (s.warnDur || 0.3);
-        for (const px of [10, CANVAS_W - 10]) {
-          const py = e.y - 26;
-          const gg = ctx.createRadialGradient(px, py, 1, px, py, 14);
-          gg.addColorStop(0, `rgba(235, 249, 255, ${(0.3 + 0.6 * glow).toFixed(3)})`);
-          gg.addColorStop(1, 'rgba(120, 190, 255, 0)');
-          ctx.fillStyle = gg;
-          ctx.beginPath();
-          ctx.arc(px, py, 14, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-  }
-
-  // 技能6 光束绘制（臂向 / 重现光束；独立于技能状态——技能收束后飞行光束继续存活绘制）：
-  // 守愿者白盾咬合后光束永久钉在盾面（b.effLen 由逻辑层 updateS6Beams 每帧写入，盾移开也不恢复）；
-  // 诗篇连携（carried）的臂向光束变淡（faint）
-  function drawS6Beams(e) {
-    for (const b of e.s6Beams) {
-      const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
-      const len = b.effLen != null ? b.effLen : (b.len || 0);
-      drawS2Beam(b.x, b.y, b.ang, len, STORM2.s6R, clamp(b.faint ? vis * 0.45 : vis, 0, 1), false, true);   // tailCap：尾端圆帽，消除悬空光束两端的平截感
+  // 统一入口：遍历场上 BOSS 绘制对应血条（战斗阶段；图鉴预览 / 消散残影跳过）
+  function drawBossBars() {
+    for (const e of enemies) {
+      if (e.type !== 'boss' || e.dying || e.ency || e.phase !== 'combat') continue;
+      if (e.bossId === 'storm') drawStormBar(e);
+      else if (e.bossId === 'storm2') drawStorm2Bar(e);
+      else drawSongBar(e);
     }
   }
 
@@ -2198,169 +2378,6 @@
       if (e.bossId === 'storm2') { drawStormBossII(e); return; }   // 风暴编织者（二阶段飞舰：当前仅图鉴预览）
       if (e.bossId === 'storm') { drawStormBoss(e); return; }   // 暴风之眼专用绘制
     const isEntering = (e.phase === 'blackhole' || e.phase === 'emerge' || e.phase === 'assemble');
-
-    // 顶部专用血条：两端收尖的长六边形 + 暗紫光芒笼罩 + 登场横向展开演出（仅战斗阶段）
-    if (e.phase === 'combat') {
-      const revealP = clamp(e.barT / 0.8, 0, 1);
-      const reveal = 1 - Math.pow(1 - revealP, 3);   // easeOutCubic：以中心为基准横向展开
-      const flash = 1 - revealP;                      // 登场瞬间的紫光爆闪
-
-      const bw = 360, bh = 13;   // 高度缩短 20%（16 → 13）
-      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
-      const taper = 15;
-      const x0 = cx - bw / 2, x1 = cx + bw / 2;
-      // 长六边形轮廓（左右两端各收出一个尖点）
-      const hexPath = () => {
-        ctx.beginPath();
-        ctx.moveTo(x0, mid);
-        ctx.lineTo(x0 + taper, top);
-        ctx.lineTo(x1 - taper, top);
-        ctx.lineTo(x1, mid);
-        ctx.lineTo(x1 - taper, bot);
-        ctx.lineTo(x0 + taper, bot);
-        ctx.closePath();
-      };
-
-      ctx.save();
-      ctx.translate(cx, 0); ctx.scale(reveal, 1); ctx.translate(-cx, 0);
-
-      // 底座 + 暗紫光芒笼罩（呼吸辉光 + 登场爆闪）
-      ctx.shadowColor = '#8b5cf6';
-      ctx.shadowBlur = 14 + Math.sin(state.time * 2.5) * 4 + flash * 22;
-      hexPath();
-      ctx.fillStyle = `rgba(26, 10, 48, ${(0.88 + flash * 0.12).toFixed(3)})`;
-      ctx.fill();
-      ctx.strokeStyle = `rgba(167, 139, 250, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})`;
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // 内部裁剪：残血余像 → 主血量 → 刻度 → 暗紫罩染
-      ctx.save();
-      hexPath();
-      ctx.clip();
-      const ratio = clamp(e.hp / e.maxHp, 0, 1);
-      const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
-      if (trail > ratio + 0.002) {          // 刚扣除的血量以白色余条缓慢消退
-        ctx.fillStyle = 'rgba(255, 230, 240, 0.5)';
-        ctx.fillRect(x0, top, (x1 - x0) * trail, bh);
-      }
-      const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 主血量：幽紫 → 猩红 → 金橙
-      hg.addColorStop(0, '#6d28d9');
-      hg.addColorStop(0.3, '#ff4d6d');
-      hg.addColorStop(1, '#ffb545');
-      ctx.fillStyle = hg;
-      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, bh - 2.4);
-      // 能量前线：血量填充最前端的发光亮线，随血量减少而滑动
-      if (ratio > 0.005 && ratio < 1) {
-        ctx.fillStyle = 'rgba(240, 225, 255, 0.9)';
-        ctx.shadowColor = '#c4b5fd';
-        ctx.shadowBlur = 6;
-        ctx.fillRect(x0 + (x1 - x0) * ratio - 1, top + 1.2, 2, bh - 2.4);
-        ctx.shadowBlur = 0;
-      }
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';          // 顶部高光
-      ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, 2.5);
-      ctx.fillStyle = 'rgba(10, 4, 24, 0.55)';              // 每 10% 一道刻度
-      for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
-      const tint = ctx.createLinearGradient(0, top, 0, bot); // 暗紫罩染：血量也蒙上紫气
-      tint.addColorStop(0, 'rgba(139, 92, 246, 0.30)');
-      tint.addColorStop(0.55, 'rgba(139, 92, 246, 0.05)');
-      tint.addColorStop(1, 'rgba(46, 16, 84, 0.30)');
-      ctx.fillStyle = tint;
-      ctx.fillRect(x0, top, x1 - x0, bh);
-      ctx.restore();
-
-      ctx.restore();
-
-      // 破碎感主题：泛白紫碎块在血条周围持续剥落、漂移、消散（旧日之歌 = 空间异物）
-      if (!e.shards) {
-        e.shards = [];
-        const SHARD_COLS = ['#ece6fa', '#dcd0f6', '#cdc0f0', '#f4f0fc'];
-        for (let i = 0; i < 10; i++) {
-          const vn = 3 + Math.floor(Math.random() * 2);   // 3~4 边不规则碎形
-          const pts = [];
-          for (let k = 0; k < vn; k++) {
-            const a = (k / vn) * Math.PI * 2 + Math.random() * 0.9;
-            const rr = 0.6 + Math.random() * 0.6;
-            pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
-          }
-          e.shards.push({
-            bx: rand(-bw / 2 - 26, bw / 2 + 26),   // 沿血条及两端外侧散布
-            by: rand(-14, 14),
-            sz: rand(1.6, 4.2),
-            amp: rand(2, 5),
-            fs: rand(0.5, 1.1),                    // 漂浮速度
-            ph: Math.random() * Math.PI * 2,       // 生命周期相位
-            spd: rand(0.05, 0.14),                 // 生命周期速度
-            dx: rand(-12, 12),                     // 单周期水平漂移
-            rspd: rand(-1.2, 1.2),                 // 自转速度
-            col: SHARD_COLS[Math.floor(Math.random() * SHARD_COLS.length)],
-            pts,
-          });
-        }
-      }
-      for (const s of e.shards) {
-        const cyc = (state.time * s.spd + s.ph) % 1;              // 0→1 生命周期
-        const a = Math.sin(cyc * Math.PI) * 0.85 * revealP;       // 淡入→淡出（随血条展开浮现）
-        const x = s.bx + (cyc - 0.5) * s.dx;                      // 缓慢漂移
-        const y = s.by + Math.sin(state.time * s.fs + s.ph * 3) * s.amp;
-        ctx.save();
-        ctx.translate(cx + x, mid + y);
-        ctx.rotate(state.time * s.rspd + s.ph);
-        ctx.globalAlpha = a;
-        ctx.fillStyle = s.col;
-        ctx.shadowColor = '#b9a8f5';
-        ctx.shadowBlur = 5;
-        ctx.beginPath();
-        ctx.moveTo(s.pts[0][0] * s.sz, s.pts[0][1] * s.sz);
-        for (let k = 1; k < s.pts.length; k++) ctx.lineTo(s.pts[k][0] * s.sz, s.pts[k][1] * s.sz);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.globalAlpha = 1;
-
-      // 登场瞬间：碎块自血条向四周迸散（破碎感开场）
-      if (flash > 0.02) {
-        for (let i = 0; i < 12; i++) {
-          const ang = (i / 12) * Math.PI * 2 + 0.35;
-          const dist = 18 + reveal * 95;
-          const px2 = cx + Math.cos(ang) * dist * 1.35;   // 横向飞得更远（血条为横长条）
-          const py2 = mid + Math.sin(ang) * dist * 0.45;
-          const sz2 = 2 + (i % 3) * 0.9;
-          ctx.save();
-          ctx.translate(px2, py2);
-          ctx.rotate(state.time * 3 + i);
-          ctx.globalAlpha = flash * (0.85 - (i % 4) * 0.1);
-          ctx.fillStyle = i % 2 ? '#e8e2f8' : '#cfc0f2';
-          ctx.shadowColor = '#b9a8f5';
-          ctx.shadowBlur = 6;
-          ctx.beginPath();
-          ctx.moveTo(sz2, 0);
-          ctx.lineTo(-sz2 * 0.5, sz2 * 0.7);
-          ctx.lineTo(-sz2 * 0.4, -sz2 * 0.8);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-        ctx.globalAlpha = 1;
-      }
-
-      // 名称与数值（展开完成后淡入）
-      const txtA = clamp((e.barT - 0.45) / 0.35, 0, 1);
-      if (txtA > 0.01) {
-        ctx.globalAlpha = txtA;
-        ctx.fillStyle = '#e6d5ff';
-        ctx.shadowColor = '#8b5cf6';
-        ctx.shadowBlur = 6;
-        ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 35);
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      }
-    }
 
     // ---------- 黑洞特效（进场演出期间始终绘制） ----------
     if (isEntering) {
@@ -2552,7 +2569,7 @@
     ctx.restore();
 
     // ---------- 组装阶段 / 技能5/6 重组动画：飞行中的部件（世界坐标） ----------
-    // e.partsAnim：诗篇技能5/6 释放前的六球重组演出（runPartsAnim 驱动 pt.x/pt.y，endPartsAnim 清除）
+    // e.partsAnim：真我技能5/6 释放前的六球重组演出（runPartsAnim 驱动 pt.x/pt.y，endPartsAnim 清除）
     if ((e.phase === 'assemble' || e.partsAnim) && e.parts) {
       for (const pt of e.parts) {
         if (e.phase === 'assemble' && pt.attached) {
@@ -2791,5 +2808,5 @@
 
   export {
     drawZoneMarks, drawStormVortex, drawStormBoss, drawStormBar, drawTornado, drawBoss,
-    drawWarnBar, drawBossWarning,
+    drawWarnBar, drawBossWarning, drawBossBars,
   };
