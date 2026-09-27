@@ -1,17 +1,17 @@
 // 08-entities：子弹 / 道具 / 水晶 / 粒子更新 + 全屏特效状态（state.flash / 冲击波）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(3 名) 10-draw-world(2 名) 12-ui(1 名) 14-main(7 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(3 名) 10-draw-world(2 名) 12-ui(1 名) 14-main(8 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, enemyDmgMul, hasPilot, isZhenwo, isShipian } from './01-config.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
-  import { achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
+  import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -31,7 +31,7 @@
     if (e.type === 'tornado') {
       // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；真我：僚机易伤额外 +150%（加算，不乘算）
       mul *= isWing
-        ? (1 + STORM.tornadoWingVuln + (isZhenwo() ? STORM_SHIP.s2.wingVulnAdd : 0))
+        ? (1 + STORM.tornadoWingVuln + (isRealme() ? STORM_SHIP.s2.wingVulnAdd : 0))
         : (1 - STORM.tornadoMainDR);
     }
     // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
@@ -51,7 +51,7 @@
       if (dr > 0) mul *= (1 - dr);
     }
     // 暴风之眼（真我）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
-    if (e.type === 'boss' && e.bossId === 'storm' && isZhenwo() && e.skill && e.skill.id === 3) {
+    if (e.type === 'boss' && e.bossId === 'storm' && isRealme() && e.skill && e.skill.id === 3) {
       mul *= (1 - STORM_SHIP.s4.dr);
     }
     // 焦香螺旋桨：登场 2s 内受到的伤害 -30%（入场保护，主武器与僚机弹幕均生效）
@@ -63,10 +63,12 @@
 
   // ---------- 子弹 ----------
   function updateBullets(dt) {
-  // 玩家屏障（增生炮艇支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）
+  // 玩家屏障（青时炮艇支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
+  // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿），重复命中刷新由支援弹命中处重置
   if (player.barrierT > 0) {
     player.barrierT -= dt;
-    player.barrier = player.barrierT >= 1 ? player.barrierMax : player.barrierMax * Math.max(0, player.barrierT);
+    player.barrier = Math.min(player.barrier,
+      player.barrierT >= 1 ? player.barrierMax : player.barrierMax * Math.max(0, player.barrierT));
     if (player.barrierT <= 0) { player.barrier = 0; player.barrierMax = 0; }
   }
     // 暗紫轨迹残影：留存一段时间后渐隐消失
@@ -149,14 +151,22 @@
         if (e.type === 'boss' && bossEntranceActive()) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
+          // 青时炮艇召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）；
+          // 群星允诺暴走弹（僚机 b.wing + b.glow，守愿者 oval 弹除外）无视次数盾直接伤害
+          if ((e.chargeShield || 0) > 0 && !(b.wing && b.glow && !b.oval)) {
+            e.chargeShield--;
+            spawnParticles(b.x, b.y, '#ffffff', 6, 150);
+            pBullets.splice(i, 1);
+            break;
+          }
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
           // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
-          const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm);
+          let dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm);
           if (e.barrier > 0) {
             const abs = Math.min(e.barrier, dmg);
-            e.barrier -= abs; dmg -= abs;
+            e.barrier -= abs; dmg -= abs;   // 屏障优先吸收（dmg 需可变：吸收后余量继续扣血）
           }
           e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
@@ -221,7 +231,7 @@
       } else if (b.lenTarget && b.len < b.lenTarget) {
         b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
       }
-      // 分裂弹：飞行一段距离→短时间内减速到 0→分裂成 N 个小子弹（互相等角）
+      // 分裂弹：飞行一段距离→短时间内减速（可选 frac：剩余速度比例 ≤ frac 即提前分裂，"快没速度就炸"不必减为 0）→分裂成 N 个小子弹（互相等角）
       if (b.split) {
         const s = b.split;
         if (!s.triggered) {
@@ -229,7 +239,7 @@
           if (b.traveled >= s.dist) {
             s.triggered = true;
             s.baseSpeed = Math.hypot(b.vx, b.vy);   // 记录触发时速度，用于平滑减速
-            s.decay = 0.3;                          // 减速到 0 所需时间（短时间，避免瞬停突兀）
+            s.decay = s.decayDur || 0.3;            // 减速时长（默认 0.3s；橙焰巨型弹 0.7s"减速一段时间后才分裂"）
             s.stopT = s.decay;
           }
         } else {
@@ -237,7 +247,7 @@
           const f = Math.max(0, s.stopT / s.decay);   // 1→0 线性衰减
           const sp = Math.hypot(b.vx, b.vy);
           if (sp > 0.001) { const ns = s.baseSpeed * f; b.vx = b.vx / sp * ns; b.vy = b.vy / sp * ns; }
-          if (s.stopT <= 0) {
+          if (s.stopT <= s.decay * (1 - (s.frac || 0))) {
             const base = Math.random() * Math.PI * 2;   // 随机基准方向，各子弹间隔 360/N
             for (let k = 0; k < s.count; k++) {
               const ang = base + k * (Math.PI * 2 / s.count);
@@ -246,12 +256,20 @@
                 vx: Math.cos(ang) * s.speed, vy: Math.sin(ang) * s.speed,
                 ax: 0, accel: 0, maxSpeed: 0,
                 r: s.r, len: s.len || 0, dmg: b.dmg, color: s.color, split: null, traveled: 0,
+                grad: !!s.grad,   // 径向渐变圆弹（白核→主色→暗橙红边，见 10-draw-world）
               });
             }
             spawnParticles(b.x, b.y, s.color, 12, 180);
             eBullets.splice(i, 1); continue;
           }
         }
+      }
+      // 蛇行弹（紫晶 DNA 双螺旋）：朝向绕出射基准角正弦摆动、恒速前进——左右两束相位相反，全程持续交绕
+      if (b.weave) {
+        b.age += dt;
+        const wA = b.baseAng + b.weave.amp * Math.sin(b.weave.om * b.age + b.weave.ph);
+        const wS = Math.hypot(b.vx, b.vy) || 1;
+        b.vx = Math.cos(wA) * wS; b.vy = Math.sin(wA) * wS;
       }
       // 风暴编织者雷环子弹：停留期原地不动（BOSS 移走也不跟随），到时向对应方向爆开（高初速 → 减速至巡航）
       if (b.holdT != null && b.holdT > 0) {
@@ -309,11 +327,11 @@
       if (b.y > CANVAS_H + 20 + trailPad || b.y < -40 - trailPad || b.x < -20 || b.x > CANVAS_W + 20) {
         eBullets.splice(i, 1); continue;
       }
-      // 增生炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（大判定、无需核心）→ 加屏障 24（诗篇 28）持续 10s；对双方均无伤害
+      // 青时炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）持续 10s；对双方均无伤害
       if (b.support) {
         let hit = false;
-        if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) < 16 + b.r) {
-          player.barrierMax = isShipian() ? 28 : 24;
+        if (player.alive && Math.abs(b.x - player.x) < player.w / 2 + b.r && Math.abs(b.y - player.y) < player.h / 2 + b.r) {
+          player.barrierMax = isPoem() ? 28 : 24;
           player.barrier = player.barrierMax; player.barrierT = 10;
           spawnParticles(b.x, b.y, '#9ff0e0', 10, 160);
           hit = true;
@@ -526,7 +544,11 @@
       spawnParticles(player.x, player.y - 12, '#8ce36b', 6, 120);
     }
     if (p.kind === 'hp') {
-      player.hp = clamp(player.hp + 40, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
+      // 诗篇（WAVE_POEM.healPct）：回复量改为当前血量上限 ×35%（四舍五入：陵落 60→21 / 铜皮夏勇 130→46）；
+      //   其他难度固定 +40。小艺拾取回血（上方）为独立机制不受影响
+      const healPct = isPoem() ? WAVE_POEM.healPct : null;
+      const heal = healPct != null ? Math.round((player.maxHp || PLAYER_CFG.maxHp) * healPct) : 40;
+      player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
       const cap = diffMods().bombCap;
@@ -609,6 +631,7 @@
       if (state.pilotDashT > 0 && player.alive) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
+        if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
         continue;
@@ -636,6 +659,7 @@
             armorSkillGain(c.val, c.firstBoss);
             // 漓：隐藏计数表按水晶得分充能（无首轮 BOSS 加成；BOSS 水晶 fromBoss 不计入）
             if (hasPilot('lingli') && !c.fromBoss) state.lingliGauge += c.val;
+            if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -644,6 +668,10 @@
       }
       c.x += c.vx * dt;
       c.y += c.vy * dt;
+      // 左右边界回收：水晶不出两侧边界——贴边夹取位置并消去朝外的横向速度
+      // （磁吸拉向玩家不会推出边界；只有坠出底边才移除，见下方 y 判定）
+      if (c.x < c.r) { c.x = c.r; if (c.vx < 0) c.vx = 0; }
+      else if (c.x > CANVAS_W - c.r) { c.x = CANVAS_W - c.r; if (c.vx > 0) c.vx = 0; }
       if (c.y > CANVAS_H + 20) { crystals.splice(i, 1); continue; }
       if (player.alive &&
           Math.abs(c.x - player.x) < player.w / 2 + c.r &&
@@ -652,6 +680,7 @@
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表（updatePilotStatus 差分时扣除）
         // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
         armorSkillGain(c.val, c.firstBoss);
+        if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
       }
@@ -668,6 +697,15 @@
     for (const p of powerups) {
       if (p.absorbDelay == null) p.absorbDelay = 0.35;
       p.pullSpeed = 1800;
+    }
+  }
+
+  // 胜利结算前 0.8s 统一收集：场上全部未收集水晶（仅水晶、不含道具）——跳过 0.35s 飘落（absorbDelay = 0 直拉）、
+  // 拉速 1500（2026-09-27 定稿放缓：典型距离 0.3~0.5s 抵达，最远 ≈0.75s 仍落在 0.8s 窗口内）；逐帧重复调用幂等
+  function collectAllCrystals() {
+    for (const c of crystals) {
+      if (c.absorbDelay == null) c.absorbDelay = 0;
+      c.pullSpeed = 1500;
     }
   }
 
@@ -697,5 +735,5 @@
 
   export {
     enemyDamageMul, updateBullets, POWERUP_MAGNET_RADIUS, spawnPowerup, applyPowerupPickup, updatePowerups,
-    updateCrystals, collectAllItems, updateParticles, shieldBurst, berserkBurst, bombBurst,
+    updateCrystals, collectAllItems, collectAllCrystals, updateParticles, shieldBurst, berserkBurst, bombBurst,
   };

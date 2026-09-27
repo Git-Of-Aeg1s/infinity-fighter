@@ -3,16 +3,16 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：（无——本文件为叶子模块，修改导出名前需确认无调用方）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods } from './01-config.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
   import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
-  import { berserkBurst, bombBurst, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
+  import { berserkBurst, bombBurst, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
   import { achvEvaluateVictory, achvNoteCheat, renderResultAchievements } from './02-achievements.js';
@@ -167,6 +167,9 @@
       const lvCfg = SPAWN_PHASE_LEVEL[bossFlow.phase] || SPAWN_PHASE_LEVEL[SPAWN_PHASE_LEVEL.length - 1];
       const lvPhaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
       levelFlow.level = lvCfg.base + Math.floor(Math.min(bossFlow.timer, lvPhaseTime) / lvCfg.step);
+      // 诗篇波次制：关卡等级 = 阶段基准 + 本阶段已刷波数 − 1（波 N = 等级 N：第一轮 10 波 = Lv1~10、第二轮 = Lv11~20；
+      // 由 14-main 波次分支在每次 spawnWave 后同步刷新；许凯狗冲刺期由下方冲刺块覆盖等级）
+      if (isPoem() && !state.challenge) levelFlow.level = lvCfg.base + levelFlow.poemWaveIdx - 1;
 
       // 许凯狗：开场高能冲刺（PILOTS.xukaigou）——
       //   等级 1s/级（开局 1 级起步，封顶 dashLv）；冲刺期间无敌由 resetGame 覆盖；
@@ -234,8 +237,12 @@
         // BOSS 击败后的 2s 缓冲与首波 4s 观察期不计入关卡推进（冻结 bossTimer，等级不增长）
         if (bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) bossFlow.timer += dt;
         // 当前阶段刷怪时间到 → 等清场后进警报；登场 BOSS 由 bossPhase 决定（旧日之歌 → 暴风之眼）
+        // 诗篇波次制：本阶段波次全部刷出且场上清空 → 直接进警报（波次耗尽即刷怪期结束，不等计时）
         const phaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
-        if (bossFlow.timer >= phaseTime) bossFlow.stage = 'wait';
+        const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
+        if (isPoem()
+            ? (levelFlow.poemWaveIdx >= phaseWaves && enemies.length === 0)
+            : bossFlow.timer >= phaseTime) bossFlow.stage = 'wait';
       } else if (bossFlow.stage === 'wait') {
         if (enemies.length === 0) {
           bossFlow.warnT = 0;
@@ -300,7 +307,43 @@
         }
       }
 
-      if (!state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
+      // ---------- 诗篇波次制刷怪（登记见《诗篇难度修正.md》深度改版 #1） ----------
+      // 每级一波：上一波全部击毁/离场 → clearDelay 计时 → 刷下一波（波 N = 等级 N）；
+      // 不走压力系统 / 波次间隔 / 4类槽位通道（4类随波附带，见 04-spawn spawnWaveBody）；
+      // 特殊刷新不受影响：BOSS 战强制波 / BOSS 后固定首波 / Lv13 焦香一次性（下方同步保留）
+      if (isPoem() && !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
+          bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+        const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
+        if (state.pilotDashT > 0) {
+          // 许凯狗冲刺（诗篇）：固定 1s 一波、不等清场（冲刺即秒）——6s 冲刺刷出并冲死第 1~6 波，
+          // 结束时波次计数 = 6、clearNext 保持 0 → 立即衔接第 7 波（Lv7，即冲刺终点等级）
+          levelFlow.poemClearT -= dt;
+          if (levelFlow.poemClearT <= 0 && levelFlow.poemWaveIdx < phaseWaves) {
+            spawnWave();
+            levelFlow.poemClearT = 1;
+          }
+        } else if (levelFlow.poemWaveIdx < phaseWaves) {
+          if (enemies.length === 0) {
+            levelFlow.poemClearT += dt;
+            if (levelFlow.poemClearT >= levelFlow.poemClearNext) {
+              spawnWave();
+              levelFlow.poemClearT = 0;
+              levelFlow.poemClearNext = rand(WAVE_POEM.clearDelay[0], WAVE_POEM.clearDelay[1]);
+              levelFlow.level = lvCfg.base + levelFlow.poemWaveIdx - 1;   // 波 N = 等级 N（与帧首计算同式）
+              // Lv13 后本局限定：首次刷新必出焦香螺旋桨（与常规通道同规则，随波打上 waveTag）
+              if (!levelFlow.jiaoxiang13Done && levelFlow.level >= 13) {
+                levelFlow.jiaoxiang13Done = true;
+                spawnJiaoxiang();
+                enemies[enemies.length - 1].waveTag = levelFlow.waveSeq;
+              }
+            }
+          } else {
+            levelFlow.poemClearT = 0;
+          }
+        }
+      }
+
+      if (!state.challenge && !isPoem() && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
           bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
         // bossVictoryDelay > 0：最终 BOSS 已被击坠、正在等待胜利结算——冻结刷怪，避免结算前刷出新怪
         // ---------- 场面压力刷新系统（替代固定冷却） ----------
@@ -350,9 +393,10 @@
 
         // 4类通道：Lv5 起 4类（主力舰 / 法术阵列）才会出现；主力舰同屏限 1（与法术阵列互斥），法术阵列不受限——
         //   场上已有法术阵列时仍可继续生成 4 类，但只能生成法术阵列（最多同时 2 台，且仅走慢速强制刷新 + 低概率）
+        //   （诗篇波次制不走本通道：4类随波附带，见 04-spawn spawnWaveBody）
         const fashiArrays = enemies.filter(e => e.type === 'fashiArray').length;
         const hasCapital = enemies.some(e => e.type === 'capital');
-        if (levelFlow.level >= 5 && !hasCapital && fashiArrays < 2) {
+        if (!isPoem() && levelFlow.level >= 5 && !hasCapital && fashiArrays < 2) {
           levelFlow.capitalIdleT += dt;
           if (fashiArrays === 0) {
             // 无法术阵列：正常节奏（压力低立即 / 超时强制），50% 概率法术阵列、否则主力舰
@@ -396,6 +440,9 @@
       // BOSS 击杀后延迟返回主界面
       if (bossFlow.victoryDelay > 0) {
         bossFlow.victoryDelay -= dt;
+        if (bossFlow.victoryDelay > 0 && bossFlow.victoryDelay <= 0.8) {
+          collectAllCrystals();   // 结算页面前 0.8s：收集场上全部未收集水晶（逐帧触发幂等，覆盖窗口内新掉落）
+        }
         if (bossFlow.victoryDelay <= 0) {
           bossFlow.victoryDelay = 0;
           state.mode = 'idle';
@@ -545,7 +592,7 @@
     }
   });
   encyClose.addEventListener('click', closeEncyclopedia);
-  initEncyDiffButtons();   // 图鉴头部三选一难度按钮组：绑定点击并按 DIFFICULTIES 初始化状态
+  initEncyDiffButtons();   // 图鉴头部四选一难度按钮组：绑定点击并按 DIFFICULTIES 初始化状态
 
   // ---------- 自适应缩放 ----------
   // 视口适配：把游戏舞台按视口等比缩放（大屏放大、小屏缩小、顶部对齐），

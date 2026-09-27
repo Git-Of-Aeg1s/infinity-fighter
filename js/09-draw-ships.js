@@ -1,7 +1,7 @@
 // 09-draw-ships：战机 / 僚机 / 各敌机形体与子弹预警的绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(3 名)
+  // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(4 名)
   //
   import { ANVIL, BAOLING, BULWARK, CANVAS_H, CANVAS_W, CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, STARSLAYER, YU4, currentArmor, currentPlane, currentWingman } from './01-config.js';
   import { armorGlyphFx, blBombs, bossFlow, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
@@ -3546,7 +3546,7 @@
     }
     for (const b of blBombs) {
       const intensity = b.phase === 'drop'
-        ? 0.35 + Math.min(1, b.t / BAOLING.dropTime) * 0.3
+        ? 0.35 + Math.min(1, b.t / (b.dropDur || BAOLING.dropTime)) * 0.3
         : 0.65 + Math.min(1, (b.spd - BAOLING.dropSpeed) / 900) * 0.35;
       drawBaolingWarn(b.tx, b.ty, intensity);
       ctx.save();
@@ -4231,8 +4231,8 @@
     const DARK = '#000000', BRONZE = '#e0690f', ORANGE = '#f08c1c', BRASS = '#ffd24a', SHEEN = '#fff0b8';
     const pulse = 0.6 + Math.sin(state.time * 4 + (e.wobble || 0)) * 0.4;
 
-    // ---- 炮管（先画、垫于机身之下；粗壮 + 加强环 + 制退器；指向玩家，预览时朝正下）----
-    const aim = e.waypoints ? Math.atan2(player.y - e.y, player.x - e.x) : Math.PI / 2;
+    // ---- 炮管（先画、垫于机身之下；粗壮 + 加强环 + 制退器；指向 muzzleAng（限速追踪），预览时朝正下）----
+    const aim = e.waypoints ? (e.muzzleAng != null ? e.muzzleAng : Math.atan2(player.y - e.y, player.x - e.x)) : Math.PI / 2;
     ctx.save();
     ctx.rotate(aim - Math.PI / 2);   // 默认炮管朝下(+y=π/2)，旋转到瞄准方向
     const barrelGrd = ctx.createLinearGradient(-2, 0, 2, 0);
@@ -4608,13 +4608,13 @@
   // ---------- 掉落水晶 3D 精灵（水晶系统改版）：三档模型 × 三色 + 巨型双色，24 帧自转烘焙 ----------
   // 模型与测试页「雷译正视图」同源：小＝四棱锥+腰带+四棱锥（正视投影 = 尖顶六边形）；
   // 中＝长方体核心 + 八角白框（框厚 = 核心厚 40%）；大＝正方板 + 菱形白框（框厚 = 核心厚 25%）；
-  // 巨型 = 原石（四芒星双锥专用模型，上粉 #FFC0CB / 下蓝 #39C5BB 双色）。
-  // 颜色直接分配到面上（顶锥亮 / 底锥暗 / 刻面交替 / 核心近白+边缘淡色），底光 / 间隙光 / 内孔高亮全部烘焙进帧内；
+  // 巨型 = 原石（四芒星双锥专用模型，全局纵向色标渐变：上粉 / 下蓝、赤道交汇近白，色标见 STAR_STOPS）。
+  // 颜色直接分配到面上（小档顶亮底暗 / 中档中央白高光减半 / 大档淡色玻璃感 / 原石色标渐变 + 刻面交替），底光 / 间隙光 / 内孔高亮全部烘焙进帧内；
   // 运行时每颗水晶每帧仅 1 次 drawImage（1:1 整数位贴图）。
   const CRYSTAL3D_FRAMES = 24;                 // 自转一周 24 帧（15°/帧，12 帧/半圈，对齐 QQ雷电老动画口径）
   const CRYSTAL3D_BAKE = { small: 40, mid: 48, big: 56, giant: 52 };   // 原石与大型宝石同大小   // 烘焙底板边长（含光晕余量）
-  const CRYSTAL3D_R = { small: 6, mid: 10, big: 13, giant: 13 };   // 原石与大型宝石同大小       // 烘焙基准半径（= CRYSTAL_TIERS.r；小档略缩）
-  const CRYSTAL3D_COLORS = ['#39c5bb', '#46aaff'];   // 普通水晶双色（原青 + 最早水晶同色水蓝；与 01-config CRYSTAL_COLORS 一致）
+  const CRYSTAL3D_R = { small: 6, mid: 10, big: 16, giant: 14 };   // 2026-09-27 定稿调大：大档 13 → 16；giant = 16/1.15 ≈ 13.9 ≈ 14，星模纵向芒尖 1.15R ≈ 16，与大型宝石最大半径一致
+  const CRYSTAL3D_COLORS = ['#39c5bb', '#46aaff', '#ffc0cb'];   // 普通水晶三色（原青 + 水蓝 + 粉；与 01-config CRYSTAL_COLORS 一致；当前无引用，保留备用）
   const crystal3DSprites = new Map();          // key: `${tier}:${colorKey}` → { frames: [canvas × 24], size }
 
   // 薄棱柱 / 板 / 框 实体注册表（单位空间，渲染时 × 各档 R；法线由绕序保证，框体 strict 跳过质心翻向）
@@ -4732,18 +4732,38 @@
     };
     const gr = xtalC3Rgb(base);
     const rgba = a => `rgba(${gr[0]},${gr[1]},${gr[2]},${a})`;
-    // 底光：lighter 叠加、垫在实体后面（大 / 巨型的框-板间隙光已含在此光晕内）
+    // 底光：lighter 叠加、垫在实体后面（用户定稿 2026-09-27：大档本体降亮、周围光效提亮——alpha 0.1 → 0.16、中心 0.45 → 0.65；small/mid 不动）
     g.save();
     g.globalCompositeOperation = 'lighter';
-    g.globalAlpha = tier === 'giant' ? 0.3 : 0.2;
+    g.globalAlpha = tier === 'big' ? 0.16 : 0.2;
     const auraR = R * 1.5;
     const ag = g.createRadialGradient(0, 0, 0, 0, 0, auraR);
-    ag.addColorStop(0, rgba('0.8'));
-    ag.addColorStop(0.55, rgba('0.32'));
+    ag.addColorStop(0, rgba(tier === 'big' ? '0.65' : '0.8'));
+    ag.addColorStop(0.55, rgba(tier === 'big' ? '0.28' : '0.32'));
     ag.addColorStop(1, rgba('0'));
     g.fillStyle = ag;
     g.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
     g.restore();
+    // 大档缝隙填光（黑线根因：板对角 0.594R 与白框内孔菱形 0.8R 间缝隙露出深色背景，正视时左右呈竖向黑带）：
+    // 按白框内孔前/后开口两组四边形（WASHER.big verts 8~11 / 12~15，含旋转投影）填 lighter 径向光，
+    // 板面随后盖住中心、白框体盖住外缘，光只在框-板缝隙透出（峰值 ≈0.7）。
+    // 2026-09-27 备注：曾试改 source-over 不透明垫底（饱和版 / 近白版）均被否决回滚，加色方案为定稿
+    if (tier === 'big') {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      const gg2 = g.createRadialGradient(0, 0, 0, 0, 0, R * 0.85);
+      gg2.addColorStop(0, rgba('0.7'));
+      gg2.addColorStop(0.85, rgba('0.6'));
+      gg2.addColorStop(1, rgba('0.4'));
+      g.fillStyle = gg2;
+      for (const lo of [8, 12]) {
+        g.beginPath();
+        CRYSTAL3D_WASHER.big.verts.slice(lo, lo + 4).map(proj).forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+        g.closePath();
+        g.fill();
+      }
+      g.restore();
+    }
     // 实体面收集 + 深度排序（白框 lo/hi 白系；核心 faceColors 设计色）
     const faces = [];
     const pushSolid = (s, lo, hi, faceColors, noShadow) => {
@@ -4781,31 +4801,39 @@
       pushSolid(CRYSTAL3D_SOLIDS.small, base, base, [hi, hm, hi, hm, lo, lm, lo, lm, hm, hm, lm, lm], false);
     } else {
       const white = tier === 'mid' ? '#f0f6fc' : '#eef4fb';
-      const washerLo = xtalC3MixHex(white, base, 0.12), washerHi = xtalC3MixHex(white, base, 0.02);
+      // 白框亮度次序：中档提白提亮（0.12/0.02 → 0.05/0）后于 2026-09-27 二次定稿回撤——中档白框减白（0.05/0 → 0.22/0.1，避免过于显眼）；
+      // 大档减白加彩（0.4/0.25 → 0.18/0.08，边框基本全白、仅略微颜色偏移）
+      const wLoK = tier === 'mid' ? 0.22 : 0.18, wHiK = tier === 'mid' ? 0.1 : 0.08;
+      const washerLo = xtalC3MixHex(white, base, wLoK), washerHi = xtalC3MixHex(white, base, wHiK);
       const core = xtalC3MixHex(base, '#ffffff', tier === 'mid' ? 0.4 : 0.78);
       const faceColors = tier === 'mid'
         ? [
-            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.5, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
-            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.5, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
+            // 白高光更多更亮（radial 白心 0.5 → 0.6、中心 0.92 → 0.96，用户定稿）；白心范围 0.6 → 0.64（2026-09-27 粉中定稿：0.68 回调，仍大于原 0.6）
+            { grad: [[0, 'rgba(255,255,255,0.96)'], [0.64, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
+            { grad: [[0, 'rgba(255,255,255,0.96)'], [0.64, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
             xtalC3MixHex(base, '#000000', 0.12), xtalC3MixHex(base, '#000000', 0.12), base, base,
           ]
         : [
-            { grad: [[0, xtalC3MixHex(base, '#ffffff', 0.85)], [0.75, xtalC3MixHex(base, '#ffffff', 0.7)], [1, xtalC3MixHex(base, '#ffffff', 0.5)]] },
-            { grad: [[0, xtalC3MixHex(base, '#ffffff', 0.85)], [0.75, xtalC3MixHex(base, '#ffffff', 0.7)], [1, xtalC3MixHex(base, '#ffffff', 0.5)]] },
-            xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6),
+            // 大档板面（用户定稿 2026-09-27：本体降亮显色——三色大水晶过去近乎全白无法区分）：radial 居中锚点、白心减弱、边缘露出本色
+            { grad: [[0, 'rgba(255,255,255,0.75)'], [0.6, xtalC3MixHex(base, '#ffffff', 0.45)], [1, xtalC3MixHex(base, '#ffffff', 0.18)]], radial: 'center' },
+            { grad: [[0, 'rgba(255,255,255,0.75)'], [0.6, xtalC3MixHex(base, '#ffffff', 0.45)], [1, xtalC3MixHex(base, '#ffffff', 0.18)]], radial: 'center' },
+            xtalC3MixHex(base, '#ffffff', 0.18), xtalC3MixHex(base, '#ffffff', 0.18), xtalC3MixHex(base, '#ffffff', 0.18), xtalC3MixHex(base, '#ffffff', 0.18),
           ];
       const model = tier;
-      pushSolid(CRYSTAL3D_WASHER[model], washerLo, washerHi, null, false);
+      pushSolid(CRYSTAL3D_WASHER[model], washerLo, washerHi, null, tier === 'big');   // 大档白框不投辉光阴影（2026-09-27 定稿：边框少受光效影响）
       pushSolid(CRYSTAL3D_SOLIDS[model], base, base, faceColors, true);
     }
     faces.sort((p, q) => p.depth - q.depth);
     for (const f of faces) {
-      g.shadowBlur = f.noShadow ? 0 : 7;
-      g.shadowColor = rgba('0.5');
+      // 大档面光晕再压（用户定稿）：blur 5 → 4、alpha 0.32 → 0.2（small/mid 不动）
+      g.shadowBlur = f.noShadow ? 0 : (tier === 'big' ? 4 : 7);
+      g.shadowColor = rgba(tier === 'big' ? '0.2' : '0.5');
       if (f.fill && f.fill.stops) {
         let grd;
         if (f.fill.radial) {
-          const cxr = f.fill.gx0 + (f.fill.gx1 - f.fill.gx0) * 0.3, cyr = f.fill.gy0 + (f.fill.gy1 - f.fill.gy0) * 0.26;
+          // radial: true = 左上光源锚点(0.3,0.26)；'center' = 面几何中心（大档板面用：纯白居中、四边均匀渐变无单边深线）
+          const rkx = f.fill.radial === 'center' ? 0.5 : 0.3, rky = f.fill.radial === 'center' ? 0.5 : 0.26;
+          const cxr = f.fill.gx0 + (f.fill.gx1 - f.fill.gx0) * rkx, cyr = f.fill.gy0 + (f.fill.gy1 - f.fill.gy0) * rky;
           grd = g.createRadialGradient(cxr, cyr, 0, cxr, cyr, Math.max(f.fill.gx1 - f.fill.gx0, f.fill.gy1 - f.fill.gy0) * 0.95);
         } else {
           grd = g.createLinearGradient(f.fill.gx0, f.fill.gy0, f.fill.gx1, f.fill.gy1);
@@ -4817,13 +4845,34 @@
       f.pts.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
       g.closePath();
       g.fill();
+      // 板面同色描边收缝（noShadow = 大档正方板）：相邻面共享边的抗锯齿缝隙会露出深色底（竖向黑线），同色描 1px 补缝
+      if (f.noShadow) {
+        g.strokeStyle = g.fillStyle;
+        g.lineWidth = 1;
+        g.stroke();
+      }
     }
     g.shadowBlur = 0;
   }
 
   // ---------- 原石（巨型改版）：四芒星双锥 ----------
   // 赤道 8 顶点（4 芒尖 N/E/S/W + 4 凹谷斜角）+ 前后锥尖，16 三角面；厚 ≈ 0.32R；
-  // 面色按旋转后质心 y 分配（上粉 #FFC0CB 系 / 下蓝 #39C5BB 系，绕环交替明暗 = 刻面），shadow 随面色（粉缘/蓝缘辉光）
+  // 面色走全局纵向色标渐变（参考图定稿）：上粉（尖端深粉→赤道粉白）/ 下蓝（赤道白青→亮青→尖端深蓝），
+  // 赤道交汇处近白 = 晶莹透亮的关键；刻面交替轻微明暗（偶面提亮 / 奇面压暗），shadow 随面主色，g1 = 色标上下翻转
+  const STAR_STOPS = [
+    [0.00, '#f2a8c9'], [0.20, '#f9c2d8'], [0.40, '#ffdfe9'], [0.50, '#fff3f7'],
+    [0.52, '#eefaff'], [0.66, '#8fe4dc'], [0.74, '#39c5bb'], [0.88, '#4a8ad0'], [1.00, '#3a72c8'],
+  ];
+  function xtalC3StarStop(u) {   // 采样原石全局色标（线性插值，返回 hex；u 越界夹取）
+    const v = Math.max(0, Math.min(1, u));
+    for (let k = 1; k < STAR_STOPS.length; k++) {
+      if (v <= STAR_STOPS[k][0]) {
+        const [u0, c0] = STAR_STOPS[k - 1], [u1, c1] = STAR_STOPS[k];
+        return xtalC3MixHex(c0, c1, (v - u0) / Math.max(1e-6, u1 - u0));
+      }
+    }
+    return STAR_STOPS[STAR_STOPS.length - 1][1];
+  }
   const CRYSTAL3D_STAR = (() => {
     const t = 0.32, rv = 0.55, ry = 1.15;
     const eq = [
@@ -4840,8 +4889,8 @@
     return { verts, scale: [1, 1, 1], faces, strict: true };   // 绕序已保证朝外，strict 跳过质心翻向
   })();
 
-  function crystal3DStarDraw(g, th, flip) {
-    const R = CRYSTAL3D_R.giant;
+  function crystal3DStarDraw(g, th, flip, R, tw) {
+    R = R || CRYSTAL3D_R.giant;   // R 可选：预览测试页实时矢量绘制传大半径（位图烘焙帧放大发糊，故预览走 live）
     const sn = Math.sin(th), cs = Math.cos(th);
     const s = CRYSTAL3D_STAR;
     const fl = flip ? -1 : 1;
@@ -4851,17 +4900,49 @@
       return [p[0] * pw * R, p[1] * pw * R];
     });
     // 双色底光：上粉下蓝两团 radial（lighter，垫在实体后；翻转配色时对调）
+    // tw（时间秒）传入时底光闪动（预览实时 / 游戏内运行时叠加用；烘焙不传 → 静态 0.3）
+    const twk = tw == null ? 0 : Math.sin(tw * 5.2) * 0.5 + Math.sin(tw * 9.1) * 0.5;
     g.save();
     g.globalCompositeOperation = 'lighter';
-    g.globalAlpha = 0.3;
+    g.globalAlpha = 0.3 + twk * 0.1;
     for (const [cy2, col] of [[-0.5 * fl, [255, 170, 200]], [0.5 * fl, [70, 130, 230]]]) {
       const ag = g.createRadialGradient(0, cy2 * R, 0, 0, cy2 * R, R * 1.15);
-      ag.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},0.55)`);
+      ag.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},${(0.55 + twk * 0.12).toFixed(3)})`);
       ag.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
       g.fillStyle = ag;
       g.fillRect(-R * 1.3, -R * 1.3, R * 2.6, R * 2.6);
     }
     g.restore();
+    // 星体外圈光效（仅 tw 传入时画 = 预览实时 / 运行时叠加；烘焙帧不画，游戏内由 10-draw-world 垫同款光环）：
+    // 用户定稿 2026-09-27（二次）：去掉最外圈光环，仅保留本体与光环之间的脉冲光带 + 绕行光斑（图层低于原石 = 画在实体之前）：
+    // 一层脉冲光带（0.55~1.12R，星谷处露出、星尖处隐入本体后方）+ 四团绕行光斑（轨道 0.88~1.02R）脉冲式明暗/尺寸呼吸
+    if (tw != null) {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = 0.5 + twk * 0.15;
+      const pg = g.createRadialGradient(0, 0, R * 0.55, 0, 0, R * 1.12);
+      pg.addColorStop(0, 'rgba(255,225,242,0)');
+      pg.addColorStop(0.6, `rgba(255,215,240,${(0.16 + 0.14 * twk).toFixed(3)})`);
+      pg.addColorStop(1, 'rgba(150,180,255,0)');
+      g.fillStyle = pg;
+      g.fillRect(-R * 1.15, -R * 1.15, R * 2.3, R * 2.3);
+      // 四团光斑贴本体边缘绕行（轨道 0.88~1.02R = 本体与光环之间），脉冲式明暗（sin² 突峰）+ 尺寸呼吸，星尖处隐入本体后方
+      const ORB = [[0.98, 0.28, 2.1], [1.02, 0.22, -1.6], [0.88, 0.24, -2.6], [0.95, 0.18, 3.0]];
+      for (let k = 0; k < ORB.length; k++) {
+        const [orr, osz, osp] = ORB[k];
+        const pulse = 0.5 + 0.5 * Math.sin(tw * 4.2 + k * 1.7);
+        const ang = tw * osp + k * 1.9;
+        const ox = Math.cos(ang) * R * orr, oy = Math.sin(ang) * R * orr * 0.92;
+        const osz2 = R * osz * (1 + 0.15 * pulse);
+        const og = g.createRadialGradient(ox, oy, 0, ox, oy, osz2);
+        const oa = (0.1 + 0.26 * pulse * pulse).toFixed(3);
+        og.addColorStop(0, k % 2 ? `rgba(160,190,255,${oa})` : `rgba(255,220,240,${oa})`);
+        og.addColorStop(1, k % 2 ? 'rgba(160,190,255,0)' : 'rgba(255,220,240,0)');
+        g.fillStyle = og;
+        g.fillRect(ox - osz2 - 2, oy - osz2 - 2, (osz2 + 2) * 2, (osz2 + 2) * 2);
+      }
+      g.restore();
+    }
     const faces = [];
     for (let fi = 0; fi < s.faces.length; fi++) {
       const f = s.faces[fi];
@@ -4872,41 +4953,54 @@
       let ny = e1[2] * e2[0] - e1[0] * e2[2];
       let nz = e1[0] * e2[1] - e1[1] * e2[0];
       if (nz <= 0.02) continue;   // strict：绕序已保证朝外
-      const cy2 = (a[1] + b[1] + cc[1]) / 3;
-      const tMix = Math.max(0, Math.min(1, (cy2 * fl + 1.0) / 2.0));   // 0=顶粉 1=底蓝（翻转配色时对调）
-      const col2 = xtalC3MixHex('#ffa8c8', '#3a7bd5', tMix);
-      const col = fi % 2 === 0 ? xtalC3MixHex(col2, '#ffffff', 0.46) : xtalC3MixHex(col2, '#000000', 0.14);
-      faces.push({ pts: f.map(idx => [P[idx][0], P[idx][1]]), depth: f.reduce((acc, idx) => acc + rot[idx][2], 0) / f.length, col, shadow: xtalC3MixHex(col2, '#ffffff', 0.2) });
+      // 面内纵向渐变（晶莹质感）：模型 y（±1.15）→ 全局色标 t（0=上尖 1=下尖），
+      // 截取该面 y 区间内的停靠点建线性渐变（屏幕 y 与模型 y 同序）；g1 翻转配色 = 色标 u 取反、渐变方向不变
+      const ys3 = [a[1], b[1], cc[1]];
+      const tLo = (Math.min(...ys3) + 1.15) / 2.3, tHi = (Math.max(...ys3) + 1.15) / 2.3;
+      const samp = u => xtalC3StarStop(flip ? 1 - u : u);
+      // 面间光影（棱线感由明暗对比表达，参考图光源偏左上）：受光面更强提亮、背光面减淡压暗（暗面保持透亮晶莹），
+      // 光向量 z 分量加大 = 更多面受光、整体更亮；刻面交替减弱为辅
+      const nl3 = Math.hypot(nx, ny, nz) || 1;
+      const lit = (nx * -0.5 + ny * -0.3 + nz * 0.82) / nl3;
+      const adj = h => {
+        const c = lit >= 0 ? xtalC3Shade(h, Math.min(0.55, lit * 0.5), 'w') : xtalC3Shade(h, Math.min(0.22, -lit * 0.2), 'b');
+        return fi % 2 === 0 ? xtalC3Shade(c, 0.08, 'w') : xtalC3Shade(c, 0.05, 'b');
+      };
+      const stops = [[0, adj(samp(tLo))], [1, adj(samp(tHi))]];
+      for (const [u, cS] of STAR_STOPS) {
+        if (u > tLo + 1e-6 && u < tHi - 1e-6) stops.splice(1, 0, [(u - tLo) / (tHi - tLo), adj(cS)]);
+      }
+      faces.push({
+        pts: f.map(idx => [P[idx][0], P[idx][1]]),
+        depth: f.reduce((acc, idx) => acc + rot[idx][2], 0) / f.length,
+        stops,
+        shadow: xtalC3MixHex(samp((tLo + tHi) / 2), '#ffffff', 0.35),   // 面辉光增强（晶莹感）
+      });
     }
     faces.sort((p, q) => p.depth - q.depth);
     for (const f of faces) {
       g.shadowColor = f.shadow;
       g.shadowBlur = 10;
-      g.fillStyle = f.col;
+      const grd = g.createLinearGradient(0, Math.min(...f.pts.map(p => p[1])), 0, Math.max(...f.pts.map(p => p[1])));
+      for (const [o, c2] of f.stops) grd.addColorStop(o, c2);
+      g.fillStyle = grd;
       g.beginPath();
       f.pts.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
       g.closePath();
       g.fill();
-    }
-    // 玻璃反光：左上斜向白色高光条（随星体旋转；lighter）——正面朝向观察者时才绘制
-    if (cs > 0.15) {
-      const gp = [[-0.1, -0.95], [-0.42, -0.3], [0.05, -0.28], [-0.03, -0.95]].map(p => {
-        const X = p[0] * cs, Z = -p[0] * sn;
-        const pw = 1 / (1 - Z * 0.06);
-        return [X * pw * R, p[1] * pw * R];
-      });
-      g.save();
-      g.globalCompositeOperation = 'lighter';
-      const gg = g.createLinearGradient(gp[0][0], gp[0][1], gp[2][0], gp[2][1]);
-      gg.addColorStop(0, 'rgba(255,255,255,0.55)');
-      gg.addColorStop(1, 'rgba(255,255,255,0.04)');
-      g.fillStyle = gg;
+      // 晶体棱线（用户定稿）：内部不描白线——棱线感由面间光影对比（上方 lit 明暗）表达；
+      // 仅沿两条径向棱（pts[0] 恒为锥尖）留几乎看不到的极淡白边（alpha 0.12、宽 R×0.07），赤道边不描
+      g.shadowBlur = 0;
+      g.strokeStyle = 'rgba(255,255,255,0.12)';
+      g.lineWidth = Math.max(1, R * 0.07);
       g.beginPath();
-      gp.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
-      g.closePath();
-      g.fill();
-      g.restore();
+      g.moveTo(f.pts[0][0], f.pts[0][1]);
+      g.lineTo(f.pts[1][0], f.pts[1][1]);
+      g.moveTo(f.pts[0][0], f.pts[0][1]);
+      g.lineTo(f.pts[2][0], f.pts[2][1]);
+      g.stroke();
     }
+    // 玻璃反光条已移除（用户反馈：原石一面发光一面不发光——该条只在 cs>0.15 的半圈自转内出现）
     g.shadowBlur = 0;
   }
 
@@ -4915,7 +5009,7 @@
     const key = tier + ':' + colorKey;
     let set = crystal3DSprites.get(key);
     if (!set) {
-      const R = CRYSTAL3D_R[tier];      // 原石模型自身比例更大（芒尖 1.15R），无需额外放大
+      const R = CRYSTAL3D_R[tier];      // 原石 R 已折算芒尖系数（13/1.15≈11.3），绘制尺寸与大型宝石一致
       const size = Math.ceil(CRYSTAL3D_BAKE[tier]);
       const frames = [];
       for (let i = 0; i < CRYSTAL3D_FRAMES; i++) {
@@ -4976,5 +5070,5 @@
     drawPopianBody, drawFashiMatrixBody, drawFashiArrayBody, drawJiaoxiangBody, drawFashiA1Body, drawFashiA2Body, drawYu4Body,
     drawDuskStrikerBody, paintSkull, paintBaolingBomb, drawBaolingBody, drawBaolingWarn, drawBaolingBombs,
     drawPopianWarn, drawPopianFx, drawSpellCubes, drawCubeHitFx, drawPlayerHitFx, paintDouzhiMark, paintDouzhiBox,
-    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles, getCrystal3DSprite,
+    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles, getCrystal3DSprite, crystal3DStarDraw,
   };

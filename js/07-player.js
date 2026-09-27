@@ -145,7 +145,7 @@
       // 捣蛋来袭：直射大狗导弹雨同款导弹（复用 dagouMissiles 数组，无 sub 标记——飞行 / 分区命中 / 600 溅射 /
       // 低区直击 200 与大狗导弹完全一致；berserk 仅标记暴走金红涂装，不影响任何数值与规则；
       // 演示屏同样发射——updateDemo 内调用 updateDagouMissiles 推进，导弹飞出演示屏上缘后回收）
-      // 连射链与大狗导弹雨同款：发射后 10% 概率 0.3s 后再来一发（连射弹同样可继续连射、伤害依次 ×0.6，见 launchDaodanMissile）
+      // 连射链与大狗导弹雨同款：发射后 10% 概率 0.3s 后再来一发（连射弹同样可继续连射、伤害一律为常规的 60%，见 launchDaodanMissile）
       launchDaodanMissile(0);
     } else if (f.kind === 'xinring') {
       // 辛国栋之怒：向场上生命值最高的敌人发射空间火环（焦香同款造型的玫红渐变流动版，透明度 0.8）；
@@ -172,11 +172,11 @@
 
   // 捣蛋来袭单发直射（常规发射与连射链共用）：lv = 连射层级（0/缺省 = 常规）。
   // 发射后按 PILOTS.dagou.chainChance 概率在 chainGap 秒后再来一发（lv+1，连射弹同样可继续连射），
-  // 伤害按 chainDmgMul^lv 乘算（与大狗导弹雨完全同款，经 updateDagouMissiles 的 mul 通路结算）；
-  // 连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
+  // 连射弹伤害一律 = 常规 ×chainDmgMul（0.6，固定——不随连射深度逐层递减，与大狗导弹雨同款，
+  // 经 updateDagouMissiles 的 mul 通路结算）；连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
   function launchDaodanMissile(lv) {
     const dc = PILOTS.dagou;
-    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: Math.pow(dc.chainDmgMul, lv || 0), berserk: player.weapon >= 5 });
+    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5 });
     if (dc.chainChance && !state.dagouDebugRapid && Math.random() < dc.chainChance) {
       state.daodanChains.push({ t: dc.chainGap, lv: (lv || 0) + 1 });
     }
@@ -1131,7 +1131,7 @@
     // 天枢圣卫：无敌期间免疫破片导弹的"无视无敌"穿透（ignoreInvuln 仅破片后续导弹使用）
     if (ignoreInvuln && player.invuln > 0 && currentArmor.id === 'tianshu') return false;
     if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（无视无敌 ≠ 无视护盾）
-    // 屏障（增生炮艇支援弹）：优先于血量吸收伤害（完全吸收时不给无敌帧、不计受击）
+    // 屏障（青时炮艇支援弹）：优先于血量吸收伤害（完全吸收时不给无敌帧、不计受击）
     if (player.barrier > 0 && amount > 0) {
       const abs = Math.min(player.barrier, amount);
       player.barrier -= abs; amount -= abs;
@@ -1159,6 +1159,9 @@
     }
     // 大无垠之王：BOSS 战累积的受到伤害提升（怒意的代价）
     if (hasPilot('king') && state.kingTaken > 0) amount *= 1 + state.kingTaken;
+    // 温酒客：受到的所有伤害提升（深藏不露的代价：开局 +100%，每击败一个 BOSS -25 个百分点、最低归零——
+    // 扣减在 06-enemy BOSS 击败结算处；whiteboard 已摘除，不再视作"无驾驶员效果"）
+    if (hasPilot('wenjiuke') && state.wenjiukeVuln > 0) amount *= 1 + state.wenjiukeVuln;
     // 哈基米大王：暴走期 35% 概率闪避（失败 +5% 累积、成功清零；加成跨暴走保留——只在成功时清零）。
     // 闪避效果延长至暴走结束后 4s（tailDur，覆盖后暴走的最危险窗口）；概率累积仅在暴走期间进行。
     // 闪避不受伤害，但触发受击无敌与受击反馈——无敌时长为正常受击的 70%（PLAYER_CFG.dodgeInvulnMul，全闪避统一）
@@ -1611,11 +1614,12 @@
 
   // 大狗：召唤一波 8 颗导弹雨——均匀分布（屏宽 / count 等分），中间两发先射出、随后向两侧
   // 两两错峰（相邻两拍间隔 launchGap，很小）；导弹自下而上射出，白蓝渐变先兆者同款（绘制见 09-draw-ships）；
-  // lv = 连射链层级（0/缺省 = 常规波）：发射后 chainChance 概率在 chainGap 秒后再来一波（lv+1），伤害按 chainDmgMul^lv 乘算
+  // lv = 连射链层级（0/缺省 = 常规波）：发射后 chainChance 概率在 chainGap 秒后再来一波（lv+1），
+  // 连射波伤害一律 = 常规波 ×chainDmgMul（0.6，固定——不随连射深度逐波递减）
   function launchDagouWave(lv) {
     const cfg = PILOTS.dagou;
     const n = cfg.count;
-    const dmgMul = Math.pow(cfg.chainDmgMul, lv || 0);
+    const dmgMul = (lv || 0) > 0 ? cfg.chainDmgMul : 1;
     for (let k = 0; k < n; k++) {
       const x = (k + 0.5) * CANVAS_W / n;
       // 发射序：按距屏幕中线的远近两两配对（k=3/4 → 第 0 拍，2/5 → 1，1/6 → 2，0/7 → 3）

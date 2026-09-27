@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
   //
-  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, isZhenwo, resolveBossHp } from './01-config.js';
+  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, isRealme, resolveBossHp } from './01-config.js';
   import { clamp, ctx, eBullets, enemies, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer } from './07-player.js';
@@ -60,7 +60,7 @@
         baseY: STORM2.hoverY,   // 航点扫动移动的纵向基准（停留点）
         wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
         bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-        skill: null, skillCd: bossSkillIv(1.0 * (isZhenwo() ? STORM2_SHIP.skillCdMul : 1)),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我统一 ×1.4）
+        skill: null, skillCd: bossSkillIv(1.0 * (isRealme() ? STORM2_SHIP.skillCdMul : 1)),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我统一 ×1.4）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
       });
       shake(6, 0.6);
@@ -106,7 +106,7 @@
       baseY: BOSS.hoverY,   // 航点扫动移动的纵向基准（停留点）
       wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
       bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-      skill: null, skillCd: bossSkillIv(1.4 * (isZhenwo() ? SONG_SHIP.skillCdMul : 1)),   // 真我：技能间隔 ×0.4
+      skill: null, skillCd: bossSkillIv(1.4 * (isRealme() ? SONG_SHIP.skillCdMul : 1)),   // 真我：技能间隔 ×0.55
       lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarbL: false, summonHarbR: false,
       parts,
       unfoldT: 0,   // 兼容图鉴预览
@@ -194,7 +194,7 @@
 
     // 真我：技能1（风波呼啸）脱离技能轮换，改为独立计时释放——每 10~16s 从随机一侧
     // 射入一轮 3~4 道风波（仅单轮）。独立于技能槽运行：不占用技能、不影响技能释放间隔
-    if (isZhenwo()) {
+    if (isRealme()) {
       if (e.s1Next == null) e.s1Next = rand(STORM_SHIP.s1.min, STORM_SHIP.s1.max);
       e.s1T = (e.s1T || 0) + dt;
       if (e.s1T >= e.s1Next) {
@@ -303,7 +303,7 @@
       // 技能2（大型龙卷）不可连续释放：上一技能为龙卷时将其移出候选
       let pool = [0, 1, 2, 3, 4, 5, 6, 7];
       // 真我：技能1 脱离技能轮换（独立计时释放，见 updateBossStorm）；技能8「双子旋臂」仅真我出场
-      if (isZhenwo()) pool = pool.filter(x => x !== 0);
+      if (isRealme()) pool = pool.filter(x => x !== 0);
       else pool = pool.filter(x => x !== 7);
       if (e.lastSkill === 1) pool = pool.filter(x => x !== 1);
       // 全局规则：同一技能最多连续释放两次，禁止三连
@@ -346,7 +346,7 @@
         // 技能3：连续随机选定 5 处垂直风柱（每 0.32s 布置一处标记，各 1.3s 后落下，18 伤害 + 击退）
         // 真我：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
         e.skill = { id: 2, t: 0,
-          dur: isZhenwo() ? 0.15 + (STORM_SHIP.s3.rounds - 1) * STORM_SHIP.s3.gap + 0.57 : 2.0,
+          dur: isRealme() ? 0.15 + (STORM_SHIP.s3.rounds - 1) * STORM_SHIP.s3.gap + 0.57 : 2.0,
           count: 0, next: 0.15 };
         break;
       case 3:
@@ -355,7 +355,7 @@
         // 真我：总时长 9s；初始方向顺/逆时针随机，期间随机改变 2~3 次（间隔 ≥1s，首次不晚于前 5s）；
         //   旋转速度 +40%（20%+20% 加算）、风弹射速 +60%（30%+30% 加算）、风弹长度 +30%；
         //   持续期间自身获得 25% 减伤（见 08-entities enemyDamageMul）
-        e.skill = isZhenwo()
+        e.skill = isRealme()
           ? { id: 3, t: 0, dur: STORM_SHIP.s4.dur, fire: 0, armAng: Math.random() * Math.PI * 2,
               dir: Math.random() < 0.5 ? 1 : -1, changes: stormS4ChangeTimes(), ci: 0, spMul }
           : { id: 3, t: 0, dur: 4.6, fire: 0, armAng: Math.random() * Math.PI * 2, spMul };
@@ -364,10 +364,10 @@
         // 技能5：两轮乱射风条 + 中心一枚瞄准玩家；每轮射击时长 +60%（发射更稀疏），
         // 第二轮开火时刻不变（旧版第一轮射完 1.19s + 0.9s 间隔 ≈ 2.09s）→ 两轮间隔缩短至约 0.3s
         // 真我：两轮风弹数量 14/11（第二轮开火时刻随首轮最后一发顺延，保持约 0.3s 轮间隔）
-        const n1 = isZhenwo() ? STORM_SHIP.s5.counts[0] : 12;
-        const n2 = isZhenwo() ? STORM_SHIP.s5.counts[1] : 9;
+        const n1 = isRealme() ? STORM_SHIP.s5.counts[0] : 12;
+        const n2 = isRealme() ? STORM_SHIP.s5.counts[1] : 9;
         e.skill = { id: 4, t: 0, dur: 4.2, pts: stormSkill5Pts(n1), round: 1,
-          round2At: isZhenwo() ? 0.2 + (n1 - 1) * 0.144 + 0.3 : 0.2 + 11 * 0.09 + 0.9,
+          round2At: isRealme() ? 0.2 + (n1 - 1) * 0.144 + 0.3 : 0.2 + 11 * 0.09 + 0.9,
           centerFired: false, n2, spMul };
         break;
       }
@@ -375,8 +375,8 @@
         // 技能6：三旋臂漩涡弹幕——随机顺时针/逆时针（全程不变），风条连射形成 3 条臂，转速随时间越来越快，持续 5s
         // 真我：追加一组镜像三旋臂——初始射击位置相反（相位差 π）、转向相反，转速与射击节奏与本体一致
         const s6 = { id: 5, t: 0, dur: 5, fire: 0, armAng: Math.random() * Math.PI * 2,
-          dir: Math.random() < 0.5 ? 1 : -1, spin: isZhenwo() ? STORM_SHIP.s6.spin0 : 0.65, spMul };
-        if (isZhenwo() && STORM_SHIP.s6.mirror) {
+          dir: Math.random() < 0.5 ? 1 : -1, spin: isRealme() ? STORM_SHIP.s6.spin0 : 0.65, spMul };
+        if (isRealme() && STORM_SHIP.s6.mirror) {
           s6.armAng2 = Math.PI - s6.armAng;   // 初始射向镜像（π − armAng）：配合转向相反，任意时刻两组旋臂关于竖直中轴镜像
           s6.fx1 = CANVAS_W * STORM_SHIP.s6.fx[0];   // 真我：本体三旋臂射击点移至屏宽 35% 处
           s6.fx2 = CANVAS_W * STORM_SHIP.s6.fx[1];   // 镜像三旋臂射击点移至屏宽 65% 处（与 35% 关于中轴镜像）
@@ -444,12 +444,12 @@
     } else if (s.id === 2) {
       // 技能3：连续布置风柱标记（具象：每 0.32s 一处，各 1.3s 后降下打击）
       // 真我：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
-      const rounds = isZhenwo() ? STORM_SHIP.s3.rounds : 5;
+      const rounds = isRealme() ? STORM_SHIP.s3.rounds : 5;
       s.next -= dt;
       while (s.next <= 0 && s.count < rounds) {
-        s.next += isZhenwo() ? STORM_SHIP.s3.gap : 0.32;
+        s.next += isRealme() ? STORM_SHIP.s3.gap : 0.32;
         s.count++;
-        if (isZhenwo()) pushStormPillarPair();
+        if (isRealme()) pushStormPillarPair();
         else pushStormPillar();
       }
     } else if (s.id === 3) {
@@ -501,7 +501,7 @@
           const ang = Math.PI / 2 + rand(-Math.PI / 6, Math.PI / 6);
           // 风条：初速低沿飞行方向加速至 874.5，长度 12 以 150px/s 长到 70，波动渲染；m 为强化倍率
           const m = stormSkill5Mul();
-          const slow = (isZhenwo() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
+          const slow = (isRealme() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
             ? rand(STORM_SHIP.s5.slowMin, STORM_SHIP.s5.slowMax) : 1;
           pushBossBullet(e.x + p.dx, e.y + p.dy, ang, 56 * sm * slow,
             { r: 5.6 * m, dmg: STORM.tornadoDmg * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
@@ -513,7 +513,7 @@
       if (!s.centerFired && s.t >= 0.55) {
         s.centerFired = true;
         const m = stormSkill5Mul();
-        const slow = (isZhenwo() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
+        const slow = (isRealme() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
           ? rand(STORM_SHIP.s5.slowMin, STORM_SHIP.s5.slowMax) : 1;
         pushBossBullet(e.x, e.y, Math.atan2(player.y - e.y, player.x - e.x), 56 * sm * slow,
           { r: 5.6 * m, dmg: STORM.tornadoDmg * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
@@ -533,7 +533,7 @@
       // 真我：两组三旋臂（本体 + 镜像，共用 spin）初始转速 +30%（0.845）、斜率收窄 0.578——5s 末最大转速 3.735 rad/s 不变
       // 真我：同步追加一组镜像三旋臂（armAng2）——射击点 35% / 65% 屏宽、初始射向镜像（π − armAng）且转向相反，
       // 任意时刻两组旋臂关于竖直中轴精确镜像；转速与射击节奏与本体一致
-      s.spin += (isZhenwo() ? STORM_SHIP.s6.spinSlope : 0.617) * dt;
+      s.spin += (isRealme() ? STORM_SHIP.s6.spinSlope : 0.617) * dt;
       s.armAng += s.dir * s.spin * dt;
       if (s.armAng2 != null) s.armAng2 -= s.dir * s.spin * dt;
       s.fire -= dt;
@@ -559,7 +559,7 @@
         state.stormVortex = { x: e.x, y: e.y, tx: CANVAS_W / 2, ty: CANVAS_H * 0.80,
           r: CANVAS_W * 0.04, phase: 'warn', t: 0, ang: Math.random() * Math.PI * 2,
           dir: Math.random() < 0.5 ? 1 : -1, emit: 0,
-          arms: isZhenwo() ? STORM_SHIP.s7.arms : 2 };   // 真我：三旋臂（具象双旋臂）
+          arms: isRealme() ? STORM_SHIP.s7.arms : 2 };   // 真我：三旋臂（具象双旋臂）
       }
       const v = state.stormVortex;
       v.t += dt;
@@ -581,7 +581,7 @@
       } else if (v.phase === 'spin') {
         v.x = v.tx; v.y = v.ty;
         // 自转由慢渐快（具象 1.1 → 2.625 rad/s；真我最大转速 2.3 rad/s，初速不变斜率收窄）
-        const spinMax = isZhenwo() ? STORM_SHIP.s7.spinMax : 2.625;
+        const spinMax = isRealme() ? STORM_SHIP.s7.spinMax : 2.625;
         v.ang += v.dir * (1.1 + (v.t / 5) * (spinMax - 1.1)) * dt;
         v.emit -= dt;
         if (v.emit <= 0) {
@@ -590,7 +590,7 @@
           // 随自转形成旋转风臂；加速度/最大速度 = 四旋臂（技能4）的 70%；长度 7.2→42（初始/最大长度均为标准风条的 60%）
           // 真我：风弹射速 +25%（初速/加速度/最大速度同步 ×1.25）
           const ARMS = v.arms || 2;
-          const bMul = isZhenwo() ? STORM_SHIP.s7.bulletSpdMul : 1;
+          const bMul = isRealme() ? STORM_SHIP.s7.bulletSpdMul : 1;
           for (let k = 0; k < ARMS; k++) {
             const ea = v.ang + k * Math.PI * 2 / ARMS;
             pushBossBullet(v.x + Math.cos(ea) * v.r, v.y + Math.sin(ea) * v.r, ea, 56 * sm * bMul,
@@ -957,7 +957,7 @@
     if (!e.combatReady) return;
     // 技能1/2 蓄力期停移：以较大加速度平滑减速至停（结束后再平滑加速回巡航），避免瞬停/瞬启
     // （真我：技能1 不再停移——连续移动射击，移速与常态一致、无额外加速修正）
-    const wantFreeze = !!(e.skill && (e.skill.id === 1 || (e.skill.id === 0 && !isZhenwo())));
+    const wantFreeze = !!(e.skill && (e.skill.id === 1 || (e.skill.id === 0 && !isRealme())));
     if (e.moveRate == null) e.moveRate = 1;
     const rateAccel = wantFreeze ? 6 : 3;   // 减速加速度较大（≈0.17s 停稳），重新启动稍缓（≈0.33s 提速）
     if (wantFreeze) e.moveRate = Math.max(0, e.moveRate - rateAccel * dt);
@@ -998,7 +998,7 @@
     // 全局规则：连续随机到同一技能 → 技能间冷却 -80%
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv((repeat ? STORM2.skillCd * 0.2 : STORM2.skillCd) * (isZhenwo() ? STORM2_SHIP.skillCdMul : 1));   // 真我：技能间隔统一 ×1.4（+40%）
+    e.skillCd = bossSkillIv((repeat ? STORM2.skillCd * 0.2 : STORM2.skillCd) * (isRealme() ? STORM2_SHIP.skillCdMul : 1));   // 真我：技能间隔统一 ×1.4（+40%）
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速 ×1.4
     e.skillUseCount[id] = (e.skillUseCount[id] || 0) + 1;
@@ -1011,8 +1011,8 @@
         //   起手锁定纵向高度（s1LockY）并清零纵向速度：激光竖直带随机体横向扫动——技能全程仅左右移动，纵向不飘
         e.s1LockY = e.y;
         e.bvy = 0;
-        e.skill = isZhenwo()
-          ? { id: 0, t: 0, dur: 1e9, zhenwo: true, shot: 0, st: 0, pt: 0, nextAt: 0, gap: 0, fired: false }
+        e.skill = isRealme()
+          ? { id: 0, t: 0, dur: 1e9, realme: true, shot: 0, st: 0, pt: 0, nextAt: 0, gap: 0, fired: false }
           : { id: 0, t: 0, dur: STORM2.s1Charge + STORM2.s1BeamDur, fired: false };
         break;
       case 1: { // 技能2：喷口激涌蓄力 1.2s → 随机序依次下射（间隔 0.13s）
@@ -1021,12 +1021,12 @@
         //   连携时蓄力延长至 1.6s（STORM2_SHIP.s2.charge），预警圈收缩时长对应 1.2s（ringDur，
         //   蓄力 0.2s 后开始收缩、完成后再过 0.2s 发射的结构不变 → 收缩速度变慢）；
         //   未连携则下一次技能释放间隔 ×0.4（-60%）
-        const linked = isZhenwo() && Math.random() < STORM2_SHIP.s2.linkS6Chance;
+        const linked = isRealme() && Math.random() < STORM2_SHIP.s2.linkS6Chance;
         const charge = linked ? STORM2_SHIP.s2.charge : STORM2.s2Charge;
         e.skill = { id: 1, t: 0, dur: charge + 3 * STORM2.s2Gap + STORM2.s2BeamDur + 0.15,
           order, nextIdx: 0, nextT: charge, beams: [],
           charge, ringDur: linked ? STORM2_SHIP.s2.ringDur : STORM2.s2RingDur };
-        if (isZhenwo()) {
+        if (isRealme()) {
           if (linked) {
             e.skill.s6 = { t: 0, armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, linked: true };
           } else {
@@ -1037,12 +1037,12 @@
       }
       case 2:   // 技能3：四喷口斜下电弧光束（左右对称，左右边界反弹）；真我：连续快速两次（间隔 1~1.5s）
         e.skill = { id: 2, t: 0,
-          dur: isZhenwo() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) + 0.4 : 2.4,
+          dur: isRealme() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) + 0.4 : 2.4,
           fired: false, second: false,
-          secondAt: isZhenwo() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) : Infinity,
+          secondAt: isRealme() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) : Infinity,
           spMul };
         // 释放后下一次技能释放间隔修正：具象/虚象 ×0.3（-70%）；真我改为 ×1.3（+30%）
-        e.skillCd *= isZhenwo() ? STORM2_SHIP.s3.afterCdMul : STORM2.s3CdMul;
+        e.skillCd *= isRealme() ? STORM2_SHIP.s3.afterCdMul : STORM2.s3CdMul;
         break;
       case 3: { // 技能4：能量球连射雷电长条弹（40~70 发、间隔 0.08s；70% 血以下持续 +50%）——瞄准点按蛇形曲线预采样
         const low = (e.hp / e.maxHp) < 0.70;
@@ -1056,8 +1056,8 @@
         // 雷环排程（具象：始终 4 圈、<70% 增至 6 圈，间隔 0.8~1.5s；真我：固定 8 圈、间隔 ×0.6）：
         //   硬性约束：所有雷环必须在蛇形雷条射完前全部爆开——生成时刻 ≤ 射完时刻 - 停留时长(1s)，
         //   随机排程超出deadline则整体等比压缩（射完后仍有兜底强爆，见 runStorm2Skill s.id===3）
-        const ringCount = isZhenwo() ? STORM2_SHIP.s4.rings : 6;
-        const ringGapBase = isZhenwo() ? STORM2_SHIP.s4.ringGapMul : 1;
+        const ringCount = isRealme() ? STORM2_SHIP.s4.rings : 6;
+        const ringGapBase = isRealme() ? STORM2_SHIP.s4.ringGapMul : 1;
         const ringNz = [0, 1, 2, 3];
         while (ringNz.length < ringCount) ringNz.push((Math.random() * 4) | 0);   // 真我：追加 4 圈随机喷口（可重复）
         const ringTimes = [0.15];
@@ -1073,7 +1073,7 @@
         break;
       }
       case 4: { // 技能5：雷电光环 + 下方区域依次雷击（具象 30% 区域 / 真我 60%；各 1.2s 预警，错峰 0.9s / 真我 ×0.9）
-        const gap5 = 0.9 * (isZhenwo() ? STORM2_SHIP.s5.volleyGapMul : 1);
+        const gap5 = 0.9 * (isRealme() ? STORM2_SHIP.s5.volleyGapMul : 1);
         const strikes = pickS2StrikePoints(5).map((p, k) => ({ x: p.x, y: p.y, t: -k * gap5, fired: false, flash: 0 }));
         e.skill = { id: 4, t: 0, dur: STORM2.s5Warn + 4 * gap5 + 0.7, strikes };
         break;
@@ -1084,7 +1084,7 @@
         e.skill = { id: 5, t: 0, dur: 4.6, armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, spMul };
         e.skillCd *= STORM2.s6CdMul;   // 释放后下一次技能释放间隔 -50%
         // 真我：释放瞬间四个雷电喷口处各触发一次雷霆打击——无预警、伤害减半、雷环子弹数减半
-        if (isZhenwo()) {
+        if (isRealme()) {
           for (let i = 0; i < STORM2_SHIP.s6.instantStrikes; i++) {
             const nz = storm2Nozzle(e, i);
             fireS2Strike(nz.x, nz.y, STORM2_SHIP.s6.strikeDmgMul, STORM2_SHIP.s6.ringCntMul);
@@ -1100,7 +1100,7 @@
 
   // 雷击落点抽样：n 处（具象：下方 30% 区域 / 真我：下方 60%，底边均留 40px）
   function pickS2StrikePoints(n) {
-    const top = isZhenwo() ? STORM2_SHIP.s5.zoneTop : 0.70;
+    const top = isRealme() ? STORM2_SHIP.s5.zoneTop : 0.70;
     const pts = [];
     for (let k = 0; k < n; k++) {
       pts.push({ x: rand(60, CANVAS_W - 60), y: rand(CANVAS_H * top, CANVAS_H - 40) });
@@ -1244,9 +1244,10 @@
     const ball = storm2BallPos(e);
 
     if (s.id === 0) {
-      if (s.zhenwo) {
+      if (s.realme) {
         // 真我：移动中连续射出 5 次——预警在上一发射完前开始；射完随机 0.1~0.5s 后立刻射出下一发；
-        //   第 2~5 次预警圈缩小（150）且预警时长缩短（0.55s，内含收缩 0.4s）
+        //   光束持续时长 0.6s（具象 0.9 → 0.6）+ 末段 0.15s 快速渐隐（STORM2_SHIP.s1.beamDur / fade）；
+        //   第 2~5 次预警圈同首发规格（300px，收缩 0.6s——随光束缩短同步收紧，见 STORM2_SHIP.s1）
         const C1 = STORM2_SHIP.s1;
         if (s.st === 0) {
           s.pt += dt;
@@ -1255,19 +1256,24 @@
             s.st = 1; s.pt = 0;
             if (s.shot < C1.shots - 1) {
               s.gap = rand(C1.gapMin, C1.gapMax);
-              s.nextAt = s.t + STORM2.s1BeamDur + s.gap;   // 下一发开火时刻（绝对时间）
+              s.nextAt = s.t + C1.beamDur + s.gap;   // 下一发开火时刻（绝对时间）
             }
           }
         } else {
           s.pt += dt;
           // 激光竖直带：固定 60 伤害；机体移动中射击（激光随能量球横向扫动）
-          if (player.alive && player.invuln <= 0 && player.shield <= 0 &&
-              strikeVis(s.pt / STORM2.s1BeamDur, 0.12) >= 0.35 &&
+          // 真我光束可视度：亮起 0.12s → 全亮保持 → 末段 fade 快速渐隐（与 11-draw-boss 绘制曲线一致）；
+          //   渐隐至 35% 以下即不再构成威胁（同 strikeVis 门控约定，杜绝"光束看不见了却被命中"）
+          const vis = s.pt < 0.12 ? s.pt / 0.12
+            : s.pt < C1.beamDur - C1.fade ? 1
+            : Math.max(0, 1 - (s.pt - (C1.beamDur - C1.fade)) / C1.fade);
+          if (vis >= 0.35 &&
+              player.alive && player.invuln <= 0 && player.shield <= 0 &&
               Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
               player.y + PLAYER_CFG.hitOffsetY > ball.y) {
             damagePlayer(STORM2.s1Dmg * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
           }
-          if (s.pt >= STORM2.s1BeamDur) {
+          if (s.pt >= C1.beamDur) {
             s.shot++;
             if (s.shot >= C1.shots) {
               s.dur = s.t;   // 5 发全部射完：立即收束（移速加成随后快速衰减）
@@ -1333,7 +1339,7 @@
         s.fired = true;
         fireS3Volley(e, sm);
       }
-      if (isZhenwo() && !s.second && s.t >= s.secondAt) {
+      if (isRealme() && !s.second && s.t >= s.secondAt) {
         s.second = true;
         fireS3Volley(e, sm);
       }
@@ -1352,7 +1358,7 @@
       // 四喷口雷环依次浮现（间隔 0.8~1.5s）——每圈停留在生成位置 1s 后爆开（BOSS 移动走子弹也不跟随）；
       //   第 5/6 圈为强化圈：到点时血量 <70% 才释放（否则跳过）；雷环带 ringTag 供射完强爆识别
       while (s.ringsSpawned < s.ringNz.length && s.t >= s.ringTimes[s.ringsSpawned]) {
-        if (isZhenwo() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
+        if (isRealme() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
           const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
           spawnStorm2Ring(nz.x, nz.y, 24, 1.0, sm, 1, 1, s);
         }
@@ -1363,7 +1369,7 @@
       if (s.fired >= s.shots && !s.ringsFlushed) {
         s.ringsFlushed = true;
         while (s.ringsSpawned < s.ringNz.length) {
-          if (isZhenwo() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
+          if (isRealme() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
             const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
             spawnStorm2Ring(nz.x, nz.y, 24, 0, sm, 1, STORM2.s4FlushBoost, s);
           }
@@ -1671,8 +1677,8 @@
         e.phaseT = 0;
         e.scale = 1;
         e.combatReady = true;
-        e.skillCd = bossSkillIv(1.0 * (isZhenwo() ? SONG_SHIP.skillCdMul : 1));
-        if (isZhenwo()) {
+        e.skillCd = bossSkillIv(1.0 * (isRealme() ? SONG_SHIP.skillCdMul : 1));
+        if (isRealme()) {
           // 真我：登场部件球弹幕改为技能5 的登场变体——六发暗黑子弹共同瞄准玩家当前位置
           // （视为释放一次技能5，但不走技能池、不触发技能1连携）
           fireDarkSix(e, Array.from({ length: 6 }, () => ({ x: player.x, y: player.y })));
@@ -1701,7 +1707,7 @@
     // 经转向加速度平滑过渡，无骤降/骤停（航点保持原样，技能结束从当前位置继续当前段）
     const s1Main = !!(e.skill && e.skill.id === 0);
     const s1Link = !!(e.link && e.link.id === 0);
-    if (s1Link || (s1Main && !isZhenwo())) {
+    if (s1Link || (s1Main && !isRealme())) {
       e.bvx = 0; e.bvy = 0;
     } else {
       bossMoveUpdate(e, BOSS.move, dt, s1Main ? SONG_SHIP.s1MoveSlow : 1);
@@ -1759,14 +1765,14 @@
   }
 
   // 构建真我技能1：主释放（linked=false）享时长加成（≥70% 血 +25% / <70% 血 ×3）恒 4 条流；
-  // 连携释放（linked=true）不享加成，且概率只出 2 条流（<70% 血概率降低）
+  // 连携释放（linked=true）不享加成，必定只出 2 条流（左右管各一，向外/向内对称），弧线弹寿命降至 linkedLife
   function buildSongSkill1(e, linked) {
-    const C = SONG_SHIP.s1, L = C.link;
+    const C = SONG_SHIP.s1;
     const hpR = e.hp / e.maxHp;
     const s = { id: 0, t: 0, fire: 0, alt: 0, curveT: 0, spMul: 1, linked: !!linked };
     if (linked) {
       s.dur = C.durBase;
-      s.streams = buildArcStreams(Math.random() < (hpR < 0.70 ? L.twoStreamChanceLowHp : L.twoStreamChance) ? 2 : C.streams);
+      s.streams = buildArcStreams(2);
     } else {
       s.dur = C.durBase * (hpR < 0.70 ? C.durLowHp : C.durHighHp);
       s.streams = buildArcStreams(C.streams);
@@ -1879,13 +1885,13 @@
       for (const st of s.streams) {
         pushBossBullet(st.tube === 0 ? lx : rx, by, st.ang0, C.speed * sm,
           { r: 4, dmg: C.arcDmg, color: BOSS_BULLET.arc, angVel: st.spin, spinUp: C.spinUpMul, spinDown: C.spinDownMul,
-            life: C.life, lifeFade: C.fadeTime });
+            life: s.linked ? C.linkedLife : C.life, lifeFade: C.fadeTime });   // 连携释放：寿命降至 3.2s
       }
     }
   }
 
   function startBossSkill(e, excludeId) {
-    const ship = isZhenwo();
+    const ship = isRealme();
     // 全局机制：本局内从未释放过的技能，在其他技能被释放时权重 ×1.5（真我技能池 0~5）
     if (!e.skillWeights) e.skillWeights = ship ? { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 } : { 0: 1, 1: 1, 2: 1, 3: 1 };
     if (!e.skillUseCount) e.skillUseCount = {};
@@ -1934,7 +1940,7 @@
     e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.2 : BOSS.skillCd);
     // 血量 <50%：技能释放间隔额外降低 50%
     if (e.hp / e.maxHp < 0.5) e.skillCd *= 0.5;
-    // 真我：技能释放间隔 = 原有的 40%
+    // 真我：技能释放间隔 = 具象的 55%（SONG_SHIP.skillCdMul）
     if (ship) e.skillCd *= SONG_SHIP.skillCdMul;
     e.lastSkill = id;
     const spMul = repeat ? 1.6 : 1.0;   // 连中同技能：本次弹速 ×1.6
@@ -1981,7 +1987,7 @@
         break;
     }
     // 真我连携：释放技能 2~6 时概率同时释放一次技能1——≥70% 血 20% / <70% 血 30% / <35% 血 50%
-    // （连携不享时长加成；2 条流概率见 SONG_SHIP.s1.link）
+    // （连携不享时长加成，必定 2 条流且弧线弹寿命降至 SONG_SHIP.s1.linkedLife）
     if (ship && id !== 0) {
       const L = SONG_SHIP.s1.link;
       const hpR = e.hp / e.maxHp;
@@ -1997,8 +2003,8 @@
     const sm = s.spMul || 1;   // 连中同技能时的弹速倍率（×1.6）
 
     if (s.id === 0) {
-      if (isZhenwo()) {
-        // 真我技能1：双管长条弹连发（同具象）+ 恒 4 条（连携可能 2 条）旋转双曲线弹流
+      if (isRealme()) {
+        // 真我技能1：双管长条弹连发（同具象）+ 恒 4 条（连携必 2 条、寿命 3.2s）旋转双曲线弹流
         runSongSkill1Ship(e, s, dt, lx, rx, by, sm);
       } else {
         // 技能1：停止移动，双管极快速连发长条弹（直向为主 + 极轻微散射）
@@ -2032,7 +2038,7 @@
         }
       }
     } else if (s.id === 1) {
-      if (isZhenwo()) {
+      if (isRealme()) {
         // 真我技能2：7 轮大子弹散射（缺失 10%~20%）；首轮必定慢速，其余随机 3 轮快速（弹速 ×1.4~1.7）；
         // 每轮瞄准带 ±5° 偏移角
         s.roundT -= dt;
@@ -2068,7 +2074,7 @@
         }
       }
     } else if (s.id === 2) {
-      if (isZhenwo()) {
+      if (isRealme()) {
         // 真我技能3：lock 部位朝标记点；track 部位始终瞄准玩家当前位置；
         // 每轮射击间隔 0.9~1.3s 四部位独立随机；所有瞄准均带 ±10° 偏移角
         for (const p of s.parts) {
@@ -2101,7 +2107,7 @@
         }
       }
     } else if (s.id === 3) {
-      if (isZhenwo()) {
+      if (isRealme()) {
         // 真我技能4：以具象为基准（双管每轮各 1 发、10% 概率双管齐指玩家），获得以下修正——
         // ≥70% 血：270° 大范围散射 + 射速 +100%（间隔 ×0.5）；
         // <70% 血：360° 单发 + 射速 +200%（间隔 ÷3）+ 定时向下扇形圆弹幕（8~14 发，

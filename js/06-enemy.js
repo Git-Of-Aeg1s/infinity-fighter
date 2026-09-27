@@ -3,9 +3,9 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 07-player(2 名) 08-entities(1 名) 14-main(7 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce}
+  //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
-  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_GIANT_CHANCE, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, enemyDmgMul, hasPilot, isShipian, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_CHANCE, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WAVE_POEM, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, enemyDmgMul, hasPilot, isPoem, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
   import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
@@ -177,7 +177,7 @@
       // 入场瞬间额外冲刺（_entryMul 初值 ×1.6），随后按指数快速衰减回 1（整组同帧生成、同倍率衰减，队形不变）
       // 增生侧翼艇同 1类移动；卫护飞船继承母舰 _sideVel 沿原航向大致继续飞行（_entryMul 预置 1，无入场冲刺）
       const v = e._sideVel || { vx: 0, vy: SIDE_SPEED_SLOW };
-      if (e._entryMul === undefined) e._entryMul = SIDE_ENTRY_BOOST;      // 增生炮艇召唤体：速度曲线（先横向飞出、0.7s 内平滑转向下飞）——绘制朝向按速度实时计算
+      if (e._entryMul === undefined) e._entryMul = SIDE_ENTRY_BOOST;      // 青时炮艇召唤体：速度曲线（先横向飞出、0.7s 内平滑转向下飞）——绘制朝向按速度实时计算
       if (e._velCurve) {
         e._velCurve.t += dt;
         const cp = Math.min(1, e._velCurve.t / e._velCurve.dur);
@@ -398,6 +398,12 @@
           const cruise = e.y < CANVAS_H * 0.25 ? FASHI_A1.entrySpeed : FASHI_A1.speed;
           e.vx += (0 - e.vx) * Math.min(1, dt * acc);
           e.vy += (cruise - e.vy) * Math.min(1, dt * FASHI_A1.cruiseAccel);
+          // 入场横移（2026-09 批次）：60% 概率在下坠越过 15%~20% 屏高触发线时水平横移一次（每架至多一次）
+          if (!e.fa1EntryDone && e.fa1EntryStrafe && e.y >= (e.fa1EntryTrigY || 0)) {
+            e.fa1EntryDone = true;
+            fa1StartStrafe(e);
+            break;
+          }
           if (e.entryT >= (e.fa1FirstAt != null ? e.fa1FirstAt : FASHI_A1.firstDelay[0])) {
             e.fa1FireTimer -= dt;
             if (e.fa1FireTimer <= 0) e.fa1State = 'brake';
@@ -430,17 +436,7 @@
           }
           if (e.fa1Fired && e.fa1T >= FASHI_A1.firePause + FASHI_A1.fireLingerAfter) {
             if (Math.random() < FASHI_A1.strafeChance) {
-              e.fa1State = 'strafe'; e.fa1T = 0;
-              // 左 15% / 右 15% 区域：强制向场心方向横移（不再靠近那一侧边界）
-              const inLeft = e.x < CANVAS_W * 0.15;
-              const inRight = e.x > CANVAS_W * 0.85;
-              if (inLeft) e.strafeDir = 1;
-              else if (inRight) e.strafeDir = -1;
-              else e.strafeDir = Math.random() < 0.5 ? -1 : 1;
-              e.strafeDist = rand(FASHI_A1.strafeMin, FASHI_A1.strafeMax);
-              const maxX = e.strafeDir > 0 ? (CANVAS_W - 40 - e.x) : (e.x - 40);
-              e.strafeDist = Math.min(e.strafeDist, Math.max(30, maxX));
-              e.strafeMoved = 0;
+              fa1StartStrafe(e);
             } else {
               e.fa1State = 'resume'; e.fa1T = 0;
             }
@@ -585,7 +581,7 @@
     }
     if (e.type === 'jiaoxiang') {
       // 焦香螺旋桨：全程速度积分驱动（位置连续变化，杜绝切换闪动/状态重置）；
-      // 入场朝目标点逼近 → 绕圈用"引导点追踪"（追圆周上领先角度的点）形成大致圆形轨迹，含轻微随机漂移
+      // 入场朝目标点逼近 → 绕圈用"切向绕行 + 径向弹簧"收敛到随机圆（含轻微随机漂移）
       // 绕圈圆心/半径逐次随机（spawn 时写入本体；缺省回退屏中/固定值以防异常生成路径）
       const cx = e.jxCx != null ? e.jxCx : CANVAS_W / 2;
       const cy = e.jxCy != null ? e.jxCy : CANVAS_H * 0.60;
@@ -612,20 +608,19 @@
         // 逼近目标点 → 切入绕圈（速度向量原样保留，天然连贯，无任何位置重置）
         if (dist < JIAOXIANG.entryReach) e.jxPhase = 1;
       } else {
-        // 绕圈阶段：追踪圆周上"领先角度"的引导点，速度积分自然形成大致圆形轨迹（非严格圆）
-        const curA = Math.atan2(e.y - cy, e.x - cx);
-        const leadA = curA + e.jxOrbitDir * JIAOXIANG.leadAngle;
-        const gx = cx + Math.cos(leadA) * R, gy = cy + Math.sin(leadA) * R;
-        const gdx = gx - e.x, gdy = gy - e.y;
-        const gl = Math.hypot(gdx, gdy) || 1;
-        // 期望速度 = 朝引导点（绕圈速度 ×orbitSpeedMul，较入场降 25%）+ 相干随机漂移（"乱动"）
-        // "乱动"用 OU 相干随机游走：漂移向量朝随机目标缓变，而非逐帧白噪声；
-        // 白噪声会被下方转向平滑（turn≈0.05/帧）滤波抵消几乎不动，相干游走有持续性故明显可见
+        // 绕圈阶段：切向绕行 + 径向弹簧收敛到半径 R。
+        // （不再用"圆心角引导点"追踪：切入后机体一旦被带入圆内，引导点方向随圆心角剧变、
+        //   期望速度逐帧甩鞭 = 下移段的卡顿瞬移；切向+径向分解在圆内/圆外/圆心附近全部稳定）
+        const rx = e.x - cx, ry = e.y - cy;
+        const rl = Math.hypot(rx, ry) || 1;
+        const nx2 = rx / rl, ny2 = ry / rl;                        // 径向单位向量（外向）
+        const tgx = -ny2 * e.jxOrbitDir, tgy = nx2 * e.jxOrbitDir; // 切向单位向量（绕行方向）
+        const corr = clamp((rl - R) * 2.2, -80, 80);               // 径向修正：偏离 R 越远回拉越强（限幅 ±80）
         const jr = Math.min(1, dt * JIAOXIANG.jitterRate);
         e.jxJitX += (rand(-1, 1) * JIAOXIANG.jitter - e.jxJitX) * jr;
         e.jxJitY += (rand(-1, 1) * JIAOXIANG.jitter - e.jxJitY) * jr;
-        wantVx = gdx / gl * spd * JIAOXIANG.orbitSpeedMul + e.jxJitX;
-        wantVy = gdy / gl * spd * JIAOXIANG.orbitSpeedMul + e.jxJitY;
+        wantVx = tgx * spd * JIAOXIANG.orbitSpeedMul + nx2 * corr + e.jxJitX;
+        wantVy = tgy * spd * JIAOXIANG.orbitSpeedMul + ny2 * corr + e.jxJitY;
       }
       // 速度平滑转向（限制角速度 → 速度曲线连贯无突变）+ 位置积分（连续，绝不跳变）
       const turn = Math.min(1, dt * JIAOXIANG.turnRate);
@@ -633,10 +628,14 @@
       e.vy += (wantVy - e.vy) * turn;
       e.x += e.vx * dt;
       e.y += e.vy * dt;
-      // 绕圈阶段硬性边框约束（轨迹不出边框；入场阶段不 clamp 以免挡住屏外入场）
+      // 绕圈阶段硬性边框约束（轨迹不出边框；入场阶段不 clamp 以免挡住屏外入场）；
+      // 触界时同步消去朝外速度分量——否则贴边界持续夹取会呈现逐帧瞬跳（下移贴近屏底时尤甚）
       if (e.jxPhase === 1) {
-        e.x = clamp(e.x, e.w / 2, CANVAS_W - e.w / 2);
-        e.y = clamp(e.y, e.h / 2, CANVAS_H - e.h / 2);
+        const nx = clamp(e.x, e.w / 2, CANVAS_W - e.w / 2);
+        const ny = clamp(e.y, e.h / 2, CANVAS_H - e.h / 2);
+        if (nx !== e.x) e.vx = 0;
+        if (ny !== e.y) e.vy = 0;
+        e.x = nx; e.y = ny;
       }
       return;
     }
@@ -814,30 +813,40 @@
       const targetVy = dist >= 90 ? cruise : cruise * Math.max(0.12, dist / 90);
       e.vy += (targetVy - e.vy) * Math.min(1, dt * 12);
       e.y += e.vy * dt;
-      if (dist <= 1 || e.y >= e.hoverY) {
-        e.y = e.hoverY; e.arrived = true; e.vy = 0;
-        if (e.type === 'capital') {
-          // 4类就位展开动画：0.55s 机翼从收拢完全弹出
+      // 4类主力舰：减速段（最后 90px）开始 0.4s 后展开机翼——展开动画与缓冲滑行尾部重叠，
+      // 到位后无静止停顿；展开起点较减速起点延后 0.4s（用户规格）
+      if (e.type === 'capital' && e.unfoldT == null && dist <= 90) {
+        if (e._unfoldWait == null) e._unfoldWait = 0.4;
+        e._unfoldWait -= dt;
+        if (e._unfoldWait <= 0) {
           e.unfoldT = 0.55;
           spawnParticles(e.x, e.y + 20, '#ffb3bd', 16, 200);
         }
+      }
+      if (dist <= 1 || e.y >= e.hoverY) {
+        e.y = e.hoverY; e.arrived = true; e.vy = 0;
       }
       return;
     }
       if (e.holdTimer > 0) {
         e.holdTimer -= dt;
+        // 悬停摆速缓入：到位瞬间水平摆速从 0 起 0.8s smoothstep 渐升——
+        // 消除"到达位置后突然拥有水平速度"的硬切（速度曲线连续）
+        e.swayT = (e.swayT || 0) + dt;
+        const sk0 = Math.min(1, e.swayT / 0.8);
+        const swayIn = sk0 * sk0 * (3 - 2 * sk0);
         // 悬停期间水平巡航
         if (e.type === 'capital') {
           // 赤金技能3：停移（holdEase 平滑过渡 1↔0，摆动速度不瞬间归零、恢复时不瞬间起跳）
-          if (e.holdEase == null) e.holdEase = 1;   // 首帧初始化（避免 undefined 参与运算产生 NaN）
+          if (e.holdEase == null) e.holdEase = 1;
           const wantHold = (e.variant === 'crgold' && e.crgoldHold > 0) ? 0 : 1;
           if (e.crgoldHold > 0) e.crgoldHold -= dt;
           e.holdEase += (wantHold - e.holdEase) * Math.min(1, dt * 6);
-          e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * e.holdEase * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
+          e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * e.holdEase * swayIn * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
         } else if (!e.staticX) {
         // gunship / harbinger：轻幅左右巡航（先兆者幅度更小，稳居后排）
         // staticX：BOSS 召唤的先兆者固定在最左/最右，不巡航，避免被 BOSS 机体挡住打不到
-        e.x += Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * dt;
+        e.x += Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * swayIn * dt;
       }
       e.x = clamp(e.x, e.w / 2, CANVAS_W - e.w / 2);
       return;
@@ -852,10 +861,20 @@
     e.y += e.vy * dt;
   }
 
-  // 威龙移动：沿蛇形航点路径巡航；攻击窗口内停止移动；到位航点可停顿（dwell）
+  // 威龙移动：沿蛇形航点路径巡航；攻击时停移（炮口锁死不转向）；到位航点可停顿（dwell）
   function updateWeilongMovement(e, dt) {
-    // 攻击时停止移动（attackT 由 updateEnemyFire 在发起连射时设置）
-    if (e.attackT > 0) { e.attackT -= dt; return; }
+    e.entryT = Math.max(0, (e.entryT || 0) - dt);   // 入场 200% 移速加成：entryDecay 内线性衰减回 100%
+    // 炮口转向：以最大角速度（WEILONG.maxTurn = 3.2 rad/s，同破片）平滑追踪玩家——无瞬跳；
+    // 攻击窗口期间（attackT > 0）炮口锁死、不改动转向
+    if (e.attackT > 0) {
+      e.attackT -= dt;
+      return;   // 攻击窗口：停止移动（炮口已在上方锁死）
+    } else if (player.alive) {
+      const cur = e.muzzleAng != null ? e.muzzleAng : Math.PI / 2;
+      const want = Math.atan2(player.y - e.y, player.x - e.x);
+      const df = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+      e.muzzleAng = cur + clamp(df, -WEILONG.maxTurn * dt, WEILONG.maxTurn * dt);
+    }
     const wps = e.waypoints;
     if (!wps || e.wpIdx >= wps.length) return;   // 路径走完（离场中），交由出屏检测移除
     // 航点停顿（如末段 2s）：停顿期间不推进
@@ -867,7 +886,7 @@
     const wp = wps[e.wpIdx];
     const dx = wp.x - e.x, dy = wp.y - e.y;
     const dist = Math.hypot(dx, dy);
-    const spd = WEILONG.speed * e.speedMul;
+    const spd = WEILONG.speed * e.speedMul * (1 + (WEILONG.entryBoost - 1) * clamp(e.entryT / WEILONG.entryDecay, 0, 1));   // 入场加成（300%）线性衰减
     if (dist <= spd * dt + 1.5) {
       // 抵达航点：吸附到精确位置，按需停顿或推进到下一航点
       e.x = wp.x; e.y = wp.y;
@@ -941,7 +960,7 @@
         const cfg = ENEMY_TYPES.weilong;
         e.fireTimer = enemyFireIv(cfg);
         e.burst = {
-          baseAng: Math.atan2(player.y - e.y, player.x - e.x),   // 锁定玩家方向（无偏转）
+          baseAng: e.muzzleAng != null ? e.muzzleAng : Math.atan2(player.y - e.y, player.x - e.x),   // 沿炮口当前指向锁定（无偏转）；攻击窗口内炮口不再转向
           speed: cfg.bulletSpeed * WEILONG.bulletSpeedMul,       // 较普通弹快 60%
           count: WEILONG.burstCount, shots: 0, gap: WEILONG.burstGap,
           opts: { color: '#ffb42e', r: 5, dmg: cfg.bulletDmg },  // 橙黄能量弹
@@ -1052,11 +1071,13 @@
         const b = e.burst;
         const cfg = ENEMY_TYPES[e.type];
         const jit = b.jitter ? rand(-b.jitter, b.jitter) : 0;   // 每发随机角度偏差
-        pushEBullet(e, b.baseAng + b.step * b.shots + jit, b.speed, cfg, b.opts || {});
+        // 出弹点快照（ox/oy）：施放瞬间锁定位置，后发不随机体移动漂移（红双曲线两技能等，见各技能）
+        const bpos = b.ox != null ? { x: b.ox, y: b.oy } : {};
+        pushEBullet(e, b.baseAng + b.step * b.shots + jit, b.speed, cfg, Object.assign({}, b.opts || {}, bpos));
         if (b.mirror) {
           const mAng = Math.PI - (b.baseAng + b.step * b.shots + jit);
           // mirrorAx：镜像弹反转横向加速度 → 左右对称的双曲线
-          const mOpts = (b.opts && b.mirrorAx) ? Object.assign({}, b.opts, { ax: -(b.opts.ax || 0) }) : (b.opts || {});
+          const mOpts = (b.opts && b.mirrorAx) ? Object.assign({}, b.opts, { ax: -(b.opts.ax || 0) }, bpos) : Object.assign({}, b.opts || {}, bpos);
           pushEBullet(e, mAng, b.speed, cfg, mOpts);
         }
         b.shots++;
@@ -1107,29 +1128,41 @@
         // 红：火力猛 —— 瞄准三连射+外扩双曲线（合并） / 内收双曲线 / 三方向三段齐射
         switch (e.pattern % 3) {
           case 0: {
-            // 技能1（合并，两段弹幕同时发射）：瞄准三连射（锁定发射瞬间玩家方位）与左右双曲线外扩弹流并行
+            // 技能1（合并，两段弹幕同时发射）：瞄准双连射（中间弹固定垂直向下）与左右双曲线外扩弹流并行；
+            // 出弹点以施放瞬间为准快照（sx0/sy0 与 burst ox/oy）——机体移动不拖曳弹幕轨迹
             const aimAng = Math.PI / 2;   // 中间弹不再追踪（垂直向下）
+            const sx0 = e.x, sy0 = e.y + e.h / 2;
             // 双曲线占用 burst 槽，立即开始（每侧6发、向两侧外扩）
-            e.burst = { baseAng: Math.PI / 2 - 0.18, step: 0, count: 6, shots: 0, gap: 0.085, speed: cfg.bulletSpeed * 1.05, mirror: true, mirrorAx: true, opts: { ax: 220 } };
+            e.burst = { baseAng: Math.PI / 2 - 0.18, step: 0, count: 6, shots: 0, gap: 0.085, speed: cfg.bulletSpeed * 1.05, mirror: true, mirrorAx: true, ox: sx0, oy: sy0, opts: { ax: 220 } };
             e.burstTimer = 0;
-            // 三连射不占 burst 槽，改走 scheduled 直射：第 1 发同帧立即出膛，与双曲线同步开火
-            pushEBullet(e, aimAng, cfg.bulletSpeed * 1.25, cfg);
-            e.scheduled.push({ t: 0.12, fn: () => pushEBullet(e, aimAng, cfg.bulletSpeed * 1.25, cfg) });
+            // 双连射不占 burst 槽，改走 scheduled 直射：第 1 发同帧立即出膛，与双曲线同步开火
+            pushEBullet(e, aimAng, cfg.bulletSpeed * 1.25, cfg, { x: sx0, y: sy0 });
+            e.scheduled.push({ t: 0.12, fn: () => pushEBullet(e, aimAng, cfg.bulletSpeed * 1.25, cfg, { x: sx0, y: sy0 }) });
             break;
           }
-          case 1:
-            // 技能2：左右同时双曲线弹（每侧6发）——方向反转：右侧弹往左扫、左侧弹往右扫（向内交叉；主弹 ax 反向即得）
-            e.burst = { baseAng: Math.PI / 2 - 0.18, step: 0, count: 5, shots: 0, gap: 0.085, speed: cfg.bulletSpeed * 1.05, mirror: true, mirrorAx: true, opts: { ax: -320 } };   // 曲率增大（交汇点上移）、每侧 5 发
+          case 1: {
+            // 技能2：左右同时双曲线弹（每侧5发）——交汇点逐次随机取屏高 50%~100%：
+            // 按目标深度反解张角 th 与向心加速度 ax（镜像对恰在 yC 处回到中线交汇，横向展幅恒 ≈40px，
+            // 交汇越深张角越小、曲率越缓），运动学：t交汇=2·vx0/|ax|，y交汇=y0+vy0·t交汇
+            const yC = CANVAS_H * rand(0.5, 1.0);
+            const dy = Math.max(140, yC - (e.y + e.h / 2));
+            const sp2 = cfg.bulletSpeed * 1.05;
+            const th = Math.atan(160 / dy);
+            const axC = -(sp2 * sp2 * Math.sin(2 * th)) / dy;
+            e.burst = { baseAng: Math.PI / 2 - th, step: 0, count: 5, shots: 0, gap: 0.085, speed: sp2, mirror: true, mirrorAx: true, ox: e.x, oy: e.y + e.h / 2, opts: { ax: axC } };
             e.burstTimer = 0;
             break;
+          }
           case 2: {
-            // 技能三：垂直向下 + 下±20° 三方向，每方向快速射 2 发，连发 3 段（段间隔 0.5s）；
-            // 第三段发射完（段内第二发 t=1.11s 出膛）才重新计算攻击间隔，
+            // 技能三：垂直向下 + 下±20° 三方向，每方向快速射 2 发，连发 2 轮（轮间隔 0.75s）；
+            // 出弹点以施放瞬间为准快照（两轮均从同一点出膛，不随机体移动漂移）；
+            // 第二轮发射完（轮内第二发 t=0.86s 出膛）才重新计算攻击间隔，
             // 避免齐射未结束 fireTimer 就走完、下个技能提前插入打断节奏
-            e.fireTimer = 1e9;   // 挂起攻击计时（触发分支前已被重置），由第三段结束的 scheduled 恢复
-            fireTriVolley(e, cfg);
-            e.scheduled.push({ t: 0.65, fn: () => fireTriVolley(e, cfg) });
-            e.scheduled.push({ t: 0.76, fn: () => { e.fireTimer = enemyFireIv(cfg); } });
+            e.fireTimer = 1e9;   // 挂起攻击计时（触发分支前已被重置），由第二轮结束的 scheduled 恢复
+            const ox = e.x, oy = e.y + e.h / 2;
+            fireTriVolley(e, cfg, ox, oy);
+            e.scheduled.push({ t: 0.75, fn: () => fireTriVolley(e, cfg, ox, oy) });
+            e.scheduled.push({ t: 0.86, fn: () => { e.fireTimer = enemyFireIv(cfg); } });
             break;
           }
         }
@@ -1138,32 +1171,45 @@
         switch (e.pattern % 3) {
           case 0: {
             // 技能1：原紫晶 8 发环形爆发的强化版——10 发（诗篇 12 发）随机相位环形爆发
+            // （加速长条弹：初速≈0，加速至 180%×0.85 弹速）
             const off = Math.random() * Math.PI * 2;
-            const n = isShipian() ? 12 : 10;
-            for (let k = 0; k < n; k++) pushEBullet(e, off + k * Math.PI * 2 / n, cfg.bulletSpeed * 0.85, cfg);
+            const n = isPoem() ? 12 : 10;
+            for (let k = 0; k < n; k++) pushEBullet(e, off + k * Math.PI * 2 / n, 2, cfg, { accel: 300, maxSpeed: cfg.bulletSpeed * 0.85 * 1.8 });
             break;
           }
           case 1: {
-            // 技能2：选 360° 随机方向，对该方向与反方向各射 10 发加速长条弹（分布 22222：前后 5 波、每波 2 发）
+            // 技能2：选 360° 随机方向，对该方向与反方向各射 10 发加速长条弹（分布 22222：前后 5 波、每波 2 发）；
+            // 出弹点以施放瞬间为准快照在机体核心（后发不随机体移动漂移）；
+            // 同向两发出射角 ±0.03 + 垂直错位 ±6px（初始间距 12px，不再重叠）
+            const ox = e.x, oy = e.y;
             const base = Math.random() * Math.PI * 2;
-            const maxSp = cfg.bulletSpeed * 1.5;
+            const maxSp = cfg.bulletSpeed * 1.8;
             for (let wv = 0; wv < 5; wv++) {
               e.scheduled.push({ t: wv * 0.12, fn: () => {
                 for (const dir of [base, base + Math.PI])
-                  for (const o of [-0.03, 0.03])
-                    pushEBullet(e, dir + o, 2, cfg, { accel: 300, maxSpeed: maxSp });
+                  for (const o of [-0.03, 0.03]) {
+                    const px = Math.cos(dir), py = Math.sin(dir), nx = -py, ny = px;
+                    const sgn = o < 0 ? -1 : 1;
+                    pushEBullet(e, dir + o, 2, cfg, { accel: 300, maxSpeed: maxSp, x: ox + nx * sgn * 6, y: oy + ny * sgn * 6 });
+                  }
               }});
             }
             break;
           }
           case 2: {
-            // 技能3：三方向（互夹 120°）三波加速长条弹——第一轮含竖直朝下、第二轮含竖直朝上（整体每轮旋转 60°）；
-            // 加速长条弹：初速≈0，加速至 150% 弹速
-            const maxSp = cfg.bulletSpeed * 1.5;
+            // 技能3：三方向（互夹 120°）三波加速长条弹——首轮方向随机竖直朝上或朝下，后续两轮依次旋转 60° 跟随；
+            // 每发均为两发连射（同向 0.07s 追发）；出弹点以施放瞬间为准快照（后发不随机体移动漂移）
+            const ox = e.x, oy = e.y + e.h / 2;
+            const base0 = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+            const maxSp = cfg.bulletSpeed * 1.8;
             for (let v = 0; v < 3; v++) {
-              const base = Math.PI / 2 + v * Math.PI / 3;
+              const base = base0 + v * Math.PI / 3;
               e.scheduled.push({ t: v * 0.4, fn: () => {
-                for (let k = 0; k < 3; k++) pushEBullet(e, base + k * Math.PI * 2 / 3, 2, cfg, { accel: 300, maxSpeed: maxSp });
+                for (let k = 0; k < 3; k++) {
+                  const ang = base + k * Math.PI * 2 / 3;
+                  pushEBullet(e, ang, 2, cfg, { accel: 300, maxSpeed: maxSp, x: ox, y: oy });
+                  e.scheduled.push({ t: 0.07, fn: () => pushEBullet(e, ang, 2, cfg, { accel: 300, maxSpeed: maxSp, x: ox, y: oy }) });
+                }
               }});
             }
             break;
@@ -1173,11 +1219,12 @@
         // 橙焰：四技能循环 —— 巨型黄弹分裂 / 下方 150° 6 发 / 双轮 2×2（40°→60°）/ 下方 120° 4 发
         switch (e.pattern % 4) {
           case 0: {
-            // 技能1：朝玩家射出偏黄巨型子弹，飞行 20%~50% 屏高（临近失速）即分裂为 6 发均匀子弹
+            // 技能1：朝玩家射出红橙色巨型子弹（较原更小），飞行 25% 屏高后开始减速滑行 0.7s、
+            // 临近停速（剩余 25% 速度）即分裂为 6 发均匀子弹——减速一段时间后才分裂，不减为 0 再炸
             const ang = Math.atan2(player.y - e.y, player.x - e.x);
             pushEBullet(e, ang, cfg.bulletSpeed * 0.85, cfg, {
-              r: 13, len: 0, color: '#ffb42e',
-              split: { dist: CANVAS_H * rand(0.2, 0.5), count: 6, speed: cfg.bulletSpeed * 0.8, r: 4.5, color: '#ffb42e' },
+              r: 10, len: 0, color: '#ff7a45',
+              split: { dist: CANVAS_H * 0.25, count: 6, speed: cfg.bulletSpeed * 0.8, r: 5, color: '#ff7a45', decayDur: 0.7, frac: 0.25, grad: true },
             });
             break;
           }
@@ -1185,13 +1232,15 @@
             for (let k = 0; k < 6; k++) pushEBullet(e, Math.PI / 2 - Math.PI * 5 / 12 + k * (Math.PI * 5 / 6) / 5, cfg.bulletSpeed, cfg);
             break;
           }
-          case 2: {   // 技能3：快速朝玩家位置释放两轮 2×2（第一轮夹角 40°、第二轮 60°）
-            const aim = Math.atan2(player.y - e.y, player.x - e.x);
+          case 2: {   // 技能3：快速朝正下方释放两轮 2×2（第一轮夹角 40°、第二轮 60°，加速长条弹）；
+            // 瞄准固定正下方（不追踪玩家）；出弹点以施放瞬间为准快照（后发不随机体移动漂移）
+            const aim = Math.PI / 2;
+            const ox = e.x, oy = e.y + e.h / 2;
             for (const [half, t0] of [[Math.PI / 9, 0], [Math.PI / 6, 0.3]]) {
               e.scheduled.push({ t: t0, fn: () => {
                 for (const s of [-1, 1]) {
-                  pushEBullet(e, aim + s * half, cfg.bulletSpeed, cfg);
-                  e.scheduled.push({ t: 0.1, fn: () => pushEBullet(e, aim + s * half, cfg.bulletSpeed, cfg) });
+                  pushEBullet(e, aim + s * half, 2, cfg, { accel: 300, maxSpeed: cfg.bulletSpeed * 1.8, x: ox, y: oy });
+                  e.scheduled.push({ t: 0.1, fn: () => pushEBullet(e, aim + s * half, 2, cfg, { accel: 300, maxSpeed: cfg.bulletSpeed * 1.8, x: ox, y: oy }) });
                 }
               }});
             }
@@ -1203,7 +1252,7 @@
           }
         }
       } else if (e.skill === 'cyan') {
-        // 增生：三技能循环 —— 两翼召唤增生侧翼艇 / 双发屏障支援弹 / 两轮 6 发环形
+        // 青时：三技能循环 —— 两翼召唤增生侧翼艇 / 双发屏障支援弹 / DNA 双螺旋四连弹
         switch (e.pattern % 3) {
           case 0: {
             // 技能1：两翼各飞出一个增生侧翼艇（先朝两侧、随后转向下飞；诗篇连续两波共 4 个）；
@@ -1212,13 +1261,15 @@
               for (const s of [-1, 1]) {
                 const p = makeEnemy('prolifera', e.x + s * e.w * 0.55, e.y + e.h * 0.35, { fireTimer: 1e9 });
                 p.noReward = true;
+                p.chargeShield = isPoem() ? 2 : 1;   // 次数盾：常态 1 层、诗篇 2 层（单次伤害抵御一次；群星允诺暴走弹无视，见 08-entities；白色浅盾视觉见 10-draw-world）
+                p.chargeShieldMax = p.chargeShield;
                 p._velTilt = true;   // 绘制朝向随速度方向变化（先侧后下）
                 p._sideVel = { vx: s * 140, vy: 24 };
                 p._velCurve = { t: 0, dur: 0.7, vx0: s * 140, vy0: 24, vx1: s * 26, vy1: 150 };
               }
             };
             spawnPair();
-            if (isShipian()) e.scheduled.push({ t: 0.7, fn: spawnPair });
+            if (isPoem()) e.scheduled.push({ t: 0.7, fn: spawnPair });
             break;
           }
           case 1: {
@@ -1229,8 +1280,27 @@
             break;
           }
           case 2: {
-            // 技能3：选定两个随机方向，先后（顺序随机）各射一轮 6 发环形爆发
-            const rounds = [0, 0.22];
+            // 技能3（原紫晶炮艇技能1，2026-09 批次互换）：DNA 双螺旋四连弹——朝玩家 2×2（前后两批），全部自机头出膛；
+            // 出弹点以施放瞬间为准快照（后批不随机体移动漂移）；加速蛇行弹（初速≈0 → 180% 弹速）；
+            // 朝向绕射击方向正弦摆动（摆幅 0.385 rad，较初版 0.55 −30%）：左右两发相位相反，轨迹持续交绕呈双螺旋
+            const aim = Math.atan2(player.y - e.y, player.x - e.x);
+            const sx0 = e.x, sy0 = e.y + e.h / 2;
+            for (const t0 of [0, 0.104]) {   // 两批间隔 0.104s（较初版 0.16s -35%）
+              e.scheduled.push({ t: t0, fn: () => {
+                pushEBullet(e, aim, 2, cfg, { x: sx0, y: sy0, accel: 300, maxSpeed: cfg.bulletSpeed * 1.8, weave: { amp: 0.385, om: 5.5, ph: 0 } });
+                pushEBullet(e, aim, 2, cfg, { x: sx0, y: sy0, accel: 300, maxSpeed: cfg.bulletSpeed * 1.8, weave: { amp: 0.385, om: 5.5, ph: Math.PI } });
+              }});
+            }
+            break;
+          }
+        }
+      } else {
+        // 紫 mixed：三技能循环 —— 两轮 6 发环形爆发 / 三发平行贴弹 / 锁定侧扫 60°
+        switch (e.pattern % 3) {
+          case 0: {
+            // 技能1（原青时炮艇技能3，2026-09 批次互换）：选定两个随机方向，先后（顺序随机）各射一轮 6 发环形爆发
+            //（两轮间隔 0.352s，较初版 0.22s +60%）
+            const rounds = [0, 0.352];
             if (Math.random() < 0.5) rounds.reverse();
             for (const t0 of rounds) {
               const off = Math.random() * Math.PI * 2;
@@ -1240,42 +1310,27 @@
             }
             break;
           }
-        }
-      } else {
-        // 紫 mixed：三技能循环 —— DNA 双螺旋四连弹 / 三发平行贴弹 / 锁定侧扫 60°
-        switch (e.pattern % 3) {
-          case 0: {
-            // 技能1：朝玩家当前位置快速射 2×2 四发（左/右出射各两发、前后两批），左右两束带反向横向加速度
-            // 交叉飞行，呈现 DNA 双螺旋般的交绕轨迹
-            const aim = Math.atan2(player.y - e.y, player.x - e.x);
-            const sx = e.w * 0.3;
-            for (const t0 of [0, 0.16]) {
-              e.scheduled.push({ t: t0, fn: () => {
-                pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: e.x - sx, ax: 240 });
-                pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: e.x + sx, ax: -240 });
-              }});
-            }
-            break;
-          }
           case 1: {
-            // 技能2：追踪玩家一次性射出三发平行长条弹（边上两发与中间同向、间距小），中间弹出射位置略靠前
+            // 技能2：追踪玩家一次性同时射出三发平行长条弹（普通弹速，非加速弹）
+            //（边上两发与中间同向、间距 17.6px）——中间弹出射点显著靠前（26px，侧弹仅 8px），始终更靠近玩家
             const aim = Math.atan2(player.y - e.y, player.x - e.x);
             const px = Math.cos(aim), py = Math.sin(aim);
             const nx = -py, ny = px;   // 垂直于射击方向
-            const cx = e.x + px * 14, cy = e.y + py * 14;   // 中间弹出射点略靠前
-            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: cx, y: cy });
-            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: cx - nx * 11, y: cy - ny * 11 });
-            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: cx + nx * 11, y: cy + ny * 11 });
+            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: e.x + px * 26, y: e.y + py * 26 });
+            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: e.x + px * 8 - nx * 17.6, y: e.y + py * 8 - ny * 17.6 });
+            pushEBullet(e, aim, cfg.bulletSpeed, cfg, { x: e.x + px * 8 + nx * 17.6, y: e.y + py * 8 + ny * 17.6 });
             break;
           }
           case 2: {
-            // 技能3：锁定玩家当前位置，向左或右一侧 60° 区间依次均分射出 4 发（诗篇 5 发）
+            // 技能3：锁定玩家当前位置，向左或右一侧 60° 区间依次均分射出 4 发（诗篇 5 发）加速长条弹
+            // （加速长条弹：初速≈0，加速至 180% 弹速；出弹点以施放瞬间为准快照——机体移动不拖曳扇面）
             const aim = Math.atan2(player.y - e.y, player.x - e.x);
-            const n = isShipian() ? 5 : 4;
+            const sx0 = e.x, sy0 = e.y + e.h / 2;
+            const n = isPoem() ? 5 : 4;
             const side = Math.random() < 0.5 ? -1 : 1;
             for (let k = 0; k < n; k++) {
               const ang = aim + side * (Math.PI / 3) * (n === 1 ? 0 : k / (n - 1));
-              e.scheduled.push({ t: k * 0.09, fn: () => pushEBullet(e, ang, cfg.bulletSpeed, cfg) });
+              e.scheduled.push({ t: k * 0.09, fn: () => pushEBullet(e, ang, 2, cfg, { accel: 300, maxSpeed: cfg.bulletSpeed * 1.8, x: sx0, y: sy0 }) });
             }
             break;
           }
@@ -1290,8 +1345,10 @@
       switch (e.pattern % 3) {
         case 0: {
           // 技能1：锁定玩家当前瞬间坐标——首轮 5 发（最远两发间总夹角 40°）、随后 2/2 两轮；
-          // 每次射击为紧凑两连发（一前一后）：第二轮间隔翻倍（0.56s）、第二轮→第三轮间隔减 25%（0.21s）
+          // 每次射击为紧凑两连发（一前一后）：第二轮间隔翻倍（0.56s）、第二轮→第三轮间隔减 25%（0.21s）；
+          // 加速长条弹（初速≈0 → 180% 弹速），出弹点以施放瞬间为准快照（不随机体移动漂移）
           const lockAng = Math.atan2(player.y - e.y, player.x - e.x);
+          const ox = e.x, oy = e.y + e.h / 2;
           const volleys = [[5, 40], [2, 22], [2, 25]];   // [发数, 总夹角°]
           const times = [0, 0.56, 0.77];
           const twinGap = 0.06;   // 同一次射击两发的前后间隔
@@ -1299,8 +1356,8 @@
             const half = spread * Math.PI / 360;
             for (let k = 0; k < n; k++) {
               const off = n === 1 ? 0 : -half + (2 * half) * k / (n - 1);
-              e.scheduled.push({ t: times[vi], fn: () => pushEBullet(e, lockAng + off, cfg.bulletSpeed, cfg) });
-              e.scheduled.push({ t: times[vi] + twinGap, fn: () => pushEBullet(e, lockAng + off, cfg.bulletSpeed, cfg) });
+              e.scheduled.push({ t: times[vi], fn: () => pushEBullet(e, lockAng + off, 2, cfg, { x: ox, y: oy, accel: 300, maxSpeed: cfg.bulletSpeed * 1.8 }) });
+              e.scheduled.push({ t: times[vi] + twinGap, fn: () => pushEBullet(e, lockAng + off, 2, cfg, { x: ox, y: oy, accel: 300, maxSpeed: cfg.bulletSpeed * 1.8 }) });
             }
           });
           break;
@@ -1322,16 +1379,18 @@
           break;
         }
         case 2: {
-          // 技能3：朝竖直向下依次射出四组「左3右3」加速长条弹（初速≈0、逐渐加速到最大速度），
-          // 四组的左右两 stream 夹角依次为 75°/55°/35°/15°（逐组收窄）；释放期间自身停移（crgoldHold）
+          // 技能3：朝竖直向下依次射出四组「左3右3」加速长条弹（初速≈0、逐渐加速到最大速度 180% 弹速），
+          // 四组的左右两 stream 夹角依次为 75°/55°/35°/15°（逐组收窄）；释放期间自身停移（crgoldHold）；
+          // 出弹点以施放瞬间为准快照（不随机体移动漂移）
+          const ox = e.x, oy = e.y + e.h / 2;
           const accel = 420, maxSpeed = cfg.bulletSpeed * 1.8;
           e.crgoldHold = 2.0;
           for (let g = 0; g < 4; g++) {
             const halfA = [75, 55, 35, 15][g] * Math.PI / 360;   // 每侧偏角 = 夹角的一半
             const t0 = g * 0.5;
             for (let i = 0; i < 3; i++) {
-              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 + halfA, 0.5, cfg, { accel, maxSpeed }) });
-              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed }) });   // 左右同帧发射（原 +0.035 错开致两侧不同时）
+              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 + halfA, 0.5, cfg, { accel, maxSpeed, x: ox, y: oy }) });
+              e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed, x: ox, y: oy }) });   // 左右同帧发射（原 +0.035 错开致两侧不同时）
             }
           }
           break;
@@ -1344,18 +1403,29 @@
           e.burst = { baseAng: Math.atan2(player.y - e.y, player.x - e.x), step: 0, count: 6, shots: 0, gap: 0.13, speed: cfg.bulletSpeed * 1.2, mirror: false, jitter: Math.PI / 9 };
           e.burstTimer = 0;
           break;
-        case 1: {   // 技能2：向前方发射大号红弹，飞行一段后停止→分裂成 6 个小红弹（互相 60°）
-          const ang = Math.atan2(player.y - e.y, player.x - e.x);
-          pushEBullet(e, ang, cfg.bulletSpeed * 0.9, cfg, {
-            r: 15, len: 0, color: SPLIT_RED,
-            split: { dist: 170, count: 6, speed: cfg.bulletSpeed * 1.15, r: 6, color: SPLIT_RED, len: 0 },
-          });
+        case 1: {   // 技能2（2026-09 批次改版）：向下方 120° 扇区内两个随机方向、先后（间隔 0.25s）各发射一颗
+          // 与橙焰炮艇同款的巨型子弹（r10 橙红 #ff7a45：飞行 25% 屏高减速滑行 0.7s、临近停速分裂 6 发渐变小子弹）
+          const fireGiant = (t0) => {
+            const ang = Math.PI / 2 + rand(-Math.PI / 3, Math.PI / 3);   // 下方 120° 扇区随机方向
+            e.scheduled.push({ t: t0, fn: () => pushEBullet(e, ang, cfg.bulletSpeed * 0.85, cfg, {
+              r: 10, len: 0, color: '#ff7a45',
+              split: { dist: CANVAS_H * 0.25, count: 6, speed: cfg.bulletSpeed * 0.8, r: 5, color: '#ff7a45', decayDur: 0.7, frac: 0.25, grad: true },
+            })});
+          };
+          fireGiant(0);
+          fireGiant(0.25);
           break;
         }
-        case 2:   // 技能3（不变）：双臂螺旋 12 发
-          e.burst = { baseAng: Math.random() * Math.PI * 2, step: 0.4, count: 12, shots: 0, gap: 0.1, speed: cfg.bulletSpeed, mirror: true };
+        case 2: {   // 技能3：双臂螺旋 12 发——镜像两臂逐发旋转展开（step 0.4 rad）；
+          // 改为加速长条弹（初速≈0 → 180% 弹速），出弹点以施放瞬间为准快照（burst ox/oy）
+          e.burst = {
+            baseAng: Math.random() * Math.PI * 2, step: 0.4, count: 12, shots: 0, gap: 0.1,
+            speed: 2, mirror: true, ox: e.x, oy: e.y + e.h / 2,
+            opts: { accel: 300, maxSpeed: cfg.bulletSpeed * 1.8 },
+          };
           e.burstTimer = 0;
           break;
+        }
       }
     } else {
       // 红 barrage：三种设计化弹幕循环（交叉矛 / 弧线织网 / '/||\'→'/|\' 加速弹幕）
@@ -1369,10 +1439,14 @@
           e.scheduled.push({ t: 0.62, fn: () => fireHyperbolaFan(e, cfg, -firstSide) });
           break;
         }
-        case 2:
-          fireBarrageWide(e, cfg);        // '/||\'（30°）
-          e.scheduled.push({ t: 0.55, fn: () => fireBarrageNarrow(e, cfg) });   // 随后 '/|\'（45°）
+        case 2: {
+          // 技能3：'/||\'（30°）→ '/|\'（45°）加速弹幕——出弹点以施放瞬间为准快照（两波同点，不随机体移动漂移）；
+          // 第二轮在第一轮末发出膛（3×0.09s）后 0.3s 开始
+          const ox = e.x, oy = e.y;
+          fireBarrageWide(e, cfg, ox, oy);        // '/||\'（30°）
+          e.scheduled.push({ t: 3 * 0.09 + 0.3, fn: () => fireBarrageNarrow(e, cfg, ox, oy) });   // 随后 '/|\'（45°）
           break;
+        }
       }
     }
     e.pattern++;
@@ -1393,7 +1467,11 @@
       len: opts.len != null ? opts.len : (isShip ? SHIP_BULLET_LEN : 0),
       dmg: opts.dmg != null ? opts.dmg : cfg.bulletDmg,
       color: opts.color || (isShip ? SHIP_BULLET_COLOR : '#ffd166'),
-      split: opts.split || null,    // 分裂弹配置（飞行一段→停止→分裂）
+      split: opts.split || null,    // 分裂弹配置（飞行一段→减速→分裂）
+      support: !!opts.support,      // 青时炮艇支援弹标记（命中加屏障、不造成伤害，见 08-entities；此前 opts.support 未透传导致整条屏障链路失效）
+      weave: opts.weave || null,    // 蛇行弹配置 { amp, om, ph }（朝向绕 baseAng 正弦摆动、恒速前进，见 08-entities）
+      baseAng: ang,                 // 出射基准角（蛇行摆动中心）
+      age: 0,                       // 存在时长（蛇行相位推进用）
       laser: !!opts.laser,          // 自定义渲染：胶囊形紫色激光（fashiA1/A2）
       laserBright: !!opts.laserBright, // A2 专属：激光更亮（渲染辉光与配色增强）
       lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
@@ -1401,6 +1479,21 @@
       traveled: 0,
       owner: e,                     // 发射者引用（群星守望 BOSS 战：击杀该敌人时清除其全部在场射弹）
     });
+  }
+
+  // A1 横移启动（攻击后 strafeChance / 入场触发线 fa1EntryStrafe 共用）：
+  // 随机方向（已贴左右 15% 边缘时强制向场心）、随机距离（受 40px 边距约束）
+  function fa1StartStrafe(e) {
+    e.fa1State = 'strafe'; e.fa1T = 0;
+    const inLeft = e.x < CANVAS_W * 0.15;
+    const inRight = e.x > CANVAS_W * 0.85;
+    if (inLeft) e.strafeDir = 1;
+    else if (inRight) e.strafeDir = -1;
+    else e.strafeDir = Math.random() < 0.5 ? -1 : 1;
+    e.strafeDist = rand(FASHI_A1.strafeMin, FASHI_A1.strafeMax);
+    const maxX = e.strafeDir > 0 ? (CANVAS_W - 40 - e.x) : (e.x - 40);
+    e.strafeDist = Math.min(e.strafeDist, Math.max(30, maxX));
+    e.strafeMoved = 0;
   }
 
   /* ---------- 3类金/红（gunship）设计化弹幕 ---------- */
@@ -1413,13 +1506,15 @@
     pushEBullet(e, down - a10, cfg.bulletSpeed, cfg, { x: e.x + sideX });   // 右组 '\'
   }
 
-  // 红 技能3：垂直向下 + 下±20° 三方向，每方向快速射 2 发（一轮，两发间隔 0.11s）
-  function fireTriVolley(e, cfg) {
+  // 红 技能3：垂直向下 + 下±20° 三方向，每方向快速射 2 发（一轮，两发间隔 0.11s）；
+  // ox/oy：出弹点快照（施放瞬间锁定，两轮齐射均从同一点出膛，不随机体移动漂移）
+  function fireTriVolley(e, cfg, ox, oy) {
     const down = Math.PI / 2, a20 = Math.PI / 9;
     const dirs = [down - a20, down, down + a20];
     const speed = cfg.bulletSpeed * 1.05;
-    for (const ang of dirs) pushEBullet(e, ang, speed, cfg);
-    e.scheduled.push({ t: 0.11, fn: () => { for (const ang of dirs) pushEBullet(e, ang, speed, cfg); } });
+    const pos = ox != null ? { x: ox, y: oy } : {};
+    for (const ang of dirs) pushEBullet(e, ang, speed, cfg, pos);
+    e.scheduled.push({ t: 0.11, fn: () => { for (const ang of dirs) pushEBullet(e, ang, speed, cfg, pos); } });
   }
 
   /* ---------- 4类红（capital barrage）设计化弹幕 ---------- */
@@ -1457,31 +1552,38 @@
     }
   }
 
-  // 技能3 笔画：同一射线连射 4 发不同初速的长条弹，沿射线拉开成“一笔画”；初速低→加速到最大弹速
-  function fireStroke(e, ang, spawnX, cfg, accel, maxSpeed) {
-    const spawnY = e.y - e.h * 0.1;   // 发射点（舰体中心略上方），弹幕飞抵下方时更分散
-    for (const sp of [42, 97, 152, 207]) {   // 相邻间距较原来 +50%
-      pushEBullet(e, ang, sp, cfg, { x: spawnX, y: spawnY, accel, maxSpeed, color: SHIP_BULLET_COLOR, len: SHIP_BULLET_LEN });
+  // 技能3 笔画：同一射线沿时间依次连发 4 发同参加速长条弹（间隔 0.18s）——
+  // 全部达最大弹速后间距 = 弹速 × 间隔，恒定均匀（原"同帧不同初速"方案因各弹触顶时刻不同、
+  // 触顶阶段间距被不均匀压缩——屏底处前紧后松）
+  function fireStroke(e, ang, spawnX, cfg, accel, maxSpeed, oy) {
+    const spawnY = (oy != null ? oy : e.y) - e.h * 0.1;   // 发射点（舰体中心略上方），弹幕飞抵下方时更分散
+    const gapT = 0.09;   // 相邻两发出膛间隔（0.18 → 0.09s，-50%）；触顶后间距 = 弹速 × gapT
+    for (let k = 0; k < 4; k++) {
+      const fn = () => pushEBullet(e, ang, 60, cfg, { x: spawnX, y: spawnY, accel, maxSpeed, color: SHIP_BULLET_COLOR, len: SHIP_BULLET_LEN });
+      if (k === 0) fn();
+      else e.scheduled.push({ t: k * gapT, fn });
     }
   }
 
-  // 技能3 第一波：'/||\' —— / 与 | 夹角 30°，两个 | 之间留有横向距离
-  function fireBarrageWide(e, cfg) {
+  // 技能3 第一波：'/||\' —— / 与 | 夹角 30°，两个 | 之间留有横向距离；ox/oy 出弹点快照（缺省读机体位置）
+  function fireBarrageWide(e, cfg, ox, oy) {
     const down = Math.PI / 2, a30 = Math.PI / 6;
-    const accel = 240, maxSpeed = cfg.bulletSpeed * 1.2, gap = 40;   // accel 降 40%（400→240）、最大弹速降 40%（2×→1.2×）→ 加速更缓、笔画拉得更开
-    fireStroke(e, down + a30, e.x - gap, cfg, accel, maxSpeed);        // '/' 左外，向下偏左 30°
-    fireStroke(e, down, e.x - gap * 0.35, cfg, accel, maxSpeed);       // '|' 左
-    fireStroke(e, down, e.x + gap * 0.35, cfg, accel, maxSpeed);       // '|' 右
-    fireStroke(e, down - a30, e.x + gap, cfg, accel, maxSpeed);        // '\' 右外，向下偏右 30°
+    const bx = ox != null ? ox : e.x;
+    const accel = 240, maxSpeed = cfg.bulletSpeed * rand(1.2, 1.4), gap = 40;   // 最大弹速逐波随机 1.2~1.4×
+    fireStroke(e, down + a30, bx - gap, cfg, accel, maxSpeed, oy);        // '/' 左外，向下偏左 30°
+    fireStroke(e, down, bx - gap * 0.35, cfg, accel, maxSpeed, oy);       // '|' 左
+    fireStroke(e, down, bx + gap * 0.35, cfg, accel, maxSpeed, oy);       // '|' 右
+    fireStroke(e, down - a30, bx + gap, cfg, accel, maxSpeed, oy);        // '\' 右外，向下偏右 30°
   }
 
-  // 技能3 第二波（随后）：'/|\' —— 夹角 45°，单 '|' 居中
-  function fireBarrageNarrow(e, cfg) {
+  // 技能3 第二波（随后）：'/|\' —— 夹角 45°，单 '|' 居中；ox/oy 出弹点快照（缺省读机体位置）
+  function fireBarrageNarrow(e, cfg, ox, oy) {
     const down = Math.PI / 2, a45 = Math.PI / 4;
-    const accel = 240, maxSpeed = cfg.bulletSpeed * 1.2, gap = 34;   // accel 降 40%（400→240）、最大弹速降 40%（2×→1.2×）→ 加速更缓、笔画拉得更开
-    fireStroke(e, down + a45, e.x - gap, cfg, accel, maxSpeed);        // '/'
-    fireStroke(e, down, e.x, cfg, accel, maxSpeed);                    // '|'
-    fireStroke(e, down - a45, e.x + gap, cfg, accel, maxSpeed);        // '\'
+    const bx = ox != null ? ox : e.x;
+    const accel = 240, maxSpeed = cfg.bulletSpeed * rand(1.2, 1.4), gap = 34;   // 最大弹速逐波随机 1.2~1.4×
+    fireStroke(e, down + a45, bx - gap, cfg, accel, maxSpeed, oy);        // '/'
+    fireStroke(e, down, bx, cfg, accel, maxSpeed, oy);                    // '|'
+    fireStroke(e, down - a45, bx + gap, cfg, accel, maxSpeed, oy);        // '\'
   }
 
   // ---------- 炮火先兆者导弹 ----------
@@ -1686,7 +1788,7 @@
       growT: 0, scale: FASHI_MATRIX.cubeGrowFrom, r: FASHI_ARRAY.cubeR * FASHI_MATRIX.cubeGrowFrom,
       big: true,
       spinSeed: rand(0, Math.PI * 2),   // 三轴翻滚初相（多枚大正方体翻滚姿态互不相同）
-      spinMul: rand(0.8, 1.25),         // 三轴翻滚速度扰动
+      spinMul: rand(0.8, 1.25) * 2,     // 三轴翻滚速度扰动 ×2（法术阵列大正方体转速翻倍，2026-09 批次）
       splitDist: maxRange * rand(FASHI_ARRAY.splitMin, FASHI_ARRAY.splitMax),
       warnT: -1,   // <0 = 未进入分裂预警
     });
@@ -1796,7 +1898,7 @@
         // 低速下坠（初速极低，无高初速）
         b.y += BAOLING.dropSpeed * dt;
         if (Math.random() < 0.35) spawnParticles(b.x, b.y, '#ffb545', 1, 40);   // 引信余火
-        if (b.t >= BAOLING.dropTime) {
+        if (b.t >= b.dropDur) {
           b.phase = 'strike';
           const dx = b.tx - b.x, dy = b.ty - b.y;
           const d = Math.hypot(dx, dy) || 1;
@@ -1837,6 +1939,7 @@
       x: e.x, y: e.y + 18,
       tx: e.blWarn.tx, ty: e.blWarn.ty,
       phase: 'drop', t: 0, spd: BAOLING.dropSpeed, ux: 0, uy: 1,
+      dropDur: rand(BAOLING.dropTimeMin, BAOLING.dropTimeMax),   // 低速下坠时长逐弹随机 0.4~0.6s
     });
     spawnParticles(e.x, e.y + 16, '#ffd166', 12, 220);   // 脱离火星
     spawnParticles(e.x, e.y + 16, '#ff7a45', 8, 160);
@@ -1932,8 +2035,8 @@
     }
   }
 
-  // 掉落水晶生成 x 夹取：边缘击杀（1类侧翼艇从屏幕外斜插等）时保证水晶完整出生在战场内，
-  // 否则水晶只沿垂直下坠、无左右边界回收（08-entities updateCrystals），出生在场外即永久丢失
+  // 掉落水晶生成 x 夹取：边缘击杀（1类侧翼艇从屏幕外斜插等）时保证水晶完整出生在战场内；
+  // 运动中的左右边界回收另见 08-entities updateCrystals（贴边夹取消 vx，不出两侧边界）
   function clampDropX(x, r) { return clamp(x, r + 2, CANVAS_W - r - 2); }
 
   // 通用道具掉落（普通敌人与 BOSS 共用；依 升级套件 → 量子护盾 → 加血 顺序互斥判定）
@@ -1989,6 +2092,10 @@
     //   冷却期内掉落判定照常进行，但加血环节概率变为 50%（hpKitBankChance）且敌人不掉落（改为"预触发"计数）；
     //   冷却结束后若预触发 ≥1，击杀的第一个敌人必定掉落一个加血套件（随后计数清零）。
     //   每次【实际掉落】加血套件（含 BOSS 战脚本化加血）都会重置 8s 计时
+    // 诗篇波次制节流（WAVE_POEM.healWaveGap）：加血套件每 N 波最多 1 个——levelFlow.hpKitWaveCd
+    //   由 04-spawn 每波刷新递减；实际掉落（含 BOSS 战脚本化加血）后重新置满。节流期内命中加血环节 = 无掉落
+    const hpKitWaveGap = isPoem() ? WAVE_POEM.healWaveGap : Infinity;
+    const hpKitWaveBlocked = (levelFlow.hpKitWaveCd || 0) > 0;
     const hpKitGap = dMods.hpKitGap != null ? dMods.hpKitGap : Infinity;
     const hpKitInCd = state.time - state.hpKitLastT < hpKitGap;
     const hpKitRelease = !isBoss && hpKitGap !== Infinity && !hpKitInCd && state.hpKitBanked >= 1;
@@ -2012,9 +2119,10 @@
       } else if (hpKitGap !== Infinity && hpKitInCd) {
         // 真我冷却期内：加血环节概率变为 50%，命中改为"预触发"（敌人不掉落）
         if (Math.random() < dMods.hpKitBankChance) state.hpKitBanked++;
-      } else if (pr < kitRate + shieldRate + hpRate) {
+      } else if (!hpKitWaveBlocked && pr < kitRate + shieldRate + hpRate) {
         spawnPowerup(x, y, 'hp', 12);
         if (hpKitGap !== Infinity) state.hpKitLastT = state.time;
+        if (hpKitWaveGap !== Infinity) levelFlow.hpKitWaveCd = hpKitWaveGap;
       }
     }
     if (isBoss) {
@@ -2022,6 +2130,7 @@
       if (hr < DROP_HP_BOSS) spawnPowerup(x, y, 'hp', 12);
       else if (hr < DROP_HP_BOSS + DROP_HP_BOSS2) { spawnPowerup(x, y, 'hp', 12); spawnPowerup(x, y, 'hp', 12); }
       if (hr < DROP_HP_BOSS + DROP_HP_BOSS2 && hpKitGap !== Infinity) state.hpKitLastT = state.time;   // BOSS 脚本化加血同样重置 8s 计时
+      if (hr < DROP_HP_BOSS + DROP_HP_BOSS2 && hpKitWaveGap !== Infinity) levelFlow.hpKitWaveCd = hpKitWaveGap;   // 诗篇：BOSS 加血后同样进入波次节流
     }
     // 橙色敌人（烈橙突击艇 / 威龙）：0.5% 掉爆弹 —— 整场战斗最多触发一次（不影响 4类 5% 与 BOSS 20%）
     if (tags.includes('orange') && !state.orangeBombUsed && Math.random() < DROP_BOMB_ORANGE) {
@@ -2124,12 +2233,13 @@
       spawnParticles(e.x, e.y, BOSS_BULLET.long, 40, 300);
       shake(22, 1.0);
       clearEnemyBullets(); clearMissiles();   // BOSS 死亡：立刻清除全场所有弹幕
-      // BOSS 死亡：大量水晶四散飘落（测试模式不掉落）
-      // 水晶：旧日之歌 50 / 风暴编织者 80（继承一阶段掉落）；暴风之眼不再掉落水晶（由二阶段继承）
+      // BOSS 死亡：大量水晶撒落（测试模式不掉落）
+      // 水晶：旧日之歌 600 / 风暴编织者 900（两者分数均为 0，击杀奖励全部走水晶）；暴风之眼本体不掉水晶、击杀得分 9000
       // 不再强制吸收（原 absorbDelay 到期后无视距离全数吸走）：与普通掉落一致由磁吸 / 追逐拾取；
-      // 自身移动速度减少 40%（×0.6）——飘落更慢、留场更久，给玩家追逐拾取的空间
+      // 与普通掉落同速（150~200）垂直下坠、无横向速度（不乱飞）——原 ×0.6 慢速留场修正于 2026-09-27 移除（正常速度），
+      // 未收集水晶由胜利结算前 0.8s 的统一收集兜底（见 08-entities collectAllCrystals / 14-main victoryDelay 窗口）
       if (!testMode && e.bossId !== 'storm') {
-        const nCry = e.bossId === 'storm2' ? 80 : 50;
+        const nCry = e.bossId === 'storm2' ? 900 : 600;
         // 首轮 BOSS（FIRST_ROUND_BOSSES）掉落的水晶打标：拾取时对七日澜心量表按 firstBossBonus 额外加成
         const firstBossCry = FIRST_ROUND_BOSSES.includes(e.bossId);
         // 水晶分档换算（三档 + 巨型）：BOSS 大量掉落同样走档位体系
@@ -2138,10 +2248,10 @@
           const def = CRYSTAL_TIERS[tier];
           const giant = Math.random() < CRYSTAL_GIANT_CHANCE[tier];
           const t2 = giant ? 'giant' : tier;
-          const colorKey = giant ? 'g' + Math.floor(Math.random() * 2) : 'c' + Math.floor(Math.random() * 2);   // 双色随机：原青 / 最早水晶同色水蓝
+          const colorKey = giant ? 'g' + Math.floor(Math.random() * CRYSTAL_GIANT_COLORS.length) : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS.length);   // BOSS 专属掉落：三色均分（青 / 水蓝 / 粉）+ 巨型双色均分（粉巨型仅 BOSS 可出，2026-09-27 定稿）
           crystals.push({
             x: clampDropX(e.x + rand(-200, 200), def.r), y: e.y + rand(-40, 40),
-            vx: rand(-80, 80) * 0.6, vy: rand(120, 210) * 0.6,
+            vx: 0, vy: rand(150, 200),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除）
             r: def.r, val: CRYSTAL_TIERS[t2].val,
             tier: t2, colorKey, giant, firstBoss: firstBossCry,
             fromBoss: true,   // BOSS 掉落水晶标记（漓隐藏计数表不计入，见 08-entities updateCrystals）
@@ -2168,6 +2278,8 @@
       bossFlow.timer = 0;
       // 击败第一个 BOSS（旧日之歌）：水晶磁吸半径永久 ×1.5（本场战斗持续生效，重开归 1）
       if (e.bossId === 'song') state.crystalMagnetMul = 1.5;
+      // 温酒客：每击败一个 BOSS，受到伤害提升 -25 个百分点（+100% → +75% → +50% → +25% → +0%，最低归零）
+      if (state.wenjiukeVuln > 0) state.wenjiukeVuln = Math.max(0, state.wenjiukeVuln - PILOTS.wenjiuke.vulnDecay);
       // 洄：击败 BOSS 时回复 35% 已损失生命（上限当前装甲最大生命）。
       // 直接结算到 player.hp，不走道具掉落——与真我加血套件 8s 节流（hpKitLastT）完全无关，不触发也不受其冷却限制。
       // 小艺连携：洄的治疗效果 ×1.35（pilotHuiHealMul）——成就「时流回溯」按实际结算量累计
@@ -2182,10 +2294,12 @@
       }
       // 阶段推进：还有下一个 BOSS → 重置计时进入新一轮刷怪；已是最终 BOSS（或测试 / 图鉴挑战）→ 延迟后胜利结算
       bossFlow.phase++;
+      levelFlow.poemWaveIdx = 0;   // 诗篇波次制：新阶段波次计数归零（下一轮从 Lv11 重新按波推进）
       // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬；
       // 阶段衔接为连续升级（新阶段首级 = 击败时等级）时不构成跳变、不置豁免，避免吞掉阶段内首次自然升级的判定
+      // 诗篇波次制：波 N = 等级 N（第一轮 Lv1~10 / 第二轮 Lv11~20），阶段衔接为连续升级（10 → 11），永不跳变、不置豁免
       const lvCfgNext = SPAWN_PHASE_LEVEL[bossFlow.phase] || SPAWN_PHASE_LEVEL[SPAWN_PHASE_LEVEL.length - 1];
-      if (lvCfgNext.base > levelFlow.level) levelFlow.douzhiSkipOnce = true;
+      if (!isPoem() && lvCfgNext.base > levelFlow.level) levelFlow.douzhiSkipOnce = true;
       if (bossFlow.phase < BOSS_SEQUENCE.length && !state.testBoss && !state.challenge) {
         if (e.bossId === 'storm') {
           // 暴风之眼被击败：风暴轰然消散，直接召唤二阶段飞舰「风暴编织者」
@@ -2248,10 +2362,10 @@
       return;
     }
     // 卫护飞船（增生侧翼艇衍生）：不掉落任何水晶与道具，不参与通用水晶/道具掉落池（测试模式不加分）
-    // BOSS 战强制波衍生的卫护飞船（minionDrop 传播）：同样不加分
+    // BOSS 战强制波衍生的卫护飞船（minionDrop 传播）与青时炮艇召唤体衍生的卫护飞船（noReward 传播）：同样不加分
     if (e.type === 'escort') {
       spawnParticles(e.x, e.y, e.color, 14, 200);
-      if (!testMode && !e.minionDrop) {
+      if (!testMode && !e.minionDrop && !e.noReward) {
         state.score += Math.round(e.score * diffMods().scoreMul);
       }
       spliceSelf();
@@ -2259,7 +2373,7 @@
     }
     // 法术阵列召唤的法术矩阵（周期召唤体）：死亡不加分、不掉水晶（仅爆炸演出，直接移除）
     if (e.noReward) {
-      // 增生炮艇召唤体：无奖励但仍分裂卫护飞船（衍生体同样无奖励）
+      // 青时炮艇召唤体：无奖励但仍分裂卫护飞船（衍生体同样无奖励）
       if (e.type === 'prolifera' && !state.aiyiSelfDestruct) {
         const base = e._sideVel || { vx: 0, vy: 60 };
         const spd2 = Math.hypot(base.vx, base.vy) || 60;
@@ -2403,35 +2517,58 @@
       spawnParticles(e.x, e.y, '#ff5566', 18, 260);
       spawnParticles(e.x, e.y, '#fff0f0', 10, 200);
     }
-    // 水晶掉落：大概率，数量随体型增加；直接垂直下坠，不乱飘（测试模式不掉水晶、不掉道具）
+    // 水晶掉落：概率与数量逐型定义（怪物属性总表 2026-09 批次）；直接垂直下坠，不乱飘（测试模式不掉水晶、不掉道具）
     if (!testMode) {
-      // 紫电（自爆 1类）与大型龙卷不掉水晶；幽暮 80% 掉 3~5；斗志昂扬必定掉落 4~6
-      // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍
+      // 1类 60% 掉 1~3（紫电/大型龙卷不掉）；2类常规 70% 掉 4~5 + 10% 掉 6；幽暮 80% 掉 6~10；斗志昂扬必掉 6
+      // A1 60% 掉 4~5 + 20% 掉 6~8；破片 80% 掉 5~7；矩阵 80% 掉 4~6；炮艇 80% 掉 9~11；先兆者 80% 掉 9~12
+      // 威龙 80% 掉 16~22；寒霜/御4/铁砧 90% 掉 6~10；暴鸰 80% 掉 6~8；焦香 90% 掉 12~14；A2 80% 掉 9~12
+      // 4类（主力舰三变体 / 法术阵列）必掉：5% 掉 40~48、其余 24~35
+      // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍（2~6）
       const isDusk = e.type === 'striker' && e.skill === 'dusk';
-      const dropR = Math.random();
-      const cCount = (e.postBossWave ? 2 : 1) *
-        (e.type === 'capital' || e.type === 'fashiArray' ? 12 + Math.floor(Math.random() * 7) :
-        e.type === 'weilong' ? 10 + Math.floor(Math.random() * 3) :
-        e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'anvil' ? 6 + Math.floor(Math.random() * 5) :
-        e.type === 'fashiA2' || e.type === 'jiaoxiang' ? 8 + Math.floor(Math.random() * 5) :
-        e.type === 'baoling' ? 4 + Math.floor(Math.random() * 4) :
-        e.type === 'douzhi' ? 4 + Math.floor(Math.random() * 3) :
-        isDusk ? 3 + Math.floor(Math.random() * 3) :
-        e.type === 'fashiA1' || e.type === 'popian' ? 3 + Math.floor(Math.random() * 3) :
-        e.type === 'fashiMatrix' ? 2 + Math.floor(Math.random() * 3) :
-        e.type === 'striker' ? 2 + Math.floor(Math.random() * 3) :
-        1 + Math.floor(Math.random() * 3));
+      const r = Math.random();
+      let cCount = 0;
+      if (e.type === 'capital' || e.type === 'fashiArray') {
+        cCount = r < 0.05 ? 40 + Math.floor(Math.random() * 9) : 24 + Math.floor(Math.random() * 12);
+      } else if (e.type === 'weilong') {
+        cCount = r < 0.80 ? 16 + Math.floor(Math.random() * 7) : 0;
+      } else if (e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'anvil') {
+        cCount = r < 0.90 ? 6 + Math.floor(Math.random() * 5) : 0;
+      } else if (e.type === 'jiaoxiang') {
+        cCount = r < 0.90 ? 12 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'fashiA2') {
+        cCount = r < 0.80 ? 9 + Math.floor(Math.random() * 4) : 0;
+      } else if (e.type === 'gunship') {
+        cCount = r < 0.80 ? 9 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'harbinger') {
+        cCount = r < 0.80 ? 9 + Math.floor(Math.random() * 4) : 0;
+      } else if (e.type === 'baoling') {
+        cCount = r < 0.80 ? 6 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'douzhi') {
+        cCount = 6;
+      } else if (isDusk) {
+        cCount = r < 0.80 ? 6 + Math.floor(Math.random() * 5) : 0;
+      } else if (e.type === 'striker') {
+        cCount = r < 0.70 ? 4 + Math.floor(Math.random() * 2) : r < 0.80 ? 6 : 0;
+      } else if (e.type === 'fashiA1') {
+        cCount = r < 0.60 ? 4 + Math.floor(Math.random() * 2) : r < 0.80 ? 6 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'popian') {
+        cCount = r < 0.80 ? 5 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'fashiMatrix') {
+        cCount = r < 0.80 ? 4 + Math.floor(Math.random() * 3) : 0;
+      } else {
+        cCount = r < 0.60 ? 1 + Math.floor(Math.random() * 3) : 0;   // 1类（side / prolifera）
+      }
+      if (e.postBossWave) cCount = 2 * (1 + Math.floor(Math.random() * 3));   // 固定首波 1类：必掉且翻倍
       const noDrop = (e.type === 'side' && e.behavior === 'kamikaze') || e.type === 'tornado';   // 紫电/大型龙卷不掉水晶
-      const guaranteed = e.postBossWave || e.type === 'douzhi';
       // BOSS 战强制波 1类（minionDrop）：不掉水晶
-      if (!noDrop && !e.minionDrop && (guaranteed || dropR < ((e.type === 'side' || e.type === 'prolifera') ? 0.60 : 0.80))) {
+      if (!noDrop && !e.minionDrop && cCount > 0) {
         // 水晶分档换算（三档 + 巨型，见 01-config convertCrystalDrop）：价值守恒，巨型逐颗掷概率转化
         const mix = convertCrystalDrop(cCount);
         const spawnTier = (tier) => {
           const def = CRYSTAL_TIERS[tier];
           const giant = Math.random() < CRYSTAL_GIANT_CHANCE[tier];
           const t2 = giant ? 'giant' : tier;
-          const colorKey = giant ? 'g' + Math.floor(Math.random() * 2) : 'c' + Math.floor(Math.random() * 2);   // 双色随机：原青 / 最早水晶同色水蓝
+          const colorKey = giant ? 'g0' : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS_NORMAL.length);   // 日常掉落：双色均分（青 / 水蓝）——粉色仅 BOSS 掉落（2026-09-27 定稿）；转巨型固定青（粉巨型同为 BOSS 专属）
           crystals.push({
             x: clampDropX(e.x + rand(-10, 10), def.r), y: e.y + rand(-6, 6),
             vx: 0, vy: rand(150, 200),

@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(24 名) 07-player(18 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(18 名) 11-draw-boss(9 名) 12-ui(75 名) 13-encyclopedia(15 名) 14-main(25 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(24 名) 07-player(18 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(18 名) 11-draw-boss(9 名) 12-ui(76 名) 13-encyclopedia(15 名) 14-main(25 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -21,6 +21,7 @@
   ctx.scale(DPR, DPR);
 
   const hpFill = document.getElementById('hpFill');
+  const hpBarrier = document.getElementById('hpBarrier');   // 青时炮艇支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
   const scoreText = document.getElementById('scoreText');
   const bombIcons = document.getElementById('bombIcons');
   const livesText = document.getElementById('livesText');
@@ -74,7 +75,7 @@
   const encyList = document.getElementById('encyList');
   const encyDetail = document.getElementById('encyDetail');
   const encyClose = document.getElementById('encyClose');
-  const encyDiffGroup = document.getElementById('encyDiffGroup');   // 图鉴头部快捷切换难度（三选一按钮组，见 13-encyclopedia）
+  const encyDiffGroup = document.getElementById('encyDiffGroup');   // 图鉴头部快捷切换难度（四选一按钮组，见 13-encyclopedia）
 
   // 数值与机制图鉴 DOM
   const infoEntryBtn = document.getElementById('infoEntryBtn');
@@ -123,6 +124,7 @@
     kingTaken: 0,          // 大无垠之王：BOSS 战累积的受到伤害提升（上限 PILOTS.king.takenCap；多阶段切换 ×phaseKeep）
     hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
     hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
+    wenjiukeVuln: 1,       // 温酒客：受到伤害提升的当前幅度（开局 1 = +100%；每击败一个 BOSS -0.25，最低 0；仅 hasPilot('wenjiuke') 时生效）
     dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
     dagouDebugRapid: false,   // 大狗：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；跨局保留）
     dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
@@ -164,6 +166,10 @@
     douzhiSkipOnce: false, // 击败 BOSS 引发的阶段跳变升级：下一次「关卡提升」不召唤斗志昂扬（killEnemy 置位）
     bossMinionT: 0,        // 真我：BOSS 战期间 1类强制波次计时（resetGame 归零）
     bossMinionNext: 8,     // 真我：下一次 1类强制波次的间隔（rand 6~12，触发后重取）
+    hpKitWaveCd: 0,        // 诗篇：加血套件波次节流剩余波数（实际掉落后置满 WAVE_POEM.healWaveGap，每波刷新递减；resetGame 归零）
+    poemWaveIdx: 0,     // 诗篇波次制：本阶段已刷波数（波 N = 等级 N；spawnWave 递增，BOSS 阶段推进归零）
+    poemClearT: 0,      // 诗篇波次制：清场计时（许凯狗冲刺期复用为下一波倒计时）
+    poemClearNext: 0,   // 诗篇波次制：清场后到下一波的间隔（rand clearDelay；0 = 立即，开局首波即刷）
   };
 
   const player = {
@@ -564,7 +570,7 @@
   }
 
   export {
-    canvas, ctx, setCtx, DPR, hpFill, scoreText,
+    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, scoreText,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,

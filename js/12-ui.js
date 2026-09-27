@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(11 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { delayedShots, initWingmen } from './07-player.js';
@@ -41,6 +41,11 @@
     const maxHp = player.maxHp || PLAYER_CFG.maxHp;
     const ratio = player.hp / maxHp;
     hpFill.style.width = (ratio * 100) + '%';
+    // 青时炮艇支援弹屏障：HP 条右缘白蓝覆盖条（宽度 = 条宽 × barrier / max(barrierMax, 生命上限)；
+    // 末 1s player.barrier 自动线性衰减 → 覆盖条等比缩短，无需额外动画）
+    const barRatio = (player.barrier || 0) > 0
+      ? clamp(player.barrier / Math.max(player.barrierMax || 0, maxHp), 0, 1) : 0;
+    hpBarrier.style.width = (barRatio * 100) + '%';
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
 
     hpFill.classList.toggle('danger', ratio <= 0.25);
@@ -140,6 +145,10 @@
     levelFlow.jiaoxiang13Done = false;   // Lv13 首波必出焦香螺旋桨：每局重置
     levelFlow.bossMinionT = 0;           // 真我：BOSS 战 1类强制波次计时归零
     levelFlow.bossMinionNext = rand(6, 12);
+    levelFlow.hpKitWaveCd = 0;           // 诗篇：加血套件波次节流剩余波数归零
+    levelFlow.poemWaveIdx = 0;        // 诗篇波次制：本阶段波次计数归零
+    levelFlow.poemClearT = 0;         // 诗篇波次制：清场计时归零
+    levelFlow.poemClearNext = 0;      // 诗篇波次制：清场间隔归零（0 = 开局立即首波）
     state.orangeBombUsed = false;
     state.hpKitLastT = -99;   // 真我加血节流计时归位（开局不受冷却限制）
     state.hpKitBanked = 0;    // 真我加血节流预触发计数清零
@@ -165,6 +174,7 @@
     player.lingluoMaxDebt = 0;   // 陵落：生命上限债务清零（player.maxHp 已在下方按装甲复原）
     // 大无垠之王：BOSS 战累积增伤清零（读数淡变状态同步复位——立刻隐藏）
     state.kingDmg = 0; state.kingTaken = 0;
+    state.wenjiukeVuln = 1;   // 温酒客：受伤提升回到开局 +100%（每击败一个 BOSS -25 个百分点，见 06-enemy 击败结算）
     kingBonusAlpha = 0; kingBonusLastT = null;
     kingBonus.classList.add('hidden'); kingBonus.style.opacity = '0';
     // 埃逸：自爆相关状态归零
@@ -386,10 +396,17 @@
     // 无界飞剑等带 glyphTransform/glyphBold 的字形与选择卡片同款应用（CSS 基准 translateX(-50%) 必须保留，切换时回退复位）
     const subGlyph = document.getElementById('loadoutSubGlyph');
     if (subGlyph) {
-      subGlyph.textContent = currentSubWeapon.glyph || '□';
+      if (currentSubWeapon.iconSvg) {
+        subGlyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色
+        subGlyph.innerHTML = currentSubWeapon.iconSvg;
+        subGlyph.style.transform = 'translateX(-50%)';   // CSS 基准居中保留
+        subGlyph.style.fontWeight = '';
+      } else {
+        subGlyph.textContent = currentSubWeapon.glyph || '□';
+        subGlyph.style.transform = 'translateX(-50%)' + (currentSubWeapon.glyphTransform ? ' ' + currentSubWeapon.glyphTransform : '');
+        subGlyph.style.fontWeight = currentSubWeapon.glyphBold ? '700' : '';
+      }
       subGlyph.style.color = currentSubWeapon.color || '#9fb4d8';
-      subGlyph.style.transform = 'translateX(-50%)' + (currentSubWeapon.glyphTransform ? ' ' + currentSubWeapon.glyphTransform : '');
-      subGlyph.style.fontWeight = currentSubWeapon.glyphBold ? '700' : '';
     }
     if (wingmanVal) wingmanVal.textContent = currentWingman.empty ? '无' : currentWingman.name;
     // 战机形象（同选机卡片画法：暴走形态静态帧；群星之杀暴走巨帆更大，额外缩小）
@@ -664,10 +681,15 @@
       card.dataset.sub = w.id;
       const glyph = document.createElement('div');
       glyph.className = 'armor-card-glyph';
-      glyph.textContent = w.glyph || '□';
+      if (w.iconSvg) {
+        glyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色
+        glyph.innerHTML = w.iconSvg;
+      } else {
+        glyph.textContent = w.glyph || '□';
+        if (w.glyphTransform) glyph.style.transform = w.glyphTransform;   // 无界飞剑：字形倒转 180° + 加宽（注册表 glyphTransform）
+        if (w.glyphBold) glyph.style.fontWeight = '700';   // 无界飞剑：线条增粗
+      }
       glyph.style.color = w.color || '#9fb4d8';
-      if (w.glyphTransform) glyph.style.transform = w.glyphTransform;   // 无界飞剑：字形倒转 180° + 加宽（注册表 glyphTransform）
-      if (w.glyphBold) glyph.style.fontWeight = '700';   // 无界飞剑：线条增粗
       const name = document.createElement('div');
       name.className = 'armor-card-name';
       name.textContent = w.name;
@@ -706,10 +728,15 @@
       if (!p.empty) {
         const glyph = document.createElement('div');
         glyph.className = 'armor-card-glyph';
-        glyph.textContent = p.glyph;
+        if (p.iconSvg) {
+          glyph.classList.add('glyph-svg');   // 矢量图标（陵落彼岸花）：内联 SVG，currentColor 继承注册色
+          glyph.innerHTML = p.iconSvg;
+        } else {
+          glyph.textContent = p.glyph;
+          if (p.glyphTransform) glyph.style.transform = p.glyphTransform;   // 胡笛客：ω 倒转 180°（与哈基米成对）
+          if (p.glyphBold) glyph.style.fontWeight = '700';
+        }
         glyph.style.color = p.color;
-        if (p.glyphTransform) glyph.style.transform = p.glyphTransform;   // 胡笛客：ω 倒转 180°（与哈基米成对）
-        if (p.glyphBold) glyph.style.fontWeight = '700';
         card.appendChild(glyph);
       }
       const name = document.createElement('div');

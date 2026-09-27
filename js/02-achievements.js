@@ -21,7 +21,7 @@
 //   'chixin'     炽心火环灼烧击杀（07-player updatePlayer 灼烧循环）
 //   'bomb-keli'  可莉绷绷炸弹击杀（07-player useBomb，BOSS 击杀判定用）
 
-  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentWingman, hasPilot } from './01-config.js';
+  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme } from './01-config.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
 
   // ─── 本局成就进度域（resetAchievements 随局重置）───
@@ -62,6 +62,8 @@
     _dagouSeqC3: false,  // 当前链序列已计 3 轮（同序列 4 轮不重复计 3 轮）
     _dagouSeqC4: false,  // 当前链序列已计 4 轮
     auraFieldKills: 0,   // 御4力场 / 铁砧光圈内击坠数（其实是打不到 ≥12）
+    harbingerKills: 0,   // 炮火先兆者击坠数（灵巧突围 ≥8）
+    giantCrystals: 0,    // 巨型水晶（原石）拾取数（抽卡！抽卡！ ≥16）
   };
 
   // 测试 / 图鉴挑战模式不产出任何成就
@@ -129,6 +131,10 @@
       achv.killsTotal++;
       if (achv.killsTotal >= 200) unlockAchievement('kill200');
     }
+    if (e.type === 'harbinger') {
+      achv.harbingerKills++;
+      if (achv.harbingerKills >= 8) unlockAchievement('lingqiaotuwei');
+    }
     if (achv.killSrc === 'dagou' && e.type === 'harbinger') unlockAchievement('dagouHarbinger');
     if (achv.killSrc === 'chixin' && (e.type === 'hanshuang' || e.type === 'jiaoxiang')) unlockAchievement('chixinBurnKill');
     if (achv.killSrc === 'chixin' && ENEMY_CLASS[e.type] === 1) {
@@ -160,6 +166,13 @@
     if (!achvGateOk()) return;
     achv.pickups++;
     if (achv.pickups >= 15) unlockAchievement('pickup15');
+  }
+
+  // 巨型水晶（原石）拾取（08-entities updateCrystals 三个拾取点；水晶不走 applyPowerupPickup 故单独上报；抽卡！抽卡！ ≥16）
+  function achvNoteGiantCrystal() {
+    if (!achvGateOk()) return;
+    achv.giantCrystals++;
+    if (achv.giantCrystals >= 16) unlockAchievement('chouka');
   }
 
   // 群星守望消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥60）
@@ -200,17 +213,25 @@
     const dur = Math.max(0, state.time - (achv.bossStartAt || 0));
     if (dur > achv.bossDurMax) achv.bossDurMax = dur;
     // 无伤击败（各段独立判定；须整局未开启过作弊——昨日今日明日 / 风暴航船 / 赫拉之眼）
-    if (achv.bossNoHit[bossId] && !achv.cheatUsed) {
-      if (bossId === 'song') unlockAchievement('songPerfect');
-      else if (bossId === 'storm') unlockAchievement('stormPerfect');
-      else if (bossId === 'storm2') unlockAchievement('storm2Perfect');
-    }
+      if (achv.bossNoHit[bossId] && !achv.cheatUsed) {
+        if (bossId === 'song') unlockAchievement('songPerfect');
+        else if (bossId === 'storm') unlockAchievement('stormPerfect');
+        else if (bossId === 'storm2') unlockAchievement('storm2Perfect');
+        else if (bossId === 'darkhand') unlockAchievement('jiukefeidi');   // 酒客飞匕（黑暗之手待更新占位）
+      }
     if (bossId === 'song') {
       unlockAchievement('faceSong');
       achv.songDown = true;   // 萎靡不振：第一轮 BOSS 已被击败（此后掉命不再判定）
     }
     else if (bossId === 'storm') unlockAchievement(hasPilot('tianxiu') ? 'stormWithTianxiu' : 'stormWithoutTianxiu');
     else if (bossId === 'storm2') unlockAchievement('defeatStorm2');
+    else if (bossId === 'darkhand') {
+      // 黑暗之手（待更新 BOSS，占位——实体实装后 killEnemy BOSS 分支自动上报生效）：唯我 / 光明之脚 / 内乱 / 铜皮太岁
+      if (hasPilot('lingluo')) unlockAchievement('weiwo');
+      if (!hasPilot('lingluo')) unlockAchievement('guangmingzhijiao');
+      if (currentSubWeapon.id === 'feijian' || currentSubWeapon.id === 'xinring') unlockAchievement('neiluan');
+      if (currentArmor.id === 'tongpi') unlockAchievement('tongpitasui');
+    }
     // 最后一搏：不死触发瞬间登记的低血量 BOSS 被击败（登记见 02-core tryBulwarkCheatDeath）
     if (state.achvBulwarkLowBoss && state.achvBulwarkLowBoss === bossId) {
       unlockAchievement('bulwarkLastBlow');
@@ -375,13 +396,17 @@
     const noBulwark = currentWingman.id !== 'bulwark';
     // 守望者：无伤、不作弊，且装备守愿者通关
     if (!achv.damageTaken && !achv.cheatUsed && currentWingman.id === 'bulwark') unlockAchievement('watchkeeper');
-    if (!achv.damageTaken && noBulwark && !achv.cheatUsed) unlockAchievement('infinityFighter');
+    // 如梦似幻：无守愿者、不开作弊、无伤通关真我难度
+    if (!achv.damageTaken && noBulwark && !achv.cheatUsed && isRealme()) unlockAchievement('rumengsihuan');
+    // 无垠战机：无守愿者、不开作弊、无伤通关诗篇难度
+    if (!achv.damageTaken && noBulwark && !achv.cheatUsed && isPoem()) unlockAchievement('infinityFighter');
     const pilotClean = (p) => p.empty || p.whiteboard;
-    // 白板驾驶员通关：温酒客（九克之王）/ 胡笛客（卑鄙笛客）/ 萧杨（阴险萧杨）
+    // 白板驾驶员通关：胡笛客（卑鄙笛客）/ 萧杨（阴险萧杨）；温酒客已实装受伤提升效果、不再白板（九克之王仍按驾驶员通关判定）
     if (hasPilot('wenjiuke')) unlockAchievement('wenjiukeWin');
     if (hasPilot('hudike')) unlockAchievement('hudikeWin');
     if (hasPilot('xiaoyang')) unlockAchievement('xiaoyangWin');
-    if (ACHIEVEMENT_INFINITY_ENABLED && !achv.damageTaken && !achv.cheatUsed && !achv.bombUsedEver &&
+    // 「无垠」：无护甲效果（noEffect 护甲）、无驾驶员效果（白板/空槽）、无守愿者、不使用爆弹、不作弊、诗篇难度无伤通关
+    if (ACHIEVEMENT_INFINITY_ENABLED && isPoem() && !achv.damageTaken && !achv.cheatUsed && !achv.bombUsedEver &&
         noBulwark && currentArmor.noEffect && pilotClean(currentPilotMain) && pilotClean(currentPilotSub)) {
       unlockAchievement('infinity');
     }
@@ -432,6 +457,8 @@
     achv._dagouSeqC3 = false;
     achv._dagouSeqC4 = false;
     achv.auraFieldKills = 0;
+    achv.harbingerKills = 0;
+    achv.giantCrystals = 0;
     state.achvBulwarkLowBoss = null;   // 最后一搏：低血 BOSS 登记（02-core tryBulwarkCheatDeath 写入）
   }
 
@@ -469,6 +496,7 @@
         (a.holders.length ? '已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '暂无完成者') + '</div>';
     }
     if (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED) html += '<div class="achv-tip-locked">仅最终版本开放获得</div>';
+    if (a.wipBoss) html += '<div class="achv-tip-locked">对应 BOSS「黑暗之手」待更新，暂不可获得</div>';
     return html;
   }
   function bindAchvTip(el, id) {
@@ -557,7 +585,8 @@
           (a.holders
             ? (a.holders.length ? '<br />已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '<br />暂无完成者')
             : '') +
-          (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '');
+          (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '') +
+          (a.wipBoss ? '<br /><i>对应 BOSS「黑暗之手」待更新，暂不可获得</i>' : '');
         card.append(row, body);
         infoBody.appendChild(card);
       }
@@ -572,5 +601,5 @@
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,
     achvNoteChengyueRoll, achvNoteHajimiDodge, achvNoteQixingBigHalve, achvNoteMaxinSpeed, achvNoteHuiHeal,
     achvNoteLanxinShieldStart, achvNoteLanxinAbsorb, achvNoteLanxinShieldEnd, achvNoteLingliBurst,
-    achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill,
+    achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill, achvNoteGiantCrystal,
   };

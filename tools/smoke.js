@@ -313,6 +313,36 @@ try {
     } else errors.push({ key: '试波按钮缺失', stack: '波次权重表未找到 wave-test 按钮（infoFormationRows / buildWeightTable 改动回归？）' });
   } else errors.push({ key: '波次子页缺失', stack: '权重表未找到「波次」子页 chip（renderInfoWeights 改动回归？）' });
 
+  // 诗篇波次制（wip 实测）：modules 模式下直接 setDifficulty 到 poem（绕过主菜单 wip 选择限制）→ 开局跑帧——
+  // 覆盖 14-main 波次制分支（清场驱动 / clearDelay / 波 N = 等级 N / BOSS 触发改波次计数）、
+  // 04-spawn 附加先兆者与加血节流递减、08-entities 35% 回复、06-enemy 波次节流（无 BOSS 阶段不触发脚本化置满）
+  if (isModules) {
+    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    if (cfg.DIFFICULTIES && cfg.DIFFICULTIES.poem && cfg.setDifficulty) {
+      cfg.setDifficulty(cfg.DIFFICULTIES.poem);
+      key('p'); frames(5); key('p', false);         // 暂停（退出上一场景的波次挑战）
+      elements.pauseHomeBtn.click(); frames(10);    // 返回主界面：resetGame(false) 清 challenge/keepTest 态
+      elements.startBtn.click();
+      frames(400);                                  // ≈6.6s：首波刷出 / 清场计时 / 波次制关卡推进
+      if (core.levelFlow.poemWaveIdx < 1) {
+        errors.push({ key: '诗篇波次制未出波', stack: '400 帧后 poemWaveIdx=' + core.levelFlow.poemWaveIdx + '（波次制刷怪分支未生效？）' });
+      }
+      key('r');                                     // R 重开：同步 resetGame（波次制字段归零）
+      if (core.levelFlow.poemWaveIdx !== 0) {
+        errors.push({ key: '诗篇波次制重开未归零', stack: 'R 重开后 poemWaveIdx=' + core.levelFlow.poemWaveIdx + '（resetGame 归零缺失？）' });
+      }
+      frames(120);                                  // 新局：立即刷第 1 波
+      if (core.levelFlow.poemWaveIdx < 1) {
+        errors.push({ key: '诗篇波次制重开未出波', stack: '重开 120 帧后 poemWaveIdx=' + core.levelFlow.poemWaveIdx + '（新局波次制未生效？）' });
+      }
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
+      sample('诗篇波次制跑帧');
+      cfg.setDifficulty(cfg.DIFFICULTIES.realme);   // 还原默认难度，避免影响后续场景
+    }
+  }
+
   elements.musicToggle.click();                 // 静音开关
   frames(10);
 } catch (err) {

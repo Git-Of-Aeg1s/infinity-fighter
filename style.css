@@ -288,6 +288,7 @@ canvas#game {
 /* HP 标签与数值已移除（左下角仅保留心心 + 血条） */
 
 .hp-bar {
+  position: relative;
   width: 180px;
   height: 10px;
   background: rgba(255, 255, 255, 0.08);
@@ -301,6 +302,19 @@ canvas#game {
   width: 100%;
   background: linear-gradient(90deg, var(--ok), #b7ff8a);
   transition: width 0.18s ease, background 0.3s ease;
+}
+
+/* 青时炮艇支援弹屏障：HP 条右缘蓝色覆盖条（锚定右缘；宽度由 12-ui updateHUD 按剩余屏障比例驱动，
+   末 1s 线性衰减时随 player.barrier 自动等比缩短；画在血量条之上、描边之下——absolute 定位在边框内側；
+   用蓝色系与血条本身的绿色明显区分） */
+.hp-barrier {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(270deg, #a9d9ff, #58b1ff);
+  pointer-events: none;
 }
 
 /* 测试模式血量回满：血条动画速度 ×300%（0.18s → 0.06s），由回满瞬间临时挂 fast 类 */
@@ -1110,6 +1124,15 @@ canvas#game {
   margin-bottom: 4px;
 }
 
+/* 矢量图标字形（彼岸花 / 焰环 / 狗耳导弹 / 北极星 / 单剑 iconSvg）：内联 SVG，currentColor 继承注册色，drop-shadow 对齐字形霓虹辉光。
+   svg 尺寸统一 1em = 字符行框同尺寸（装备框 30px / 卡片 20px / 图鉴标题随字号），保证矢量与字符字形混排时大小一致 */
+.glyph-svg { display: inline-block; line-height: 1; }
+.glyph-svg svg { width: 1em; height: 1em; display: block; margin: 0 auto; filter: drop-shadow(0 0 7px currentColor); }
+
+/* 选机卡片（护甲/副武器/驾驶员共用 .armor-card-glyph，20px 字号）：矢量图标放大到 1.2em（24px），
+   补偿矢量内容占 viewBox ~80-87% 的视觉缩小，与相邻字符卡片的字形墨迹尺寸对齐 */
+.armor-card-glyph .glyph-svg svg { width: 1.2em; height: 1.2em; }
+
 .armor-card-name {
   color: var(--text);
   font-size: 12px;
@@ -1444,7 +1467,7 @@ kbd {
 
 .ency-close:hover { color: var(--danger); border-color: var(--danger); }
 
-/* 图鉴头部快捷切换难度：三选一分段按钮组，位于关闭按钮左侧 */
+/* 图鉴头部快捷切换难度：四选一分段按钮组，位于关闭按钮左侧 */
 .ency-diff-group {
   margin-left: auto;
   margin-right: 10px;
@@ -2108,6 +2131,9 @@ kbd {
 
 /* 数值图鉴「驾驶员」页条目标题：去字距，保证「☯天秀忧郁王子（副驾驶员）」长名单行放下 */
 .info-pilot-card h4 { letter-spacing: 0; }
+/* 陵落彼岸花矢量图标（inline-block 内无行内基线 → svg 底边贴基线显得偏高）：垂直居中与文字对齐 */
+.info-pilot-card h4 .glyph-svg { vertical-align: middle; }
+.info-wave-card h4 .glyph-svg { vertical-align: middle; }   /* 副武器 / 护甲标题行：矢量图标与文字中线对齐 */
 
 .info-wave-card p {
   margin: 0;

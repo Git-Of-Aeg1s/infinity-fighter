@@ -1738,14 +1738,14 @@
     if (s.id === 0) {
       // 技能1：电弧球蓄力预警 → 向下强力电弧激光（真我：移动中连射 5 次，预警跨发重叠）
       const ball = storm2BallPos(e);
-      const firing = s.zhenwo ? s.st === 1 : s.fired;
+      const firing = s.realme ? s.st === 1 : s.fired;
       if (!firing) {
-        const p = s.zhenwo
+        const p = s.realme
           ? (s.shot === 0 ? clamp(s.pt / STORM2.s1Charge, 0, 1) : clamp(s.pt / STORM2_SHIP.s1.charge2, 0, 1))
           : clamp(s.t / STORM2.s1Charge, 0, 1);
-        const tEl = s.zhenwo ? s.pt : s.t;   // 蓄力段已进行时间
+        const tEl = s.realme ? s.pt : s.t;   // 蓄力段已进行时间
         ctx.save();
-        if (s.zhenwo && s.shot > 0) {
+        if (s.realme && s.shot > 0) {
           // 真我第 2~5 次：小预警环（自 150px 收缩 0.4s）
           drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.pt);
         } else {
@@ -1781,8 +1781,14 @@
         ctx.restore();
       } else {
         // 强力电弧激光：竖直光柱（亮起 → 渐隐）+ 雷电素材贴片（lightning-4）+ 边缘狂乱电流
-        const life = s.zhenwo ? s.pt : s.t - STORM2.s1Charge;
-        const vis = life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / (STORM2.s1BeamDur - 0.12);
+        //   真我：亮起 0.12s → 全亮保持 → 末段 STORM2_SHIP.s1.fade 快速渐隐（光束 0.9s → 0.6s，曲线与 05-boss 命中门控一致）
+        const life = s.realme ? s.pt : s.t - STORM2.s1Charge;
+        const F1 = STORM2_SHIP.s1;
+        const vis = s.realme
+          ? (life < 0.12 ? life / 0.12
+             : life < F1.beamDur - F1.fade ? 1
+             : Math.max(0, 1 - (life - (F1.beamDur - F1.fade)) / F1.fade))
+          : life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / (STORM2.s1BeamDur - 0.12);
         const a = clamp(vis, 0, 1) * 0.95;
         drawS2Beam(ball.x, ball.y, Math.PI / 2, CANVAS_H - ball.y + 30, STORM2.s1R, a, true);   // root：自能量球核心收束发出，避免顶部截断
         // 周身狂乱电流（lightning-2 细流光弧）：10 枚沿光束左右边缘高速环绕游走、剧烈明灭
@@ -1821,7 +1827,7 @@
           ctx.restore();
         }
         // 真我：当前发光束期间，下一发的小预警环提前亮起（跨发重叠）
-        if (s.zhenwo && s.shot < STORM2_SHIP.s1.shots - 1 && s.t >= s.nextAt - STORM2_SHIP.s1.charge2) {
+        if (s.realme && s.shot < STORM2_SHIP.s1.shots - 1 && s.t >= s.nextAt - STORM2_SHIP.s1.charge2) {
           drawS2WarnWave(ball.x, ball.y, STORM2_SHIP.s1.ring2R0, 0, STORM2_SHIP.s1.ring2Dur, s.t - (s.nextAt - STORM2_SHIP.s1.charge2));
         }
       }

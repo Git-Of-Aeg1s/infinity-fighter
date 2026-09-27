@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
+  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
@@ -49,6 +49,19 @@
     } else if (e.type === 'yu4') {
       drawYu4Body(e);         // 自带填充与描边（介于圆与方之间的超椭圆暖灰渐变机身 + 金色X形条纹 + 中央淡黄反应核 + 四角风扇圆 + 金色六边力场）
     } else if (e.type === 'anvil') {
+      // 治疗标识：治疗光环（力场）完全展开后，机身下层浮现绿色"+"（先于 drawAnvilBody 绘制 → 图层低于飞机；
+      // 图鉴预览无 auraT 不绘制；出现时 0.6s smoothstep 渐显；臂长/臂宽 2026-09 批次：宽度增宽、长度稍增）
+      if ((e.auraT || 0) >= ANVIL.auraDelay + ANVIL.auraFadeIn) {
+        const fp0 = clamp((e.auraT - (ANVIL.auraDelay + ANVIL.auraFadeIn)) / 0.6, 0, 1);
+        const fp = fp0 * fp0 * (3 - 2 * fp0);   // 渐显 smoothstep
+        const ga = (0.5 + Math.sin(state.time * 3 + (e.wobble || 0)) * 0.15) * fp;
+        ctx.globalAlpha = ga;
+        ctx.fillStyle = '#3ecf6e';
+        const pl = 34, pw = 9;   // 臂半长/臂宽（局部坐标，drawScale 1.44 放大）
+        ctx.fillRect(-pw / 2, -pl, pw, pl * 2);
+        ctx.fillRect(-pl, -pw / 2, pl * 2, pw);
+        ctx.globalAlpha = 1;
+      }
       drawAnvilBody(e);       // 自带填充与描边（菱形黑灰框架 + 中央灰黑正方形 + 上下左右横杠 + 中心朝下凸出白杠 + 正方形青绿治疗光环）
     } else if (e.type === 'fashiA1') {
       drawFashiA1Body(e);     // 自带填充与描边（四角风扇圆 + 灰黑矩形1:3:1紫光条 + 底部深紫炮管）
@@ -71,37 +84,39 @@
       const v = e._sideVel || { vx: 0, vy: 60 };
       ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);   // 造型默认顶角朝下（+y），旋转到航向
       ctx.beginPath();
-      ctx.moveTo(0, 11);
-      ctx.lineTo(11, -7);
-      ctx.lineTo(0, -3);
-      ctx.lineTo(-11, -7);
+      ctx.moveTo(0, 12.1);
+      ctx.lineTo(9.35, -7.7);
+      ctx.lineTo(0, -3.3);
+      ctx.lineTo(-9.35, -7.7);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      // 赤色月核：中央淡红小月牙（点明"赤月"之名，不影响轮廓）
+      // 赤色月核：中央淡红圆核 + 内嵌偏移红点（构成月牙观感；红点完全收入浅核内，无外溢小块）
       ctx.fillStyle = 'rgba(255, 224, 224, 0.9)';
       ctx.beginPath();
-      ctx.arc(0, 1.5, 2.6, 0, Math.PI * 2);
+      ctx.arc(0, 1.3, 2.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = e.color;
       ctx.beginPath();
-      ctx.arc(-1, 0.7, 2.2, 0, Math.PI * 2);
+      ctx.arc(-0.55, 1.05, 1.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
     } else if (e.type === 'side' || e.type === 'prolifera') {
-      // 1类/增生侧翼艇：小型三角箭镖，朝飞行方向倾斜
-      const tilt = e._sideVel ? (e._sideVel.vx > 0 ? -0.35 : 0.35) : 0;
-      ctx.rotate(tilt);
+      // 1类/增生侧翼艇：小型三角箭镖（宽 ±9.35 / 长 19.8），顶角精确指向移动方向——
+      // 侧翼/顶部斜插的航向随编队基值变化，固定 ±0.35 倾角会出现朝向与实际航向不符（2026-09 批次改为按 _sideVel 精确旋转）；
+      // 青时炮艇召唤体（_velTilt）速度曲线逐帧缓动 → 朝向自然平滑过渡；无 _sideVel（图鉴预览等）竖直朝下
+      const v = e._sideVel || { vx: 0, vy: 60 };
+      ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);
       ctx.beginPath();
-      ctx.moveTo(0, 11);
-      ctx.lineTo(11, -7);
-      ctx.lineTo(0, -3);
-      ctx.lineTo(-11, -7);
+      ctx.moveTo(0, 12.1);
+      ctx.lineTo(9.35, -7.7);
+      ctx.lineTo(0, -3.3);
+      ctx.lineTo(-9.35, -7.7);
       ctx.closePath();
     } else if (e.type === 'escort') {
-      // 卫护飞船：深蓝紫渐变等腰三角（指向飞行方向）+ 紫色边缘光芒（与浅蓝水晶明确区分）
-      const tilt = e._sideVel ? (e._sideVel.vx > 0 ? -0.35 : 0.35) : 0;
-      ctx.rotate(tilt);
+      // 卫护飞船：深蓝紫渐变等腰三角（顶角精确指向飞行方向）+ 紫色边缘光芒（与浅蓝水晶明确区分）
+      const v = e._sideVel || { vx: 0, vy: 60 };
+      ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);
       ctx.beginPath();
       ctx.moveTo(0, 5.5);
       ctx.lineTo(3.75, -5.5);
@@ -178,8 +193,8 @@
       if (e.unfoldT > 0) {
         const p = clamp(1 - e.unfoldT / 0.55, 0, 1);
         wingT = p * p * (3 - 2 * p);   // smoothstep 缓入缓出：速度 0→最大→0，起步/到位都柔和
-      } else if (!e.arrived) {
-        wingT = 0;   // 下降途中机翼收拢于中心
+      } else if (!e.arrived && e.unfoldT == null) {
+        wingT = 0;   // 下降途中（展开未开始）机翼收拢于中心；展开完成后缓冲滑行期间保持展开
       }
       const retract = 20;   // 收拢时两翼向中心内移距离（翼尖收到 ±27，露出舰体边缘 ±19 一角）
       for (const sx of [-1, 1]) {
@@ -203,11 +218,10 @@
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
-        // 翼面斜向装甲分块
+        // 翼面斜向装甲分块（仅保留后侧一道；靠近机头的前侧斜线已按用户要求移除）
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
         ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.moveTo(sx * 15, -20); ctx.lineTo(sx * 38, -8); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(sx * 13, 8); ctx.lineTo(sx * 30, 14); ctx.stroke();
         ctx.restore();
       }
     }
@@ -235,6 +249,7 @@
       }
 
       // (2) 变体涂装：紫=双侧斜向能量纹(脉动变亮) / 红=环绕核心的正六边形(脉动变亮、不旋转) / 金=环绕旋转光环（呼应环形弹幕）
+      //     橙焰=机体前部边框高光条（机头前缘+前侧翼缘） / 青时=核心援护环+双侧援护舱（呼应支援弹/屏障）
       ctx.shadowColor = pal.glow;
       ctx.shadowBlur = 8;
       ctx.globalAlpha = 0.55 + pulse * 0.4;
@@ -260,6 +275,32 @@
           if (k === 0) ctx.moveTo(hx, hy); else ctx.lineTo(hx, hy);
         }
         ctx.closePath();
+        ctx.stroke();
+      } else if (e.variant === 'orange') {
+        // 橙焰：机体前部边框高光条——沿机头两条前缘 + 前侧翼缘的余烬描边（脉动变亮，无圈/斜线高光）
+        ctx.globalAlpha = 0.35 + pulse * 0.6;
+        ctx.shadowBlur = 3 + pulse * 12;
+        ctx.lineWidth = 1.6 + pulse * 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-16, 10); ctx.lineTo(0, 20); ctx.lineTo(16, 10);   // 机头前缘
+        ctx.moveTo(-17, 8); ctx.lineTo(-22, -1);                       // 前侧翼缘（左）
+        ctx.moveTo(17, 8); ctx.lineTo(22, -1);                         // 前侧翼缘（右）
+        ctx.stroke();
+      } else if (e.variant === 'cyan') {
+        // 青时：核心援护环 + 双侧援护舱 + 四向支援刻痕（青白脉动，呼应支援弹与屏障机制）
+        ctx.globalAlpha = 0.30 + pulse * 0.65;
+        ctx.shadowBlur = 3 + pulse * 15;
+        ctx.lineWidth = 1.5 + pulse * 1.2;
+        ctx.beginPath(); ctx.arc(0, 2, 9, 0, Math.PI * 2); ctx.stroke();      // 核心援护环
+        for (const sx of [-1, 1]) {
+          ctx.beginPath(); ctx.arc(sx * 14, 5, 3.2, 0, Math.PI * 2); ctx.stroke();            // 援护舱
+          ctx.beginPath(); ctx.moveTo(sx * 14, 0.2); ctx.lineTo(sx * 14, 1.8); ctx.stroke();  // 舱挂杆
+        }
+        ctx.beginPath();                                                        // 四向支援刻痕
+        ctx.moveTo(0, -13); ctx.lineTo(0, -9.5);
+        ctx.moveTo(0, 13.5); ctx.lineTo(0, 10);
+        ctx.moveTo(-13, 2); ctx.lineTo(-9.5, 2);
+        ctx.moveTo(13, 2); ctx.lineTo(9.5, 2);
         ctx.stroke();
       } else {
         // 紫晶：双侧斜向能量纹（条纹）——与赤红同样的定期脉动变亮
@@ -492,6 +533,22 @@
       ctx.globalAlpha = 1;
     }
 
+    // 青时炮艇召唤体次数盾：白色浅盾气泡（小于量子护盾；剩余层数呼吸明灭，耗尽不绘制）
+    if ((e.chargeShield || 0) > 0) {
+      const cr = Math.max(e.w, e.h) * 0.42;
+      const ca = 0.55 + Math.sin(state.time * 5 + (e.wobble || 0)) * 0.15;
+      ctx.globalAlpha = ca;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, cr, cr * 0.85, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     // 血条：受伤后 0.15s 渐显、回满后渐隐（barT 由 updateEnemies 推进）；
     // 白色残量为受击追踪余像（hpTrail 缓慢追赶 hp，同 BOSS 血条实现）；BOSS 血条在 drawBoss 中单独绘制
     if ((e.barT || 0) > 0.01) {
@@ -507,6 +564,13 @@
       }
       ctx.fillStyle = '#ff9500';
       ctx.fillRect(-w / 2, -e.h / 2 - 8, w * hpR, 3);
+      // 青时炮艇支援弹屏障（白蓝覆盖条）：画在血量之上；宽度 = 血条宽 × barrier / max(barrierMax, maxHp)，
+      // 锚定右缘——屏障被打时覆盖区自左向右缩短（规格：maxHp 1000 → 覆盖 20%；maxHp < 200 → 全覆盖）
+      if ((e.barrier || 0) > 0 && e.barrierMax) {
+        const barW = w * clamp(e.barrier / Math.max(e.barrierMax, e.maxHp), 0, 1);
+        ctx.fillStyle = '#9ff0e0';
+        ctx.fillRect(-w / 2 + w - barW, -e.h / 2 - 8, barW, 3);
+      }
       ctx.globalAlpha = 1;
     }
 
@@ -1259,6 +1323,16 @@
             return bg;
           });
           ctx.shadowColor = b.color;
+        } else if (b.grad) {
+          // 渐变圆弹（橙焰巨型弹分裂子弹等）：白核 → 主色 → 暗橙红边径向渐变（非平涂）
+          ctx.fillStyle = cachedGrad(`grad|${b.color}|${b.r}`, () => {
+            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
+            bg.addColorStop(0, '#ffffff');
+            bg.addColorStop(0.4, b.color);
+            bg.addColorStop(1, 'rgba(205, 60, 10, 0.92)');
+            return bg;
+          });
+          ctx.shadowColor = b.color;
         } else if (b.color === '#ffd166') {
           // 低级小怪（1/2类）圆弹：外圈红 + 内部黄，更醒目
           ctx.fillStyle = cachedGrad(`d166|${b.r}`, () => {
@@ -1554,11 +1628,27 @@
 
   // 掉落水晶绘制（水晶系统改版）：每颗按档位 / 颜色取 3D 烘焙精灵逐帧 1:1 贴图，
   // 呼吸缩放保留（轻微），自转 1s/圈、24 帧步进（c.t 为 4×dt 计时 → c.t/16 = 转相进度）
+  // 巨型（原石）：烘焙帧为静态，运行时在贴图【下方】垫一层环形脉动光晕（alpha 随全局时间双频波动）——
+  // 环形渐变内圈透明（不盖晶体本体，脉动只在晶体周围），光晕先画、贴图后画
   function drawCrystals() {
     for (const c of crystals) {
       const spr = getCrystal3DSprite(c.tier, c.colorKey, (c.t / 4 + (c.phase || 0)) % 1);   // c.t = 4×dt → 1s/圈，24 帧步进
       const s = 1 + Math.sin(c.t) * 0.1;
       const w = spr.width * s;
+      if (c.tier === 'giant') {
+        const twk = Math.sin(state.time * 5.2 + (c.phase || 0) * 6.283) * 0.5 + Math.sin(state.time * 9.1 + (c.phase || 0) * 6.283) * 0.5;
+        const ar = w * 0.85;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.2 + twk * 0.1;   // ≈0.1~0.3 波动（与 09 crystal3DStarDraw 底光闪动同频口径）
+        const gr2 = ctx.createRadialGradient(c.x, c.y, w * 0.3, c.x, c.y, ar);
+        gr2.addColorStop(0, 'rgba(255,225,242,0)');      // 内圈透明：光效不压在晶体上
+        gr2.addColorStop(0.55, 'rgba(255,215,240,0.5)'); // 环带峰值（贴着晶体外缘）
+        gr2.addColorStop(1, 'rgba(120,160,255,0)');
+        ctx.fillStyle = gr2;
+        ctx.fillRect(c.x - ar, c.y - ar, ar * 2, ar * 2);
+        ctx.restore();
+      }
       ctx.drawImage(spr, c.x - w / 2, c.y - w / 2, w, w);
     }
   }

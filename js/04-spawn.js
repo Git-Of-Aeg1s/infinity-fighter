@@ -3,9 +3,9 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：05-boss(2 名) 06-enemy(4 名) 07-player(2 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(13 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   levelFlow.{waveSeq}  bossFlow.{stage, warnT}
+  //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isZhenwo, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, STORM_SHIP, TEST_HP, VARIANTS, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, STORM_SHIP, TEST_HP, VARIANTS, WAVE_POEM, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -140,7 +140,7 @@
       e.score = SIDE_SCORE;
     }
     // 真我：暴风之眼技能2 召唤的大型龙卷血量 6000（具象基准 3600）
-    if (type === 'tornado' && isZhenwo()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
+    if (type === 'tornado' && isRealme()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
     // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）
     if (state.challenge && type !== 'boss') {
       e.hp = e.maxHp = TEST_HP;
@@ -581,7 +581,7 @@
     { name: '赤红炮艇',     ency: 'gunship_crimson', type: 'gunship',  fn: () => spawnGunship('crimson'), wLow: 100, wHigh: 20 },
     { name: '金曜炮艇',     ency: 'gunship_amber',   type: 'gunship',  fn: () => spawnGunship('amber'),   wLow: 80,  wHigh: 20 },
     { name: '橙焰炮艇',     ency: 'gunship_orange',  type: 'gunship',  fn: () => spawnGunship('orange'),  wLow: 70,  wHigh: 20 },
-    { name: '增生炮艇',     ency: 'gunship_cyan',    type: 'gunship',  fn: () => spawnGunship('cyan'),    wLow: 60,  wHigh: 20 },
+    { name: '青时炮艇',     ency: 'gunship_cyan',    type: 'gunship',  fn: () => spawnGunship('cyan'),    wLow: 60,  wHigh: 20 },
     
     { name: '炮火先兆者',   ency: 'harbinger',      type: 'harbinger', fn: spawnHarbinger, wLow: 30, wHigh: 30 },
     { name: '寒霜',         ency: 'hanshuang',      type: 'hanshuang', fn: spawnHanshuang, wLow: 0,  wHigh: 30 },
@@ -603,8 +603,8 @@
     return it.wHigh;
   }
 
-  // 特殊3类随波抽取：按阶段权重（Lv11 前：三色炮艇 260（紫80/赤100/金80）/ 先兆者 30 / 御4 0→10 线性过渡；
-  // Lv11 起：炮艇 60（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 25 / 焦香螺旋桨 25 / 威龙 15 / 铁砧 15）。
+  // 特殊3类随波抽取：按阶段权重（Lv11 前：五色炮艇 390（紫80/赤100/金80/橙70/增60）/ 先兆者 30 / 御4 0→10 线性过渡；
+  // Lv11 起：炮艇 100（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 25 / 焦香螺旋桨 25 / 威龙 15 / 铁砧 15）。
   // 抽中 寒霜 / 御4 / 铁砧 时，若场上已有同种机体则本次跳过（同屏同种限 1）
   function spawnWaveSpecial3() {
     const lv = levelFlow.level;
@@ -626,9 +626,32 @@
 
   function spawnWave() {
     levelFlow.waveSeq++;
+    if (isPoem() && !state.challenge) levelFlow.poemWaveIdx++;   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）
     const before = enemies.length;
     spawnWaveBody();
+    // 诗篇：波次附加炮火先兆者（阈值表 WAVE_POEM.harbingerExtra，取 ≤当前等级的最高档）——
+    //   属本波一部分（打上 waveTag），须击毁/离场才放下一波
+    if (isPoem() && !state.challenge) spawnPoemExtraHarbinger();
     for (let i = before; i < enemies.length; i++) enemies[i].waveTag = levelFlow.waveSeq;
+    // 诗篇：加血套件每 N 波限 1——每波刷新递减节流计数（实际掉落时在 06-enemy 置满）
+    if (isPoem() && levelFlow.hpKitWaveCd > 0) levelFlow.hpKitWaveCd--;
+  }
+
+  // 诗篇：波次附加炮火先兆者——取 ≤当前等级的最高阈值档（WAVE_POEM.harbingerExtra）；
+  //   先判 two 再判 one（互斥阶梯：Lv31 起 5%×2 优先于 10%×1，任一命中本波至多多出 1~2 台）；
+  //   入场位置为屏幕靠左/靠右（各 50%）边缘区顶部、固定横位（staticX），悬停高度与常规先兆者一致
+  function spawnPoemExtraHarbinger() {
+    let one = 0, two = 0;
+    for (const t of WAVE_POEM.harbingerExtra) {
+      if (levelFlow.level >= t.lv) { one = t.one; two = t.two; }
+    }
+    if (two > 0 && Math.random() < two) { spawnPoemSideHarbinger(); spawnPoemSideHarbinger(); return; }
+    if (one > 0 && Math.random() < one) spawnPoemSideHarbinger();
+  }
+
+  function spawnPoemSideHarbinger() {
+    const x = Math.random() < 0.5 ? rand(40, 130) : rand(CANVAS_W - 130, CANVAS_W - 40);
+    spawnHarbinger(x, { staticX: true, hoverY: rand(75, 110) });
   }
 
   // 编队权重表：每波按权重随机抽取编队（与「数值与机制图鉴-怪物权重」单一数据源同步）
@@ -695,6 +718,9 @@
     }
     // 特殊3类随波登场：每波 SPECIAL3_WAVE_CHANCE 概率附带一台，按 SPECIAL3_POOL 权重抽取（寒霜/御4/铁砧 同种限 1）
     if (Math.random() < SPECIAL3_WAVE_CHANCE) spawnWaveSpecial3();
+    // 诗篇：4类并入波次——Lv5 起每波 capitalWaveChance 概率随波附带（走常规主力舰/法术阵列槽位选取规则）；
+    // 诗篇下 4类槽位通道关闭（14-main 门控），4类只随波出现，不再单独判定刷新（用户 2026-09-27 指定）
+    if (isPoem() && levelFlow.level >= 5 && Math.random() < WAVE_POEM.capitalWaveChance) spawnCapitalSlot();
   }
 
   // 3类：炮艇，上方悬停很久后才缓慢下压
@@ -725,10 +751,14 @@
     e.entryT = 0;
     e.faceAng = 0;        // 机身朝向：炮管（局部 +y）以最大角速度平滑追踪玩家
     e.vx = 0;
-    e.vy = FASHI_A1.entrySpeed;   // 入场初速不变（最大速降 25%，0.5s 内快速衰减到 speed）
+    e.vy = FASHI_A1.entrySpeed;   // 入场初速（entrySpeed == speed 统一 160：等效恒速下降）
     e.strafeDir = 0;
     e.strafeDist = 0;
     e.strafeMoved = 0;
+    // 入场横移：60% 概率在下坠越过触发线（10%~20% 屏高，逐架随机）时水平横移一次
+    e.fa1EntryStrafe = Math.random() < 0.6;
+    e.fa1EntryTrigY = CANVAS_H * rand(0.10, 0.20);
+    e.fa1EntryDone = false;
     return e;
   }
 
@@ -912,7 +942,9 @@
     e.mirror = mirror;
     e.wpIdx = 0;       // 当前航点索引
     e.dwellT = 0;      // 航点停顿倒计时
-    e.attackT = 0;     // 攻击窗口（>0 时停止移动）
+    e.attackT = 0;     // 攻击窗口（>0 时停止移动、炮口锁死）
+    e.muzzleAng = Math.PI / 2;   // 炮口指向（世界角；初始朝下，以最大角速度平滑追踪玩家）
+    e.entryT = WEILONG.entryDecay;   // 入场 200% 移速加成倒计时（1s 线性衰减）
     e.waypoints = buildWeilongPath(spawnX, mirror);
     shake(5, 0.35);
     return e;
@@ -993,7 +1025,8 @@
     const e = makeEnemy('yu4', rand(110, CANVAS_W - 110), -60, {
       hoverY: rand(110, 170),   // 与常规 3 类炮艇相同的悬停带
       holdTimer: holdTimer != null ? holdTimer : YU4.dwell,
-      fireTimer: 1.2,
+      // 不传 fireTimer：沿用注册表 fireInterval[1e9,1e9] 天文默认（此前误传 1.2s，导致登场后穿透通用开火
+      // 逻辑放出一波默认弹幕——与铁砧同款问题，见 spawnAnvil 注释）
     });
     e.auraT = 0;   // 登场计时（超过 auraDelay 后光环渐显）
     return e;
@@ -1033,7 +1066,7 @@
       e.jxDir = fromLeft ? 1 : -1;   // 水平移动方向
       e.jxTargetX = fromLeft ? cx - R : cx + R;   // 入场目标点（圈边缘）
       e.jxTargetY = cy;
-      e.jxOrbitDir = e.jxDir;   // 绕圈方向：左入场顺时针、右入场逆时针（与入场动量衔接最自然）
+      e.jxOrbitDir = Math.random() < 0.5 ? e.jxDir : -e.jxDir;   // 绕圈方向：50% 与入场动量衔接（顺/逆时针各随侧翼）/ 50% 反向（改为往下方开始转）
       e.vx = e.jxDir * JIAOXIANG.speed;   // 初始速度：水平朝内（无加速）
       e.vy = 0;
     } else {
@@ -1127,7 +1160,7 @@
         makeEnemy('striker', rand(70, CANVAS_W - 70), -50, { behavior: 'track', holdTimer: 1e9, variant: ch.variant });   // 随机水平位置入场（不固定居中）
         break;
       case 'gunship':
-        makeEnemy('gunship', cx, -60, { hoverY: 140, holdTimer: 1e9, variant: ch.variant });
+        makeEnemy('gunship', rand(110, CANVAS_W - 110), -60, { hoverY: 140, holdTimer: 1e9, variant: ch.variant });   // 随机水平位置入场（不固定居中，同常规随波生成）
         break;
       case 'harbinger':
         makeEnemy('harbinger', cx, -50, { hoverY: 95, holdTimer: 1e9 });
@@ -1145,7 +1178,7 @@
         spawnAnvil(1e9);   // 不攻击；治疗光环；挑战模式永驻场
         break;
       case 'baoling':
-        spawnBaoling(CANVAS_W / 2);   // 自爆突进；飞出屏幕后由 updateChallenge 重新生成
+        spawnBaoling();   // 自爆突进（随机水平位置入场）；飞出屏幕后由 updateChallenge 重新生成
         break;
       case 'jiaoxiang':
         spawnJiaoxiang();   // 绕圈巡航 + 火焰灼烧；挑战模式永驻场
@@ -1157,7 +1190,7 @@
         spawnFashiA1(rand(80, CANVAS_W - 80), -50);   // 下降+停移射击（随机水平位置入场）；飞出屏幕后由 updateChallenge 重新生成
         break;
       case 'fashiA2':
-        spawnFashiA2(cx, -70);   // A1 强化版（3s 首攻）；飞出屏幕后由 updateChallenge 重新生成
+        spawnFashiA2(rand(80, CANVAS_W - 80), -70);   // A1 强化版（随机水平位置入场）；飞出屏幕后由 updateChallenge 重新生成
         break;
       case 'popian':
         spawnPopian(cx, -50);   // 直线急停锁停后持续红圈预警三连发导弹；停稳后永驻场
