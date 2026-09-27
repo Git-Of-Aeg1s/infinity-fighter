@@ -30,6 +30,9 @@
         </svg>
       </button>
 
+    <!-- FPS 读数：悬挂于音量键正下方（灰色小字，仅供开发观察，不参与交互） -->
+    <div class="fps-meter" id="fpsMeter">FPS --</div>
+
     <div class="stage">
       <canvas id="game" width="480" height="792"></canvas>
 
@@ -45,7 +48,7 @@
         </div>
         <div class="hud-right">
           <!-- 高能爆弹：图标数量代表爆弹数（上限 3，BOSS 测试模式 ∞），由 updateHUD 渲染 -->
-          <div class="bomb-icons" id="bombIcons" title="高能爆弹（Space 释放）"></div>
+          <div class="bomb-icons" id="bombIcons" title="高能爆弹（Space / 右Ctrl 释放）"></div>
         </div>
       </div>
 
@@ -97,8 +100,11 @@
            装备四框（战机/护甲/副武器占位/僚机，点击展开选择面板覆盖演示屏）→
            底部（难度切换 + 开始游戏 | 怪物图鉴 | 右下角 ⓘ 数值与机制图鉴） -->
       <div class="menu-screen hidden" id="menuScreen">
-        <!-- 版本号：主菜单右上角（与 package.json / README 版本保持同步） -->
-          <span class="menu-version">v0.3.4</span>
+        <!-- 版本号：主菜单右上角（与 package.json / README 版本保持同步）。
+             【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
+             package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
+             v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
+          <span class="menu-version">v0.3.5</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
@@ -107,7 +113,7 @@
             <button class="help-close" id="helpClose" aria-label="收起">✕</button>
           </div>
           <div class="help-row"><span class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="help-desc">移动战机（支持方向键）</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>Space</kbd></span><span class="help-desc">高能爆弹：清除全部敌弹 + 全场伤害</span></div>
+          <div class="help-row"><span class="help-keys"><kbd>Space</kbd>/<kbd>右Ctrl</kbd></span><span class="help-desc">高能爆弹：清除全部敌弹 + 全场伤害</span></div>
           <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停 / 继续</span></div>
           <div class="help-row"><span class="help-keys"><kbd>R</kbd></span><span class="help-desc">立即重开</span></div>
           <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能</span></div>

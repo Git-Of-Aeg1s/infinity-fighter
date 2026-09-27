@@ -298,6 +298,21 @@ try {
   frames(10);
   sample('打开数值与机制图鉴');
 
+  // 波次测试按钮：权重表 →「波次」子页 → 行内「▶ 试波」→ 波次挑战开局
+  //（updateChallenge 整波驱动 / 场上清空自动补刷 / = 额外追加一整波——14-main 键盘入口）
+  const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent === '波次');
+  if (waveChip) {
+    waveChip.click();
+    const testBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.className === 'ency-challenge-btn wave-test');
+    if (testBtn) {
+      testBtn.click();                            // 试波：开局波次挑战（任一编队行）
+      frames(200);                                // ≈3.3s：updateChallenge 刷整波 / 敌机入场
+      key('='); frames(60); key('=', false);      // 额外追加一整波（不清场，可叠加）
+      frames(120);
+      sample('波次测试挑战（试波 + = 补波）');
+    } else errors.push({ key: '试波按钮缺失', stack: '波次权重表未找到 wave-test 按钮（infoFormationRows / buildWeightTable 改动回归？）' });
+  } else errors.push({ key: '波次子页缺失', stack: '权重表未找到「波次」子页 chip（renderInfoWeights 改动回归？）' });
+
   elements.musicToggle.click();                 // 静音开关
   frames(10);
 } catch (err) {

@@ -6,9 +6,9 @@
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, currentDifficulty, currentPlane, diffMods } from './01-config.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
+  import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
   import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -49,7 +49,9 @@
     }
     if (k === 'p' && state.mode === 'playing') togglePause();
     if (k === 'r') resetGame(true, { keepTest: true });
-    if (k === ' ' && state.mode === 'playing' && !state.paused) useBomb();
+    // Space / 右Ctrl（e.code 区分左右，左 Ctrl 保留给浏览器快捷键）：高能爆弹
+    // （右Ctrl 同为修饰键：按住时按 W 仍会触发浏览器关标签页且无法拦截——与马兴犬弃用 Ctrl 的原因相同，玩家自担）
+    if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发）
     // 大狗导弹雨连发开关（作弊键，不要求装备大狗——任意驾驶员均可触发）：
@@ -82,7 +84,7 @@
     }
     // 作弊武装（预留机制）：WEAPON_CHEAT_REQUIRE_ARM = true 时按 0 武装（任意界面可按）后 1~5 / 8 / 9 才生效，
     // 右上角音量键微微变亮作为已武装标识；当前开关为 false——按 0 完全无动作（音量键标识不变）。
-    // "+" 立刻再召唤一个测试目标（非作弊，保持原样）
+    // "=" 立刻再召唤一个测试目标（非作弊，保持原样）
     if (k === '0' && WEAPON_CHEAT_REQUIRE_ARM && !state.cheatArm) {
       state.cheatArm = true;
       musicToggle.classList.add('cheat-armed');   // 已武装标识：音量键边框提亮
@@ -90,7 +92,27 @@
     if (state.mode === 'playing' && !state.paused) {
       const lv = '12345'.indexOf(k);
       if (lv >= 0 && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) debugSetWeapon(lv + 1);
-      if (k === '+' && state.challenge && state.challenge.kind === 'enemy') spawnChallengeTarget();
+      // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
+      // 事件（keydown ~30Hz 连发会疯狂重复清场+群召）
+      if ((k === '=' || k === '+') && !e.repeat && state.challenge) {
+        if (state.challenge.kind === 'enemy') {
+          // Shift+=：场上仅 1 个测试目标（召唤物不计）时先清场再统一召唤 10 个；已有多个则直接追加 10 个
+          if (e.shiftKey && challengeTargets().length === 1) {
+            // 上限保护：killEnemy 对 _deathSettled 残留体会直接 return 不移除（重入保护），
+            // 无上限 while 会卡死——跳过残留体直接出列，并以上限兑底
+            for (let guard = enemies.length * 4 + 16; enemies.length > 0 && guard > 0; guard--) {
+              const en = enemies[0];
+              if (!en || en._deathSettled) { if (en) enemies.splice(0, 1); continue; }
+              en.hp = 0;
+              killEnemy(0);
+            }
+          }
+          spawnChallengeTarget(e.shiftKey ? 10 : 1);
+        } else if (state.challenge.kind === 'wave' && k === '=' && !e.shiftKey) {
+          // 波次测试：按 = 额外刷出一整波（不清除场上敌人，可观察多波叠加；Shift+=（产生 '+'）无事发生）
+          spawnChallengeWave(state.challenge);
+        }
+      }
     }
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -98,6 +120,8 @@
 
   // ---------- 主循环 ----------
   let lastTime = performance.now();
+  let fpsEma = 0;       // FPS 指数滑动平均（音量键下方灰色读数，纯展示）
+  let fpsTextT = 0;     // 距上次刷新 FPS 文本的毫秒数（1s 节流：读数每秒一跳，避免逐帧写 DOM）
 
   // 主循环调度：页面不可见（后台标签 / 内嵌预览面板）时浏览器会挂起 requestAnimationFrame，
   // 导致游戏黑屏冻结；document.hidden 时改用 setTimeout 兑底。
@@ -124,8 +148,16 @@
   });
 
   function loop(now) {
-    const dt = Math.min(0.033, (now - lastTime) / 1000);
+    const rawDt = Math.max(1, now - lastTime);   // 原始帧间隔（ms，FPS 读数用，不参与游戏逻辑）
+    const dt = Math.min(0.033, rawDt / 1000);
     lastTime = now;
+    // FPS 读数：指数滑动平均，每 1s 刷一次文本（rAF 节奏 = 显示器刷新率，后台 setTimeout 兑底路径同样计入）
+    fpsEma = fpsEma ? fpsEma * 0.9 + (1000 / rawDt) * 0.1 : 1000 / rawDt;
+    fpsTextT += rawDt;
+    if (fpsMeter && fpsTextT >= 1000) {
+      fpsTextT = 0;
+      fpsMeter.textContent = 'FPS ' + Math.round(fpsEma);
+    }
     try {
       if (state.mode === 'playing' && !state.paused) {
       state.time += dt;
@@ -236,7 +268,7 @@
         }
       }
 
-      // BOSS 战斗期间（全难度）：每 6~12s 强制刷新一波 1类（小组/长队各 50%）——
+      // BOSS 战斗期间（全难度）：每 6~12s 强制刷新一波 1类（小队/长队各 50%）——
       // 不受压力系统与场上存怪影响；本波敌人道具掉率 ×0.3（见 04-spawn / 06-enemy）
       // 警报演出（warn）至我方可开火（BOSS combatReady）前不计时——强制波首刷自可开火起 6~12s 后才出现；
       // bossEntranceActive 双保险：暴风之眼被击败后的本体渐隐窗口（storm 仍 combatReady、storm2 未就绪）

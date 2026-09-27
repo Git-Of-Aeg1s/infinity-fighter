@@ -143,9 +143,10 @@
       }
     } else if (f.kind === 'daodan') {
       // 捣蛋来袭：直射大狗导弹雨同款导弹（复用 dagouMissiles 数组，无 sub 标记——飞行 / 分区命中 / 600 溅射 /
-      // 低区直击 300 与大狗导弹完全一致；berserk 仅标记暴走金红涂装，不影响任何数值与规则；
+      // 低区直击 200 与大狗导弹完全一致；berserk 仅标记暴走金红涂装，不影响任何数值与规则；
       // 演示屏同样发射——updateDemo 内调用 updateDagouMissiles 推进，导弹飞出演示屏上缘后回收）
-      dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -PILOTS.dagou.speed, r: PILOTS.dagou.r, berserk: player.weapon >= 5 });
+      // 连射链与大狗导弹雨同款：发射后 10% 概率 0.3s 后再来一发（连射弹同样可继续连射、伤害依次 ×0.6，见 launchDaodanMissile）
+      launchDaodanMissile(0);
     } else if (f.kind === 'xinring') {
       // 辛国栋之怒：向场上生命值最高的敌人发射空间火环（焦香同款造型的玫红渐变流动版，透明度 0.8）；
       // 发射瞬间锁定一次方向（单位向量），此后恒速直线飞行——速度曲线（初速 180% → 0.8s 衰减至巡航 →
@@ -169,9 +170,28 @@
     return true;
   }
 
+  // 捣蛋来袭单发直射（常规发射与连射链共用）：lv = 连射层级（0/缺省 = 常规）。
+  // 发射后按 PILOTS.dagou.chainChance 概率在 chainGap 秒后再来一发（lv+1，连射弹同样可继续连射），
+  // 伤害按 chainDmgMul^lv 乘算（与大狗导弹雨完全同款，经 updateDagouMissiles 的 mul 通路结算）；
+  // 连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
+  function launchDaodanMissile(lv) {
+    const dc = PILOTS.dagou;
+    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: Math.pow(dc.chainDmgMul, lv || 0), berserk: player.weapon >= 5 });
+    if (dc.chainChance && !state.dagouDebugRapid && Math.random() < dc.chainChance) {
+      state.daodanChains.push({ t: dc.chainGap, lv: (lv || 0) + 1 });
+    }
+  }
+
   // 副武器冷却推进：与主炮共用停火锁（警报演出 / BOSS 入场 / 冲刺等，playerFireLocked）；
   // 不受寒霜光圈 / 壁垒免死射速修正影响（两者只干涉主炮口径），斗志昂扬攻速翻倍照常生效
   function updateSubWeapon(dt) {
+    // 捣蛋来袭连射链推进（置顶于 cfg 判空之前：副武器卸下/切换后遗留待发弹照常走完）——
+    // 停火锁（警报 / BOSS 入场 / 冲刺）期间倒计时冻结，解除后继续（与大狗连射链同约定）
+    for (let i = state.daodanChains.length - 1; i >= 0; i--) {
+      const c = state.daodanChains[i];
+      if (!playerFireLocked()) c.t -= dt;
+      if (c.t <= 0) { state.daodanChains.splice(i, 1); launchDaodanMissile(c.lv); }
+    }
     const cfg = subFireCfg();
     if (!cfg) return;
     player.subCooldown -= dt * hasteMul();
@@ -470,7 +490,7 @@
         x: prev ? prev.x : anchorX + sx * offX,
         y: prev ? prev.y : anchorY + offY,
         cooldown: 0,              // 距下次启动连射的时间
-        burst: null,              // volley:{volleys,spread,idx,gap} / fan:{angles,idx,gap}
+        burst: null,              // volley:{volleys,spread,idx,gap,berserk,level} / fan:{angles,idx,gap,lv,bz}——等级/暴走标记在本轮启动瞬间定格，轮内各发一致（轮中途暴走开启/结束要到下一轮才生效）
         flameT: Math.random() * 10,
       };
       // 守愿者：初始化常时被动白盾折线（每帧在 updateWingmen 重算）
@@ -512,7 +532,7 @@
         if (w.burst) {
           w.burst.gap -= dt * wingmanHasteMul();
           if (w.burst.gap <= 0) {
-            fireWingmanFanShot(w, w.burst.angles[w.burst.idx]);
+            fireWingmanFanShot(w, w.burst.angles[w.burst.idx], w.burst.lv, w.burst.bz);
             w.burst.idx++;
             if (w.burst.idx >= w.burst.angles.length) w.burst = null;
             else w.burst.gap = wpn.staggerGap;
@@ -522,7 +542,8 @@
         w.cooldown -= dt * wingmanHasteMul();
         if (w.cooldown <= 0) {
           const lv = wpn.levels[player.weapon] || wpn.levels[1];
-          w.burst = { kind: 'fan', angles: buildFanAngles(wpn, player.weapon), idx: 0, gap: 0 };
+          // 本轮定格：等级配置 + 暴走标记取启动瞬间值，轮内不再读实时火力（每轮子弹完全一致）
+          w.burst = { kind: 'fan', angles: buildFanAngles(wpn, player.weapon), idx: 0, gap: 0, lv, bz: player.weapon === 5 && !!wpn.berserk };
           w.cooldown = lv.interval;
         }
         continue;
@@ -532,7 +553,7 @@
       if (w.burst) {
         w.burst.gap -= dt * wingmanHasteMul();
         if (w.burst.gap <= 0) {
-          fireWingmanVolley(w, w.burst.volleys[w.burst.idx], w.burst.spread);
+          fireWingmanVolley(w, w.burst.volleys[w.burst.idx], w.burst.spread, w.burst.berserk, w.burst.level);
           w.burst.idx++;
           if (w.burst.idx >= w.burst.volleys.length) w.burst = null;
           else w.burst.gap = WINGMAN.volleyGap;
@@ -543,7 +564,8 @@
       w.cooldown -= dt * wingmanHasteMul();
       if (w.cooldown <= 0) {
         const lv = WINGMAN_LEVELS[player.weapon] || WINGMAN_LEVELS[1];
-        w.burst = { volleys: lv.volleys, spread: lv.spread, idx: 0, gap: 0 };
+        // 本轮定格：暴走标记 + 等级取启动瞬间值（连续两轮齐射一致；轮中途暴走开启/结束下一轮才生效）
+        w.burst = { volleys: lv.volleys, spread: lv.spread, idx: 0, gap: 0, berserk: player.weapon === 5, level: player.weapon };
         w.cooldown = lv.interval;
       }
     }
@@ -563,12 +585,14 @@
   }
 
   // 守愿者单发扇形弹：椭圆长条（oval），速度 bulletSpeed×(Lv5 speedMul)×扇形梯度，伤害取 weapon.levels[lv].dmg
+  //   lv/bz 由调用方传入（本轮启动瞬间的定格值，见 updateWingmen）——轮内各发等级/暴走外观与伤害完全一致，
+  //   轮中途暴走开启/结束不改变本轮剩余弹；两参缺省时回退实时读值（兼容直调）
   //   扇形速度梯度（暴走 Lv5 不生效）：最前方（0°）子弹 +speedGrad（60%）、最低（最外侧 spreadMax°）无加成，中间各发按角度线性递减
   //   暴走（Lv5）：弹长 ×berserk.lenMul、金红渐变配色（普通时为僚机蓝系配色）；均随开火时刻的火力等级定格
-  function fireWingmanFanShot(w, thetaDeg) {
+  function fireWingmanFanShot(w, thetaDeg, lvSnap, bzSnap) {
     const wpn = currentWingman.weapon;
-    const lv = wpn.levels[player.weapon] || wpn.levels[1];
-    const bz = player.weapon === 5 && wpn.berserk;
+    const lv = lvSnap || (wpn.levels[player.weapon] || wpn.levels[1]);
+    const bz = bzSnap != null ? bzSnap : (player.weapon === 5 && !!wpn.berserk);
     const up = -Math.PI / 2;
     const ang = up + w.side * (thetaDeg * Math.PI / 180);   // side 定向：右僚机朝 +x、左僚机朝 -x
     const gradT = wpn.spreadMax > 0 ? thetaDeg / wpn.spreadMax : 0;   // 0=最前方 → 1=最低（最外侧）
@@ -758,13 +782,16 @@
   }
 
   // 僚机单轮齐射：n 发长条弹幕，绕竖直向上方向对称展开，相邻夹角 spreadDeg 度
-  function fireWingmanVolley(w, n, spreadDeg) {
-    const berserk = player.weapon === 5;
-    const lvCfg = WINGMAN_LEVELS[player.weapon] || WINGMAN_LEVELS[1];   // 等级配置（尾焰强度 flameMul 随等级增长，暴走最强）
+  //   berserk/level 由调用方传入（本轮启动瞬间的定格值）——同一 burst 连续两轮齐射外观/伤害一致，
+  //   轮中途暴走开启/结束不改变后续齐射；两参缺省时回退实时读值（兼容直调）
+  function fireWingmanVolley(w, n, spreadDeg, berserkSnap, levelSnap) {
+    const berserk = berserkSnap != null ? berserkSnap : player.weapon === 5;
+    const level = levelSnap != null ? levelSnap : player.weapon;
+    const lvCfg = WINGMAN_LEVELS[level] || WINGMAN_LEVELS[1];   // 等级配置（尾焰强度 flameMul 随等级增长，暴走最强）
     const deg = WINGMAN_SPREAD[n] != null ? WINGMAN_SPREAD[n] : spreadDeg;   // 按单轮发数取夹角，回退到等级默认
     const spread = deg * Math.PI / 180;
     const up = -Math.PI / 2;   // 竖直向上
-    const lvMul = (currentWingman.dmgMulByLevel && currentWingman.dmgMulByLevel[player.weapon]) || 1;   // 僚机专属等级伤害倍率（群星允诺以 Lv4×1.4 为基准构成 80% 等比 DPS 链）
+    const lvMul = (currentWingman.dmgMulByLevel && currentWingman.dmgMulByLevel[level]) || 1;   // 僚机专属等级伤害倍率（群星允诺以 Lv4×1.4 为基准构成 80% 等比 DPS 链）
     const dmg = WINGMAN.bulletDmg * (berserk ? 2 : 1) * lvMul;   // 暴走双倍伤害（所有僚机）
     const speed = WINGMAN.bulletSpeed * (berserk ? 1.15 : 1);
     for (let i = 0; i < n; i++) {
@@ -775,9 +802,15 @@
         vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
         r: WINGMAN.barR, dmg,
         len: WINGMAN.barLen, wing: true, glow: berserk,
-        flameMul: lvCfg.flameMul != null ? lvCfg.flameMul : (berserk ? 1 : 0),   // 尾焰强度：群星允诺按等级 0.35~1（金橙尾焰），Lv5 暴走最强
+        flameMul: lvCfg.flameMul != null ? lvCfg.flameMul : (berserk ? 1 : 0),   // 尾焰强度：群星允诺按等级 0.35~1，Lv5 暴走最强
         flameLenMul: berserk ? 1 : WINGMAN.flameLenMul,   // 尾焰长度系数：Lv1~4 收短 35%，暴走保持原长
-        colorTail: currentWingman.barTail, colorMid: currentWingman.barMid, colorHead: currentWingman.barHead,
+        // 弹体渐变（尾→中→头）：非暴走尾部转浅蓝——浅蓝仅占尾部约 2/5（自头部约 60% 处起进入浅蓝），
+        // 中段不再有独立中蓝带（中段停靠点 midAt 前移、颜色同尾，余段平滑过渡到头部蓝紫）；
+        // 暴走 Lv5 维持注册表原配色（尾橙黄 → 中淡金 → 头蓝紫，停靠点缺省 0.5）
+        colorTail: berserk ? currentWingman.barTail : '#9fd8ff',
+        colorMid: berserk ? currentWingman.barMid : '#9fd8ff',
+        midAt: berserk ? null : 0.42,
+        colorHead: currentWingman.barHead,
       });
     }
   }
@@ -1098,6 +1131,12 @@
     // 天枢圣卫：无敌期间免疫破片导弹的"无视无敌"穿透（ignoreInvuln 仅破片后续导弹使用）
     if (ignoreInvuln && player.invuln > 0 && currentArmor.id === 'tianshu') return false;
     if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（无视无敌 ≠ 无视护盾）
+    // 屏障（增生炮艇支援弹）：优先于血量吸收伤害（完全吸收时不给无敌帧、不计受击）
+    if (player.barrier > 0 && amount > 0) {
+      const abs = Math.min(player.barrier, amount);
+      player.barrier -= abs; amount -= abs;
+      if (amount <= 0) { spawnParticles(player.x, player.y, '#9ff0e0', 8, 150); return false; }
+    }
     // 天枢圣卫：圣守窗口——窗口内受击在伤害结算前触发无敌，该次伤害完全免除；
     // 无敌为常规受击无敌（吃 invulnDiffMul × invulnMul，含天枢自身 +60% 与难度倍率），带受击反馈但不扣血、不计受击掉级数
     if (currentArmor.id === 'tianshu' && player.tianshuArmedT > 0) {
@@ -1258,7 +1297,8 @@
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         // 无视虚化（phase > 0 的虚化护盾敌人照常结算）；BOSS 死亡召唤体（_sdImmune，如暴风之眼
-        // 死后召唤的风暴编织者）不受波伤害——否则终局波秒掉暴风之眼会顺带秒掉本应登场的二阶段
+        // 死后召唤的风暴编织者）在本批扩散波存续期间不受波伤害——否则终局波秒掉暴风之眼会顺带
+        // 秒掉本应登场的二阶段；波全部扫完后豁免解除（见下方收尾），后续殉爆照常结算
         if (!enemyOnScreen(e) || e.dying || e._sdImmune) continue;
         if (e._sdWaveId === w.id) continue;   // 本道波已结算过该敌人
         if (Math.hypot(e.x - w.x, e.y - w.y) - Math.max(e.w, e.h) / 2 > w.r) continue;   // 波前未及
@@ -1275,7 +1315,14 @@
       }
       if (w.r >= w.maxR) state.aiyiWaves.splice(i, 1);
     }
-    if (!state.aiyiWaves.length) state.aiyiSelfDestruct = false;
+    // 全部波扫出全场后复位 state.aiyiSelfDestruct，并解除「死亡召唤体」的波豁免（_sdImmune）——
+    // 豁免仅覆盖炸死暴风之眼的同一次爆炸（含终局三波错峰）：波清后风暴编织者可被后续殉爆正常伤害
+    if (!state.aiyiWaves.length) {
+      state.aiyiSelfDestruct = false;
+      for (const e of enemies) {
+        if (e._sdImmune) delete e._sdImmune;
+      }
+    }
   }
 
   // 测试模式（图鉴挑战）受伤入口：供绕过 damagePlayer 的持续伤害源使用（BOSS 接触 / 焦香灼烧 / 先兆者导弹）。
@@ -1303,7 +1350,7 @@
   }
 
   // 澄月：触发暴走（新触发与暴走续时均判定一次）时概率获得量子护盾——
-  // 常规 15% / BOSS 战 50%（每个 BOSS 限一次；时长 6s 与通用量子护盾一致，走注册表 ARMORS.chengyue.shieldDur）
+  // 常规 15% / BOSS 战 40%（每个 BOSS 限一次；时长 6s 与通用量子护盾一致，走注册表 ARMORS.chengyue.shieldDur）
   function tryChengyueShield() {
     if (currentArmor.id !== 'chengyue') return;
     const bossFight = bossFlow.stage === 'fight';
@@ -1408,7 +1455,7 @@
   //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；闪避 / 攻速增益倒计时
   function updatePilotStatus(dt) {
     // 许凯狗冲刺：所有驾驶员计时表 / 量表冻结（大狗导弹雨不计时、陵落冷却不走、
-    // 天秀量表不充能、凌漓计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
+    // 天秀量表不充能、漓计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
     const dashFrozen = state.pilotDashT > 0;
     // 陵落：生命上限债务恢复（每秒 +2，不回当前血量，回满即止——单次触发 40 ÷ 2/s = 恰好 20s）；
     // 警报 / BOSS 登场动画期间仅按 50% 流速推进（entranceDt，下同）
@@ -1457,9 +1504,9 @@
         launchDagouWave(0);
       }
     }
-    // 凌漓：隐藏计数表——填满 2400 分立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）；
+    // 漓：隐藏计数表——填满 2400 分立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）；
     // 连携七日澜心（同时装备该护甲）：澜心量表充满的瞬间（跨过 1）额外释放一次同款冲击波，
-    // 且凌漓计数减少 1000（不足 1000 则减到负数）；冲刺期间量表冻结（快照照常结转，避免解冻后误判「充满瞬间」）
+    // 且漓计数减少 1000（不足 1000 则减到负数）；冲刺期间量表冻结（快照照常结转，避免解冻后误判「充满瞬间」）
     if (hasPilot('lingli')) {
       if (!dashFrozen && state.lingliGauge >= PILOTS.lingli.gaugeFull) {
         state.lingliGauge = 0;
@@ -1550,7 +1597,7 @@
     return false;
   }
 
-  // 凌漓：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
+  // 漓：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
   // 与澜心护盾消失的差异：不震屏（crystalBurst 冲击波环视觉完全一致）
   function lingliBurst() {
     crystalBurst.active = true;
@@ -1575,10 +1622,11 @@
       const order = Math.abs((n - 1) / 2 - k) - 0.5;
       dagouMissiles.push({ x, y: CANVAS_H + 24, vy: -cfg.speed, r: cfg.r, delay: order * cfg.launchGap, dmgMul });
     }
-    if (cfg.chainChance && Math.random() < cfg.chainChance) {
+    // 连射（10% 概率 0.3s 后追波）：仅正常节奏的导弹雨可触发——按 9 的调试速射模式不连射（波次已密集）
+    if (cfg.chainChance && !state.dagouDebugRapid && Math.random() < cfg.chainChance) {
       state.dagouChains.push({ t: cfg.chainGap, lv: (lv || 0) + 1 });
     }
-    achvNoteDagouChain(lv);   // 成就：欧欧欧（两次连射3轮）/ ！？欧欧？！（连射4轮；lv=0 为新序列起点）
+    if (!state.dagouDebugRapid) achvNoteDagouChain(lv);   // 成就：欧欧欧（两次连射3轮）/ ！？欧欧？！（连射4轮；lv=0 为新序列起点）——调试速射不计
     spawnParticles(CANVAS_W / 2, CANVAS_H - 8, '#9fd0ff', 14, 170);   // 底部少量水花粒子（无震屏：入场演出克制）
   }
 
@@ -1774,12 +1822,13 @@
     clearMissiles();
     if (klee) achvSetKillSrc('bomb-keli');   // 成就：绷绷炸弹击杀来源（轰轰火花——任意 BOSS）
     // 高能爆弹：真实伤害（无视御4防御光环等一切减伤、无视敌方虚化护盾），对全场敌人造成 4000 + 目标最大血量10% 的伤害
-    // 测试模式：改为对每个敌方结算 60% 最大血量（不再清屏秒杀；BOSS 亦按 60% 结算、无 testHp 锁定）
+    // 测试模式：敌人测试页（kind enemy）直接秒杀全场（含召唤物）；BOSS 试炼维持 60% 最大血量结算（无 testHp 锁定）
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e) continue;   // 连锁结算（暴鸰殉爆 / 召唤体连带删除等）可能同帧收缩数组导致索引越界——与下方补扫循环同样跳过
       if (state.challenge) {
-        e.hp -= e.maxHp * 0.60;
+        if (state.challenge.kind === 'boss') e.hp -= e.maxHp * 0.60;
+        else e.hp = 0;
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
       } else {

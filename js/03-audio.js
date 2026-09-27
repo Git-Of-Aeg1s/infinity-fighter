@@ -8,7 +8,7 @@
 
   // ---------- BGM ----------
   // 主界面：main_theme / main_theme_2 随机轮播（一首自然播完 → 随机切另一首，不与刚播完的重复）
-  // 常规战斗：battle_normal_1；BOSS 战（含警报演出）：旧日之歌 battle_boss_1 / 暴风之眼 battle_boss_2
+  // 常规战斗：battle_normal_1；BOSS 战（含警报演出）：旧日之歌 battle_boss_1 / 暴风之眼 battle_boss_2（警报切入静默时战斗曲 0.5s 淡出）
   // 结算曲：胜利 victory / 失败 defeat（单次播放；结算页弹出时才起播；未播完就返回主界面 / 再来一局 → 音量迅速淡出）
   const BGM_TRACKS = {
     main_theme:      './assets/audio/main_theme.mp4',
@@ -31,6 +31,7 @@
   const MENU_TRACKS = ['main_theme', 'main_theme_2'];   // 主界面轮播池
   const RESULT_TRACKS = ['victory', 'defeat'];          // 结算曲（单次播放、可快速淡出）
   const RESULT_FADE = 0.35;   // 结算曲提前退出的淡出时长（s）
+  const ALARM_FADE = 0.5;     // 战斗曲切入警报静默的淡出时长（s）
   const bgmAudios = Object.create(null);
   let bgmCurrent = null;      // 当前应播放的曲目 key
   let bgmUnlocked = false;    // 浏览器自动播放限制：首次交互后解锁
@@ -42,7 +43,7 @@
   //   调 play()——对已结束的媒体元素 play() 按规范回到起点，即"胜利曲连续播两遍"。
   // 新的结算展示上升沿 / 展示结束（下降沿）时清空，同一次展示内换成另一首结算曲仍允许（失败曲先响→胜利页弹出）。
   let resultSession = null;
-  let resultFade = null;      // 结算曲淡出中：{ key, audio, t0, from }
+  let bgmFade = null;         // 曲目淡出中：{ key, audio, t0, from, dur }（结算曲快速淡出 / 战斗曲转警报淡出共用）
   let prevResultShown = false;   // 上一帧是否处于结算展示（胜利页 / 失败页）：上升沿重置 resultDone，避免上一局遗留导致本局结算曲不播
 
   function trackVol(key) { return BGM_VOLUME * (BGM_GAIN[key] || 1); }
@@ -78,24 +79,26 @@
     return pool[(Math.random() * pool.length) | 0];
   }
 
-  // 结算曲快速淡出（提前返回主界面 / 再来一局时触发）：淡完暂停归零并恢复音量供下次播放
-  function startResultFade() {
+  // 曲目淡出（结算曲提前退出 / 战斗曲切入警报静默）：淡完暂停归零并恢复音量供下次播放
+  function startBGMFade(dur = RESULT_FADE) {
     const a = bgmAudios[bgmCurrent];
     if (!a || a.paused) return;
-    resultFade = { key: bgmCurrent, audio: a, t0: performance.now(), from: a.volume };
+    bgmFade = { key: bgmCurrent, audio: a, t0: performance.now(), from: a.volume, dur };
   }
 
-  function stepResultFade() {
-    if (!resultFade) return;
-    if (resultFade.audio.paused) { resultFade.audio.volume = trackVol(resultFade.key); resultFade = null; return; }
-    const k = (performance.now() - resultFade.t0) / (RESULT_FADE * 1000);
+  function stepBGMFade() {
+    if (!bgmFade) return;
+    const a = bgmFade.audio;
+    // 已暂停（静音 / 暂停）或被重新起播为当前曲：放弃淡出并恢复音量，交回常规逻辑接管
+    if (a.paused || bgmCurrent === bgmFade.key) { a.volume = trackVol(bgmFade.key); bgmFade = null; return; }
+    const k = (performance.now() - bgmFade.t0) / (bgmFade.dur * 1000);
     if (k >= 1) {
-      resultFade.audio.pause();
-      resultFade.audio.currentTime = 0;
-      resultFade.audio.volume = trackVol(resultFade.key);
-      resultFade = null;
+      a.pause();
+      a.currentTime = 0;
+      a.volume = trackVol(bgmFade.key);
+      bgmFade = null;
     } else {
-      resultFade.audio.volume = resultFade.from * (1 - k);
+      a.volume = bgmFade.from * (1 - k);
     }
   }
 
@@ -104,12 +107,13 @@
     return (bgmCurrent && MENU_TRACKS.includes(bgmCurrent)) ? bgmCurrent : pickMenuTrack(except);
   }
 
-  // 切换当前曲目（立即起播，遵循解锁 / 暂停 / 静音）；被切走的结算曲若未播完走快速淡出
+  // 切换当前曲目（立即起播，遵循解锁 / 暂停 / 静音）；被切走的结算曲快速淡出，战斗曲切向静默（警报演出）0.5s 淡出
   function switchTrack(key) {
     if (key === bgmCurrent) return;   // 同曲幂等：重复切换会对已起播曲目重置从头播放（结算曲双播的诱因之一）
     if (bgmCurrent) {
       const prev = bgmAudios[bgmCurrent];
-      if (RESULT_TRACKS.includes(bgmCurrent) && !prev.paused) startResultFade();
+      if (!prev.paused && RESULT_TRACKS.includes(bgmCurrent)) startBGMFade(RESULT_FADE);   // 结算曲：快速淡出
+      else if (!prev.paused && key === null) startBGMFade(ALARM_FADE);   // 战斗曲 → 静默（警报演出）：0.5s 淡出；其余（主界面曲 / 曲目间硬切）维持立即停止
       else { prev.pause(); prev.currentTime = 0; }
     }
     bgmCurrent = key;
@@ -162,7 +166,7 @@
     if (!bgmCurrent) return;
     const a = bgmAudios[bgmCurrent];
     if (RESULT_TRACKS.includes(bgmCurrent)) {
-      if (a && !a.paused) startResultFade();   // 结算曲：快速淡出
+      if (a && !a.paused) startBGMFade();   // 结算曲：快速淡出
     } else if (a && !a.paused) {
       a.pause(); a.currentTime = 0;            // 战斗曲：直接归零暂停
     }
@@ -170,7 +174,7 @@
 
   // 每帧根据状态决定应播放的曲目，并处理暂停/恢复
   function updateBGM() {
-    stepResultFade();
+    stepBGMFade();
     stepBGMRestart();
     // 结算展示上升沿：新一局结算开始 → 允许结算曲重新起播（清掉上一局自然播完遗留的 resultDone，
     // 否则上一局结算曲播完后 resultDone 恒为 true，下一局胜利页会直接跳主界面轮播、胜利曲不响）
@@ -196,6 +200,10 @@
       }
     } else if (state.mode === 'gameover' && !resultDone && resultSession !== 'defeat') {
       target = 'defeat';    // 失败结算：先播失败曲（播完转主界面轮播）
+    } else if (!resultDone && resultSession && bgmCurrent === resultSession) {
+      // 结算曲仍在播放：维持当前曲——否则落到下方主界面轮播，bgmCurrent 非主界面曲会随机选曲，
+      // 当帧把刚起播的结算曲切走（胜利曲响一声即断的根因）；播完（resultDone）后自然交还轮播
+      target = resultSession;
     } else {
       // 主界面 / 结算曲播完后的结算页：主界面随机轮播
       target = menuTarget(bgmCurrent);

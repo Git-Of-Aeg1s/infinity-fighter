@@ -6,7 +6,7 @@
   import { CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body } from './09-draw-ships.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
@@ -916,7 +916,7 @@
       }
       if (b.wing || b.sub) {
         // 僚机 / 副武器长条弹幕：沿飞行方向，尾→头渐变；尾焰长度/亮度随 flameMul（0~1）增长，暴走（=1）最强
-        //   群星允诺：旋转胶囊体（暖色尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）；
+        //   群星允诺：旋转胶囊体（常规蓝紫尾焰 / 暴走金橙尾焰）；守愿者(oval)：椭圆体（冷色尾焰；暴走弹金红尾焰）；
         //   副武器弹（b.sub，见 01-config SUB_WEAPONS.fire 与 07-player fireSubWeapon）复用同一胶囊体画法
         const ang = Math.atan2(b.vy, b.vx);
         ctx.save();
@@ -924,7 +924,7 @@
         ctx.rotate(ang);
         const wg = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
         wg.addColorStop(0, b.colorTail);
-        wg.addColorStop(0.5, b.colorMid);
+        wg.addColorStop(b.midAt != null ? b.midAt : 0.5, b.colorMid);   // 中段停靠点可调（缺省 0.5，原行为不变）
         wg.addColorStop(1, b.colorHead);
         const fm0 = b.flameMul != null ? b.flameMul : (b.glow ? 1 : 0);   // 未标 flameMul 的弹沿用 glow 语义（暴走=1 / 常规=0）
         // 出膛渐入：尾焰/辉光随离舱距离展开（前 60px 线性）——避免新射出的弹把金红尾焰扫在僚机盾面与本体上
@@ -947,9 +947,12 @@
               fg.addColorStop(0, `rgba(190, 230, 255, ${(0.75 * fa).toFixed(3)})`);
               fg.addColorStop(1, 'rgba(60, 150, 255, 0)');
             }
-          } else {        // 群星允诺：金橙尾焰
+          } else if (b.glow) {   // 群星允诺暴走（Lv5）：金橙尾焰（维持原配色）
             fg.addColorStop(0, `rgba(255, 205, 120, ${(0.7 * fa).toFixed(3)})`);
             fg.addColorStop(1, 'rgba(255, 110, 199, 0)');
+          } else {               // 群星允诺常规：浅蓝尾焰（与机体蓝紫星焰同族，非暴走不再走金黄）
+            fg.addColorStop(0, `rgba(195, 230, 255, ${(0.7 * fa).toFixed(3)})`);
+            fg.addColorStop(1, 'rgba(130, 140, 255, 0)');
           }
           ctx.fillStyle = fg;
           ctx.beginPath();
@@ -1549,25 +1552,15 @@
     ctx.globalAlpha = 1;
   }
 
+  // 掉落水晶绘制（水晶系统改版）：每颗按档位 / 颜色取 3D 烘焙精灵逐帧 1:1 贴图，
+  // 呼吸缩放保留（轻微），自转 1s/圈、24 帧步进（c.t 为 4×dt 计时 → c.t/16 = 转相进度）
   function drawCrystals() {
     for (const c of crystals) {
-      ctx.save();
-      ctx.translate(c.x, c.y);
-      const s = 1 + Math.sin(c.t) * 0.15;
-      ctx.scale(s, s);
-      ctx.fillStyle = c.giant ? '#e08bff' : '#9be7ff';
-      ctx.shadowColor = c.giant ? '#c04dff' : '#4dd0ff';
-      ctx.shadowBlur = c.giant ? 16 : 8;
-      ctx.beginPath();
-      ctx.moveTo(0, -c.r);
-      ctx.lineTo(c.r * 0.7, 0);
-      ctx.lineTo(0, c.r);
-      ctx.lineTo(-c.r * 0.7, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      const spr = getCrystal3DSprite(c.tier, c.colorKey, (c.t / 4 + (c.phase || 0)) % 1);   // c.t = 4×dt → 1s/圈，24 帧步进
+      const s = 1 + Math.sin(c.t) * 0.1;
+      const w = spr.width * s;
+      ctx.drawImage(spr, c.x - w / 2, c.y - w / 2, w, w);
     }
-    ctx.shadowBlur = 0;
   }
 
   // 测试模式（图鉴挑战·敌人测试）顶部血条：仅当场上恰好 1 个测试目标时显示（多目标时渐隐），
@@ -1577,6 +1570,8 @@
   // BOSS 测试不画此条（BOSS 在 drawBoss 中已有专属顶部血条）
   let cbLastT = null, cbAlpha = 0, cbTrail = null, cbRef = null;
   function drawChallengeBar() {
+    // 匹配规则同 04-spawn challengeTargets（类型 + 变体 + 行为，召唤物不计）；此处不引 04-spawn（避免 10-draw → 04-spawn 模块环）。
+    // 仅敌人测试（kind 'enemy'）显示；波次测试（kind 'wave'）无顶部血条（targets 恒空 → 渐隐不绘制）
     const ch = state.challenge;
     const targets = (ch && ch.kind === 'enemy') ? enemies.filter(e =>
       e.type === ch.type &&
@@ -1590,7 +1585,7 @@
     if (cbAlpha <= 0.01) { cbTrail = null; cbRef = null; return; }
     const e = targets[0];
     if (!e) return;
-    if (e !== cbRef) { cbRef = e; cbTrail = e.hp; }   // 目标更替（被击杀后重生/按 + 召唤）：残量重置
+    if (e !== cbRef) { cbRef = e; cbTrail = e.hp; }   // 目标更替（被击杀后重生/按 = 召唤）：残量重置
     cbTrail += (e.hp - cbTrail) * Math.min(1, dt * 2.2);
     const w = 300, h = 9, x = (CANVAS_W - w) / 2, y = 10;
     const hpR = clamp(e.hp / e.maxHp, 0, 1);

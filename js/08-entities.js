@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, enemyDmgMul, hasPilot, isZhenwo } from './01-config.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, diffMods, enemyDmgMul, hasPilot, isZhenwo, isShipian } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
@@ -63,6 +63,12 @@
 
   // ---------- 子弹 ----------
   function updateBullets(dt) {
+  // 玩家屏障（增生炮艇支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）
+  if (player.barrierT > 0) {
+    player.barrierT -= dt;
+    player.barrier = player.barrierT >= 1 ? player.barrierMax : player.barrierMax * Math.max(0, player.barrierT);
+    if (player.barrierT <= 0) { player.barrier = 0; player.barrierMax = 0; }
+  }
     // 暗紫轨迹残影：留存一段时间后渐隐消失
     for (let i = trailGhosts.length - 1; i >= 0; i--) {
       trailGhosts[i].life -= dt;
@@ -148,6 +154,10 @@
           // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
           // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
           const dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm);
+          if (e.barrier > 0) {
+            const abs = Math.min(e.barrier, dmg);
+            e.barrier -= abs; dmg -= abs;
+          }
           e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
@@ -298,6 +308,27 @@
       const trailPad = b.beamTrail ? (b.len || 0) : 0;
       if (b.y > CANVAS_H + 20 + trailPad || b.y < -40 - trailPad || b.x < -20 || b.x > CANVAS_W + 20) {
         eBullets.splice(i, 1); continue;
+      }
+      // 增生炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（大判定、无需核心）→ 加屏障 24（诗篇 28）持续 10s；对双方均无伤害
+      if (b.support) {
+        let hit = false;
+        if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) < 16 + b.r) {
+          player.barrierMax = isShipian() ? 28 : 24;
+          player.barrier = player.barrierMax; player.barrierT = 10;
+          spawnParticles(b.x, b.y, '#9ff0e0', 10, 160);
+          hit = true;
+        }
+        if (!hit) for (let j = enemies.length - 1; j >= 0; j--) {
+          const en = enemies[j];
+          if (en === b.owner || !enemyOnScreen(en) || en.dying) continue;
+          if (Math.abs(b.x - en.x) < en.w / 2 + b.r && Math.abs(b.y - en.y) < en.h / 2 + b.r) {
+            en.barrierMax = 200; en.barrier = 200;
+            spawnParticles(b.x, b.y, '#9ff0e0', 10, 160);
+            hit = true; break;
+          }
+        }
+        if (hit) eBullets.splice(i, 1);
+        continue;
       }
       // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效
       if (bulwarkActive()) {
@@ -528,7 +559,7 @@
         continue;
       }
       // 磁吸：比水晶更易被吸引（半径更大、拉力更强），吸附后直奔机身
-      // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
+      // 强制吸收（absorbDelay，BOSS 清场道具 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
       let magnetized = false;
       if (p.absorbDelay != null && p.absorbDelay > 0) {
         p.absorbDelay -= dt;   // 下坠阶段：保持初始 vx/vy 飘落
@@ -574,7 +605,7 @@
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
-      // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 凌漓等量表冻结不计（见 updatePilotStatus）
+      // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 漓等量表冻结不计（见 updatePilotStatus）
       if (state.pilotDashT > 0 && player.alive) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
@@ -583,7 +614,7 @@
         continue;
       }
       // 磁吸：靠近玩家时被吸附（吸附后直奔机身中心判定点）
-      // 强制吸收（absorbDelay，BOSS 掉落 / 警报快速吸收）：先自由下落一小段，随后无视距离高速飞向战机
+      // 强制吸收（absorbDelay，警报快速吸收等）：先自由下落一小段，随后无视距离高速飞向战机
       if (c.absorbDelay != null && c.absorbDelay > 0) {
         c.absorbDelay -= dt;   // 下坠阶段：保持初始 vx/vy 四散飘落
       } else if (player.alive) {
@@ -603,7 +634,7 @@
             // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
             // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
             armorSkillGain(c.val, c.firstBoss);
-            // 凌漓：隐藏计数表按水晶得分充能（无首轮 BOSS 加成；BOSS 水晶 fromBoss 不计入）
+            // 漓：隐藏计数表按水晶得分充能（无首轮 BOSS 加成；BOSS 水晶 fromBoss 不计入）
             if (hasPilot('lingli') && !c.fromBoss) state.lingliGauge += c.val;
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
@@ -628,7 +659,7 @@
   }
 
   // BOSS 警报触发：场上所有水晶 / 道具进入「快速吸收」——0.35s 飘落后无视距离高速飞向战机
-  // （拉速 1800 > BOSS 阵亡吸收的 1150）；拾取判定照常逐个结算，不再瞬间清空全场
+  // （拉速 1800）；拾取判定照常逐个结算，不再瞬间清空全场
   function collectAllItems() {
     for (const c of crystals) {
       if (c.absorbDelay == null) c.absorbDelay = 0.35;   // 飘落阶段：保留可感知的「飞向战机」过程

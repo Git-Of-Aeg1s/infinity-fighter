@@ -375,7 +375,7 @@
         // 技能6：三旋臂漩涡弹幕——随机顺时针/逆时针（全程不变），风条连射形成 3 条臂，转速随时间越来越快，持续 5s
         // 真我：追加一组镜像三旋臂——初始射击位置相反（相位差 π）、转向相反，转速与射击节奏与本体一致
         const s6 = { id: 5, t: 0, dur: 5, fire: 0, armAng: Math.random() * Math.PI * 2,
-          dir: Math.random() < 0.5 ? 1 : -1, spin: 0.65, spMul };
+          dir: Math.random() < 0.5 ? 1 : -1, spin: isZhenwo() ? STORM_SHIP.s6.spin0 : 0.65, spMul };
         if (isZhenwo() && STORM_SHIP.s6.mirror) {
           s6.armAng2 = Math.PI - s6.armAng;   // 初始射向镜像（π − armAng）：配合转向相反，任意时刻两组旋臂关于竖直中轴镜像
           s6.fx1 = CANVAS_W * STORM_SHIP.s6.fx[0];   // 真我：本体三旋臂射击点移至屏宽 35% 处
@@ -529,10 +529,11 @@
       }
     } else if (s.id === 5) {
       // 技能6：3 条臂漩涡弹幕，方向固定（顺/逆时针随机），转速随时间越来越快
-      // 角速度线性递增：初速 0.65 不变、斜率 0.617（原 0.7）→ 5s 末最大转速 4.15→3.735 rad/s（-10%），持续时长不变
+      // 角速度线性递增：具象初速 0.65 不变、斜率 0.617（原 0.7）→ 5s 末最大转速 4.15→3.735 rad/s（-10%），持续时长不变
+      // 真我：两组三旋臂（本体 + 镜像，共用 spin）初始转速 +30%（0.845）、斜率收窄 0.578——5s 末最大转速 3.735 rad/s 不变
       // 真我：同步追加一组镜像三旋臂（armAng2）——射击点 35% / 65% 屏宽、初始射向镜像（π − armAng）且转向相反，
       // 任意时刻两组旋臂关于竖直中轴精确镜像；转速与射击节奏与本体一致
-      s.spin += 0.617 * dt;
+      s.spin += (isZhenwo() ? STORM_SHIP.s6.spinSlope : 0.617) * dt;
       s.armAng += s.dir * s.spin * dt;
       if (s.armAng2 != null) s.armAng2 -= s.dir * s.spin * dt;
       s.fire -= dt;

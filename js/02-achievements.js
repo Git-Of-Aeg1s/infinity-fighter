@@ -51,7 +51,7 @@
     _baolingPrev: 0,     // 外层殉爆窗口计数暂存（嵌套殉爆互不影响）
     killSrc: null,       // 击杀来源标记（'dagou' | 'chixin' | 'bomb-keli'；同步窗口内消费）
     songDown: false,     // 第一轮 BOSS（旧日之歌）已被击败（萎靡不振——击败前掉命判定）
-    chengyueDry: 0,      // 澄月：连续暴走未触发护盾的判定次数（非非 ≥5；触发护盾即清零）
+    chengyueDry: 0,      // 澄月：连续暴走未触发护盾的判定次数（非非 ≥6；触发护盾即清零）
     maxinSlowT: 0,       // 马兴犬低速模式连续时长（s；鳖爬 ≥30）
     maxinFastT: 0,       // 马兴犬高速模式连续时长（s；冲刺冲刺 ≥120）
     huiHealTotal: 0,     // 洄累计治疗量（时流回溯 ≥100；含每 2s 回复与击败 BOSS 回复）
@@ -261,12 +261,12 @@
     if (achv.zidianHits >= 3) unlockAchievement('zidianHits3');
   }
 
-  // 澄月护盾判定结果（07-player tryChengyueShield；非非：连续 5 次暴走判定均未触发护盾，触发即清零）
+  // 澄月护盾判定结果（07-player tryChengyueShield；非非：连续 6 次暴走判定均未触发护盾，触发即清零）
   function achvNoteChengyueRoll(triggered) {
     if (!achvGateOk()) return;
     if (triggered) { achv.chengyueDry = 0; return; }
     achv.chengyueDry++;
-    if (achv.chengyueDry >= 5) unlockAchievement('chengyueDry5');
+    if (achv.chengyueDry >= 6) unlockAchievement('chengyueDry6');
   }
 
   // 哈基米大王当前闪避概率上报（07-player 闪避失败累积步进后调用；哦非非 ≥60%）
@@ -327,7 +327,7 @@
     achv.lanxinShieldAbsorb = 0;
   }
 
-  // 凌漓弹幕清除冲击波上报（07-player lingliBurst；清除空气：实际消除数为 0）
+  // 漓弹幕清除冲击波上报（07-player lingliBurst；清除空气：实际消除数为 0）
   function achvNoteLingliBurst(cleared) {
     if (!achvGateOk()) return;
     if (!cleared) unlockAchievement('lingliAirClear');

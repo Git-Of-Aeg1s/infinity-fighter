@@ -1,9 +1,9 @@
-﻿// 09-draw-ships：战机 / 僚机 / 各敌机形体与子弹预警的绘制
+// 09-draw-ships：战机 / 僚机 / 各敌机形体与子弹预警的绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(3 名)
   //
-  import { ANVIL, BAOLING, BULWARK, CANVAS_H, CANVAS_W, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, STARSLAYER, YU4, currentArmor, currentPlane, currentWingman } from './01-config.js';
+  import { ANVIL, BAOLING, BULWARK, CANVAS_H, CANVAS_W, CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, STARSLAYER, YU4, currentArmor, currentPlane, currentWingman } from './01-config.js';
   import { armorGlyphFx, blBombs, bossFlow, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
 
 
@@ -3625,108 +3625,288 @@
     }
   }
 
-  // 法术矩阵发光正方体：柜式立体投影，本体按发射方向旋转（最前面的边垂直于发射方向）；挤出侧随水平运动方向(ux)，左发射见左面 / 右发射见右面；
-  // 顶面最亮、侧面较暗、正面通体白 + 内部淡淡红光（柔和径向、无硬边界），最外缘轮廓向外散发红光；
-  // 拖尾沿运动反方向从立方体质心发出（与主体对齐）；发射后 0.5s 内从 50% 成长到最大；随 glow 黯淡、随 alpha 渐隐
-  function drawSpellCubes() {
-    const path = (pts) => {
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-      ctx.closePath();
+  // ---------- 法术正方体精灵烘焙（性能改造，方案 A） ----------
+  // 旧实现每颗每帧 5~6 次 shadowBlur + ~10 次光栅化，场上堆积时帧率大跌。现全部预烘焙：
+  //   大正方体：三轴角速度比改为有理数 1 : 3/4 : 1/2（原 1 : 0.73 : 0.47，肉眼无感）→ 翻滚以 4 圈为周期循环，
+  //     预烘 96 帧（24 步/圈，对齐水晶方案的低帧口径）供所有大正方体共享——c.spinSeed → 循环起始相位、
+  //     c.spinMul（0.8~1.25）→ 播放速率，随机性保留；运行时每颗每帧 1 次 drawImage。
+  //   小正方体：柜式投影姿态只随发射方向整体旋转（本体形状恒定）→ 烘 1 张（sx=+1 基准，左发射镜像），运行时 rotate+镜像贴图。
+  //   拖尾：红光带 / 白热内芯分两层烘焙（保留 lighter 叠加语义），运行时 rotate+scale 贴图，替代逐帧渐变+shadowBlur。
+  // 烘焙一律按 gg=1 / alpha=1 / scale=1 基准；运行时以 globalAlpha = c.alpha·gg 一并还原黯淡与渐隐（原绘制各元素 alpha 均匀乘 gg·alpha，等价）。
+  const XTUMBLE_FRAMES = 96;       // 大正方体烘焙帧数（4 圈循环 × 24 步/圈）
+  const XTUMBLE_REVS = 4;          // 每循环 rx 转过圈数（ry 3 圈、rz 2 圈 → 比 1 : 3/4 : 1/2）
+  let xtumble = null;              // { frames: [canvas × 96], size, s }（懒烘焙：首颗大正方体出现时一次性构建）
+  let xcubeSmall = null;           // { cv, size, s } 小正方体贴图
+  let xtrailBig = null, xtrailSmall = null;   // { red, core, len, bodyS, margin } 拖尾双层贴图
+
+  function frac01(x) { return x - Math.floor(x); }
+
+  // 大正方体翻滚渲染核心：u ∈ [0,1) 循环相位——rx = u·4·2π、ry = u·3·2π、rz = u·2·2π；
+  // 投影 / 背面剔除 / 逐面朗伯着色 / 剪影红外发光 / 内部淡红光 / 棱线双层描边与原实时刻画逐行一致（烘焙专用，gg=1）
+  function xtumbleRender(g, u, s, gg) {
+    const rx = u * XTUMBLE_REVS * 2 * Math.PI;
+    const ry = u * XTUMBLE_REVS * 0.75 * 2 * Math.PI;
+    const rz = u * XTUMBLE_REVS * 0.5 * 2 * Math.PI;
+    const cxr = Math.cos(rx), sxr = Math.sin(rx), cyr = Math.cos(ry), syr = Math.sin(ry), czr = Math.cos(rz), szr = Math.sin(rz);
+    // 三轴旋转（Rz·Rx·Ry），返回未投影的旋转后向量
+    const rot3 = (x, y, z) => {
+      const y1 = y * cxr - z * sxr, z1 = y * sxr + z * cxr;
+      const x2 = x * cyr + z1 * syr, z2 = -x * syr + z1 * cyr;
+      return [x2 * czr - y1 * szr, x2 * szr + y1 * czr, z2];
     };
+    const P = [];
+    for (let i = 0; i < 8; i++) {
+      const [x3, y3, z3] = rot3(i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1);
+      const w = 1 / (1 - z3 * 0.09);   // 轻透视：z 越朝画面外越大（近大远小）
+      P.push([x3 * w * s, y3 * w * s]);
+    }
+    // 6 个面：外法线（未旋转空间）+ 顶点索引（bit0=x+ / bit1=y+ / bit2=z+）
+    const FACES = [
+      { n: [0, 0, 1],  v: [4, 5, 7, 6] },
+      { n: [0, 0, -1], v: [0, 1, 3, 2] },
+      { n: [1, 0, 0],  v: [1, 5, 7, 3] },
+      { n: [-1, 0, 0], v: [0, 4, 6, 2] },
+      { n: [0, 1, 0],  v: [2, 3, 7, 6] },
+      { n: [0, -1, 0], v: [0, 1, 5, 4] },
+    ];
+    const L = [-0.3, -0.55, 0.78];   // 光源方向（左上前方，canvas y 向下 → -y 为上方），近似单位向量
+    const vis = [];
+    for (const f of FACES) {
+      const [nx, ny, nz] = rot3(f.n[0], f.n[1], f.n[2]);
+      if (nz <= 0.02) continue;   // 背面剔除（凸多面体 → 可见面互不遮挡）
+      const b = 0.45 + 0.55 * Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);   // 法线受光亮度
+      const k = 1 - b;
+      vis.push({ idx: f.v, pts: f.v.map(ix => P[ix]), col: `${Math.round(255 - 70 * k)}, ${Math.round(255 - 115 * k)}, ${Math.round(255 - 95 * k)}` });
+    }
+    const path = (pts) => {
+      g.beginPath();
+      g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+      g.closePath();
+    };
+    g.save();
+
+    // 1) 剪影底：所有可见面填白 + 强红外发光（红光只出现在最外轮廓）
+    g.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
+    g.shadowBlur = 30 * gg;
+    g.fillStyle = `rgba(255, 250, 250, ${(0.96 * gg).toFixed(3)})`;
+    g.beginPath();
+    for (const f of vis) { g.moveTo(f.pts[0][0], f.pts[0][1]); for (let i = 1; i < f.pts.length; i++) g.lineTo(f.pts[i][0], f.pts[i][1]); g.closePath(); }
+    g.fill();
+    g.shadowBlur = 0;
+
+    // 2) 逐面明暗着色（面向光源亮、背向转暗 → 翻滚时立体感随姿态流转）
+    for (const f of vis) {
+      g.fillStyle = `rgba(${f.col}, ${(0.97 * gg).toFixed(3)})`;
+      path(f.pts); g.fill();
+    }
+
+    // 3) 内部淡红光：裁剪到可见面并集内画径向渐变（柔和、无硬边界）
+    g.save();
+    g.beginPath();
+    for (const f of vis) { g.moveTo(f.pts[0][0], f.pts[0][1]); for (let i = 1; i < f.pts.length; i++) g.lineTo(f.pts[i][0], f.pts[i][1]); g.closePath(); }
+    g.clip();
+    const rg = g.createRadialGradient(0, 0, 0, 0, 0, s * 1.3);
+    rg.addColorStop(0, `rgba(255, 92, 106, ${(0.26 * gg).toFixed(3)})`);
+    rg.addColorStop(0.55, `rgba(255, 118, 130, ${(0.14 * gg).toFixed(3)})`);
+    rg.addColorStop(1, `rgba(255, 140, 150, ${(0.05 * gg).toFixed(3)})`);
+    g.fillStyle = rg;
+    g.fillRect(-s * 1.6, -s * 1.6, s * 3.2, s * 3.2);
+    g.restore();
+
+    // 4) 棱线分两类（外轮廓剪影边 → 红描边 + 强外发光；内部棱线 → 两端渐隐的柔和红色渐变淡描）
+    const edgeCount = new Map();
+    for (const f of vis) {
+      for (let i = 0; i < f.idx.length; i++) {
+        const a = f.idx[i], b = f.idx[(i + 1) % f.idx.length];
+        const key = a < b ? a + '_' + b : b + '_' + a;
+        edgeCount.set(key, (edgeCount.get(key) || 0) + 1);
+      }
+    }
+    const edgePts = (key) => key.split('_').map(n => P[+n]);
+    g.lineWidth = 1.8;
+    g.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
+    g.shadowBlur = 22 * gg;
+    g.strokeStyle = `rgba(255, 68, 84, ${(0.72 * gg).toFixed(3)})`;
+    g.beginPath();
+    for (const [key, n] of edgeCount) {
+      if (n !== 1) continue;   // 仅剪影边
+      const [pa, pb] = edgePts(key);
+      g.moveTo(pa[0], pa[1]); g.lineTo(pb[0], pb[1]);
+    }
+    g.stroke();
+    g.shadowBlur = 6 * gg;
+    g.lineWidth = 1.2;
+    for (const [key, n] of edgeCount) {
+      if (n !== 2) continue;   // 内部棱线
+      const [pa, pb] = edgePts(key);
+      const lg = g.createLinearGradient(pa[0], pa[1], pb[0], pb[1]);
+      lg.addColorStop(0, 'rgba(255, 130, 145, 0)');
+      lg.addColorStop(0.5, `rgba(255, 130, 145, ${(0.22 * gg).toFixed(3)})`);
+      lg.addColorStop(1, 'rgba(255, 130, 145, 0)');
+      g.strokeStyle = lg;
+      g.beginPath(); g.moveTo(pa[0], pa[1]); g.lineTo(pb[0], pb[1]); g.stroke();
+    }
+
+    g.restore();
+  }
+
+  function bakeXtumble() {
+    const s = FASHI_ARRAY.cubeHalf;
+    const size = Math.ceil(s * 4.2 + 64);   // 角点投影 ~2.06s + 大半径辉光 ~32px 余量
+    const frames = [];
+    for (let f = 0; f < XTUMBLE_FRAMES; f++) {
+      const cv = document.createElement('canvas');
+      cv.width = size;
+      cv.height = size;
+      const bg = cv.getContext('2d');
+      bg.translate(size / 2, size / 2);
+      xtumbleRender(bg, f / XTUMBLE_FRAMES, s, 1);
+      frames.push(cv);
+    }
+    xtumble = { frames, size, s };
+  }
+
+  // 小正方体柜式投影渲染核心（局部空间，sx=+1 基准：右挤出；左发射经镜像得到，几何严格等价）
+  function xcubeSmallRender(g, s, gg) {
+    const dx = s * 0.5, dy = -s * 0.38;   // 立体厚度（右挤出基准）
+    const hex = [[-s, s], [s, s], [s + dx, s + dy], [s + dx, -s + dy], [-s + dx, -s + dy], [-s, -s]];   // 外轮廓剪影
+    const topFace = [[-s, -s], [s, -s], [s + dx, -s + dy], [-s + dx, -s + dy]];                          // 顶面（恒可见）
+    const sideFace = [[s, -s], [s + dx, -s + dy], [s + dx, s + dy], [s, s]];                             // 右侧面
+    const path = (pts) => {
+      g.beginPath();
+      g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+      g.closePath();
+    };
+    // 1) 剪影底：白色填充 + 强红外发光
+    g.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
+    g.shadowBlur = 30 * gg;
+    g.fillStyle = `rgba(255, 250, 250, ${(0.96 * gg).toFixed(3)})`;
+    path(hex); g.fill();
+    g.shadowBlur = 0;
+    // 2) 顶面（最亮）
+    g.fillStyle = `rgba(255, 255, 255, ${(0.99 * gg).toFixed(3)})`;
+    path(topFace); g.fill();
+    // 3) 侧面（较暗）
+    g.fillStyle = `rgba(228, 210, 218, ${(0.93 * gg).toFixed(3)})`;
+    path(sideFace); g.fill();
+    // 4) 正面：通体白 + 内部淡红光
+    g.fillStyle = `rgba(255, 255, 255, ${(0.97 * gg).toFixed(3)})`;
+    g.fillRect(-s, -s, s * 2, s * 2);
+    const rg = g.createRadialGradient(0, 0, 0, 0, 0, s * 1.3);
+    rg.addColorStop(0, `rgba(255, 92, 106, ${(0.26 * gg).toFixed(3)})`);
+    rg.addColorStop(0.55, `rgba(255, 118, 130, ${(0.14 * gg).toFixed(3)})`);
+    rg.addColorStop(1, `rgba(255, 140, 150, ${(0.05 * gg).toFixed(3)})`);
+    g.fillStyle = rg;
+    g.fillRect(-s, -s, s * 2, s * 2);
+    // 5) 最外缘轮廓：红描边 + 强外发光
+    g.strokeStyle = `rgba(255, 68, 84, ${(0.72 * gg).toFixed(3)})`;
+    g.lineWidth = 1.8;
+    g.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
+    g.shadowBlur = 22 * gg;
+    path(hex); g.stroke();
+  }
+
+  function bakeXcubeSmall() {
+    const s = FASHI_MATRIX.cubeHalf;
+    const size = Math.ceil(s * 3 + 64);   // 外缘 ~1.5s + 大半径辉光余量
+    const cv = document.createElement('canvas');
+    cv.width = size;
+    cv.height = size;
+    const bg = cv.getContext('2d');
+    bg.translate(size / 2, size / 2);
+    xcubeSmallRender(bg, s, 1);
+    xcubeSmall = { cv, size, s };
+  }
+
+  // 拖尾烘焙：沿 +x 的双层条带（红光带含 shadowBlur 外发光 / 白热内芯），运行时 lighter 逐层叠加保持原加算语义
+  function bakeXtrail(len, bodyS) {
+    const margin = 34;   // round 端帽（红带宽一半 ~26px）+ 辉光余量
+    const mk = (lw, blur, stops) => {
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(len + margin * 2);
+      cv.height = Math.ceil(lw + blur * 2 + 8);
+      const g = cv.getContext('2d');
+      g.translate(margin, cv.height / 2);
+      g.lineCap = 'round';
+      const gr = g.createLinearGradient(0, 0, len, 0);
+      for (const [off, col] of stops) gr.addColorStop(off, col);
+      g.strokeStyle = gr;
+      g.lineWidth = lw;
+      if (blur) { g.shadowColor = 'rgba(255, 45, 62, 0.7)'; g.shadowBlur = blur; }
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(len, 0); g.stroke();
+      return cv;
+    };
+    return {
+      len, bodyS, margin,
+      red: mk(bodyS * 2.6, 16, [[0, 'rgba(255, 70, 88, 0.55)'], [0.45, 'rgba(255, 45, 65, 0.3)'], [1, 'rgba(255, 40, 60, 0)']]),
+      core: mk(bodyS * 1.2, 0, [[0, 'rgba(255, 252, 252, 0.85)'], [0.35, 'rgba(255, 234, 236, 0.45)'], [1, 'rgba(255, 220, 226, 0)']]),
+    };
+  }
+
+  // 法术矩阵发光正方体 / 法术阵列大正方体：全部走预烘焙贴图（烘焙区见上方"法术正方体精灵烘焙"注释）——
+  // 每颗每帧 = 2 次拖尾贴图（lighter 逐层叠加）+ 1 次本体贴图；黯淡（gg）与渐隐（alpha）经 globalAlpha 一次还原
+  function drawSpellCubes() {
     for (const c of spellCubes) {
       const g = c.glow;                            // 黯淡程度（1 → glowFloor）
       const gg = c.big ? Math.min(1, g * FASHI_ARRAY.glowMul) : g;   // 法术阵列大正方体：红光更明显
-      const s = (c.big ? FASHI_ARRAY.cubeHalf : FASHI_MATRIX.cubeHalf) * c.scale;   // 正面半边长（随生长缩放）
+      const s = (c.big ? FASHI_ARRAY.cubeHalf : FASHI_MATRIX.cubeHalf) * c.scale;   // 半边长（随生长缩放）
       const sx = c.ux >= 0 ? 1 : -1;               // 挤出侧 = 水平运动方向（左发射见左面 / 右发射见右面）
-      const dx = s * 0.5 * sx;                     // 立体厚度水平分量
-      const dy = -s * 0.38;                        // 立体厚度垂直分量（向上 → 顶面恒可见）
       // 本体按发射方向旋转：局部 +y（底边法向）对准速度方向 u → 最前面的那条边（底边）垂直于发射方向
       const alpha = Math.atan2(-c.ux, c.uy);
       const ca = Math.cos(alpha), sa = Math.sin(alpha);
-      // 立方体几何质心（局部 (dx/2,dy/2) 经旋转映射到世界坐标）——拖尾起点，与旋转后主体对齐
-      const ccx = c.x + (dx * 0.5) * ca - (dy * 0.5) * sa;
-      const ccy = c.y + (dx * 0.5) * sa + (dy * 0.5) * ca;
+      // 立方体几何质心——拖尾起点，与旋转后主体对齐
+      //   小正方体：局部挤出中点 (dx/2,dy/2) 经旋转映射到世界坐标；大正方体三轴翻滚 → 质心即本体中心
+      const dx = s * 0.5 * sx, dy = -s * 0.38;
+      const ccx = c.big ? c.x : c.x + (dx * 0.5) * ca - (dy * 0.5) * sa;
+      const ccy = c.big ? c.y : c.y + (dx * 0.5) * sa + (dy * 0.5) * ca;
 
-      // ---- 光效拖尾（光带而非粒子）：沿运动反方向从质心发出，白热内芯 + 红光外带（带红色外发光）；仅飞行/减速阶段 ----
+      // ---- 光效拖尾（烘焙贴图 ×2 层）：沿运动反方向从质心发出，白热内芯 + 红光外带；仅飞行/减速阶段 ----
       //   减速段尾焰长度与当前速度挂钩（速度比 = spd/cruise 随减速指数下降 → 开始减速时尾焰迅速变短）
       if (c.alpha > 0.02) {
-        // 尾焰长度系数：减速段随速度收短
         const spdMul = c.phase === 'brake' ? Math.max(0, c.spd / c.cruise) : 1;
-        const tl = FASHI_MATRIX.cubeTrailLen * c.scale * spdMul;
-        const tx = ccx - c.ux * tl, ty = ccy - c.uy * tl;
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.lineCap = 'round';
-        // 红光外带（较宽 + 红色外发光）
-        const rt = ctx.createLinearGradient(ccx, ccy, tx, ty);
-        rt.addColorStop(0, `rgba(255, 70, 88, ${(0.55 * gg * c.alpha).toFixed(3)})`);
-        rt.addColorStop(0.45, `rgba(255, 45, 65, ${(0.3 * gg * c.alpha).toFixed(3)})`);
-        rt.addColorStop(1, 'rgba(255, 40, 60, 0)');
-        ctx.strokeStyle = rt;
-        ctx.lineWidth = s * 2.6;
-        ctx.shadowColor = `rgba(255, 45, 62, ${(0.7 * gg * c.alpha).toFixed(3)})`;
-        ctx.shadowBlur = 16 * g;
-        ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(tx, ty); ctx.stroke();
-        // 白热内芯
-        ctx.shadowBlur = 0;
-        const tg = ctx.createLinearGradient(ccx, ccy, tx, ty);
-        tg.addColorStop(0, `rgba(255, 252, 252, ${(0.85 * gg * c.alpha).toFixed(3)})`);
-        tg.addColorStop(0.35, `rgba(255, 234, 236, ${(0.45 * gg * c.alpha).toFixed(3)})`);
-        tg.addColorStop(1, 'rgba(255, 220, 226, 0)');
-        ctx.strokeStyle = tg;
-        ctx.lineWidth = s * 1.2;
-        ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(tx, ty); ctx.stroke();
-        ctx.restore();
+        const tl = (c.big ? FASHI_MATRIX.cubeTrailLen : FASHI_MATRIX.cubeTrailLenSmall) * c.scale * spdMul;
+        if (tl >= 2) {
+          const tr = c.big
+            ? (xtrailBig ||= bakeXtrail(FASHI_MATRIX.cubeTrailLen, FASHI_ARRAY.cubeHalf))
+            : (xtrailSmall ||= bakeXtrail(FASHI_MATRIX.cubeTrailLenSmall, FASHI_MATRIX.cubeHalf));
+          const tx = ccx - c.ux * tl, ty = ccy - c.uy * tl;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.translate(ccx, ccy);
+          ctx.rotate(Math.atan2(ty - ccy, tx - ccx));
+          ctx.scale(tl / tr.len, s / tr.bodyS);   // 长度随速度/生长收缩、宽度随本体尺寸
+          ctx.globalAlpha = Math.min(1, Math.max(0, c.alpha * gg));
+          ctx.drawImage(tr.red, -tr.margin, -tr.red.height / 2);
+          ctx.drawImage(tr.core, -tr.margin, -tr.core.height / 2);
+          ctx.restore();
+        }
       }
 
-      // ---- 立方体本体（8 角柜式投影；前面 x∈[-s,s] y∈[-s,s]，后面 = 前面 +(dx,dy)）----
-      const hx = sx * s, ox = -sx * s;   // 挤出侧 / 对侧的前面 x
-      const hex = [ [ox, s], [hx, s], [hx + dx, s + dy], [hx + dx, -s + dy], [ox + dx, -s + dy], [ox, -s] ];   // 外轮廓剪影
-      const topFace = [ [-s, -s], [s, -s], [s + dx, -s + dy], [-s + dx, -s + dy] ];                            // 顶面（恒可见）
-      const sideFace = [ [hx, -s], [hx + dx, -s + dy], [hx + dx, s + dy], [hx, s] ];                           // 侧面（左/右随 sx）
-
+      // ---- 立方体本体：大正方体 = 周期化翻滚精灵条逐帧贴图；常规正方体 = 柜式投影贴图 rotate+镜像 ----
       ctx.save();
-      ctx.translate(c.x, c.y);
-      ctx.rotate(alpha);   // 旋转本体：使最前面的边垂直于发射方向（局部下边对准 u）
-      ctx.globalAlpha = c.alpha;
-
-      // 1) 剪影底：白色填充 + 强红外发光（范围更大）→ 最外缘的边向外散发红光（红光只在最外轮廓，不在内部）
-      ctx.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
-      ctx.shadowBlur = 30 * gg;
-      ctx.fillStyle = `rgba(255, 250, 250, ${(0.96 * gg).toFixed(3)})`;
-      path(hex); ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // 2) 顶面（最亮，接受上方光）
-      ctx.fillStyle = `rgba(255, 255, 255, ${(0.99 * gg).toFixed(3)})`;
-      path(topFace); ctx.fill();
-
-      // 3) 侧面（较暗 → 与正面明暗对比产生立体感；随 sx 显示左面或右面）
-      ctx.fillStyle = `rgba(228, 210, 218, ${(0.93 * gg).toFixed(3)})`;
-      path(sideFace); ctx.fill();
-
-      // 4) 正面：通体白 + 内部淡淡红光（柔和径向、从中心淡出、无硬边界）
-      ctx.fillStyle = `rgba(255, 255, 255, ${(0.97 * gg).toFixed(3)})`;
-      ctx.fillRect(-s, -s, s * 2, s * 2);
-      const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 1.3);
-      rg.addColorStop(0, `rgba(255, 92, 106, ${(0.26 * gg).toFixed(3)})`);
-      rg.addColorStop(0.55, `rgba(255, 118, 130, ${(0.14 * gg).toFixed(3)})`);
-      rg.addColorStop(1, `rgba(255, 140, 150, ${(0.05 * gg).toFixed(3)})`);
-      ctx.fillStyle = rg;
-      ctx.fillRect(-s, -s, s * 2, s * 2);
-
-      // 5) 最外缘轮廓：红描边 + 强外发光（更明显、范围更大；仅描剪影、不描内部面界，强化边向外散发红光）
-      ctx.strokeStyle = `rgba(255, 68, 84, ${(0.72 * gg).toFixed(3)})`;
-      ctx.lineWidth = 1.8;
-      ctx.shadowColor = `rgba(255, 40, 58, ${(0.95 * gg).toFixed(3)})`;
-      ctx.shadowBlur = 22 * gg;
-      path(hex); ctx.stroke();
-
+      ctx.globalAlpha = Math.min(1, Math.max(0, c.alpha * gg));
+      if (c.big) {
+        if (!xtumble) bakeXtumble();
+        // 循环相位：基准角速度 cubeSpin·spinMul ÷ 每循环 rx 转过的 4·2π；spinSeed → 起始相位（随机翻滚姿态 / 速度抖动保留）
+        const u = frac01(state.time * FASHI_ARRAY.cubeSpin * c.spinMul / (XTUMBLE_REVS * 2 * Math.PI) + c.spinSeed / (2 * Math.PI));
+        const f = Math.floor(u * XTUMBLE_FRAMES) % XTUMBLE_FRAMES;
+        const k = s / xtumble.s;
+        ctx.translate(c.x, c.y);
+        ctx.scale(k, k);
+        ctx.drawImage(xtumble.frames[f], -xtumble.size / 2, -xtumble.size / 2);
+      } else {
+        if (!xcubeSmall) bakeXcubeSmall();
+        const k = s / xcubeSmall.s;
+        ctx.translate(c.x, c.y);
+        ctx.rotate(alpha);      // 旋转本体：使最前面的边垂直于发射方向（局部下边对准 u）
+        ctx.scale(sx * k, k);   // 先镜像挤出侧再旋转（与原逐点几何严格等价）；k 含生长缩放
+        ctx.drawImage(xcubeSmall.cv, -xcubeSmall.size / 2, -xcubeSmall.size / 2);
+      }
       ctx.restore();
 
-      // 法术阵列大正方体：分裂预警——红色收缩圈（0.5s 内从外向内收拢，越收越亮越粗）
+      // 法术阵列大正方体：分裂预警——红色收缩圈（0.5s 内从外向内收拢，越收越亮越粗；仅预警期存在，保持实时）
       if (c.big && c.warnT >= 0) {
         const wp = 1 - Math.max(0, c.warnT) / FASHI_ARRAY.splitWarn;   // 0→1 收拢进度
         const rr = c.r * (2.2 - 1.05 * wp);
@@ -4425,11 +4605,376 @@
     }
   }
 
+  // ---------- 掉落水晶 3D 精灵（水晶系统改版）：三档模型 × 三色 + 巨型双色，24 帧自转烘焙 ----------
+  // 模型与测试页「雷译正视图」同源：小＝四棱锥+腰带+四棱锥（正视投影 = 尖顶六边形）；
+  // 中＝长方体核心 + 八角白框（框厚 = 核心厚 40%）；大＝正方板 + 菱形白框（框厚 = 核心厚 25%）；
+  // 巨型 = 原石（四芒星双锥专用模型，上粉 #FFC0CB / 下蓝 #39C5BB 双色）。
+  // 颜色直接分配到面上（顶锥亮 / 底锥暗 / 刻面交替 / 核心近白+边缘淡色），底光 / 间隙光 / 内孔高亮全部烘焙进帧内；
+  // 运行时每颗水晶每帧仅 1 次 drawImage（1:1 整数位贴图）。
+  const CRYSTAL3D_FRAMES = 24;                 // 自转一周 24 帧（15°/帧，12 帧/半圈，对齐 QQ雷电老动画口径）
+  const CRYSTAL3D_BAKE = { small: 40, mid: 48, big: 56, giant: 52 };   // 原石与大型宝石同大小   // 烘焙底板边长（含光晕余量）
+  const CRYSTAL3D_R = { small: 6, mid: 10, big: 13, giant: 13 };   // 原石与大型宝石同大小       // 烘焙基准半径（= CRYSTAL_TIERS.r；小档略缩）
+  const CRYSTAL3D_COLORS = ['#39c5bb', '#46aaff'];   // 普通水晶双色（原青 + 最早水晶同色水蓝；与 01-config CRYSTAL_COLORS 一致）
+  const crystal3DSprites = new Map();          // key: `${tier}:${colorKey}` → { frames: [canvas × 24], size }
+
+  // 薄棱柱 / 板 / 框 实体注册表（单位空间，渲染时 × 各档 R；法线由绕序保证，框体 strict 跳过质心翻向）
+  const CRYSTAL3D_SOLIDS = {
+    small: {   // 小：腰带长方体 + 上下四棱锥（正视投影 = 尖顶六边形 H1.2 / W0.58）
+      verts: [
+        [-0.58, -0.54, -0.25], [0.58, -0.54, -0.25], [0.58, -0.54, 0.25], [-0.58, -0.54, 0.25],   // 顶环
+        [-0.58, 0.54, -0.25], [0.58, 0.54, -0.25], [0.58, 0.54, 0.25], [-0.58, 0.54, 0.25],       // 底环
+        [0, -1.2, 0],                                                                              // 顶锥尖（单顶点）
+        [0, 1.2, 0],                                                                               // 底锥尖
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [8, 0, 1], [8, 1, 2], [8, 2, 3], [8, 3, 0],   // 顶锥（亮 / 镜面）
+        [9, 5, 4], [9, 6, 5], [9, 7, 6], [9, 4, 7],   // 底锥（暗）
+        [3, 2, 6, 7],                                  // 腰带前面
+        [1, 0, 4, 5],                                  // 腰带后面
+        [2, 1, 5, 6],                                  // 腰带右面
+        [0, 3, 7, 4],                                  // 腰带左面
+      ],
+      strict: false,
+    },
+    mid: {   // 中：长方体核心（半宽 0.56 / 半高 0.72 / 半厚 0.225——正视为竖长矩形）
+      verts: [
+        [-0.56, -0.72, -0.225], [0.56, -0.72, -0.225], [0.56, 0.72, -0.225], [-0.56, 0.72, -0.225],
+        [-0.56, -0.72, 0.225], [0.56, -0.72, 0.225], [0.56, 0.72, 0.225], [-0.56, 0.72, 0.225],
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [4, 5, 6, 7], [1, 0, 3, 2], [5, 1, 2, 6], [0, 4, 7, 3], [7, 6, 2, 3], [4, 5, 1, 0],
+      ],
+      strict: false,
+    },
+    big: {   // 大：正方板（半边 0.42 / 半厚 0.25——正视为正方形）
+      verts: [
+        [-0.42, -0.42, 0.25], [0.42, -0.42, 0.25], [0.42, 0.42, 0.25], [-0.42, 0.42, 0.25],
+        [-0.42, -0.42, -0.25], [0.42, -0.42, -0.25], [0.42, 0.42, -0.25], [-0.42, 0.42, -0.25],
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [0, 1, 2, 3], [5, 4, 7, 6], [5, 1, 2, 6], [0, 4, 7, 3], [3, 2, 6, 7], [0, 5, 4, 1],
+      ],
+      strict: false,
+    },
+  };
+
+  // 白框实体（非凸、绕序手工修正 → strict 跳过质心自动翻向）：中 = 八角框（厚 = 核心厚 40%）；
+  // 大 = 菱形框（外 1 / 内 0.8，厚 = 核心厚 25%）
+  const CRYSTAL3D_WASHER = {
+    mid: (() => {
+      const w0 = 0.78, hh0 = 1, ch = 0.36, s = 0.72, t = 0.09;
+      const o = [
+        [-(w0 - ch), -hh0], [w0 - ch, -hh0], [w0, -(hh0 - ch)], [w0, hh0 - ch],
+        [w0 - ch, hh0], [-(w0 - ch), hh0], [-w0, hh0 - ch], [-w0, -(hh0 - ch)],
+      ];
+      const i = o.map(p => [p[0] * s, p[1] * s]);
+      const verts = [
+        ...o.map(p => [p[0], p[1], t]), ...o.map(p => [p[0], p[1], -t]),
+        ...i.map(p => [p[0], p[1], t]), ...i.map(p => [p[0], p[1], -t]),
+      ];
+      const faces = [];
+      for (let k = 0; k < 8; k++) {
+        const k2 = (k + 1) % 8;
+        faces.push([k + 8, k2 + 8, k2, k]);                 // 外壁
+        faces.push([16 + k, 16 + k2, 24 + k2, 24 + k]);     // 内壁（法线朝孔内 = 实体外侧）
+        faces.push([k, k2, 16 + k2, 16 + k]);               // 前环带
+        faces.push([8 + k, 24 + k, 24 + k2, 8 + k2]);       // 后环带
+      }
+      return { verts, scale: [1, 1, 1], faces, strict: true };
+    })(),
+    big: (() => {
+      const o = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+      const i = o.map(p => [p[0] * 0.8, p[1] * 0.8]);
+      const t = 0.125;
+      const verts = [
+        ...o.map(p => [p[0], p[1], t]), ...o.map(p => [p[0], p[1], -t]),
+        ...i.map(p => [p[0], p[1], t]), ...i.map(p => [p[0], p[1], -t]),
+      ];
+      const faces = [];
+      for (let k = 0; k < 4; k++) {
+        const k2 = (k + 1) % 4;
+        faces.push([k + 4, k2 + 4, k2, k]);                 // 外壁
+        faces.push([8 + k, 8 + k2, 12 + k2, 12 + k]);       // 内壁
+        faces.push([k, k2, 8 + k2, 8 + k]);                 // 前环带
+        faces.push([4 + k, 12 + k, 12 + k2, 4 + k2]);       // 后环带
+      }
+      return { verts, scale: [1, 1, 1], faces, strict: true };
+    })(),
+  };
+
+  function xtalC3Rgb(base) {   // hex → [r, g, b]
+    return [parseInt(base.slice(1, 3), 16), parseInt(base.slice(3, 5), 16), parseInt(base.slice(5, 7), 16)];
+  }
+  function xtalC3Shade(base, k, to) {   // hex 向白 / 黑推进（返回 hex）
+    const A = xtalC3Rgb(base);
+    const t = to === 'w' ? 255 : 0;
+    return '#' + [0, 1, 2].map(i => Math.round(A[i] + (t - A[i]) * k).toString(16).padStart(2, '0')).join('');
+  }
+  function xtalC3MixHex(a, b, k) {   // 两个 hex 插值（返回 hex）
+    const A = xtalC3Rgb(a), B = xtalC3Rgb(b);
+    return '#' + [0, 1, 2].map(i => Math.round(A[i] + (B[i] - A[i]) * k).toString(16).padStart(2, '0')).join('');
+  }
+  function xtalC3Mix(lo, hi, k) {   // rgb 数组插值（返回 rgb() 字符串）
+    return 'rgb(' + Math.round(lo[0] + (hi[0] - lo[0]) * k) + ',' + Math.round(lo[1] + (hi[1] - lo[1]) * k) + ',' + Math.round(lo[2] + (hi[2] - lo[2]) * k) + ')';
+  }
+
+  // 单帧渲染：底光 / 间隙光 / 框内高亮 / 实体（白框 + 核心），按深度排序（框与核心穿插处图层正确）
+  function crystal3DDrawFrame(g, tier, base, R, th, flip) {
+    if (tier === 'giant') { crystal3DStarDraw(g, th, flip); return; }   // 原石：四芒星双锥（巨型专用样式）
+    const sn = Math.sin(th), cs = Math.cos(th);
+    const proj = v => {
+      const X = v[0] * cs + v[2] * sn, Z = -v[0] * sn + v[2] * cs;
+      const pw = 1 / (1 - Z * 0.06);
+      return [X * pw * R, v[1] * pw * R, Z];
+    };
+    const gr = xtalC3Rgb(base);
+    const rgba = a => `rgba(${gr[0]},${gr[1]},${gr[2]},${a})`;
+    // 底光：lighter 叠加、垫在实体后面（大 / 巨型的框-板间隙光已含在此光晕内）
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = tier === 'giant' ? 0.3 : 0.2;
+    const auraR = R * 1.5;
+    const ag = g.createRadialGradient(0, 0, 0, 0, 0, auraR);
+    ag.addColorStop(0, rgba('0.8'));
+    ag.addColorStop(0.55, rgba('0.32'));
+    ag.addColorStop(1, rgba('0'));
+    g.fillStyle = ag;
+    g.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+    g.restore();
+    // 实体面收集 + 深度排序（白框 lo/hi 白系；核心 faceColors 设计色）
+    const faces = [];
+    const pushSolid = (s, lo, hi, faceColors, noShadow) => {
+      const rot = s.verts.map(v => {
+        const X = v[0] * cs + v[2] * sn, Z = -v[0] * sn + v[2] * cs;
+        const pw = 1 / (1 - Z * 0.06);
+        return [X * pw * R, v[1] * pw * R, Z];
+      });
+      for (let fi = 0; fi < s.faces.length; fi++) {
+        const f = s.faces[fi];
+        const a = rot[f[0]], b = rot[f[1]], cc = rot[f[2]];
+        const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
+        let nx = e1[1] * e2[2] - e1[2] * e2[1];
+        let ny = e1[2] * e2[0] - e1[0] * e2[2];
+        let nz = e1[0] * e2[1] - e1[1] * e2[0];
+        const mx = (a[0] + b[0] + cc[0]) / 3, my = (a[1] + b[1] + cc[1]) / 3, mz = (a[2] + b[2] + cc[2]) / 3;
+        if (!s.strict && nx * mx + ny * my + nz * mz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        if (nz <= 0.02) continue;
+        const nl = Math.hypot(nx, ny, nz) || 1;
+        const shade = 0.38 + 0.62 * Math.max(0, (nx * -0.4 + ny * -0.55 + nz * 0.75) / nl);
+        let fill;
+        const fc = faceColors ? faceColors[fi] : null;
+        if (fc && typeof fc === 'object' && fc.grad) {
+          const xs = f.map(idx => rot[idx][0]), ys = f.map(idx => rot[idx][1]);
+          const gx0 = Math.min(...xs), gy0 = Math.min(...ys), gx1 = Math.max(...xs), gy1 = Math.max(...ys);
+          fill = { gx0, gy0, gx1, gy1, stops: fc.grad, radial: fc.radial };
+        } else fill = xtalC3MixHex(fc || lo, '#000000', 0.06 - 0.06 * shade) || xtalC3Mix(xtalC3Rgb(lo), xtalC3Rgb(hi), shade);
+        faces.push({ pts: f.map(idx => [rot[idx][0], rot[idx][1]]), depth: f.reduce((acc, idx) => acc + rot[idx][2], 0) / f.length, fill, noShadow });
+      }
+    };
+    if (tier === 'small') {
+      const hi = xtalC3Shade(base, 0.5, 'w'), hm = xtalC3MixHex(hi, base, 0.5);
+      const lo = xtalC3Shade(base, 0.3, 'b'), lm = xtalC3MixHex(lo, base, 0.5);
+      pushSolid(CRYSTAL3D_SOLIDS.small, base, base, [hi, hm, hi, hm, lo, lm, lo, lm, hm, hm, lm, lm], false);
+    } else {
+      const white = tier === 'mid' ? '#f0f6fc' : '#eef4fb';
+      const washerLo = xtalC3MixHex(white, base, 0.12), washerHi = xtalC3MixHex(white, base, 0.02);
+      const core = xtalC3MixHex(base, '#ffffff', tier === 'mid' ? 0.4 : 0.78);
+      const faceColors = tier === 'mid'
+        ? [
+            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.5, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
+            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.5, xtalC3MixHex(base, '#ffffff', 0.3)], [1, xtalC3MixHex(base, '#000000', 0.28)]], radial: true },
+            xtalC3MixHex(base, '#000000', 0.12), xtalC3MixHex(base, '#000000', 0.12), base, base,
+          ]
+        : [
+            { grad: [[0, xtalC3MixHex(base, '#ffffff', 0.85)], [0.75, xtalC3MixHex(base, '#ffffff', 0.7)], [1, xtalC3MixHex(base, '#ffffff', 0.5)]] },
+            { grad: [[0, xtalC3MixHex(base, '#ffffff', 0.85)], [0.75, xtalC3MixHex(base, '#ffffff', 0.7)], [1, xtalC3MixHex(base, '#ffffff', 0.5)]] },
+            xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6), xtalC3MixHex(base, '#ffffff', 0.6),
+          ];
+      const model = tier;
+      pushSolid(CRYSTAL3D_WASHER[model], washerLo, washerHi, null, false);
+      pushSolid(CRYSTAL3D_SOLIDS[model], base, base, faceColors, true);
+    }
+    faces.sort((p, q) => p.depth - q.depth);
+    for (const f of faces) {
+      g.shadowBlur = f.noShadow ? 0 : 7;
+      g.shadowColor = rgba('0.5');
+      if (f.fill && f.fill.stops) {
+        let grd;
+        if (f.fill.radial) {
+          const cxr = f.fill.gx0 + (f.fill.gx1 - f.fill.gx0) * 0.3, cyr = f.fill.gy0 + (f.fill.gy1 - f.fill.gy0) * 0.26;
+          grd = g.createRadialGradient(cxr, cyr, 0, cxr, cyr, Math.max(f.fill.gx1 - f.fill.gx0, f.fill.gy1 - f.fill.gy0) * 0.95);
+        } else {
+          grd = g.createLinearGradient(f.fill.gx0, f.fill.gy0, f.fill.gx1, f.fill.gy1);
+        }
+        for (const [o, c2] of f.fill.stops) grd.addColorStop(o, c2);
+        g.fillStyle = grd;
+      } else g.fillStyle = f.fill;
+      g.beginPath();
+      f.pts.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      g.closePath();
+      g.fill();
+    }
+    g.shadowBlur = 0;
+  }
+
+  // ---------- 原石（巨型改版）：四芒星双锥 ----------
+  // 赤道 8 顶点（4 芒尖 N/E/S/W + 4 凹谷斜角）+ 前后锥尖，16 三角面；厚 ≈ 0.32R；
+  // 面色按旋转后质心 y 分配（上粉 #FFC0CB 系 / 下蓝 #39C5BB 系，绕环交替明暗 = 刻面），shadow 随面色（粉缘/蓝缘辉光）
+  const CRYSTAL3D_STAR = (() => {
+    const t = 0.32, rv = 0.55, ry = 1.15;
+    const eq = [
+      [0, -ry], [rv * 0.707, -rv * 0.707], [1, 0], [rv * 0.707, rv * 0.707],
+      [0, ry], [-rv * 0.707, rv * 0.707], [-1, 0], [-rv * 0.707, -rv * 0.707],
+    ];
+    const verts = [...eq.map(p => [p[0], p[1], 0]), [0, 0, t], [0, 0, -t]];   // 0-7 赤道环 8=前锥尖 9=后锥尖
+    const faces = [];
+    for (let k = 0; k < 8; k++) {
+      const k2 = (k + 1) % 8;
+      faces.push([8, k, k2]);        // 前锥八三角
+      faces.push([9, k2, k]);        // 后锥八三角
+    }
+    return { verts, scale: [1, 1, 1], faces, strict: true };   // 绕序已保证朝外，strict 跳过质心翻向
+  })();
+
+  function crystal3DStarDraw(g, th, flip) {
+    const R = CRYSTAL3D_R.giant;
+    const sn = Math.sin(th), cs = Math.cos(th);
+    const s = CRYSTAL3D_STAR;
+    const fl = flip ? -1 : 1;
+    const rot = s.verts.map(v => [v[0] * cs + v[2] * sn, v[1], -v[0] * sn + v[2] * cs]);
+    const P = rot.map(p => {
+      const pw = 1 / (1 - p[2] * 0.06);
+      return [p[0] * pw * R, p[1] * pw * R];
+    });
+    // 双色底光：上粉下蓝两团 radial（lighter，垫在实体后；翻转配色时对调）
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.3;
+    for (const [cy2, col] of [[-0.5 * fl, [255, 170, 200]], [0.5 * fl, [70, 130, 230]]]) {
+      const ag = g.createRadialGradient(0, cy2 * R, 0, 0, cy2 * R, R * 1.15);
+      ag.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},0.55)`);
+      ag.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
+      g.fillStyle = ag;
+      g.fillRect(-R * 1.3, -R * 1.3, R * 2.6, R * 2.6);
+    }
+    g.restore();
+    const faces = [];
+    for (let fi = 0; fi < s.faces.length; fi++) {
+      const f = s.faces[fi];
+      const a = rot[f[0]], b = rot[f[1]], cc = rot[f[2]];
+      const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
+      let nx = e1[1] * e2[2] - e1[2] * e2[1];
+      let ny = e1[2] * e2[0] - e1[0] * e2[2];
+      let nz = e1[0] * e2[1] - e1[1] * e2[0];
+      if (nz <= 0.02) continue;   // strict：绕序已保证朝外
+      const cy2 = (a[1] + b[1] + cc[1]) / 3;
+      const tMix = Math.max(0, Math.min(1, (cy2 * fl + 1.0) / 2.0));   // 0=顶粉 1=底蓝（翻转配色时对调）
+      const col2 = xtalC3MixHex('#ffa8c8', '#3a7bd5', tMix);
+      const col = fi % 2 === 0 ? xtalC3MixHex(col2, '#ffffff', 0.46) : xtalC3MixHex(col2, '#000000', 0.14);
+      faces.push({ pts: f.map(idx => [P[idx][0], P[idx][1]]), depth: f.reduce((acc, idx) => acc + rot[idx][2], 0) / f.length, col, shadow: xtalC3MixHex(col2, '#ffffff', 0.2) });
+    }
+    faces.sort((p, q) => p.depth - q.depth);
+    for (const f of faces) {
+      g.shadowColor = f.shadow;
+      g.shadowBlur = 10;
+      g.fillStyle = f.col;
+      g.beginPath();
+      f.pts.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      g.closePath();
+      g.fill();
+    }
+    // 玻璃反光：左上斜向白色高光条（随星体旋转；lighter）——正面朝向观察者时才绘制
+    if (cs > 0.15) {
+      const gp = [[-0.1, -0.95], [-0.42, -0.3], [0.05, -0.28], [-0.03, -0.95]].map(p => {
+        const X = p[0] * cs, Z = -p[0] * sn;
+        const pw = 1 / (1 - Z * 0.06);
+        return [X * pw * R, p[1] * pw * R];
+      });
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      const gg = g.createLinearGradient(gp[0][0], gp[0][1], gp[2][0], gp[2][1]);
+      gg.addColorStop(0, 'rgba(255,255,255,0.55)');
+      gg.addColorStop(1, 'rgba(255,255,255,0.04)');
+      g.fillStyle = gg;
+      g.beginPath();
+      gp.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      g.closePath();
+      g.fill();
+      g.restore();
+    }
+    g.shadowBlur = 0;
+  }
+
+  // 烘焙单帧（幂等）：对应组不存在则先建占位画布组；烘焙失败标记已烘并打日志，避免反复重试
+  function bakeCrystal3DFrame(tier, colorKey, f) {
+    const key = tier + ':' + colorKey;
+    let set = crystal3DSprites.get(key);
+    if (!set) {
+      const R = CRYSTAL3D_R[tier];      // 原石模型自身比例更大（芒尖 1.15R），无需额外放大
+      const size = Math.ceil(CRYSTAL3D_BAKE[tier]);
+      const frames = [];
+      for (let i = 0; i < CRYSTAL3D_FRAMES; i++) {
+        const cv = document.createElement('canvas');
+        cv.width = size;
+        cv.height = size;
+        cv.__baked = false;
+        frames.push(cv);
+      }
+      set = { frames, size };
+      crystal3DSprites.set(key, set);
+    }
+    const cv = set.frames[f];
+    if (cv.__baked) return;
+    try {
+      const base = colorKey[0] === 'g'
+        ? CRYSTAL_GIANT_COLORS[Number(colorKey.slice(1))]
+        : CRYSTAL_COLORS[Number(colorKey.slice(1))];
+      const g = cv.getContext('2d');
+      g.translate(set.size / 2, set.size / 2);
+      crystal3DDrawFrame(g, tier, base, CRYSTAL3D_R[tier], (f * Math.PI * 2) / CRYSTAL3D_FRAMES, colorKey === 'g1');
+      cv.__baked = true;
+    } catch (err) {
+      cv.__baked = true;   // 失败也标记：宁缺勿反复重试（控制台留根因）
+      console.error('[crystal3D] 烘焙失败', tier, colorKey, f, err);
+    }
+  }
+  // 异步预取队列：全部 档位×颜色×24 帧分小块后台烘焙（每块 3 帧），运行时只做按需单帧补烘（≈0.3ms，无感）
+  const CRYSTAL3D_BAKE_QUEUE = [];
+  for (const tier of ['small', 'mid', 'big', 'giant']) {
+    for (const ck of (tier === 'giant' ? ['g0', 'g1'] : ['c0', 'c1', 'c2'])) {
+      for (let f = 0; f < CRYSTAL3D_FRAMES; f++) CRYSTAL3D_BAKE_QUEUE.push([tier, ck, f]);
+    }
+  }
+  const crystal3DBakeStep = () => {
+    for (let n = 0; n < 3 && CRYSTAL3D_BAKE_QUEUE.length; n++) {
+      const [tier, ck, f] = CRYSTAL3D_BAKE_QUEUE.shift();
+      try {
+        bakeCrystal3DFrame(tier, ck, f);
+      } catch (err) {
+        console.error('[crystal3D] 预烘焙异常', tier, ck, f, err);
+      }
+    }
+    if (CRYSTAL3D_BAKE_QUEUE.length) setTimeout(crystal3DBakeStep, 0);
+  };
+  setTimeout(crystal3DBakeStep, 80);
+
+  // 取帧：按需同步补烘缺失的单帧（单帧 ≈0.3ms 无感；异步队列只负责预取其余帧）
+  function getCrystal3DSprite(tier, colorKey, phaseFrac) {
+    const f = Math.floor((((phaseFrac % 1) + 1) % 1) * CRYSTAL3D_FRAMES) % CRYSTAL3D_FRAMES;
+    bakeCrystal3DFrame(tier, colorKey, f);
+    return crystal3DSprites.get(tier + ':' + colorKey).frames[f];
+  }
+
   export {
     drawWingmen, paintWingman, paintWingmanBulwark, paintStarslayer, paintShip, drawPlayer,
     drawStarslayerBeam, bladePath, drawSlashFx, drawHarbingerBody, drawHanshuangBody, drawAnvilBody,
     drawPopianBody, drawFashiMatrixBody, drawFashiArrayBody, drawJiaoxiangBody, drawFashiA1Body, drawFashiA2Body, drawYu4Body,
     drawDuskStrikerBody, paintSkull, paintBaolingBomb, drawBaolingBody, drawBaolingWarn, drawBaolingBombs,
     drawPopianWarn, drawPopianFx, drawSpellCubes, drawCubeHitFx, drawPlayerHitFx, paintDouzhiMark, paintDouzhiBox,
-    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles,
+    drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles, getCrystal3DSprite,
   };

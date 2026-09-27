@@ -416,6 +416,24 @@ canvas#game {
 .music-toggle.muted .mt-on { display: none; }
 .music-toggle.muted .mt-off { display: block; }
 
+/* ---------- FPS 读数：音量键正下方灰色小字（开发观察用） ---------- */
+.fps-meter {
+  position: absolute;    /* 与 .music-toggle 同一参照（game-wrap 框角） */
+  top: 46px;             /* 音量键 top 5 + 高 36 + 间距 5 */
+  right: -48px;          /* 与音量键左缘对齐的 36px 盒，文字左对齐 */
+  z-index: 7;            /* 与音量键同层：主菜单 / 战斗 / 结算均可见 */
+  width: 36px;
+  text-align: left;      /* 左对齐：2~3 位数互切时左缘不动、只向右伸缩，不跳动 */
+  white-space: nowrap;   /* "FPS 60" 允许溢出 36px 盒向右延伸，不被裁切 */
+  pointer-events: none;
+  user-select: none;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #71829c;        /* 比 --muted(#8fa2c0) 略黑一档的开发观察灰 */
+  opacity: 0.9;
+  text-shadow: 0 1px 2px rgba(5, 8, 18, 0.8);
+}
+
 /* ---------- Overlay ---------- */
 .overlay {
   position: absolute;
@@ -1711,6 +1729,17 @@ kbd {
 
 .ency-challenge-btn:active { transform: translateY(0); }
 
+/* 数值图鉴权重表内的波次测试按钮：紧凑版（表格单元格内使用，去掉满宽与外距） */
+.info-table .ency-challenge-btn.wave-test {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
 .ency-challenge-btn.boss {
   border-color: rgba(255, 77, 109, 0.55);
   background: linear-gradient(180deg, rgba(255, 77, 109, 0.24), rgba(255, 77, 109, 0.06));
@@ -2034,6 +2063,7 @@ kbd {
   border: 1px solid rgba(124, 231, 255, 0.35);
   border-radius: 6px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: none;   /* 纯演示浮层：不参与命中测试——防止盖住行内按钮（如波次「测试」）拦截点击 */
 }
 
 .info-fpop.hidden { display: none; }
@@ -2322,3 +2352,46 @@ kbd {
    而圆形图标（.achv-glyph）自带 translateY(-4px) 上移、圆心在 17px 处——名称同步上移 4px，
    使其垂直中心落在圆心的水平高度上 */
 .info-achv-row h4 { transform: translateY(-4px); }
+
+/* ========== 数值图鉴「测试1 / 测试2」页签（开发专用） ==========
+   内容卡片：水晶样式提案 / 压力实测预览；动画启停见 13-encyclopedia 的 renderInfoTest1 / renderInfoTest2。 */
+.test-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.test-card {
+  border: 1px solid rgba(120, 180, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(12, 18, 34, 0.45);
+  padding: 10px 12px 8px;
+  margin-bottom: 12px;
+}
+
+.test-card h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
+.test-card .test-desc {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.test-card .info-subtabs { margin-bottom: 8px; }
+
+.test-canvas {
+  display: block;
+  width: 100%;
+  height: 150px;
+  border-radius: 6px;
+  background:
+    radial-gradient(420px 90px at 50% 0%, rgba(40, 70, 130, 0.25), transparent 70%),
+    rgba(5, 8, 18, 0.6);
+}

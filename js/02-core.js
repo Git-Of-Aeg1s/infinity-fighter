@@ -48,6 +48,7 @@
   const overlayDesc = document.getElementById('overlayDesc');
   const startBtn = document.getElementById('startBtn');
   const musicToggle = document.getElementById('musicToggle');
+  const fpsMeter = document.getElementById('fpsMeter');   // 音量键下方 FPS 读数（14-main 主循环刷新，纯展示）
   // 主菜单（独立页面态）：idle 全屏显示、进入战斗隐藏；卡片构建与显隐见 12-ui
   const menuScreen = document.getElementById('menuScreen');
   const menuStartBtn = document.getElementById('menuStartBtn');
@@ -126,8 +127,9 @@
     dagouDebugRapid: false,   // 大狗：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；跨局保留）
     dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
     dagouChains: [],       // 大狗：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
-    lingliGauge: 0,        // 凌漓：隐藏计数表（水晶分数累计，2400 填满；不显示于 HUD）
-    lingliArmorGaugePrev: 0, // 凌漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
+    daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与大狗连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
+    lingliGauge: 0,        // 漓：隐藏计数表（水晶分数累计，2400 填满；不显示于 HUD）
+    lingliArmorGaugePrev: 0, // 漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
     achvBulwarkLowBoss: null, // 成就「最后一搏」：最终壁垒不死触发瞬间的低血量(<10%) BOSS id（tryBulwarkCheatDeath 写入，02-achievements 消费）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
@@ -566,7 +568,7 @@
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,
-    musicToggle, menuScreen, menuStartBtn, titleBar,
+    musicToggle, fpsMeter, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
     wingmanGrid, armorGrid, subGrid, pilotGridMain, pilotGridSub, bossTestRow,
     retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,

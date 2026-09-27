@@ -156,7 +156,8 @@
       ? dagouWaveIv(state.dagouDebugRapid) : 0;
     state.dagouWarnFadeT = 0;   // 大狗：预警蓝光渐隐计时归零
     state.dagouChains.length = 0;   // 大狗：待发射连射链波清空
-    // 哈基米大王：闪避累积加成与尾部闪避计时清零；凌漓：隐藏计数表与澜心量表快照归零
+    state.daodanChains.length = 0;   // 捣蛋来袭（副武器）：连射链待发射弹清空
+    // 哈基米大王：闪避累积加成与尾部闪避计时清零；漓：隐藏计数表与澜心量表快照归零
     state.hajimiDodgeBonus = 0;
     state.hajimiTailT = 0;
     state.lingliGauge = 0;
@@ -176,6 +177,7 @@
     feijianWaves.length = 0;      // 副武器·无界飞剑：未发射的飞剑波随重开清空
     xinRings.length = 0;          // 副武器·辛国栋之怒：灼烧火环随重开清空
     state.dagouChains.length = 0;   // 大狗连射链待发射队列随重开清空
+    state.daodanChains.length = 0;   // 捣蛋来袭连射链待发射队列随重开清空
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
@@ -381,10 +383,13 @@
       armorGlyph.classList.toggle('glyph-sym', !!currentArmor.sym);   // ∞（洄）字形换 Corbel 修左右不对称
     }
     // 副武器名正下方的框内图标（同装甲框图案：绝对定位在空区居中，不挤动文字）：随当前副武器同步图案与颜色
+    // 无界飞剑等带 glyphTransform/glyphBold 的字形与选择卡片同款应用（CSS 基准 translateX(-50%) 必须保留，切换时回退复位）
     const subGlyph = document.getElementById('loadoutSubGlyph');
     if (subGlyph) {
       subGlyph.textContent = currentSubWeapon.glyph || '□';
       subGlyph.style.color = currentSubWeapon.color || '#9fb4d8';
+      subGlyph.style.transform = 'translateX(-50%)' + (currentSubWeapon.glyphTransform ? ' ' + currentSubWeapon.glyphTransform : '');
+      subGlyph.style.fontWeight = currentSubWeapon.glyphBold ? '700' : '';
     }
     if (wingmanVal) wingmanVal.textContent = currentWingman.empty ? '无' : currentWingman.name;
     // 战机形象（同选机卡片画法：暴走形态静态帧；群星之杀暴走巨帆更大，额外缩小）

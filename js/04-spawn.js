@@ -1,11 +1,11 @@
-  // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
+﻿  // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(2 名) 06-enemy(4 名) 07-player(2 名) 08-entities(1 名) 13-encyclopedia(13 名) 14-main(12 名)
+  // 被依赖：05-boss(2 名) 06-enemy(4 名) 07-player(2 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(13 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{waveSeq}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isZhenwo, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, STORM_SHIP, TEST_HP_CLASS1, TEST_HP_CLASS234, VARIANTS, WEILONG, YU4, currentArmor, diffMods } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isZhenwo, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, STORM_SHIP, TEST_HP, VARIANTS, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -15,8 +15,8 @@
 
   // 返回 [{ id, w }]，w 为原始权重（pickVariant 内按总和归一）——与「数值与机制图鉴」共用
   const STRIKER_VARIANT_TIERS = {
-    low:  { crimson: 30, amber: 30, azure: 25, white: 20, dusk: 2 },   // Lv1~10
-    high: { crimson: 10, amber: 10, azure: 10, white: 5, dusk: 5 },    // Lv11~20
+    low:  { crimson: 30, amber: 30, azure: 25, violet: 25, white: 20, dusk: 2 },   // Lv1~10
+    high: { crimson: 10, amber: 10, azure: 10, violet: 10, white: 5, dusk: 5 },    // Lv11~20
   };
   function strikerVariantWeights(lv) {
     const tier = lv < 11 ? STRIKER_VARIANT_TIERS.low : STRIKER_VARIANT_TIERS.high;
@@ -80,11 +80,12 @@
     const variant = (type === 'striker' || type === 'gunship' || type === 'capital')
       ? (opts.variant ? (VARIANTS[type].find(v => v.id === opts.variant) || pickVariant(type)) : pickVariant(type))
       : null;
-    // 初次发射延迟：优先取调用方 fireTimer；否则用变体专属首射（如炮艇三变体），再回落 cfg.firstFire / fireInterval
+    // 初次发射延迟：优先取调用方 fireTimer；否则用变体专属首射（如炮艇三变体），再回落 cfg.firstFire / fireInterval（变体 iv 优先）
     const firstFire = (variant && variant.firstFire) || cfg.firstFire;
+    const baseIv = (variant && variant.iv) || cfg.fireInterval;
     let initFire = opts.fireTimer != null ? opts.fireTimer
       : firstFire ? rand(firstFire[0], firstFire[1])
-      : rand(cfg.fireInterval[0], cfg.fireInterval[1]);
+      : rand(baseIv[0], baseIv[1]);
     if (variant && variant.firstDelay) initFire += Array.isArray(variant.firstDelay) ? rand(variant.firstDelay[0], variant.firstDelay[1]) : variant.firstDelay;
     initFire += ffa;
     const e = {
@@ -103,11 +104,15 @@
       phase: 0,          // >0 时虚化：不受伤害，炮弹穿过、可打到后面的敌人
       shielded: false,   // 蓝色4类：是否带护盾
       score: cfg.score,
-      wobble: Math.random() * Math.PI * 2,
+      wobble: opts.wobble != null ? opts.wobble : Math.random() * Math.PI * 2,   // 通用入口：可传入固定相位（当前无人使用）
       behavior: opts.behavior || 'pass',
       hoverY: opts.hoverY || 0,
       arrived: false,
-      holdTimer: opts.holdTimer || 0,   // striker 短暂停顿 / gunship・capital 悬停时长
+      // striker 未显式给停留时长时的默认档（5~6s ×诗篇倍率）：应对日后单独刷新的场合；其余类型 0
+      holdTimer: opts.holdTimer != null ? opts.holdTimer
+        : (type === 'striker' ? rand(5, 6) * strikerHoldMul() : 0),
+      vNoHold: !!opts.vNoHold,             // 「2*7」无停留直通：越过前锋停留线后平滑衰减到入位速度 × vNoHoldSpdMul
+      vNoHoldSpdMul: opts.vNoHoldSpdMul,   // 速度保留比例（基准 0.8 / 诗篇 0.6，取值见 strikerNoHoldSpdMul）
       speedMul: opts.speedMul != null ? opts.speedMul : 1,   // 移动/下落速度倍率（特殊编队用）
       staticX: opts.staticX || false,   // 悬停期间固定水平位置、不左右巡航（BOSS 召唤的先兆者用）
       fireTimer: initFire,
@@ -125,6 +130,8 @@
     };
     // 变体血量覆盖（炮艇三变体独立血量 350/350/400 覆盖注册表基准；幽暮的血量在其后单独处理）
     if (variant && variant.hp != null) e.hp = e.maxHp = variant.hp * hpMul;
+    // 变体专属攻击间隔（烈橙 1.4~2.4s）：首射后经 updateEnemyFire 使用
+    if (variant && variant.iv) e.fireIv = variant.iv;
     // 1类行为数值修正：黄芒（shoot）血量 10；分数 白影/增生/黄芒/赤月 50、紫电（kamikaze）80
     if (type === 'side') {
       if (e.behavior === 'shoot') e.hp = e.maxHp = SIDE_SHOOT_HP * hpMul;
@@ -134,16 +141,16 @@
     }
     // 真我：暴风之眼技能2 召唤的大型龙卷血量 6000（具象基准 3600）
     if (type === 'tornado' && isZhenwo()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
-    // 测试模式：敌方不再无敌 —— 按 1~4 类统一血量（1类 4000 / 2~4类 10000；BOSS 保持注册表血量）
+    // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）
     if (state.challenge && type !== 'boss') {
-      const testHp = (type === 'side' || type === 'prolifera' || type === 'escort') ? TEST_HP_CLASS1 : TEST_HP_CLASS234;
-      e.hp = e.maxHp = testHp;
+      e.hp = e.maxHp = TEST_HP;
     }
-    // 2类变体移动数据：入位速度 / 冲锋基准（冲锋 = charge + (关卡-1)×5）与前锋停留线（y 200~240 逐架随机；幽暮走独立状态机不适用）
+    // 2类变体移动数据：入位速度 / 冲锋基准（冲锋 = charge + (关卡-1)×5）与前锋停留线（y 200~240 逐架随机；
+    // 2*7 经 opts.holdY 传入"全波统一基准 − 出生偏移"的差异化值 → 行程相等、同时到位、阵型保持；幽暮走独立状态机不适用）
     if (type === 'striker' && variant) {
       if (variant.entry != null) e.entrySpd = variant.entry;
       if (variant.charge != null) e.chargeBase = variant.charge;
-      if (variant.id !== 'dusk') e.holdY = rand(200, 240);
+      if (variant.id !== 'dusk') e.holdY = opts.holdY != null ? opts.holdY : rand(200, 240);
     }
     // 蓝色4类(capital azure)：出现时 20% 概率带护盾，前 5s 虚化不会受伤
     if (type === 'capital' && variant && variant.id === 'azure' && Math.random() < PHASE_CHANCE) {
@@ -162,9 +169,7 @@
       if (sr < 0.10) { e.shielded = true; e.phase = 1; }
       else if (sr < 0.20) { e.shielded = true; e.phase = 2; }
     }
-    // 霜白(silent)：不停留——到位后立刻冲锋（挑战模式永驻除外）；幽蓝(azure)：编队内停留压缩为 0.4~1s（前锋线 4~8s 不变）
-    if (variant && variant.skill === 'silent' && e.holdTimer !== 1e9) e.holdTimer = 0;
-    if (variant && variant.id === 'azure' && e.holdTimer > 0 && e.holdTimer < 4) e.holdTimer = rand(0.4, 1);
+    // 幽蓝(azure) / 霜白(silent) 的停留时长额外修正已取消：与普通 2类一致（走编队统一值）
     // 幽暮2类(striker dusk)：生命值 64；忽略编队入场点，改为在落点（场地 30%~80% 高度随机位置）正上方浮现，
     // 渐显后下移落点停驻、环射、渐隐离场 —— 状态机见 updateEnemyMovement 的 dusk 分支
     if (type === 'striker' && variant && variant.id === 'dusk') {
@@ -203,6 +208,8 @@
       e.baseY = y;         // 余弦轨迹基准高度
       e.cosPhase = 0;      // 上下浮动相位
     }
+    // 3/4 类普通敌人：初始技能序号随机（释放队列任意起点起始）
+    if (type === 'gunship' || type === 'capital') e.pattern = (Math.random() * 4) | 0;
     enemies.push(e);
     return e;
   }
@@ -225,23 +232,33 @@
     return pool[0];
   }
 
-  // 1类单位统一入口：kind 由 pickSideSpawn 按权重抽取（白影/增生/黄芒/紫电/赤月），调用方也可强制指定（紫自爆流）
-  function spawnSideUnit(x, y, vel, kind, fireTimer) {
+  // 1类两速体系：快速 200（SIDE_SPEED_FAST）/ 慢速 150（SIDE_SPEED_SLOW），方向取编队基值方向、模长归一。
+  // 规则：顶部入场（对角奇袭 / 图鉴挑战顶部斜插）快速；侧翼入场（常规编队/长队/斜扫/紫自爆流）慢速；
+  // BOSS 战期间（bossFlow.stage === 'fight'）不限入场位置一律快速；BOSS 后固定首波由调用方显式传 fast
+  function sideVelocity(vx, vy, fast) {
+    const spd = (fast || bossFlow.stage === 'fight') ? SIDE_SPEED_FAST : SIDE_SPEED_SLOW;
+    const l = Math.hypot(vx, vy) || 1;
+    return { vx: vx / l * spd, vy: vy / l * spd };
+  }
+
+  // 1类单位统一入口：kind 由 pickSideSpawn 按权重抽取（白影/增生/黄芒/紫电/赤月），调用方也可强制指定（紫自爆流）；
+  // fast：顶部入场 / BOSS 后固定首波等特殊波次传 true（BOSS 战期间的强制快速由 sideVelocity 内部判定）
+  function spawnSideUnit(x, y, vel, kind, fireTimer, fast) {
     const e = kind === 'prolifera'
       ? makeEnemy('prolifera', x, y, { fireTimer })
       : makeEnemy('side', x, y, { behavior: kind, deathShot: kind === 'kamikaze', fireTimer });
-    e._sideVel = vel;
+    e._sideVel = sideVelocity(vel.vx, vel.vy, fast);
     return e;
   }
 
   // 1类：从场地中部略偏上的两侧斜插窜出，最少 3 个一组；编队形态随机（纵队/斜线/横排梯队/V字），一碰就碎
-  // 行为概率：shoot 10% / kamikaze 20% / pass 70%；速度基值已降 40%（×0.6），实际速度另乘 SIDE_SPEED_MUL；整组同速以保持队形
+  // 侧翼入场 → 慢速 150：vx/vy 为方向基值（决定斜插角度，模长归一到两速体系）；整组同速以保持队形
   function spawnSideGroup() {
     const fromLeft = Math.random() < 0.5;
     const dirX = fromLeft ? 1 : -1;
     const n = 3 + Math.floor(Math.random() * 3);    // 3~5 架（最少三个一组）
-    const vx = dirX * rand(90, 120);                // 原 150~200 × 0.6（另乘 SIDE_SPEED_MUL）
-    const vy = rand(54, 84);                         // 原 90~140 × 0.6（另乘 SIDE_SPEED_MUL）
+    const vx = dirX * rand(90, 120);                // 方向基值：横快纵慢的斜插角
+    const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;   // 屏幕侧外入场
     const baseY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);   // 入场基准高度：场地中部略偏上（两侧窜出）
     const formation = Math.floor(Math.random() * 4); // 0 纵队 / 1 斜线 / 2 横排梯队 / 3 V 字
@@ -275,12 +292,13 @@
     }
   }
   
-  // 2类：从上方入场，在指定位置停留4~8s后再向下冲锋（固定 2 架，「22」）
+  // 2类「22」：从上方入场，波次统一停留 4~6s（诗篇 ×2）后向下冲锋（固定 2 架）
   function spawnStrikerGroup() {
     const n = 2;
     const vShape = Math.random() < 0.4;
     const gap = 72;
     const x0 = rand(70, CANVAS_W - 70 - (n - 1) * gap);
+    const hold = rand(4, 6) * strikerHoldMul();   // 波次统一：本波两架停留完全一致
     for (let k = 0; k < n; k++) {
       const x = x0 + k * gap;
       const y = vShape ? -50 - Math.abs(k - (n - 1) / 2) * 40 : -50 - k * 16;
@@ -289,16 +307,17 @@
       else if (rollFashiMatrix()) spawnFashiMatrix(x, y);
       else makeEnemy('striker', x, y, {
         behavior: Math.random() < 0.25 ? 'track' : 'straight',
-        holdTimer: rand(4, 8),   // 前锋线停留 4~8s 后冲锋
+        holdTimer: hold,
       });
     }
   }
   
-  // 特殊编队：左右对称的 232232 横排（两个 3 稍慢）
+  // 特殊编队「232232」：左右对称的 232232 横排（两个 3 稍慢）；2类波次统一停留 6~8s（诗篇 ×2）
   function spawnMirrorRow() {
     const seq = [2, 3, 2, 2, 3, 2];   // 回文对称
     const gap = 70;
     const x0 = (CANVAS_W - (seq.length - 1) * gap) / 2;
+    const hold = rand(6, 8) * strikerHoldMul();   // 波次统一：本波 4 架 2类停留完全一致
     for (let k = 0; k < seq.length; k++) {
       const x = x0 + k * gap;
       if (seq[k] === 2) {
@@ -307,7 +326,7 @@
         else if (rollFashiMatrix()) spawnFashiMatrix(x, -50);
         else makeEnemy('striker', x, -50, {
           behavior: Math.random() < 0.25 ? 'track' : 'straight',
-          holdTimer: rand(1, 4),
+          holdTimer: hold,
         });
       } else {
         // 3 类稍慢一点
@@ -327,8 +346,8 @@
     const startY = CANVAS_H * 0.40;                    // 入场高度：场地中部略偏上（两侧窜出）
     for (const fromLeft of [true, false]) {
       const dirX = fromLeft ? 1 : -1;                  // 横向穿越方向
-      const vx = dirX * rand(99, 117);                  // 原 165~195 × 0.6（另乘 SIDE_SPEED_MUL），从一边扫向另一边
-      const vy = rand(54, 69);                           // 原 90~115 × 0.6（另乘 SIDE_SPEED_MUL），同时下沉
+      const vx = dirX * rand(99, 117);                  // 方向基值：从一边扫向另一边（慢速 150 归一）
+      const vy = rand(54, 69);                           // 同时下沉
       const edgeX = fromLeft ? -30 : CANVAS_W + 30;    // 屏幕侧外入场
       for (let k = 0; k < count; k++) {
         const r = Math.random();
@@ -350,7 +369,7 @@
     const whiteRatio = rand(0.40, 0.60);               // 本波白影替换比例 40%~60%（每架独立判定）
     for (const fromLeft of [true, false]) {
       const dirX = fromLeft ? 1 : -1;
-      const vx = dirX * rand(99, 117);                 // 与侧翼斜扫同速（基值 ×0.6，另乘 SIDE_SPEED_MUL）
+      const vx = dirX * rand(99, 117);                 // 与侧翼斜扫同向（慢速 150 归一）
       const vy = rand(54, 69);
       const edgeX = fromLeft ? -30 : CANVAS_W + 30;
       for (let k = 0; k < count; k++) {
@@ -363,9 +382,29 @@
     }
   }
 
-  // 对称编队：2类组成箭头/V 字，从上方对称俯冲
+  // 2类「2*7」：7 架组成 V 字队形自上而下俯冲（顶点先行，两翼逐级滞后）。
+  // 整队替换（互斥，先判先得）：0.6% 全波替换为 7 架破片（V 形停驻——停留点按出生偏移差异化、行程相等同时停稳；
+  // 不掷侧翼入场）；Lv11 起 2.5% 全波替换为 7 架暴鸰（精英波——7 枚引导炸弹 + 潜在连锁殉爆）。
+  // 正常波次二选一（全波一致）：90% 统一停留 4~7s（诗篇 ×2）后冲锋；10% 完全不停留——
+  // 保持入位速度越过前锋停留线后，速度平滑衰减到入位速度 ×0.8（诗篇 ×0.6；指数逼近不瞬变，见 06-enemy vNoHold 分支）。
+  // 阵型保持：全波统一基准前锋线 waveHoldY，每架 holdY = 基准 + 出生偏移（行程相等 → 下移时间一致、同时到位）；
+  // 停留期横摆与常规 2类一致（逐架随机相位，无同相设定）；入位 / 冲锋 / 无停留直通全程无横移；
+  // 单体替换不再包含破片（仅法术大师A1 / 法术矩阵按原概率替换单体）
   function spawnStrikerVee() {
     const cx = CANVAS_W / 2;
+    // 0.6%：整波替换为 7 架破片——停留点呈 V 形（与突击艇同规则：基准前锋线 + 出生偏移），行程相等同时停稳
+    if (Math.random() < 0.006) {
+      const waveHoldY = rand(200, 240);
+      const travel = waveHoldY + 46;   // 各架相同行程：tpY = 出生 y + travel
+      spawnPopian(cx, -46, { tpX: cx, tpY: -46 + travel });
+      for (let k = 1; k <= 3; k++) {
+        const dx = k * 56;
+        const y = -46 - k * 42;
+        spawnPopian(cx - dx, y, { tpX: cx - dx, tpY: y + travel });
+        spawnPopian(cx + dx, y, { tpX: cx + dx, tpY: y + travel });
+      }
+      return;
+    }
     // Lv11 起 2.5% 概率：整支 V 字队替换为 7 架同排布的暴鸰（精英波——7 枚引导炸弹 + 潜在连锁殉爆，
     // 场面压力瞬时 +28，压力系统会自然放缓后续刷怪作为缓冲）
     if (levelFlow.level >= 11 && Math.random() < 0.025) {
@@ -378,28 +417,36 @@
       }
       return;
     }
+    const holdWave = Math.random() < 0.9;          // 本波二选一（全波一致）：90% 停留 / 10% 无停留直通
+    const hold = rand(4, 7) * strikerHoldMul();
+    const noHoldMul = strikerNoHoldSpdMul();
+    const waveHoldY = rand(200, 240);              // 全波统一基准前锋线（顶点目标；两翼按出生偏移上移）
+    const mkStriker = (x, y, behavior) => {
+      // holdY = 全波统一基准 + 出生偏移（y+46：顶点 0 / 两翼 −42~−126 → 两翼停得更高）；
+      // 行程 = waveHoldY + 46 对所有架相等 → 下移时间一致、同时到位，V 字阵型全程保持
+      const opts = { behavior, holdY: waveHoldY + (y + 46) };
+      if (holdWave) opts.holdTimer = hold;
+      else { opts.holdTimer = 0; opts.vNoHold = true; opts.vNoHoldSpdMul = noHoldMul; }
+      return makeEnemy('striker', x, y, opts);
+    };
     if (rollFashiA1()) spawnFashiA1(cx, -46);
-    else if (rollPopian()) spawnPopian(cx, -46);
     else if (rollFashiMatrix()) spawnFashiMatrix(cx, -46);
-    else makeEnemy('striker', cx, -46, { behavior: 'track', holdTimer: rand(0.4, 0.7) });   // 顶点
+    else mkStriker(cx, -46, 'track');   // 顶点（停留时长与全波一致）
     const pairs = 3;
     for (let k = 1; k <= pairs; k++) {
       const dx = k * 56;
       const y = -46 - k * 42;                          // 逐级滞后 → V 字
       for (const sx of [-1, 1]) {
         if (rollFashiA1()) spawnFashiA1(cx + sx * dx, y);
-        else if (rollPopian()) spawnPopian(cx + sx * dx, y);
         else if (rollFashiMatrix()) spawnFashiMatrix(cx + sx * dx, y);
-        else makeEnemy('striker', cx + sx * dx, y, {
-          behavior: Math.random() < 0.25 ? 'track' : 'straight',
-          holdTimer: rand(1, 4),
-        });
+        else mkStriker(cx + sx * dx, y, Math.random() < 0.25 ? 'track' : 'straight');
       }
     }
   }
 
-  // 对称编队：左右各一艘 3类炮艇压阵，中间 2类护航
+  // 「32223」：左右各一艘 3类炮艇压阵（悬停），中央 3 架 2类护航——波次统一停留 4~8s（诗篇 ×2）
   function spawnGunshipWings() {
+    const hold = rand(4, 8) * strikerHoldMul();   // 波次统一：本波 3 架 2类停留完全一致
     for (const sx of [-1, 1]) {
       const x = CANVAS_W / 2 + sx * 150;
       makeEnemy('gunship', x, -60, {
@@ -414,29 +461,31 @@
       else if (rollFashiMatrix()) spawnFashiMatrix(sx, -50);
         else makeEnemy('striker', sx, -50, {
           behavior: Math.random() < 0.3 ? 'track' : 'straight',
-          holdTimer: rand(1, 4),
+          holdTimer: hold,
         });
     }
   }
 
-  // 非对称编队：一列混编沿对角线从一个上角斜插入场
+  // 「232111」：一列混编沿对角线从一个上角斜插入场——2类波次统一停留 4~6s（诗篇 ×2）
   function spawnDiagonalRaid() {
     const fromLeft = Math.random() < 0.5;
     const n = 6;
     const stepX = fromLeft ? 62 : -62;
     const startX = fromLeft ? 60 : CANVAS_W - 60;
+    const hold = rand(4, 6) * strikerHoldMul();   // 波次统一：本波 2 架 2类停留完全一致
     for (let k = 0; k < n; k++) {
       const x = startX + k * stepX;
       const y = -40 - k * 40;                          // 阶梯式滞后 → 斜线
       if (k === 3) {
         makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 30 });
       } else if (k % 2 === 0) {   // k=0/2/4 → 1类（三个一组，满足≥3）
-        spawnSideUnit(x, y, { vx: fromLeft ? 24 : -24, vy: rand(90, 111) }, pickSideSpawn(), rand(0.8, 1.5));   // 基值 ×0.6，另乘 SIDE_SPEED_MUL
+        // 顶部入场 → 快速 200：vx/vy 为方向基值（近垂直下插的斜插角），模长归一
+        spawnSideUnit(x, y, { vx: fromLeft ? 24 : -24, vy: rand(90, 111) }, pickSideSpawn(), rand(0.8, 1.5), true);
       } else {
         if (rollFashiA1()) spawnFashiA1(x, y);
         else if (rollPopian()) spawnPopian(x, y);
         else if (rollFashiMatrix()) spawnFashiMatrix(x, y);
-        else makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: rand(1, 4) });
+        else makeEnemy('striker', x, y, { behavior: Math.random() < 0.25 ? 'track' : 'straight', holdTimer: hold });
       }
     }
   }
@@ -447,7 +496,7 @@
     const count = 4 + Math.floor(Math.random() * 4);   // 数艘：4~7
     const gap = 54;                                    // 队列间距（沿行进反方向排开）
     const dirX = fromLeft ? 1 : -1;
-    const vx = dirX * rand(90, 120);                   // 与常规 1类同速（基值 ×0.6，另乘 SIDE_SPEED_MUL）
+    const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（慢速 150 归一）
     const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
     const startY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);  // 入场高度：场地中部略偏上（两侧窜出）
@@ -471,13 +520,14 @@
   }
 
   // BOSS 击败后的固定首波：一群 1类排成长队从左或从右入场、横穿战场自另一侧离场；
-  // 本波不出现紫电（kamikaze）1类（白影/增生/黄芒/赤月按权重混入）
+  // 本波不出现紫电（kamikaze）1类（白影/增生/黄芒/赤月按权重混入）；
+  // BOSS 战结束后 6s 内的特殊波次：不限入场位置一律快速 200（显式传 fast）
   function spawnPostBossWave() {
     const fromLeft = Math.random() < 0.5;
     const count = 5 + Math.floor(Math.random() * 3);   // 5~7：长队
     const gap = 54;                                    // 队列间距（沿行进反方向排开）
     const dirX = fromLeft ? 1 : -1;
-    const vx = dirX * rand(90, 120);                   // 与常规 1类同速（基值 ×0.6，另乘 SIDE_SPEED_MUL）
+    const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（快速 200 归一）
     const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
     const startY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);  // 入场高度：场地中部略偏上
@@ -486,7 +536,7 @@
       // 排成长队：队尾依次靠外、靠上，形成一列斜线
       const x = edgeX - dirX * k * gap;
       const y = startY - k * gap * 0.5;
-      spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6));
+      spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6), true);
       enemies[enemies.length - 1].postBossWave = true;   // 标记 BOSS 后固定首波：水晶必掉 + 掉量翻倍
     }
   }
@@ -530,6 +580,9 @@
     { name: '紫晶炮艇',     ency: 'gunship_violet',  type: 'gunship',  fn: () => spawnGunship('violet'),  wLow: 80,  wHigh: 20 },
     { name: '赤红炮艇',     ency: 'gunship_crimson', type: 'gunship',  fn: () => spawnGunship('crimson'), wLow: 100, wHigh: 20 },
     { name: '金曜炮艇',     ency: 'gunship_amber',   type: 'gunship',  fn: () => spawnGunship('amber'),   wLow: 80,  wHigh: 20 },
+    { name: '橙焰炮艇',     ency: 'gunship_orange',  type: 'gunship',  fn: () => spawnGunship('orange'),  wLow: 70,  wHigh: 20 },
+    { name: '增生炮艇',     ency: 'gunship_cyan',    type: 'gunship',  fn: () => spawnGunship('cyan'),    wLow: 60,  wHigh: 20 },
+    
     { name: '炮火先兆者',   ency: 'harbinger',      type: 'harbinger', fn: spawnHarbinger, wLow: 30, wHigh: 30 },
     { name: '寒霜',         ency: 'hanshuang',      type: 'hanshuang', fn: spawnHanshuang, wLow: 0,  wHigh: 30 },
     { name: '威龙',         ency: 'weilong',        type: 'weilong',   fn: spawnWeilong,   wLow: 0,  wHigh: 15 },
@@ -582,11 +635,11 @@
   //   w1 / w10 = Lv1 / Lv10 权重（Lv1~10 线性过渡）；wHigh = Lv11~20 恒定权重；0 = 该等级不出现
   // slotGunship 仅标记"含炮艇编队"：组合波追加位排除（避免同波两支炮艇编队），无其他特殊规则
   const WAVE_FORMATIONS = [
-    { fn: spawnSideGroup,          w1: 10, w10: 5,  wHigh: 20, sideEntry: true },        // 1类小组 3~5 架（侧翼斜插）
+    { fn: spawnSideGroup,          w1: 10, w10: 5,  wHigh: 20, sideEntry: true },        // 1类小队 3~5 架（侧翼斜插）
     { fn: spawnStrikerGroup,       w1: 30, w10: 20, wHigh: 5  },                            // 2类小组 2 架
     { fn: spawnSideColumn,         w1: 5,  w10: 20, wHigh: 10, sideEntry: true },        // 1类长队 4~7 架（侧翼）
     { fn: spawnMirrorRow,          w1: 0,  w10: 30, wHigh: 40 },                            // 回文对称横排
-    { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10, sideEntry: true },        // 双侧对称斜扫
+    { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10, sideEntry: true },        // 双侧斜扫
     { fn: spawnStrikerVee,         w1: 0,  w10: 30, wHigh: 30 },                            // 2类 V 字俯冲
     { fn: spawnSideKamikazeStream, w1: 0,  w10: 5,  wHigh: 15, sideEntry: true },        // 紫自爆流（两侧纵列）
     { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 对角奇袭（含炮艇）
@@ -706,12 +759,15 @@
     const chance = levelFlow.level < 11 ? POPIAN.spawnLowLv : POPIAN.spawnHighLv;
     return Math.random() < chance;
   }
-
   // 特殊2类：破片 —— 三连发导弹无人机：直线飞向选定点急停锁停（除非被击毁不再移动）→
-  // 索敌范围内锁定玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；20% 概率侧翼入场
-  function spawnPopian(x, y) {
-    const flank = Math.random() < POPIAN.flankChance;
+  // 索敌范围内锁定玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；20% 概率侧翼入场。
+  // o.tpX/tpY：强制停留点（2*7 整队替换用——V 形停驻、行程相等同时停稳），强制时不掷侧翼入场
+  function spawnPopian(x, y, o) {
+    o = o || {};
+    const forced = o.tpX != null && o.tpY != null;
+    const flank = !forced && Math.random() < POPIAN.flankChance;
     let sx, sy;
+
     if (flank) {
       const fromLeft = Math.random() < 0.5;
       sx = fromLeft ? -50 : CANVAS_W + 50;
@@ -721,14 +777,19 @@
       sy = y != null ? y : -50;
     }
     const e = makeEnemy('popian', sx, sy, {});
-    // 停留点：落在从上往下 30%~80% 屏高区间；nearBias 幂函数使靠近入场高度（近处）概率更高
-    const t = Math.pow(Math.random(), POPIAN.nearBias);
-    const ty = CANVAS_H * (POPIAN.stopTopY + (POPIAN.stopBotY - POPIAN.stopTopY) * t);
-    // 水平落点：以入场 x 为中心随机横移（幅度受 moveMax 约束），且不落在两侧 15% 边缘区（stopMarginX 夹取）
-    const tx = clamp(sx + rand(-1, 1) * POPIAN.moveMax * 0.5,
-      CANVAS_W * POPIAN.stopMarginX, CANVAS_W * (1 - POPIAN.stopMarginX));
-    e.tpX = tx;
-    e.tpY = ty;
+    // 停留点：强制优先；否则落在从上往下 30%~80% 屏高区间（nearBias 幂函数使靠近入场高度概率更高）
+    if (forced) {
+      e.tpX = o.tpX;
+      e.tpY = o.tpY;
+    } else {
+      const t = Math.pow(Math.random(), POPIAN.nearBias);
+      const ty = CANVAS_H * (POPIAN.stopTopY + (POPIAN.stopBotY - POPIAN.stopTopY) * t);
+      // 水平落点：以入场 x 为中心随机横移（幅度受 moveMax 约束），且不落在两侧 15% 边缘区（stopMarginX 夹取）
+      const tx = clamp(sx + rand(-1, 1) * POPIAN.moveMax * 0.5,
+        CANVAS_W * POPIAN.stopMarginX, CANVAS_W * (1 - POPIAN.stopMarginX));
+      e.tpX = tx;
+      e.tpY = ty;
+    }
     e.arrived = false;
     e.entryT = 0;
     e.faceAng = 0;
@@ -757,11 +818,10 @@
       holdTimer: o.holdTimer != null ? o.holdTimer : FASHI_MATRIX.dwell,   // 胡乱移动持续时长（挑战模式传 1e9 永驻）
       fireTimer: FASHI_MATRIX.firstDelay,   // 就位后首攻延迟（覆盖注册表 fireInterval[1e9,1e9] 天文默认）
     });
-    // 独立移动状态机（见 updateEnemyMovement 的 fashiMatrix 分支）：0=入场下降 1=胡乱移动 2=离场
+    // 独立移动状态机（见 updateEnemyMovement 的 fashiMatrix 分支）：0=入场下降 1=胡乱移动（角度随机游走）2=离场
     e.mxPhase = 0;
     e.entryT = 0;
     e.wanderT = 0;
-    e.wanderX = 0; e.wanderY = 0;             // OU 相干随机游走漂移向量
     e.vx = 0; e.vy = FASHI_MATRIX.entrySpeed; // 入场初速 2×（随后在 entryDecay 内快速衰减到 speed）
     // 机体本体自旋（菱形绕中心旋转）：方向随机、转速「有的慢有的一般」
     e.rot = Math.random() * Math.PI * 2;
@@ -799,7 +859,7 @@
     e.wanderX = 0; e.wanderY = 0;
     e.auraT = 0;       // 血红雾气渐显计时（到达悬停位置后开始）
     e.mistI = 1;       // 黑雾强度：入场时即为 1，到位后 ~1.5s 内逐渐消散，退场时再起（见 updateEnemies / drawFashiArrayBody）
-    e.summonTimer = FASHI_ARRAY.summonFirst;      // 首次召唤倒计时（4s；后续每 5s，见 updateEnemyFire）
+    e.summonTimer = FASHI_ARRAY.summonFirst;      // 首次召唤倒计时（2.5s；后续每 5s，见 updateEnemyFire）
     e.summonFlash = 0; // 召唤红光闪动剩余时长
     return e;
   }
@@ -1035,21 +1095,36 @@
   }
 
   // ---------- 图鉴挑战模式 ----------
-  // 生成挑战目标（单个敌人）；悬停型给极大 holdTimer 使其永驻场持续攻击
-  function spawnChallengeTarget() {
+  // 生成挑战目标 count 个（Shift+= 群召 10 个用）；悬停型给极大 holdTimer 使其永驻场持续攻击
+  function spawnChallengeTarget(count = 1) {
+    for (let n = 0; n < count; n++) spawnChallengeTargetOne();
+  }
+
+  function spawnChallengeTargetOne() {
     const ch = state.challenge;
     const cx = CANVAS_W / 2;
     switch (ch.type) {
       case 'side':
-        // 侧翼艇：缓慢斜插（基值 ×0.6，另乘 SIDE_SPEED_MUL），飞出屏幕后由 updateChallenge 重新生成
-        makeEnemy('side', cx - 130, -40, { behavior: ch.behavior || 'shoot', fireTimer: 1.0 })._sideVel = { vx: 33, vy: 42 };
+        // 侧翼艇：50% 顶部斜插（对角奇袭同款方向基值 ±24 / 90~111 → 快速 200）/ 50% 侧翼斜插——仅从左侧窜出（同常规 1类侧翼入场 → 慢速 150）；
+        // 两速体系与正常游戏一致（含入场冲刺），飞出屏幕后由 updateChallenge 重新生成
+        if (Math.random() < 0.5) {
+          spawnSideUnit(-36, rand(CANVAS_H * 0.35, CANVAS_H * 0.45),
+            { vx: rand(90, 120), vy: rand(54, 84) }, ch.behavior || 'shoot', 1.0);
+        } else {
+          makeEnemy('side', cx - 130, -40, { behavior: ch.behavior || 'shoot', fireTimer: 1.0 })._sideVel = sideVelocity(24, rand(90, 111), true);
+        }
         break;
       case 'prolifera':
-        // 增生侧翼艇：同 1类缓慢斜插（挑战模式敌方不死，不会分裂）
-        makeEnemy('prolifera', cx - 130, -40, { fireTimer: 1.0 })._sideVel = { vx: 33, vy: 42 };
+        // 增生侧翼艇：同 1类（50% 顶部斜插快速 / 50% 仅左侧侧翼入场慢速；挑战模式敌方不死，不会分裂）
+        if (Math.random() < 0.5) {
+          spawnSideUnit(-36, rand(CANVAS_H * 0.35, CANVAS_H * 0.45),
+            { vx: rand(90, 120), vy: rand(54, 84) }, 'prolifera', 1.0);
+        } else {
+          makeEnemy('prolifera', cx - 130, -40, { fireTimer: 1.0 })._sideVel = sideVelocity(24, rand(90, 111), true);
+        }
         break;
       case 'striker':
-        makeEnemy('striker', cx, -50, { behavior: 'track', holdTimer: 1e9, variant: ch.variant });
+        makeEnemy('striker', rand(70, CANVAS_W - 70), -50, { behavior: 'track', holdTimer: 1e9, variant: ch.variant });   // 随机水平位置入场（不固定居中）
         break;
       case 'gunship':
         makeEnemy('gunship', cx, -60, { hoverY: 140, holdTimer: 1e9, variant: ch.variant });
@@ -1079,7 +1154,7 @@
         spawnDouzhi();   // 横穿（余弦浮动）；飞出屏幕后由 updateChallenge 重新生成
         break;
       case 'fashiA1':
-        spawnFashiA1(cx, -50);   // 下降+停移射击；飞出屏幕后由 updateChallenge 重新生成
+        spawnFashiA1(rand(80, CANVAS_W - 80), -50);   // 下降+停移射击（随机水平位置入场）；飞出屏幕后由 updateChallenge 重新生成
         break;
       case 'fashiA2':
         spawnFashiA2(cx, -70);   // A1 强化版（3s 首攻）；飞出屏幕后由 updateChallenge 重新生成
@@ -1099,6 +1174,25 @@
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
         break;
     }
+  }
+
+  // 波次测试：整波生成（图鉴「怪物权重 · 波次」行测试按钮入口；WAVE_FORMATIONS 纯编队，不含特殊3类随波附赠）。
+  // 两个入口：进页首刷 / 场上清空后自动补刷（updateChallenge）；按 = 额外刷出一整波（不清场，14-main）
+  function spawnChallengeWave(ch) {
+    const f = WAVE_FORMATIONS[ch.wave];
+    if (f) f.fn();
+  }
+
+  // 测试目标匹配（类型 + 变体 + 行为）——顶部血条 drawChallengeBar 与 Shift+= 群召计数共用同规则；
+  // 召唤物/衍生体类型不同自然排除（如法术阵列召唤的法术矩阵）
+  function challengeTargets() {
+    const ch = state.challenge;
+    return (ch && ch.kind === 'enemy')
+      ? enemies.filter(e =>
+          e.type === ch.type &&
+          (ch.variant == null || e.variant === ch.variant) &&
+          (ch.behavior == null || e.behavior === ch.behavior))
+      : [];
   }
 
   // 挑战模式驱动：维持单个目标在场 + 敌方无限血量
@@ -1129,6 +1223,9 @@
       } else if (bossFlow.stage === 'fight') {
         if (!enemies.some(e => e.type === 'boss')) bossFlow.stage = 'wait';   // 意外消失则重新登场
       }
+    } else if (ch.kind === 'wave') {
+      // 波次测试：场上清空后自动补刷一整波；按 = 额外刷出一整波（不清场，14-main）
+      if (enemies.length === 0) spawnChallengeWave(ch);
     } else if (!enemies.some(e => e.type === ch.type)) {
       spawnChallengeTarget();
     }
@@ -1150,6 +1247,7 @@
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
-    spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget,
+    spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,
+    spawnChallengeWave,
     updateChallenge,
   };

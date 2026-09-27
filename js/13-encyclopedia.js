@@ -1,4 +1,4 @@
-﻿// 13-encyclopedia：怪物图鉴数据 / UI / 形态预览绘制
+// 13-encyclopedia：怪物图鉴数据 / UI / 形态预览绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：12-ui(1 名) 14-main(1 名)
@@ -7,7 +7,7 @@
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
-  import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
+  import { getCrystal3DSprite, paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
   import { drawEnemy } from './10-draw-world.js';
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';
@@ -18,8 +18,8 @@
   // ---------- 怪物图鉴 ----------
   const ENCY_GRADES = [
     { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_moon', 'prolifera'] },
-    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix'] },
-    { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2'] },
+    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix'] },
+    { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'gunship_orange', 'gunship_cyan', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2'] },
     { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray'] },
 
     { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2'] },
@@ -55,19 +55,23 @@
     },
     striker_crimson: {
       name: '赤红突击艇', type: 'striker', variant: 'crimson', color: '#ff3b30', hp: 56, score: 150,
-      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>垂直直射</b>（±10° 偏差、不追踪），首次开火额外延迟 1s。出现概率：<b>约 29%</b>。',
+      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>垂直直射</b>（±10° 偏差、不追踪），首次开火额外延迟 1s。出现概率：<b>约 23%</b>。',
     },
     striker_amber: {
       name: '烈橙突击艇', type: 'striker', variant: 'amber', color: '#ff8a5c', hp: 56, score: 150,
-      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>朝前方对称射两发</b>，夹角在 <b>50°/60°/70° 间随机</b>（不追踪）。出现概率：<b>约 29%</b>。',
+      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>朝前方对称射两发</b>，夹角在 <b>40°/50°/60° 间随机</b>（不追踪）。出现概率：<b>约 23%</b>。',
     },
     striker_azure: {
       name: '幽蓝突击艇', type: 'striker', variant: 'azure', color: '#4d9fff', hp: 56, score: 150,
-      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>发射追踪玩家的子弹</b>，首次开火额外延迟 1s。登场 <b>10% 概率 1s / 10% 概率 2s 虚化护盾</b>（虚化期间不受伤害、我方炮弹穿过）。出现概率：<b>约 24%</b>。',
+      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>发射追踪玩家的子弹</b>，首次开火额外延迟 1s。登场 <b>10% 概率 1s / 10% 概率 2s 虚化护盾</b>（虚化期间不受伤害、我方炮弹穿过）。出现概率：<b>约 19%</b>（与紫晶相同）。',
+    },
+    striker_violet: {
+      name: '紫晶突击艇', type: 'striker', variant: 'violet', color: '#c084fc', hp: 56, score: 150,
+      desc: '上方入场，在前锋停留线短暂停顿后向下冲锋。<b>发射一枚精确追踪玩家的子弹</b>（紫=追踪定位）。<b>攻击间隔较幽蓝 +0.3s</b>、首攻不额外延长、无虚化护盾。出现概率：<b>约 19%</b>（与幽蓝相同）。',
     },
     striker_white: {
       name: '霜白突击艇', type: 'striker', variant: 'white', color: '#eaf1f8', hp: 56, score: 150,
-      desc: '上方入场，在前锋停留线<b>停留 2s</b> 后向下冲锋，<b>完全不开火</b>，以机身撞击玩家。出现概率：<b>约 17%</b>。',
+      desc: '上方入场，在前锋停留线<b>停留 2s</b> 后向下冲锋，<b>完全不开火</b>，以机身撞击玩家。出现概率：<b>约 15%</b>。',
     },
     striker_dusk: {
       name: '幽暮突击艇', type: 'striker', variant: 'dusk', color: '#8f97ab', hp: 64, score: 150,
@@ -75,7 +79,7 @@
     },
     gunship_violet: {
       name: '紫晶炮艇', type: 'gunship', variant: 'violet', color: '#c084fc', hp: 400, score: 400,
-      desc: '技能循环：<b>正下方同向双连射</b>（不锁定玩家）→ <b>8 发环形爆发</b> → <b>追踪±5°双弹</b>（一次同时两发）→ <b>瞄准单发高速狙击</b>。',
+      desc: '技能循环：<b>DNA 双螺旋四连弹</b>（朝玩家 2×2，左右两束反向横加速交绕成双螺旋轨迹）→ <b>三发平行贴弹</b>（同向平行、间距小，中间弹出射点略靠前）→ <b>锁定侧扫</b>（向玩家方位左/右一侧 60° 区间依次均分 4 发，诗篇 5 发）。',
     },
     gunship_crimson: {
       name: '赤红炮艇', type: 'gunship', variant: 'crimson', color: '#ff5a5a', hp: 400, score: 400,
@@ -84,6 +88,14 @@
     gunship_amber: {
       name: '金曜炮艇', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 420, score: 400,
       desc: '技能交替：<b>“八”字形斜弹幕</b>（左右各一组对称斜弹、与竖直夹角 10°，快速连发两次、短暂间隔后再两次）→ <b>瞄准单发巨型弹</b>（伤害更高）。',
+    },
+    gunship_orange: {
+      name: '橙焰炮艇', type: 'gunship', variant: 'orange', color: '#ff9a1a', hp: 400, score: 400,
+      desc: '技能循环：<b>巨型黄弹</b>（飞行 20%~50% 屏高临近失速时分裂 6 发均匀散射）→ <b>下方 150° 均匀 6 发</b> → <b>双轮 2×2 追踪弹</b>（夹角 40°→60°）→ <b>下方 120° 均匀 4 发</b>。',
+    },
+    gunship_cyan: {
+      name: '增生炮艇', type: 'gunship', variant: 'cyan', color: '#7fe8c9', hp: 400, score: 400,
+      desc: '技能循环：<b>两翼召唤增生侧翼艇</b>（先朝两侧再转向下飞；诗篇两波 4 个；召唤体与卫护飞船无奖励）→ <b>双发支援弹</b>（随机方向：命中敌机加 200 屏障、命中玩家机身加 24/诗篇 28 屏障，持续 10s 可刷新）→ <b>两轮 6 发环形爆发</b>（随机方向、顺序随机）。',
     },
     harbinger: {
       name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 1000, score: 600,
@@ -113,7 +125,7 @@
     baoling: {
       name: '暴鸰', type: 'baoling', color: '#e3e6ec', hp: 550, score: 500,
       lore: '敌方人员操纵的无人战舰，飞行速度缓慢。携带有爆破弹头，将会在接近我方战机时投掷，并造成范围物理伤害。据说设计灵感来自某种幻想生物。虽然在投弹之后不再具有任何攻击性，但是因重量减轻而得以更快速地移动。',
-      desc: '自爆无人机：<b>不悬停</b>、径直下压，进入<b>索敌半径（1/3 屏幕长度）</b>即<b>停车锁定</b>——玩家位置浮现红色预警区，炸弹脱离后经 0.8s 低速下坠再<b>极速加速</b>冲向预警区中心爆炸：<b>玩家 40 伤害</b>（不伤敌人）。<b>预警区形成前被击毁则炸弹原地爆炸</b>，对圈内<b>所有单位</b>造成伤害（玩家 40 / 敌人 600 + 20% 最大生命、封顶 2600，可连锁殉爆）；<b>预警区一旦形成，炸弹即视为脱离——击毁暴鸰也无法终止，炸弹仍将抵达目标位置并爆炸</b>。投弹后<b>停留 1.2s</b> 再俯冲离场；碰撞 12。<b>玩家处于爆圈内时对暴鸰增伤 35%</b>（无论是否已投弹）。普通炮艇 <b>1.5%</b> 概率替换出现（成对编队则两架均为暴鸰）；<b>Lv11 起也占特殊 3 类槽位权重</b>。',
+      desc: '自爆无人机：<b>不悬停</b>、径直下压，进入<b>索敌半径（1/3 屏幕长度）</b>即<b>停车锁定</b>——玩家位置浮现红色预警区，炸弹脱离后经 0.8s 低速下坠再<b>极速加速</b>冲向预警区中心爆炸：<b>玩家 40 伤害</b>（不伤敌人）。<b>预警区形成前被击毁则原地自爆</b>（伴随红色扩散爆炸波，<b>不伤玩家</b>）：<b>周围 250px 内所有敌方单位</b>受 600 + 20% 最大生命伤害（封顶 2000，可连锁殉爆）；<b>预警区一旦形成，炸弹即视为脱离——击毁暴鸰也无法终止，炸弹仍将抵达目标位置并爆炸</b>。投弹后<b>停留 1.2s</b> 再俯冲离场；碰撞 12。<b>玩家处于爆圈内时对暴鸰增伤 35%</b>（无论是否已投弹）。普通炮艇 <b>1.5%</b> 概率替换出现（成对编队则两架均为暴鸰）；<b>Lv11 起也占特殊 3 类槽位权重</b>。',
     },
 
     jiaoxiang: {
@@ -154,7 +166,7 @@
     fashiArray: {
       name: '法术阵列', type: 'fashiArray', color: '#c22b3d', hp: 3500, score: 1500,
       pvZoom: 1.45,   // 详情预览放大：三菱形+底座的视觉尺寸紧凑，按碰撞盒适配会显得偏小
-      desc: '血红三菱法师母机（<b>4 类</b>）：三座<b>法术矩阵样式的菱形</b>架设在<b>灰黑底座</b>上——中央菱形较大、呈<b>血红色</b>并带<b>血红流动特效</b>，两侧菱形与中央成一定夹角。<b>入场与退场阶段</b>：底座散发出<b>诡异的浓厚黑雾</b>，机体伴有<b>极轻微的颤动</b>，到位后黑雾逐渐消散。体型、<b>碰撞伤害（12.5）等同炮火先兆者</b>，<b>整体移速为其 65%</b>：匀速下降到<b>屏幕上方 20%~30% 区域</b>后<b>像法术矩阵一样胡乱移动</b>（不脱离屏幕），并<b>周身散发血红雾气</b>；<b>30s 后向上飞离战场</b>。就位后 <b>0~1s</b> 内发起首次攻击：朝玩家发射<b>法术矩阵同款但大一号的红色正方体</b>（伤害 <b>26</b>、周围红光更明显），飞行至 <b>30%~60% 射程</b>时<b>分裂为 3 枚常规正方体</b>——1 枚沿原方向、另 2 枚垂直于原方向；<b>分裂前 0.5s</b> 正方体周围出现<b>红色收缩圈</b>预警，分裂瞬间伴随<b>微弱冲击波</b>。就位 <b>4s</b> 后首次召唤、其后<b>每 5s</b> 一次：<b>周身闪动红光</b>，并在周围一定范围<b>召唤一个法术矩阵</b>——生成位置光效闪动、<b>1s 后开始攻击并随机移动</b>，<b>该召唤体死亡不加分、不掉水晶</b>；<b>飞离期间不再召唤</b>。<b>在场时为法术矩阵提供加成：偏移角增至 ±25°、正方体速度 +25%</b>。<b>死亡时</b>：死亡爆发<b>震出一个法术矩阵</b>——<b>无盾</b>，<b>0.4s 内高速旋转随机 1~2 圈</b>（转速逐渐衰减），<b>1s 后开始攻击</b>，其余与常规法术矩阵一致。<b>Lv11 前不出场</b>（Lv11 起占 4 类槽位，出场时 <b>25%</b> 概率替换主力舰）。',
+      desc: '血红三菱法师母机（<b>4 类</b>）：三座<b>法术矩阵样式的菱形</b>架设在<b>灰黑底座</b>上——中央菱形较大、呈<b>血红色</b>并带<b>血红流动特效</b>，两侧菱形与中央成一定夹角。<b>入场与退场阶段</b>：底座散发出<b>诡异的浓厚黑雾</b>，机体伴有<b>极轻微的颤动</b>，到位后黑雾逐渐消散。体型、<b>碰撞伤害（12.5）等同炮火先兆者</b>，<b>整体移速为其 65%</b>：匀速下降到<b>屏幕上方 20%~30% 区域</b>后<b>像法术矩阵一样胡乱移动</b>（不脱离屏幕），并<b>周身散发血红雾气</b>；<b>30s 后向上飞离战场</b>。就位后 <b>0~1s</b> 内发起首次攻击：朝玩家发射<b>法术矩阵同款但大一号的红色正方体</b>（伤害 <b>26</b>、周围红光更明显，飞行中<b>三轴翻滚的立体旋转</b>），飞行至 <b>30%~60% 射程</b>时<b>分裂为 3 枚常规正方体</b>——1 枚沿原方向、另 2 枚垂直于原方向；<b>分裂前 0.5s</b> 正方体周围出现<b>红色收缩圈</b>预警，分裂瞬间伴随<b>微弱冲击波</b>。就位 <b>2.5s</b> 后首次召唤、其后<b>每 5s</b> 一次：<b>周身闪动红光</b>，并在周围一定范围<b>召唤一个法术矩阵</b>——生成位置光效闪动、<b>1s 后开始攻击并随机移动</b>，<b>该召唤体死亡不加分、不掉水晶</b>；<b>飞离期间不再召唤</b>。<b>在场时为法术矩阵提供加成：偏移角增至 ±25°、正方体速度 +25%</b>。<b>死亡时</b>：死亡爆发<b>震出一个法术矩阵</b>——<b>无盾</b>，<b>0.4s 内高速旋转随机 1~2 圈</b>（转速逐渐衰减），<b>1s 后开始攻击</b>，其余与常规法术矩阵一致。<b>Lv11 前不出场</b>（Lv11 起占 4 类槽位，出场时 <b>25%</b> 概率替换主力舰）。',
     },
 
     capital_crimson: {
@@ -316,7 +328,7 @@ boss_storm: {
     const actionHtml = isBoss
       ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
          <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
-         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（每枚炸掉 60% 最大血量）</div>`
+         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（直接击杀全场）<br />= 召唤 1 个 · Shift+= 召唤 10 个（场上仅 1 个目标时先清场）</div>`
       : d.derived
         ? ''
         : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
@@ -356,6 +368,15 @@ boss_storm: {
       : { kind: 'enemy', type: d.type, variant: d.variant || null, behavior: d.behavior || null, name: d.name };
     closeEncyclopedia();
     resetGame(true, { challenge });
+  }
+
+  // 波次测试：从数值图鉴「怪物权重 · 波次」行发起——挑战对象为整个编队（无顶部血条）。
+  // 引擎侧见 04-spawn updateChallenge（场上清空后自动补刷同编队）与 14-main（战斗中按 = 额外追加一整波）
+  function startWaveTest(f) {
+    const idx = WAVE_FORMATIONS.findIndex(w => w.fn === f.fn);
+    if (idx < 0) return;
+    closeInfoModal();
+    resetGame(true, { challenge: { kind: 'wave', wave: idx, name: f.name } });
   }
 
   // BOSS 试炼：正常战斗模式（双方均不无敌，走 testBoss 流程直接进警报登场）
@@ -861,8 +882,9 @@ boss_storm: {
     };
   }
 
-  // 权重表构建：rows = [{ canvas, label, vals, fmt?, disp? }]，vals 为数值数组（null = 未解锁/未生效，显示「—」）
-  // fmt 为该行数值格式化函数（默认 fmtInfoW）；disp 为可选自定义展示文本（波次行 a~b 区间）
+  // 权重表构建：rows = [{ canvas, label, vals, fmt?, disp?, btn? }]，vals 为数值数组（null = 未解锁/未生效，显示「—」）
+  // fmt 为该行数值格式化函数（默认 fmtInfoW）；disp 为可选自定义展示文本（波次行 a~b 区间）；
+  // btn 为可选行尾按钮元素（波次行的「试波」），表头需同步补一列（见 renderInfoWeights 波次分支）
   function buildWeightTable(headers, rows) {
     const table = document.createElement('table');
     table.className = 'info-table';
@@ -899,6 +921,11 @@ boss_storm: {
         }
         tr.appendChild(td);
       }
+      if (r.btn) {
+        const tdBtn = document.createElement('td');
+        tdBtn.appendChild(r.btn);
+        tr.appendChild(tdBtn);
+      }
       table.appendChild(tr);
     }
     return table;
@@ -927,8 +954,8 @@ boss_storm: {
   // + 法术大师A1 / 破片 / 法术矩阵（2类突击艇的出场替换概率）+ 斗志昂扬（升级触发概率）——此四行为概率
   function infoStrikerRows() {
     const rows = [];
-    const nameOf = { crimson: '赤红突击艇', amber: '烈橙突击艇', azure: '幽蓝突击艇', white: '霜白突击艇', dusk: '幽暮突击艇' };
-    const encyOf = { crimson: 'striker_crimson', amber: 'striker_amber', azure: 'striker_azure', white: 'striker_white', dusk: 'striker_dusk' };
+    const nameOf = { crimson: '赤红突击艇', amber: '烈橙突击艇', azure: '幽蓝突击艇', violet: '紫晶突击艇', white: '霜白突击艇', dusk: '幽暮突击艇' };
+    const encyOf = { crimson: 'striker_crimson', amber: 'striker_amber', azure: 'striker_azure', violet: 'striker_violet', white: 'striker_white', dusk: 'striker_dusk' };
     const weights = INFO_TIERS.map(t => strikerVariantWeights(t.lv));
     for (const v of VARIANTS.striker) {
       rows.push({
@@ -993,7 +1020,7 @@ boss_storm: {
   }
 
   // 波次编队行：Lv1~10 由 w1→w10 线性过渡（B 档显示 a~b 区间），Lv11~20 恒定 wHigh
-  //   disp 存单元格展示文本；hover：悬停行弹出编队演示（mini 战场动画回放入场 / 走位）
+  //   disp 存单元格展示文本；hover：悬停行弹出编队演示（mini 战场动画回放入场 / 走位）；btn：整波实测按钮
   function infoFormationRows() {
     return INFO_FORMATIONS.map(f => {
       const cfg = WAVE_FORMATIONS.find(w => w.fn === f.fn);
@@ -1003,8 +1030,18 @@ boss_storm: {
         if (i === 1) return fmtInfoW(cfg.wHigh);
         return null;
       }));
-      return { canvas: infoShipCanvas(f.ency), label: f.name, vals, disp, hover: formationHover(f) };
+      return { canvas: infoShipCanvas(f.ency), label: f.name, vals, disp, hover: formationHover(f), btn: infoWaveTestBtn(f) };
     });
+  }
+
+  // 波次行测试按钮（紧凑样式见 style.css .info-table .ency-challenge-btn.wave-test）
+  function infoWaveTestBtn(f) {
+    const b = document.createElement('button');
+    b.className = 'ency-challenge-btn wave-test';
+    b.textContent = '测试';
+    b.title = '整波实测：场上清空后自动补刷同编队；战斗中按 = 额外追加一整波';
+    b.addEventListener('click', ev => { ev.stopPropagation(); startWaveTest(f); });
+    return b;
   }
 
   function renderInfoWeights() {
@@ -1042,8 +1079,8 @@ boss_storm: {
       infoBody.appendChild(buildWeightTable(headers, infoCapitalRows()));
       infoAppendNote(INFO_TIER_NOTE + '4类主力舰<b>同屏限 1</b>，由场面压力系统驱动出场，表中为出场时的<b>变体选取权重</b>（按关卡分两档）。苍蓝主力舰 20% 概率带护盾（前 5s 虚化不受伤害、炮弹穿过）。');
     } else {
-      infoBody.appendChild(buildWeightTable(['编队', ...INFO_TIERS.map(t => t.label)], infoFormationRows()));
-      infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含炮艇编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。');
+      infoBody.appendChild(buildWeightTable(['编队', ...INFO_TIERS.map(t => t.label), '测试'], infoFormationRows()));
+      infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含炮艇编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。点击行内「<b>测试</b>」按钮可整波实测：场上清空后自动补刷同编队，战斗中按 <b>=</b> 额外追加一整波（不清场，可观察多波叠加）。');
     }
   }
 
@@ -1272,10 +1309,11 @@ boss_storm: {
       rows.push({ label: w.name + '·单发伤害', fmt, vals: vals(c => String(c.dmg)) });
       rows.push({ label: w.name + '·激光数 / 间隔(s)', fmt, vals: vals(c => `${c.count} / ${c.interval}`) });
     } else if (kind === 'daodan') {
-      // 与大狗导弹完全同款：直击 / 溅射 / 半径取 PILOTS.dagou，等级只改发射间隔
+      // 与大狗导弹完全同款：直击 / 溅射 / 半径取 PILOTS.dagou，等级只改发射间隔；连射链与大狗同款（伤害逐波 ×chainDmgMul）
       const d = PILOTS.dagou;
       rows.push({ label: w.name + '·爆炸（直击+溅射） / 半径', fmt, vals: INFO_FIRE_LEVELS.map(() => `${d.directDmg}+${d.splashDmg} / ${d.blastR}（大狗同款）`) });
       rows.push({ label: w.name + '·发射间隔(s)', fmt, vals: vals(c => String(c.interval)) });
+      rows.push({ label: w.name + '·连射链', fmt, vals: INFO_FIRE_LEVELS.map(() => `每发 ${Math.round(d.chainChance * 100)}% 概率 ${d.chainGap}s 后连射，伤害 ×${d.chainDmgMul}/波`) });
     } else if (kind === 'xinring') {
       rows.push({ label: w.name + '·灼烧 DPS', fmt, vals: vals(c => String(c.dps)) });
       rows.push({ label: w.name + '·半径 / 间隔(s)', fmt, vals: vals(c => `${c.r} / ${c.interval}`) });
@@ -1311,7 +1349,7 @@ boss_storm: {
     }
     infoBody.appendChild(buildDpsTable(headers, dpsRows));
     infoBody.appendChild(buildDpsTable(['副武器 / 参数', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5' : 'Lv' + lv)], paramRows));
-    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与大狗导弹完全同款（600 溅射 / 低区直击 300，表中 DPS 按爆炸伤害折算）；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。暴走（Lv5）为限时形态。');
+    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与大狗导弹完全同款（600 溅射 / 低区直击 200，表中 DPS 按爆炸伤害折算；每发发射后 10% 概率 0.3s 后连射一发，连射弹同样可继续连射、伤害依次 ×0.6 递减）；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。暴走（Lv5）为限时形态。');
   }
 
   // ---------- 驾驶员：PILOTS 注册表驱动（desc 详细机制文案；与主菜单卡片简短文案 brief 区分） ----------
@@ -1339,6 +1377,668 @@ boss_storm: {
     infoAppendNote('主 / 副驾驶员各装备一名、效果同时生效（同名不可同时占据两槽）。默认主驾驶员可莉、副驾驶员小艺。天秀忧郁王子、陵落技能均按 <b>Q</b> 释放，左下角量表显示充能 / 冷却。');
   }
 
+  // ---------- 测试1 页签（开发专用，数值与机制图鉴内）----------
+  // 水晶样式定稿预览：雷译正视图（静态）+ 3D 旋转对照 + 原石（巨型改版）+ 压力实测（生产精灵路线）。
+  // 并行约定：本窗口维护；动画仅在测试1 展示期间运行（切走 / 关弹窗即停排）。
+  // 配色：双色彩体系（原青 #39C5BB + 水蓝 #46AAFF），巨型双色 #39C5BB / #FFC0CB。
+
+  const THUNDER_BASES = ['#39c5bb', '#46aaff'];
+  const THUNDER_GLOW = '#4dd0ff';
+  const CRYSTAL3D_FRAMES_PREVIEW = 24;                 // 旋转对照的量化步进（24 帧/圈）
+  let xtalSpinFrames = 24;                             // 顶部 chip 可切 24/16（16 = 22.5°/帧 粗糙对照）
+
+  const XTAL_SPIN = Math.PI * 2;    // 自转角速度：1s 一整圈（360°/s）
+  const xtalRgb = hex => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  function xtalShade(base, k, to) {   // 颜色向白（'w'）或黑（'b'）推进（返回 hex）
+    const [r, g2, b] = xtalRgb(base);
+    const t = to === 'w' ? 255 : 0;
+    const m = v => Math.round(v + (t - v) * k);
+    return '#' + [m(r), m(g2), m(b)].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  function xtalMixHex(a, b, k) {   // 两个 hex 颜色插值（返回 hex）
+    const A = xtalRgb(a), B = xtalRgb(b);
+    return '#' + [0, 1, 2].map(i => Math.round(A[i] + (B[i] - A[i]) * k).toString(16).padStart(2, '0')).join('');
+  }
+  function xtalMix(lo, hi, k) {   // rgb 数组插值（返回 rgb() 字符串）
+    return 'rgb(' + Math.round(lo[0] + (hi[0] - lo[0]) * k) + ',' + Math.round(lo[1] + (hi[1] - lo[1]) * k) + ',' + Math.round(lo[2] + (hi[2] - lo[2]) * k) + ')';
+  }
+  function xtalPolyPath(g, pts) {
+    g.beginPath();
+    pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.closePath();
+  }
+  function xtalVGrad(g, r, c) {   // 面内纵向渐变（上亮下深）
+    const gr = g.createLinearGradient(0, -r, 0, r);
+    gr.addColorStop(0, c.hi);
+    gr.addColorStop(1, c.lo);
+    return gr;
+  }
+
+  // 雷译三档正面绘制核心（在原点作画，静态行 / 3D 旋转行共用；gk = 辉光呼吸系数）
+  function paintThunderSmall(g, c, gk) {   // 小：尖顶六边形刻面宝石（中央刻面亮带、无描边）
+    const H = c.r * 1.2, W = c.r * 0.58;
+    const hex = [[0, -H], [W, -H * 0.45], [W, H * 0.45], [0, H], [-W, H * 0.45], [-W, -H * 0.45]];
+    g.save();
+    g.shadowColor = c.glow;
+    g.shadowBlur = 12 * gk;
+    g.fillStyle = xtalVGrad(g, H, c);
+    xtalPolyPath(g, hex);
+    g.fill();
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,0.35)';   // 中央刻面亮带
+    xtalPolyPath(g, hex.map(p => [p[0] * 0.45, p[1] * 0.9]));
+    g.fill();
+    g.restore();
+  }
+
+  function paintThunderMedium(g, c, gk) {   // 中：白色八角外框 + 有色环带 + 竖长白芯（左上高光径向）
+    const w0 = c.r * 0.78, hh0 = c.r, ch = c.r * 0.36;
+    const fw = c.r * 0.27;
+    const iw = w0 - fw, ihh = hh0 - fw, icc = Math.max(2.5, ch - fw * 0.7);
+    const S = iw + ihh - icc;
+    const cw = S / 3.1, chh = S / 2;
+    const oct = (hw, hh, cc2) => [
+      [-(hw - cc2), -hh], [hw - cc2, -hh], [hw, -(hh - cc2)], [hw, hh - cc2],
+      [hw - cc2, hh], [-(hw - cc2), hh], [-hw, hh - cc2], [-hw, -(hh - cc2)],
+    ];
+    g.save();
+    g.shadowColor = '#e8f4ff';
+    g.shadowBlur = 10 * gk;
+    g.fillStyle = '#f4f8ff';
+    g.beginPath();
+    oct(w0, hh0, ch).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    oct(iw, ihh, icc).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.closePath();
+    g.fill('evenodd');
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(150, 175, 210, 0.5)';
+    g.lineWidth = 1;
+    xtalPolyPath(g, oct(w0, hh0, ch)); g.stroke();
+    xtalPolyPath(g, oct(iw, ihh, icc)); g.stroke();
+    g.shadowColor = c.glow;
+    g.shadowBlur = 9 * gk;
+    g.fillStyle = xtalVGrad(g, ihh, c);
+    g.beginPath();
+    oct(iw, ihh, icc).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.rect(-cw, -chh, cw * 2, chh * 2);
+    g.closePath();
+    g.fill('evenodd');
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,0.88)';
+    g.fillRect(-cw, -chh, cw * 2, chh * 2);
+    g.restore();
+  }
+
+  function paintThunderLarge(g, c, gk) {   // 大：白色菱形外框（带宽 = 板厚 25%）+ 四向斜边梯形 + 近白正方形前面
+    const R = c.r, a = R * 0.42, b = R * 0.16;
+    const Rin = R * 0.875;
+    const dia = r => [[0, -r], [r, 0], [0, r], [-r, 0]];
+    g.save();
+    g.shadowColor = c.glow;
+    g.shadowBlur = 8 * gk;
+    g.fillStyle = c.lo;
+    for (let q = 0; q < 4; q++) {
+      g.save();
+      g.rotate(q * Math.PI / 2);
+      xtalPolyPath(g, [[-a, -a], [a, -a], [a - b, -a - b], [-(a - b), -a - b]]);
+      g.fill();
+      g.restore();
+    }
+    g.shadowBlur = 0;
+    g.shadowColor = c.glow;
+    g.shadowBlur = 34 * gk;
+    g.fillStyle = c.lo;
+    g.fillRect(-a, -a, a * 2, a * 2);
+    g.shadowBlur = 0;
+    g.shadowColor = '#e8f4ff';
+    g.shadowBlur = 10 * gk;
+    g.fillStyle = '#f4f8ff';
+    g.beginPath();
+    dia(R).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    dia(Rin).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+    g.closePath();
+    g.fill('evenodd');
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(150, 175, 210, 0.6)';
+    g.lineWidth = 1;
+    xtalPolyPath(g, dia(R)); g.stroke();
+    xtalPolyPath(g, dia(Rin)); g.stroke();
+    const wg = g.createRadialGradient(0, 0, 0, 0, 0, a * 1.35);
+    wg.addColorStop(0, 'rgba(255,255,255,0.88)');
+    wg.addColorStop(0.55, 'rgba(255,255,255,0.78)');
+    wg.addColorStop(1, 'rgba(255,255,255,0.25)');
+    g.fillStyle = wg;
+    g.fillRect(-a, -a, a * 2, a * 2);
+    g.restore();
+  }
+
+  // 三档 3D 实体（单位空间；小＝四棱锥+腰带+四棱锥，中＝长方体，大＝正方板；框体 strict 跳过质心翻向）
+  const THUNDER_SOLIDS = {
+    small: {
+      verts: [
+        [-0.58, -0.54, -0.25], [0.58, -0.54, -0.25], [0.58, -0.54, 0.25], [-0.58, -0.54, 0.25],
+        [-0.58, 0.54, -0.25], [0.58, 0.54, -0.25], [0.58, 0.54, 0.25], [-0.58, 0.54, 0.25],
+        [0, -1.2, 0], [0, 1.2, 0],
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [8, 0, 1], [8, 1, 2], [8, 2, 3], [8, 3, 0],
+        [9, 5, 4], [9, 6, 5], [9, 7, 6], [9, 4, 7],
+        [3, 2, 6, 7], [1, 0, 4, 5], [2, 1, 5, 6], [0, 3, 7, 4],
+      ],
+      strict: false,
+    },
+    mid: {
+      verts: [
+        [-0.56, -0.72, -0.225], [0.56, -0.72, -0.225], [0.56, 0.72, -0.225], [-0.56, 0.72, -0.225],
+        [-0.56, -0.72, 0.225], [0.56, -0.72, 0.225], [0.56, 0.72, 0.225], [-0.56, 0.72, 0.225],
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [4, 5, 6, 7], [1, 0, 3, 2], [5, 1, 2, 6], [0, 4, 7, 3], [7, 6, 2, 3], [4, 5, 1, 0],
+      ],
+      strict: false,
+    },
+    big: {
+      verts: [
+        [-0.42, -0.42, 0.25], [0.42, -0.42, 0.25], [0.42, 0.42, 0.25], [-0.42, 0.42, 0.25],
+        [-0.42, -0.42, -0.25], [0.42, -0.42, -0.25], [0.42, 0.42, -0.25], [-0.42, 0.42, -0.25],
+      ],
+      scale: [1, 1, 1],
+      faces: [
+        [0, 1, 2, 3], [5, 4, 7, 6], [5, 1, 2, 6], [0, 4, 7, 3], [3, 2, 6, 7], [4, 5, 1, 0],
+      ],
+      strict: false,
+    },
+  };
+
+  const THUNDER_WASHER = (() => {   // 大：菱形白框（外 1 / 内 0.8，厚 0.125 = 板厚 25%）
+    const o = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    const i = o.map(p => [p[0] * 0.8, p[1] * 0.8]);
+    const t = 0.0625;
+    const verts = [
+      ...o.map(p => [p[0], p[1], t]), ...o.map(p => [p[0], p[1], -t]),
+      ...i.map(p => [p[0], p[1], t]), ...i.map(p => [p[0], p[1], -t]),
+    ];
+    const faces = [];
+    for (let k = 0; k < 4; k++) {
+      const k2 = (k + 1) % 4;
+      faces.push([k + 4, k2 + 4, k2, k]);
+      faces.push([8 + k, 8 + k2, 12 + k2, 12 + k]);
+      faces.push([k, k2, 8 + k2, 8 + k]);
+      faces.push([4 + k, 12 + k, 12 + k2, 4 + k2]);
+    }
+    return { verts, scale: [1, 1, 1], faces, strict: true };
+  })();
+
+  const THUNDER_WASHER_OCT = (() => {   // 中：八角白框（厚 = 核心厚 40%）
+    const w0 = 0.78, hh0 = 1, ch = 0.36, s = 0.72, t = 0.09;
+    const o = [
+      [-(w0 - ch), -hh0], [w0 - ch, -hh0], [w0, -(hh0 - ch)], [w0, hh0 - ch],
+      [w0 - ch, hh0], [-(w0 - ch), hh0], [-w0, hh0 - ch], [-w0, -(hh0 - ch)],
+    ];
+    const i = o.map(p => [p[0] * s, p[1] * s]);
+    const verts = [
+      ...o.map(p => [p[0], p[1], t]), ...o.map(p => [p[0], p[1], -t]),
+      ...i.map(p => [p[0], p[1], t]), ...i.map(p => [p[0], p[1], -t]),
+    ];
+    const faces = [];
+    for (let k = 0; k < 8; k++) {
+      const k2 = (k + 1) % 8;
+      faces.push([k + 8, k2 + 8, k2, k]);
+      faces.push([16 + k, 16 + k2, 24 + k2, 24 + k]);
+      faces.push([k, k2, 16 + k2, 16 + k]);
+      faces.push([8 + k, 24 + k, 24 + k2, 8 + k2]);
+    }
+    return { verts, scale: [1, 1, 1], faces, strict: true };
+  })();
+
+  // 深度排序渲染：全部可见面按深度合并绘制（框与核心穿插处图层正确）
+  function xtalDrawThunderSorted(g, solids, r, th, specs, glow, glowBlur) {
+    const sn = Math.sin(th), cs = Math.cos(th);
+    const L = [-0.4, -0.55, 0.75];
+    const faces = [];
+    solids.forEach((s, si) => {
+      const spec = specs[si];
+      const rot = s.verts.map(v => [v[0] * cs + v[2] * sn, v[1], -v[0] * sn + v[2] * cs]);
+      const P = rot.map(p => {
+        const pw = 1 / (1 - p[2] * 0.06);
+        return [p[0] * pw * r, p[1] * pw * r];
+      });
+      for (let fi = 0; fi < s.faces.length; fi++) {
+        const f = s.faces[fi];
+        const a = rot[f[0]], b = rot[f[1]], cc = rot[f[2]];
+        const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
+        let nx = e1[1] * e2[2] - e1[2] * e2[1];
+        let ny = e1[2] * e2[0] - e1[0] * e2[2];
+        let nz = e1[0] * e2[1] - e1[1] * e2[0];
+        const mx = (a[0] + b[0] + cc[0]) / 3, my = (a[1] + b[1] + cc[1]) / 3, mz = (a[2] + b[2] + cc[2]) / 3;
+        if (!s.strict && nx * mx + ny * my + nz * mz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        if (nz <= 0.02) continue;
+        const nl = Math.hypot(nx, ny, nz) || 1;
+        const shade = 0.38 + 0.62 * Math.max(0, (nx * L[0] + ny * L[1] + nz * L[2]) / nl);
+        let fill;
+        const fc = spec.faceColors ? spec.faceColors[fi] : null;
+        if (fc && typeof fc === 'object' && fc.grad) fill = { grad: fc.grad, radial: fc.radial };
+        else if (fc) fill = xtalMixHex(fc, '#000000', 0.08 - 0.08 * shade);
+        else fill = xtalMix(spec.lo, spec.hi, shade);
+        faces.push({ pts: f.map(idx => P[idx]), depth: f.reduce((acc, idx) => acc + rot[idx][2], 0) / f.length, fill, noShadow: spec.noShadow });
+      }
+    });
+    faces.sort((p, q) => p.depth - q.depth);
+    g.shadowColor = glow;
+    for (const f of faces) {
+      g.shadowBlur = f.noShadow ? 0 : glowBlur;
+      if (f.fill && f.fill.grad) {
+        const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
+        const gx0 = Math.min(...xs), gy0 = Math.min(...ys), gx1 = Math.max(...xs), gy1 = Math.max(...ys);
+        let grd;
+        if (f.fill.radial) {
+          const cxr = gx0 + (gx1 - gx0) * 0.3, cyr = gy0 + (gy1 - gy0) * 0.26;
+          grd = g.createRadialGradient(cxr, cyr, 0, cxr, cyr, Math.max(gx1 - gx0, gy1 - gy0) * 0.95);
+        } else grd = g.createLinearGradient(gx0, gy0, gx1, gy1);
+        for (const [o, c2] of f.fill.grad) grd.addColorStop(o, c2);
+        g.fillStyle = grd;
+      } else g.fillStyle = f.fill;
+      g.beginPath();
+      f.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      g.closePath();
+      g.fill();
+    }
+    g.shadowBlur = 0;
+  }
+
+  // 雷译网格：2 色（行）× 3 档（列）＝ 6 格；tier = 列号
+  function thunderGridCols(w, h, t, gridH) {
+    const radii = [13, 19, 26];
+    const names = ['小', '中', '大'];
+    const vals = ['+10', '+60', '+360'];
+    const colorNames = ['青·原', '水蓝·新'];
+    const cols = [];
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 3; col++) {
+        const base = THUNDER_BASES[row];
+        cols.push({
+          base,
+          hi: xtalShade(base, 0.55, 'w'),
+          lo: xtalShade(base, 0.18, 'b'),
+          glow: THUNDER_GLOW,
+          solidLo: xtalShade(base, 0.15, 'b'),
+          solidHi: xtalShade(base, 0.18, 'w'),
+          label: names[col] + ' ' + vals[col] + ' · ' + colorNames[row],
+          tier: col,
+          r: radii[col],
+          cx: (w * (col + 0.5)) / 3,
+          cy: ((gridH || h) * (row * 2 + 1)) / 4 + Math.sin(t * 2 + (row + col) * 0.9) * 2,
+        });
+      }
+    }
+    return cols;
+  }
+
+  function thunderGridHeads(g, w, h) {   // 行首配色标注
+    g.fillStyle = '#8fa2c0';
+    g.font = '10px "Segoe UI", "Microsoft YaHei", sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillText('青 #39C5BB（原）', 8, h * 0.25);
+    g.fillText('水蓝 #46AAFF（新）', 8, h * 0.75);
+  }
+
+  function thunderGridLabels(g, cols) {
+    g.fillStyle = '#8fa2c0';
+    g.font = '10px "Segoe UI", "Microsoft YaHei", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    for (const c of cols) g.fillText(c.label, c.cx, c.cy + c.r + 12);
+  }
+
+  // 静态正视图（2 色 × 3 档）
+  function drawXtalThunder(g, w, h, t) {
+    const cols = thunderGridCols(w, h, t);
+    const painters = [paintThunderSmall, paintThunderMedium, paintThunderLarge];
+    for (let i = 0; i < cols.length; i++) {
+      g.save();
+      g.translate(cols[i].cx, cols[i].cy);
+      painters[cols[i].tier](g, cols[i], 0.78 + 0.22 * Math.sin(t * 2.4 + i * 0.7));
+      g.restore();
+    }
+    thunderGridHeads(g, w, h);
+    thunderGridLabels(g, cols);
+  }
+
+  function xtalRoundRectPath(g, x0, y0, x1, y1, rr) {   // 圆角矩形路径
+    g.beginPath();
+    g.moveTo(x0 + rr, y0);
+    g.lineTo(x1 - rr, y0);
+    g.arcTo(x1, y0, x1, y0 + rr, rr);
+    g.lineTo(x1, y1 - rr);
+    g.arcTo(x1, y1, x1 - rr, y1, rr);
+    g.lineTo(x0 + rr, y1);
+    g.arcTo(x0, y1, x0, y1 - rr, rr);
+    g.lineTo(x0, y0 + rr);
+    g.arcTo(x0, y0, x0 + rr, y0, rr);
+    g.closePath();
+  }
+
+  function xtalConvexHull(pts) {   // 二维凸包（Andrew 单调链）——白框内孔投影裁剪用
+    const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const pt of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], pt) <= 0) lo.pop(); lo.push(pt); }
+    for (let i = p.length - 1; i >= 0; i--) { const pt = p[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], pt) <= 0) up.pop(); up.push(pt); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+
+  // 3D 旋转对照（深度排序渲染；大档光效垫在实体之下：间隙强光 + 框内高亮 + 内孔柔光环）
+  function drawXtalThunderSpin(g, w, h, t) {
+    const cols = thunderGridCols(w, h, t, h * 0.66);
+    const STEP = (Math.PI * 2) / xtalSpinFrames;
+    const facePainters = [paintThunderSmall, paintThunderMedium, paintThunderLarge];
+    const gks = [0.78 + 0.22 * Math.sin(t * 2.4), 0.78 + 0.22 * Math.sin(t * 2.4 + 1.1), 0.78 + 0.22 * Math.sin(t * 2.4 + 2.2)];
+    for (let i = 0; i < cols.length; i++) {
+      const tier = cols[i].tier;
+      const col = i % 3;
+      const c = cols[i];
+      const th = Math.round(((t * XTAL_SPIN + i * 0.53) / STEP) % xtalSpinFrames) * STEP;
+      const base = c.base;
+      const wK = k => xtalMixHex(base, '#ffffff', k);
+      const bK = k => xtalMixHex(base, '#000000', k);
+      let solids, specs;
+      if (tier === 0) {
+        solids = [THUNDER_SOLIDS.small];
+        specs = [{ faceColors: [wK(0.85), wK(0.35), wK(0.55), wK(0.35), bK(0.35), bK(0.12), bK(0.3), bK(0.12), wK(0.3), wK(0.22), bK(0.1), bK(0.16)] }];
+      } else if (tier === 1) {
+        solids = [THUNDER_WASHER_OCT, THUNDER_SOLIDS.mid];
+        specs = [
+          { lo: xtalRgb(xtalMixHex('#e8f0f8', base, 0.2)), hi: xtalRgb(xtalMixHex('#ffffff', base, 0.15)) },
+          { faceColors: [
+            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.55, 'rgba(255,255,255,0.82)'], [0.8, xtalMixHex(base, '#ffffff', 0.35)], [1, xtalMixHex(base, '#000000', 0.25)]], radial: true },
+            { grad: [[0, 'rgba(255,255,255,0.92)'], [0.55, 'rgba(255,255,255,0.82)'], [0.8, xtalMixHex(base, '#ffffff', 0.35)], [1, xtalMixHex(base, '#000000', 0.25)]], radial: true },
+            bK(0.12), bK(0.12), base, base,
+          ] },
+        ];
+      } else {
+        solids = [THUNDER_WASHER, THUNDER_SOLIDS.big];
+        specs = [
+          { lo: xtalRgb(xtalMixHex('#e8f0f8', base, 0.2)), hi: xtalRgb(xtalMixHex('#ffffff', base, 0.15)) },
+          { noShadow: true, faceColors: [
+            { grad: [[0, '#ffffff'], [0.75, xtalMixHex(base, '#ffffff', 0.95)], [1, xtalMixHex(base, '#ffffff', 0.72)]] },
+            { grad: [[0, '#ffffff'], [0.75, xtalMixHex(base, '#ffffff', 0.95)], [1, xtalMixHex(base, '#ffffff', 0.72)]] },
+            xtalMixHex(base, '#ffffff', 0.78), xtalMixHex(base, '#ffffff', 0.78), xtalMixHex(base, '#ffffff', 0.78), xtalMixHex(base, '#ffffff', 0.78),
+          ] },
+        ];
+      }
+      g.save();
+      g.translate(c.cx, c.cy);
+      if (tier !== 2) {
+        const gr2 = xtalRgb(c.glow);
+        const auraR = c.r * (tier === 0 ? 1.7 : 1.45);
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.globalAlpha = 0.2 * gks[col];
+        const ag = g.createRadialGradient(0, 0, 0, 0, 0, auraR);
+        ag.addColorStop(0, `rgba(${gr2[0]},${gr2[1]},${gr2[2]},0.85)`);
+        ag.addColorStop(0.55, `rgba(${gr2[0]},${gr2[1]},${gr2[2]},0.35)`);
+        ag.addColorStop(1, `rgba(${gr2[0]},${gr2[1]},${gr2[2]},0)`);
+        g.fillStyle = ag;
+        g.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+        g.restore();
+      }
+      xtalDrawThunderSorted(g, solids, c.r, th, specs, c.glow, 8);
+      if (tier === 2) {
+        const cs = Math.cos(th), sn = Math.sin(th);
+        const proj = v => {
+          const X = v[0] * cs + v[2] * sn, Z = -v[0] * sn + v[2] * cs;
+          const pw = 1 / (1 - Z * 0.06);
+          return [X * pw * c.r, v[1] * pw * c.r];
+        };
+        const pv = THUNDER_SOLIDS.big.verts.map(proj);
+        const x0 = Math.min(...pv.map(p => p[0])) - 5, x1 = Math.max(...pv.map(p => p[0])) + 5;
+        const y0 = Math.min(...pv.map(p => p[1])) - 5, y1 = Math.max(...pv.map(p => p[1])) + 5;
+        const rr = Math.min(x1 - x0, y1 - y0) * 0.32;
+        const gr2 = xtalRgb(c.glow);
+        const rgba = a => `rgba(${gr2[0]},${gr2[1]},${gr2[2]},${a})`;
+        const hull = xtalConvexHull(THUNDER_WASHER.verts.slice(8).map(proj));
+        const hullMax = Math.max(...hull.map(p => Math.hypot(p[0], p[1])));
+        const traceHull = () => {
+          g.beginPath();
+          hull.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+          g.closePath();
+        };
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        const outerHull = xtalConvexHull(THUNDER_WASHER.verts.slice(0, 8).map(proj));
+        g.save();
+        g.beginPath();
+        outerHull.forEach((p, i2) => (i2 ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+        g.closePath();
+        g.clip();
+        const rgGap = g.createRadialGradient(0, 0, c.r * 0.3, 0, 0, c.r * 1.05);
+        rgGap.addColorStop(0, rgba('0'));
+        rgGap.addColorStop(0.42, rgba((0.85 * gks[col]).toFixed(3)));
+        rgGap.addColorStop(0.62, rgba((0.55 * gks[col]).toFixed(3)));
+        rgGap.addColorStop(1, rgba('0'));
+        g.fillStyle = rgGap;
+        g.fillRect(-c.r * 1.2, -c.r * 1.2, c.r * 2.4, c.r * 2.4);
+        g.restore();
+        g.save();
+        traceHull();
+        g.clip();
+        xtalRoundRectPath(g, x0, y0, x1, y1, rr);
+        const rg2 = g.createRadialGradient(0, 0, 0, 0, 0, hullMax * 1.02);
+        rg2.addColorStop(0, rgba((0.38 * gks[col]).toFixed(3)));
+        rg2.addColorStop(0.62, rgba((0.5 * gks[col]).toFixed(3)));
+        rg2.addColorStop(1, rgba('0'));
+        g.fillStyle = rg2;
+        g.fill();
+        g.restore();
+        g.save();
+        traceHull();
+        g.strokeStyle = rgba((0.3 * gks[col]).toFixed(3));
+        g.lineWidth = 3.5;
+        g.shadowColor = rgba('0.7');
+        g.shadowBlur = 4;
+        g.stroke();
+        g.restore();
+        g.restore();
+      }
+      g.restore();
+    }
+    // 原石（巨型改版）：四芒星双锥精灵 ×2（g0 / g1 翻转配色），自转 1s/圈直读烘焙帧
+    const yH = h * 0.83;
+    for (const [ck, cx2] of [['g0', w * 0.35], ['g1', w * 0.65]]) {
+      const spr = getCrystal3DSprite('giant', ck, (t + (ck === 'g0' ? 0 : 0.25)) % 1);
+      if (spr) {
+        const w2 = spr.width * 0.9;
+        g.drawImage(spr, cx2 - w2 / 2, yH - w2 / 2, w2, w2);
+      }
+    }
+    g.fillStyle = '#8fa2c0';
+    g.font = '10px "Segoe UI", "Microsoft YaHei", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    g.fillText('原石（巨型改版 · 四芒星双锥 · 上粉下蓝）——左：g0 / 右：g1（翻转配色）', w / 2, h - 8);
+    thunderGridHeads(g, w, h);
+    thunderGridLabels(g, cols);
+  }
+
+  // ---------- 测试1 动画循环（rAF + 24fps 绘制节流；切走 / 关弹窗即停排）----------
+  let testXtalRaf = 0;
+  const testXtalItems = [];
+  let testXtalT0 = 0;
+  let testXtalLastRaf = 0;
+  let testXtalLastDraw = 0;
+
+  function startTestXtalLoop() {
+    stopTestXtalLoop();
+    testXtalT0 = performance.now();
+    testXtalLastRaf = testXtalT0;
+    testXtalLastDraw = testXtalT0;
+    drawTestXtalFrame(testXtalT0);
+    if (typeof requestAnimationFrame === 'function') testXtalRaf = requestAnimationFrame(stepTestXtal);
+  }
+
+  function stopTestXtalLoop() {
+    if (testXtalRaf) { cancelAnimationFrame(testXtalRaf); testXtalRaf = 0; }
+  }
+
+  function stepTestXtal(now) {
+    const rafDt = Math.min(1000, Math.max(0.5, now - testXtalLastRaf));
+    testXtalLastRaf = now;
+    for (const it of testXtalItems) it.fps = it.fps ? it.fps * 0.9 + (1000 / rafDt) * 0.1 : 1000 / rafDt;
+    if (now - testXtalLastDraw >= 1000 / Math.min(24, xtalSpinFrames)) {
+      testXtalLastDraw = now;
+      if (!drawTestXtalFrame(now)) return;
+    }
+    testXtalRaf = requestAnimationFrame(stepTestXtal);
+  }
+
+  function drawTestXtalFrame(now) {
+    if (infoTab !== 'test1' || infoModal.classList.contains('hidden')) return false;
+    const t = (now - testXtalT0) / 1000;
+    for (const it of testXtalItems) {
+      if (it.cv.isConnected === false) return false;
+      fitTestCanvas(it);
+      it.g.setTransform(it.dpr, 0, 0, it.dpr, 0, 0);
+      it.g.clearRect(0, 0, it.w, it.h);
+      it.draw(it.g, it.w, it.h, t, it);
+    }
+    return true;
+  }
+
+  function fitTestCanvas(it) {
+    const dpr = 1;
+    const w = Math.max(120, Math.round(it.cv.clientWidth || it.cv.offsetWidth || 640));
+    const h = Math.max(90, Math.round(it.cv.clientHeight || it.cv.offsetHeight || 150));
+    if (it.w !== w || it.h !== h || it.dpr !== dpr) {
+      it.w = w; it.h = h; it.dpr = dpr;
+      it.cv.width = Math.round(w * dpr);
+      it.cv.height = Math.round(h * dpr);
+    }
+  }
+
+  // 压力实测：150 颗混合档位（生产烘焙精灵 1:1 贴图 + FPS 读数）
+  let xtalStressCloud = null;
+  function xtalStressItems() {
+    if (!xtalStressCloud) {
+      let s = 20260926;
+      const rnd = () => {
+        s |= 0; s = (s + 0x6D2B79F5) | 0;
+        let r = Math.imul(s ^ (s >>> 15), 1 | s);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+      const arr = [];
+      for (let i = 0; i < 150; i++) {
+        const u = rnd();
+        arr.push({
+          tier: u < 0.55 ? 'small' : (u < 0.8 ? 'mid' : (u < 0.95 ? 'big' : 'giant')),
+          fx: 0.04 + rnd() * 0.92,
+          fy: 0.08 + rnd() * 0.8,
+          phase: rnd(),
+          bob: rnd() * Math.PI * 2,
+        });
+      }
+      xtalStressCloud = arr;
+    }
+    return xtalStressCloud;
+  }
+
+  function xtalFpsLabel(g, it, count) {
+    g.fillStyle = 'rgba(5, 8, 18, 0.55)';
+    g.fillRect(6, 6, 118, 20);
+    g.fillStyle = '#eaf2ff';
+    g.font = '12px "Segoe UI", "Microsoft YaHei", sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillText(count + ' 颗 · FPS ' + it.fps.toFixed(1), 12, 16);
+  }
+
+  function drawXtalStress(g, w, h, t, it) {
+    for (const s of xtalStressItems()) {
+      const f = Math.floor((((t + s.phase) % 1) + 1) % 1 * 24) % 24;
+      const spr = getCrystal3DSprite(s.tier, 'c0', (t + s.phase) % 1);
+      if (!spr) continue;
+      const x = Math.round(s.fx * w - spr.width / 2);
+      const y = Math.round(s.fy * h + Math.sin(t * 2 + s.bob) * 3 - spr.height / 2);
+      g.drawImage(spr, x, y);
+    }
+    xtalFpsLabel(g, it, 150);
+  }
+
+  // 「测试1」页签装配
+  function renderInfoTest1() {
+    stopTestXtalLoop();
+    testXtalItems.length = 0;
+    infoBody.innerHTML = '';
+    renderInfoTestTop(infoBody);
+    startTestXtalLoop();
+  }
+
+  function renderInfoTestTop(root) {
+    const note = document.createElement('p');
+    note.className = 'test-note';
+    note.textContent = '水晶样式定稿预览（动画实时渲染）。雷译正视图：小 +10（六边形刻面）/ 中 +60（八角白框 + 有色环带 + 竖长白芯）/ 大 +360（菱形白框 + 正方板 + 近白方面）；行 = 颜色（青·原 / 水蓝·新），列 = 档位。自旋 1s/圈、24 帧步进（chip 可切 16 帧粗糙对照）；末行为 ×150 颗生产精灵压力实测（FPS 读数）。';
+    root.appendChild(note);
+    const chips = document.createElement('div');
+    chips.className = 'info-subtabs';
+    for (const n of [24, 16]) {
+      const b = document.createElement('button');
+      b.className = 'info-chip' + (xtalSpinFrames === n ? ' active' : '');
+      b.textContent = n + ' 帧/圈' + (n === 24 ? '（15°/帧）' : '（22.5°/帧）');
+      b.addEventListener('click', () => {
+        if (xtalSpinFrames === n) return;
+        xtalSpinFrames = n;
+        chips.querySelectorAll('.info-chip').forEach(x => x.classList.toggle('active', x === b));
+      });
+      chips.appendChild(b);
+    }
+    root.appendChild(chips);
+    // 卡 1：静态正视图
+    const staticCard = document.createElement('div');
+    staticCard.className = 'test-card';
+    const staticH3 = document.createElement('h3');
+    staticH3.textContent = '雷译正视图 · 静态（2 色 × 3 档）';
+    const staticDesc = document.createElement('p');
+    staticDesc.className = 'test-desc';
+    staticDesc.textContent = '小＝六边形刻面宝石（中央刻面亮带）；中＝白色八角外框 + 有色环带 + 竖长白芯（左上高光径向渐变，边缘不发白）；大＝白色菱形外框（带宽 = 板厚 25%）+ 四向斜边梯形 + 近白正方形前面（边缘浅色渐变、无边框）。';
+    const staticCv = document.createElement('canvas');
+    staticCv.className = 'test-canvas';
+    staticCv.style.height = '200px';
+    staticCard.append(staticH3, staticDesc, staticCv);
+    root.appendChild(staticCard);
+    testXtalItems.push({ cv: staticCv, g: staticCv.getContext('2d'), draw: drawXtalThunder, w: 0, h: 0, dpr: 0, fps: 60 });
+    // 卡 2：3D 旋转对照
+    const spinCard = document.createElement('div');
+    spinCard.className = 'test-card';
+    const spinH3 = document.createElement('h3');
+    spinH3.textContent = '3D 旋转对照 · 真实建模（深度排序）';
+    const spinDesc = document.createElement('p');
+    spinDesc.className = 'test-desc';
+    spinDesc.textContent = '小＝四棱锥+腰带+四棱锥（厚 0.5 ＜ 正面宽 1.16 → 侧转变扁）；中＝长方体核心 + 八角白框（框厚 40%）；大＝正方板 + 菱形白框（框厚 25%、中面重合，板面纯白、颜色由框-板间隙光效环表达）。自旋 1s/圈、步进随顶部 chip。';
+    const spinCv = document.createElement('canvas');
+    spinCv.className = 'test-canvas';
+    spinCv.style.height = '200px';
+    spinCard.append(spinH3, spinDesc, spinCv);
+    root.appendChild(spinCard);
+    testXtalItems.push({ cv: spinCv, g: spinCv.getContext('2d'), draw: drawXtalThunderSpin, w: 0, h: 0, dpr: 0, fps: 60 });
+    // 卡 3：压力实测（生产精灵）
+    const stressCard = document.createElement('div');
+    stressCard.className = 'test-card';
+    const stressH3 = document.createElement('h3');
+    stressH3.textContent = '压力实测 · 生产烘焙精灵 ×150';
+    const stressDesc = document.createElement('p');
+    stressDesc.className = 'test-desc';
+    stressDesc.textContent = '与游戏内完全同源的 3D 烘焙精灵（24 帧、15°/帧）：运行时每颗每帧 1 次 drawImage 1:1 整数位贴图。加载后台已分块预烘焙全部帧；左上角 FPS 为实时渲染帧率。';
+    const stressCv = document.createElement('canvas');
+    stressCv.className = 'test-canvas';
+    stressCard.append(stressH3, stressDesc, stressCv);
+    root.appendChild(stressCard);
+    testXtalItems.push({ cv: stressCv, g: stressCv.getContext('2d'), draw: drawXtalStress, w: 0, h: 0, dpr: 0, fps: 60 });
+  }
+
   function buildInfoTabs() {
     infoTabs.innerHTML = '';
     const defs = [
@@ -1350,6 +2050,8 @@ boss_storm: {
       { id: 'subs',     name: '副武器' },
       { id: 'pilots',   name: '驾驶员' },
       { id: 'achievements', name: '成就' },
+      { id: 'test1',    name: '测试1' },
+      { id: 'test2',    name: '测试2' },
     ];
     for (const d of defs) {
       const b = document.createElement('button');
@@ -1365,7 +2067,17 @@ boss_storm: {
     else if (infoTab === 'subs') renderInfoSubs();
     else if (infoTab === 'pilots') renderInfoPilots();
     else if (infoTab === 'achievements') renderInfoAchievements();
+    else if (infoTab === 'test1') renderInfoTest1();
+    else if (infoTab === 'test2') renderInfoTest2();
     else renderInfoMods();
+  }
+
+  function renderInfoTest2() {
+    infoBody.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'test-note';
+    p.textContent = '测试2 · 预留（并行开发窗口 B 的工作区）';
+    infoBody.appendChild(p);
   }
 
   function openInfoModal() {
