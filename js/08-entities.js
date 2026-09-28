@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem } from './01-config.js';
+  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem, strikerFortressDR } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
@@ -58,6 +58,9 @@
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
     if (e.type === 'hanshuang' && e.hsNoDecel) mul *= (1 - HANSHUANG.entryDR);
+    // 坚垒护卫艇（2类黄色变体）：能量盾减伤 —— 受到的伤害 -20%（诗篇 -35%，见 01-config strikerFortressDR；
+    // 主武器与僚机弹幕均生效；高能爆弹为真实伤害不经此处）
+    if (e.type === 'striker' && e.skill === 'fortress') mul *= 1 - strikerFortressDR();
     return mul;
   }
 
@@ -271,8 +274,17 @@
         const wS = Math.hypot(b.vx, b.vy) || 1;
         b.vx = Math.cos(wA) * wS; b.vy = Math.sin(wA) * wS;
       }
+      // 橙旋侧翼艇环绕弹：锚定宿主敌机公转（位置每帧由宿主实时推导，不自行位移）；
+      // 宿主被击坠 / 离场（已不在 enemies 数组）→ 环绕弹立刻消失
+      if (b.orbit) {
+        const ow = b.orbit.owner;
+        if (!ow || enemies.indexOf(ow) < 0) { eBullets.splice(i, 1); continue; }
+        b.orbit.ang += b.orbit.om * dt;
+        b.x = ow.x + Math.cos(b.orbit.ang) * b.orbit.dist;
+        b.y = ow.y + Math.sin(b.orbit.ang) * b.orbit.dist;
+      }
       // 风暴编织者雷环子弹：停留期原地不动（BOSS 移走也不跟随），到时向对应方向爆开（高初速 → 减速至巡航）
-      if (b.holdT != null && b.holdT > 0) {
+      else if (b.holdT != null && b.holdT > 0) {
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
       } else if (!b.shieldBlocked) {
@@ -657,8 +669,6 @@
             // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
             // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
             armorSkillGain(c.val, c.firstBoss);
-            // 漓：隐藏计数表按水晶得分充能（无首轮 BOSS 加成；BOSS 水晶 fromBoss 不计入）
-            if (hasPilot('lingli') && !c.fromBoss) state.lingliGauge += c.val;
             if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);

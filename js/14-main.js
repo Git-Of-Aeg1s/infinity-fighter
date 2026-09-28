@@ -11,7 +11,7 @@
   import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearEnemyBullets, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
@@ -223,6 +223,8 @@
         levelFlow.prevLevel = levelFlow.level;
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
         else if (!state.challenge && Math.random() < DOUZHI.spawnChance) spawnDouzhi();
+        // 叮咚鸡：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
+        if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
       } else if (levelFlow.level < levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
       }

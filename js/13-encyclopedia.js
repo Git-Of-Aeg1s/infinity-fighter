@@ -17,12 +17,17 @@
 
   // ---------- 怪物图鉴 ----------
   const ENCY_GRADES = [
-    { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_moon', 'prolifera'] },
-    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix'] },
-    { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'gunship_orange', 'gunship_cyan', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2'] },
-    { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray'] },
+    { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_swirl', 'side_moon', 'prolifera'] },
+    // 具象级尾部 3 项为诗篇新敌占位（wip，白色方块预览）：破片U型 / 赞助无人机 / 豪华赞助无人机
+    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix', 'popianU', 'sponsor', 'sponsorDeluxe'] },
+    // 真我级尾部 3 项为诗篇新敌占位（wip，白色方块预览）：暴鸰·G / 脉冲矩阵 / 虚幻
+    { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'gunship_orange', 'gunship_cyan', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2', 'baolingG', 'pulseMatrix', 'unreal'] },
+    // 诗篇级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：战争幽灵
+    // （黑暗之手四精英为衍生级条目：不入分页，仅经黑暗之手 desc 内名称点击跳转，见 jumpToEncyEntry）
+    { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray', 'warGhost'] },
 
-    { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2'] },
+    // 长歌级末位为诗篇 BOSS 占位（wip，白色方块预览）：黑暗之手
+    { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2', 'boss_darkhand'] },
 
     // 衍生级（escort / tornado）不设标签页：无法从分页列表直接点击，仅经母体条目 desc 内的名称跳转进入
     // （跳转时不选中任何标签，见 jumpToEncyEntry；反向跳转见条目 parent 字段）
@@ -34,24 +39,28 @@
   const ENCY_DATA = {
     side_pass: {
       name: '白影侧翼艇', type: 'side', behavior: 'pass', color: '#f0f0f5', hp: 10, score: 50,
-      desc: '从侧上方斜插穿越战场，血量极低、一碰即碎。<b>无攻击</b>。1类编队权重 <b>70</b>（约 61%；Lv11 起 60）。',
+      desc: '从侧上方斜插穿越战场，血量极低、一碰即碎。<b>无攻击</b>。1类编队权重 <b>70</b>（约 58.3%；Lv11 起 60）。',
     },
     side_shoot: {
       name: '黄芒侧翼艇', type: 'side', behavior: 'shoot', color: '#ffd166', hp: 10, score: 50,
-      desc: '从侧上方斜插穿越战场。<b>整场仅攻击一次</b>：入场 <b>1.2~2.8s</b> 后追踪玩家方向射出一发子弹（弹速 230、伤害 6）。1类编队权重 <b>15</b>（约 13%；Lv11 起 20）。',
+      desc: '从侧上方斜插穿越战场。<b>整场仅攻击一次</b>：入场 <b>1.2~2.8s</b> 后追踪玩家方向射出一发子弹（弹速 230、伤害 6）。1类编队权重 <b>15</b>（约 12.5%；Lv11 起 20）。',
     },
     side_kamikaze: {
       name: '紫电侧翼艇', type: 'side', behavior: 'kamikaze', color: '#c084fc', hp: 10, score: 80,
-      desc: '从侧上方斜插穿越战场。<b>亡语：阵亡时向下垂直射出一发子弹</b>（弹速 ×1.1）。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。',
+      desc: '从侧上方斜插穿越战场。<b>亡语：阵亡时向下垂直射出一发子弹</b>（弹速 ×1.1）。1类编队权重 <b>5</b>（约 4.2%；Lv11 起 10）。',
+    },
+    side_swirl: {
+      name: '橙旋侧翼艇', type: 'side', behavior: 'swirl', color: '#ff8c1a', hp: 10, score: 80,
+      desc: '从侧上方斜插穿越战场。入场 <b>0.8~1.5s</b> 后自身周围出现一颗环绕弹（与紫电亡语弹同款，弹速 230 同款弹体、伤害 6），<b>绕自身持续转圈</b>（环绕半径随机：约为基准半径的 <b>100%~140%</b>，<b>诗篇 110%~150%</b>）；<b>自身被击坠后环绕弹立刻消失</b>。<b>无亡语</b>。数值与紫电完全一致，1类编队权重 <b>5</b>（约 4.2%；Lv11 起 10，与紫电相同）。',
     },
     side_moon: {
       name: '赤月侧翼艇', type: 'side', behavior: 'moon', color: '#ff3b30', hp: 10, score: 50,
-      desc: '从侧上方斜插穿越战场。入场 <b>1~2.5s</b> 后的随机时刻朝航向正前方发射一枚子弹（仅此一次，弹速 230、伤害 6）；<b>到死未发射则有 12% 概率在阵亡时补射</b>。1类编队权重 <b>20</b>（约 17.4%；Lv11 起 25）；掉落按红色标记结算（升级套件 ×1.5）。',
+      desc: '从侧上方斜插穿越战场。入场 <b>1~2.5s</b> 后的随机时刻朝航向正前方发射一枚子弹（仅此一次，弹速 230、伤害 6）；<b>到死未发射则有 12% 概率在阵亡时补射</b>。1类编队权重 <b>20</b>（约 16.7%；Lv11 起 25）；掉落按红色标记结算（升级套件 ×1.5）。',
     },
     prolifera: {
       name: '增生侧翼艇', type: 'prolifera', color: '#7fe8c9', hp: 10, score: 50,
       // 衍生体（卫护飞船）为独立隐藏条目（不设标签页）：desc 内名称可点击跳转（互链见 escort.parent）
-      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 0~3 个<span class="ency-link" data-ency="escort">卫护飞船</span></b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>5</b>（约 4.3%；Lv11 起 10）。',
+      desc: '从侧上方斜插穿越战场，<b>无攻击</b>。<b>击毁后分裂出 0~3 个<span class="ency-link" data-ency="escort">卫护飞船</span></b>沿原航向漂移；<b>加血套件掉率固定 10%</b>。1类编队权重 <b>5</b>（约 4.2%；Lv11 起 10）。',
     },
     striker_crimson: {
       name: '赤红突击艇', type: 'striker', variant: 'crimson', color: '#ff3b30', hp: 56, score: 130,
@@ -72,6 +81,10 @@
     striker_white: {
       name: '霜白突击艇', type: 'striker', variant: 'white', color: '#eaf1f8', hp: 56, score: 130,
       desc: '上方入场，在前锋停留线<b>停留 2s</b> 后向下冲锋，<b>完全不开火</b>，以机身撞击玩家。出现概率：<b>约 15%</b>。',
+    },
+    striker_fortress: {
+      name: '坚垒护卫艇', type: 'striker', variant: 'fortress', color: '#ffd166', hp: 200, score: 130,
+      desc: '黄色重型护卫艇：机体为霜白突击艇的<b>上下倒置</b>，机头前置<b>能量盾</b>（盾沿增粗外移、流光循环）。上方入场，在前锋停留线<b>更靠下的位置</b>（下移 48px）停留后向下冲锋，<b>完全不开火</b>，移速为其他突击艇的 <b>60%</b>。能量盾使<b>受到的伤害 -20%</b>（诗篇 <b>-35%</b>）。出现权重与幽蓝相同。',
     },
     striker_dusk: {
       name: '幽暮突击艇', type: 'striker', variant: 'dusk', color: '#8f97ab', hp: 64, score: 130,
@@ -193,7 +206,7 @@
         '<b>击败掉落</b>：600 颗水晶（击杀得分 0，奖励全部走水晶）+ 20% 高能爆弹 + 必掉暴走道具，并参与通用道具掉落池（黑色标记：套件 / 护盾按基础值；加血独立判定 40% 掉 1 个 / 另有 10% 一次掉 2 个）。',
       // 分难度注解（具象为基准不显示；数据与 01-config DIFFICULTIES / SONG_SHIP 同步）
       diffNotes: {
-        xuxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
+        illusion: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
         realme: '技能释放间隔 = 具象的 <b>55%</b>。<b>技能1</b>：恒 <b>4 条</b>旋转双曲线弹流（初始方向/角速度逐条随机，当前指向水平以上时角速度大幅增加、以下较为减小）；时长：≥70% 血 +25%、<70% 血 <b>×3</b>；释放其他技能时概率<b>连携技能1</b>（≥70% 血 20% / <70% 血 30% / <35% 血 50%，连携不享时长加成，<b>必定只出 2 条流</b>且双曲线弹寿命降至 <b>3.2s</b>——主释放 4.5s）。<b>技能2</b>：<b>7 轮</b>大子弹散射（缺失 10%~20%），首轮必定慢速、其余随机 3 轮快速（弹速 ×1.4~1.7）。<b>技能3</b>：<b>2 部位锁定标记 + 2 部位持续追踪</b>（随机分配，四部位射击间隔独立随机）。<b>技能4</b>：≥70% 血 270° 散射 + 射速 +100%；<70% 血 360° 单发 + 射速 +200%，并每 0.7~1.7s 向下扇形圆弹幕（8~14 发）。<b>技能5</b>：任意位置可释放——六发<b>暗黑子弹</b>全部锁定「玩家释放瞬间的竖直直线」，翼/炮/甲三组高度交错、轨迹交叉成笼。<b>技能6</b>：预约制——仅在中线过零前释放，三组各随机偏角 ±75°（下方 150° 扇区）、左右严格镜像对称，触壁反弹最多 3 次。',
       },
     },
@@ -212,7 +225,7 @@ boss_storm: {
         '<b>击败后</b>：不掉落水晶、得分 9000；风暴轰然消散，直接召唤二阶段「风暴编织者」（20% 高能爆弹 + 必掉暴走道具 + 通用道具掉落池照常）。',
       // 分难度注解（具象为基准不显示；数据与 01-config DIFFICULTIES / STORM_SHIP 同步）
       diffNotes: {
-        xuxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
+        illusion: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
         realme: '<b>技能1</b>：脱离技能轮换——每 10~16s <b>独立释放</b>一轮风波（单轮 3~4 道、随机一侧），不占用技能槽、不影响技能释放间隔。<b>技能2</b>：大型龙卷血量 <b>6000</b>（具象 3600），受僚机伤害加成额外 +150%（与基础加算、不乘算）。<b>技能3</b>：共 <b>6 轮</b>射击，每轮同时射出 <b>2 个风柱</b>（位置至少相差 10% 屏宽），轮间隔 +50%。<b>技能4</b>：总时长 <b>9s</b>，期间自身减伤 25%、旋转速度 +40%、风弹射速 +60%、风弹长度 +30%；初始方向顺/逆时针随机，期间随机改变 2~3 次方向。<b>技能5</b>：两轮风弹 <b>14/11</b> 发；普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不减慢）。<b>技能6</b>：追加一组<b>镜像三旋臂</b>（两射击点关于竖直中轴精确镜像、转向相反，任意时刻保持镜像）。<b>技能7</b>：涡流风旋改为<b>三旋臂</b>，风弹射速 +25%、最大转速 2.3 rad/s（具象 2.625）。另有<b>技能8「双子旋臂」</b>加入技能池——距风暴中心 30%~80% 半径环内随机两点（间距 ≥70px）绕中心公转，各以 50% 概率发出三旋臂或四旋臂，持续 6s（旋臂自转方向随机且两点独立）。',
       },
     },
@@ -233,7 +246,7 @@ boss_storm: {
         '<b>入场</b>：一阶段「暴风之眼」<b>轰然消散</b>（白雾爆发 + 双冲击波环外扩）→ <b>中央雷电风暴轰鸣</b>约 2.1s（落雷密集震屏，中央凝聚出电弧能量球）→ 电球骤亮收缩<b>汇入机体</b>，风暴编织者现身（全程约 3.7s，期间无敌、不释放技能）。',
       // 分难度注解（具象为基准不显示；数据与 01-config DIFFICULTIES / STORM2_SHIP 同步）
       diffNotes: {
-        xuxiang: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
+        illusion: 'BOSS 伤害 <b>-40%</b>；技能释放间隔 <b>+50%</b>；<b>不会连续释放同种技能</b>。技能组与具象一致。',
         realme: '技能释放间隔统一 <b>×1.4</b>（+40%；连中同技能 ×0.2 / 技能3 / 技能6 等额外乘区在其上照常叠加）。<b>技能1</b> 释放期间不再停止移动，激光连续射出 <b>5 次</b>（上一发射完前即开始下次预警，射完随机 0.1~0.5s 后立刻射出下一发），自身移速与常态一致（无额外加速修正）；<b>技能2</b> 有 <b>50%</b> 概率同时释放技能6（连携时臂向光束<b>变淡</b>、臂向蓄力与汇聚预警时长 <b>+50%</b>，连携的技能6 随技能2收束无缝继续），<b>连携时蓄力延长至 1.6s</b>（预警圈收缩速度相应变慢），未连携则下一次技能间隔 <b>-60%</b>；<b>技能3</b> 连续快速释放<b>两次</b>（间隔 <b>1~1.5s</b>，第二轮重新随机角度，释放结束后下一次技能间隔 <b>+30%</b>）；<b>技能4</b> 雷环固定 <b>8 圈</b>（生成间隔 -40%）；<b>技能5</b> 落点扩展至<b>下方 60% 区域</b>、轰击错峰 -10%；<b>技能6</b> 释放瞬间<b>四个雷电喷口处</b>立即触发雷霆打击（无预警、伤害减半、外扩雷环子弹数减半）。',
       },
     },
@@ -250,6 +263,61 @@ boss_storm: {
       name: '大型龙卷', type: 'tornado', color: '#eaf6ff', hp: 3600, score: 0,
       parent: 'boss_storm', derived: true,
       desc: '暴风之眼技能2 召唤的衍生体：蓄力后自机体前方推出，<b>约占屏宽 30%</b>，可击毁、<b>缓慢下移直至脱离战场</b>（轻微左右摇摆），随机 360° 快速射出 <b>16 伤害风条</b>，碰撞 <b>32</b> 伤害。<b>受到战机主武器伤害 -50%、受僚机伤害 +150%</b>（僚机是其弱点）；<b>守愿者弹每次命中判定两次伤害</b>。<b>不掉落水晶与道具</b>（真我难度血量 <b>6000</b>）。不计入场面压力。',
+    },
+
+    // ---------- 诗篇难度新敌占位（wip）：技能均未实装，数值为占位待定 ----------
+    // wip: true → 图鉴预览统一白色方块（13-encyclopedia drawEncyPreview）；实装时逐个替换专属外观与数值
+    popianU: {
+      name: '破片U型', type: 'popianU', wip: true, color: '#ffd24d', hp: 260, score: 220,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="popian">破片</span>的升级版（2类）。与原版不同：<b>抵达停驻位置之前即可发动炮弹轰击</b>——无需先完成锁停，入场途中即展开压制。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    baolingG: {
+      name: '暴鸰·G', type: 'baolingG', wip: true, color: '#ffd8a8', hp: 700, score: 550,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="baoling">暴鸰</span>的升级版（3类）。攻击方式同暴鸰（停车锁定 → 投掷引导炸弹），但<b>造成的爆炸范围更大</b>，威胁覆盖更广。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    sponsor: {
+      name: '赞助无人机', type: 'sponsor', wip: true, color: '#ffd166', hp: 56, score: 130,
+      desc: '【诗篇新敌 · 占位预告】金色赞助无人机（2类）。自身无攻击能力，但<b>击败后得到道具</b>——击坠即有回报，打与不打取决于玩家取舍。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    sponsorDeluxe: {
+      name: '豪华赞助无人机', type: 'sponsorDeluxe', wip: true, color: '#ffe9b0', hp: 56, score: 260,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="sponsor">赞助无人机</span>的豪华版（2类）。同样无攻击能力，但<b>击败后得到强力道具</b>（更稀有、更珍贵的掉落）。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    warGhost: {
+      name: '战争幽灵', type: 'warGhost', wip: true, color: '#8f7bd8', hp: 4200, score: 1300,
+      desc: '【诗篇新敌 · 占位预告】幽紫色的突击型 4 类舰。<b>突击能力强大</b>：<b>出场前飞行路径出现预警</b>（红线预告突击路线），<b>出场时极速抵达场地中央位置</b>；<b>技能多为全屏打击</b>；<b>血量降至一半后能召唤<span class="ency-link" data-ency="anvil">铁砧</span>与<span class="ency-link" data-ency="popian">破片</span></b>协助作战。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    boss_darkhand: {
+      name: '黑暗之手', type: 'boss', bossId: 'darkhand', wip: true, previewOnly: true, color: '#b04ad4', hp: 99999, score: 0,
+      desc: '【诗篇新敌 · 占位预告】第二轮登场的 BOSS。<b>能够召唤<span class="ency-link" data-ency="puxuefeng">朴学峰</span>、<span class="ency-link" data-ency="hanxixian">韩希先</span>、<span class="ency-link" data-ency="xiayong">夏勇</span>、<span class="ency-link" data-ency="xinguodong">辛国栋</span>等精英敌人协助攻击</b>——本体与召唤物协同构成多层次弹幕压力。<br /><i>（占位条目：预览为白色方块，BOSS 未实装，试炼 / 测试入口待实装后开放）</i>',
+    },
+    puxuefeng: {
+      name: '朴学峰', type: 'puxuefeng', wip: true, color: '#c05a5a', hp: 1200, score: 650,
+      parent: 'boss_darkhand', derived: true,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    hanxixian: {
+      name: '韩希先', type: 'hanxixian', wip: true, color: '#5a7ac0', hp: 1200, score: 650,
+      parent: 'boss_darkhand', derived: true,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    xiayong: {
+      name: '夏勇', type: 'xiayong', wip: true, color: '#5ab07a', hp: 1200, score: 650,
+      parent: 'boss_darkhand', derived: true,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    xinguodong: {
+      name: '辛国栋', type: 'xinguodong', wip: true, color: '#b09a4a', hp: 1200, score: 650,
+      parent: 'boss_darkhand', derived: true,
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    pulseMatrix: {
+      name: '脉冲矩阵', type: 'pulseMatrix', wip: true, color: '#ff5566', hp: 160, score: 320,
+      desc: '【诗篇新敌 · 占位预告】脉冲发生装置（3类）。<b>周期性造成范围伤害</b>——以自身为中心周期性释放伤害脉冲，逼迫玩家保持距离或抢在脉冲间隙输出。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+    },
+    unreal: {
+      name: '虚幻', type: 'unreal', wip: true, color: '#bfe8ff', hp: 900, score: 600,
+      desc: '【诗篇新敌 · 占位预告】冰霜投掷无人机（3类）。<b>投掷冰霜炸弹造成范围伤害，并留下一片寒冷区域</b>（区域滞留减速）；<b>如果发射炸弹之前就被击毁，则会在死亡位置殉爆并留下寒冷区域</b>——提前击杀也无法完全规避威胁。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
     },
   };
 
@@ -318,17 +386,21 @@ boss_storm: {
     // 衍生级条目不隶属任何分页：档位名固定展示「衍生级」（不读当前选中分页，跳转进入时无任何标签选中态）
     const gradeName = d.derived ? '衍生级' : ENCY_GRADES[encyCurrentGrade].name;
     const isBoss = d.type === 'boss';
-    // BOSS 血量按当前难度解析（hpByDiff 分难度表，见 01-config resolveBossHp）
-    const hp = isBoss ? resolveBossHp(BOSS_HP_SRC[d.bossId]) : d.hp;
+    // BOSS 血量按当前难度解析（hpByDiff 分难度表，见 01-config resolveBossHp）；
+    // 占位 BOSS（previewOnly，如黑暗之手）无血量注册表 → 直接展示条目占位 hp
+    const hp = isBoss ? (BOSS_HP_SRC[d.bossId] ? resolveBossHp(BOSS_HP_SRC[d.bossId]) : d.hp) : d.hp;
     // 分难度注解：具象为基准不显示；虚象显示通用削弱；真我显示技能组改版（BOSS 专属）
     const diffNote = isBoss && d.diffNotes ? (d.diffNotes[currentDifficulty.id] || '') : '';
     // BOSS 页面：试炼（正常战斗）+ 测试该敌人（爆弹无限）；普通敌人页面：仅测试该敌人；
     // 衍生敌人（derived）：由母体产生 / 召唤，无法独立入场，不提供测试（也不显示提示文案）
     // （风暴编织者技能已实装：与其他 BOSS 一致提供试炼 / 测试入口；专属登场动画待单独设计）
     const actionHtml = isBoss
-      ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
+      ? (d.previewOnly
+          // 占位 BOSS（未实装）：不提供试炼 / 测试入口（生成逻辑尚未存在，避免误触回退到旧日之歌）
+          ? `<div class="ency-challenge-hint">占位条目：该 BOSS 尚未实装，试炼 / 测试入口待实装后开放</div>`
+          : `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
          <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
-         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（直接击杀全场）<br />= 召唤 1 个 · Shift+= 召唤 10 个（场上仅 1 个目标时先清场）</div>`
+         <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（直接击杀全场）<br />= 召唤 1 个 · Shift+= 召唤 10 个（场上仅 1 个目标时先清场）</div>`)
       : d.derived
         ? ''
         : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
@@ -363,6 +435,7 @@ boss_storm: {
   // 从图鉴发起测试：单个目标敌人（BOSS 测试附带爆弹无限）
   function startChallenge(entryId) {
     const d = ENCY_DATA[entryId];
+    if (d.type === 'boss' && d.previewOnly) return;   // 占位 BOSS：未实装，不发起挑战
     const challenge = d.type === 'boss'
       ? { kind: 'boss', type: 'boss', bossId: d.bossId || 'song' }
       : { kind: 'enemy', type: d.type, variant: d.variant || null, behavior: d.behavior || null, name: d.name };
@@ -419,6 +492,18 @@ boss_storm: {
     pctx.scale(DPR, DPR);
     pctx.clearRect(0, 0, LW, LH);
     withPreviewCtx(pctx, () => {
+      // 占位条目（wip，诗篇新敌）：统一白色方块预览（专属造型待实装；BOSS 占位用固定示意尺寸）
+      if (d.wip) {
+        const t = d.type === 'boss' ? { w: 150, h: 110 } : ENEMY_TYPES[d.type];
+        const s = Math.min(LW * 0.66 / t.w, LH * 0.66 / t.h);
+        const sw = t.w * s, sh = t.h * s;
+        pctx.fillStyle = '#ffffff';
+        pctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        pctx.lineWidth = 1.2;
+        pctx.fillRect(LW / 2 - sw / 2, LH / 2 - sh / 2, sw, sh);
+        pctx.strokeRect(LW / 2 - sw / 2, LH / 2 - sh / 2, sw, sh);
+        return;
+      }
       if (d.type === 'boss') {
         // BOSS 预览：先按世界比例画到离屏画布，扫描不透明像素得到真实包围盒，
         // 再按包围盒居中并尽量放大贴入目标画布 —— 避免手工估算中心/缩放造成的偏移与偏小
@@ -689,6 +774,7 @@ boss_storm: {
     { kind: 'prolifera', name: '增生侧翼艇', ency: 'prolifera' },
     { kind: 'shoot',     name: '黄芒侧翼艇', ency: 'side_shoot' },
     { kind: 'kamikaze',  name: '紫电侧翼艇', ency: 'side_kamikaze' },
+    { kind: 'swirl',     name: '橙旋侧翼艇', ency: 'side_swirl' },
     { kind: 'moon',      name: '赤月侧翼艇', ency: 'side_moon' },
   ];
 
@@ -954,8 +1040,8 @@ boss_storm: {
   // + 法术大师A1 / 破片 / 法术矩阵（2类突击艇的出场替换概率）+ 斗志昂扬（升级触发概率）——此四行为概率
   function infoStrikerRows() {
     const rows = [];
-    const nameOf = { crimson: '赤红突击艇', amber: '烈橙突击艇', azure: '幽蓝突击艇', violet: '紫晶突击艇', white: '霜白突击艇', dusk: '幽暮突击艇' };
-    const encyOf = { crimson: 'striker_crimson', amber: 'striker_amber', azure: 'striker_azure', violet: 'striker_violet', white: 'striker_white', dusk: 'striker_dusk' };
+    const nameOf = { crimson: '赤红突击艇', amber: '烈橙突击艇', azure: '幽蓝突击艇', violet: '紫晶突击艇', white: '霜白突击艇', fortress: '坚垒护卫艇', dusk: '幽暮突击艇' };
+    const encyOf = { crimson: 'striker_crimson', amber: 'striker_amber', azure: 'striker_azure', violet: 'striker_violet', white: 'striker_white', fortress: 'striker_fortress', dusk: 'striker_dusk' };
     const weights = INFO_TIERS.map(t => strikerVariantWeights(t.lv));
     for (const v of VARIANTS.striker) {
       rows.push({
@@ -1069,10 +1155,10 @@ boss_storm: {
 
     if (infoWeightKind === 'side') {
       infoBody.appendChild(buildWeightTable(headers, infoSideRows()));
-      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电，其余按权重混入。');
+      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电与橙旋，其余按权重混入。');
     } else if (infoWeightKind === 'striker') {
       infoBody.appendChild(buildWeightTable(headers, infoStrikerRows()));
-      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/霜白20/幽暮2；Lv11~20：10/10/10/5/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；斗志昂扬为<b>每次关卡提升</b>时的出现概率（非波次权重，击败 BOSS 的跳变升级不触发）。');
+      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/紫晶25/霜白20/坚垒25/幽暮2；Lv11~20：10/10/10/10/5/10/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；斗志昂扬为<b>每次关卡提升</b>时的出现概率（非波次权重，击败 BOSS 的跳变升级不触发）。');
     } else if (infoWeightKind === 'special3') {
       infoBody.appendChild(buildWeightTable(headers, infoSpecial3Rows()));
       infoAppendNote(INFO_TIER_NOTE + '特殊3类<b>随常规波次登场</b>（每波 25% 概率附带一台，按表中权重抽取）。<b>0 表示该阶段不出场</b>；Lv11 以下仅三色炮艇（合计 260） / 先兆者出场，Lv11 起按高权重列抽取。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>（场上已有同种则该次不生成），其余特殊3类不限数量。紫晶 / 赤红 / 金曜炮艇为<b>独立条目</b>（紫80 / 赤100 / 金80），抽取直接决定涂装。');
@@ -1120,7 +1206,7 @@ boss_storm: {
       { h: 'BOSS 统一修正（全难度）', p: 'BOSS 战期间<b>每 6~12s 强制刷新一波 1类</b>（不走压力系统）：击杀<b>不加分、不掉水晶</b>、道具掉率 ×0.3（虚象下该削减失效）。玩家火力 <b>Lv1 对 BOSS 武器伤害 +20%</b>（逆境补偿，高能爆弹不受影响）；进入 BOSS 战<b>重置受击掉级计数</b>（掉级阈值全场景统一 3 次）。' },
       { h: '双编队组合波', p: '<b>Lv5 起</b>有概率在同一波内追加一个编队（追加位不含炮艇编队）：<b>Lv5~10 概率由 10% 线性升至 30%、Lv11~20 由 10% 线性升至 40%</b>。' },
       { h: '法术阵列不限台', p: '4类槽位中<b>主力舰同屏限 1</b>；<b>法术阵列不受限</b>——场上已有法术阵列时仍可继续生成 4 类，但只能生成法术阵列（最多同时 2 台，经慢速强制刷新 + 低概率补出，双阵列较少出现）。' },
-      { h: 'BOSS 击败后固定首波', p: '击败 BOSS 后先缓冲 <b>2s</b>，随后固定刷出一波 <b>1类长队</b>——自左或右入场、横穿战场自另一侧离场，本波不含紫电；自首波刷新起 <b>4s</b> 观察期后恢复正常刷怪。2s 与 4s 均不计入关卡推进。' },
+      { h: 'BOSS 击败后固定首波', p: '击败 BOSS 后先缓冲 <b>2s</b>，随后固定刷出一波 <b>1类长队</b>——自左或右入场、横穿战场自另一侧离场，本波不含紫电与橙旋；自首波刷新起 <b>4s</b> 观察期后恢复正常刷怪。2s 与 4s 均不计入关卡推进。' },
       { h: '紫自爆流', p: '左右两侧各 7 架纵列斜扫穿越，以紫电（亡语向下垂直射一发）为主，<b>每波 40%~60% 替换为白影</b>（无攻击）。' },
       { h: '斗志昂扬横穿', p: '每次<b>关卡提升</b>时 4% 概率自屏幕左/右侧横穿一架斗志昂扬（增益无人机，余弦上下浮动）；击毁后我方攻速/弹速翻倍 8s。击败 BOSS 引发的跳变升级不触发。' },
       { h: '闪避无敌衰减', p: '驾驶员的<b>闪避</b>（哈基米大王：暴走期间及结束后 4s 内）触发时<b>不受伤害</b>，但获得的<b>无敌时长仅为正常受击无敌的 70%</b>（具象基准 0.84s；虚象难度的无敌 +50% 加成同步放大）。受击反馈（震屏 / 闪白 / 红晕）照常触发，闪避成功即清零累积加成。' },

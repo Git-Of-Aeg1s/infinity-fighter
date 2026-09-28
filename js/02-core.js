@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(24 名) 07-player(18 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(18 名) 11-draw-boss(9 名) 12-ui(76 名) 13-encyclopedia(15 名) 14-main(25 名)
+  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(24 名) 07-player(20 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(20 名) 11-draw-boss(9 名) 12-ui(78 名) 13-encyclopedia(15 名) 14-main(25 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -130,8 +130,12 @@
     dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
     dagouChains: [],       // 大狗：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
     daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与大狗连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
-    lingliGauge: 0,        // 漓：隐藏计数表（水晶分数累计，2400 填满；不显示于 HUD）
-    lingliArmorGaugePrev: 0, // 漓：上一帧七日澜心量表快照（检测"充满瞬间"用于连携触发）
+    yiCounter: 0,          // 依：击杀计数（上限 PILOTS.yi.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
+    ddjGauge: 0,           // 叮咚鸡：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
+    ddjLayers: 0,          // 叮咚鸡：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
+    ddjBerserkUps: 0,      // 叮咚鸡：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
+    lingliCharges: 0,      // 漓：持有的结晶护盾充能次数（0~2，仅连携七日澜心时累计；满自动释放清弹特效）
+    lingliBossShieldDone: false, // 漓：本段 BOSS 战开始护盾已发放标记（每段 BOSS 战一次，见 07-player updatePilotStatus）
     achvBulwarkLowBoss: null, // 成就「最后一搏」：最终壁垒不死触发瞬间的低血量(<10%) BOSS id（tryBulwarkCheatDeath 写入，02-achievements 消费）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
@@ -243,6 +247,8 @@
   /** @type {Array} */ const feijianWaves = [];  // 副武器·无界飞剑：待发射飞剑波（尾部下沉 → 分裂悬浮 → 中央先发依次前射，见 07-player updateFeijianWaves）
   /** @type {Array} */ const xinRings = [];      // 副武器·辛国栋之怒：恒速飞行的空间系穿透灼烧火环（玫红→粉渐变，见 07-player updateXinRings）
   /** @type {Array} */ const blastRings = [];    // 爆炸冲击圈（大狗导弹雨 / 捣蛋来袭爆炸时的蓝色扩散环，指示波及范围；见 07-player dagouMissileBlast）
+  /** @type {Array} */ const yiScythes = [];     // 依：镰刀清扫（计数充满自动召唤，绕机旋转 + 周期伤害/消弹；见 07-player updateYiScythes）
+  /** @type {Array} */ const ddjMissiles = [];   // 叮咚鸡：Q 导弹（前向 120° 扇形 4 发直线飞行，直击伤害；见 07-player updateDdjMissiles）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
@@ -583,7 +589,7 @@
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, yiScythes, ddjMissiles,
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,

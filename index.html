@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>大无垠战机 · Big Infinity Fighter</title>
   <link rel="stylesheet" href="./style.css" />
+  <!-- 模块预加载：14 个 ES modules 在解析入口前按序串行获取，刷新时串行往返是首帧前主要等待之一；
+       modulepreload 让浏览器并行预取 + 预编译，缩短刷新后白屏/卡顿窗口（无行为改变） -->
+  <link rel="modulepreload" href="./js/01-config.js" />
+  <link rel="modulepreload" href="./js/02-achievements.js" />
+  <link rel="modulepreload" href="./js/02-core.js" />
+  <link rel="modulepreload" href="./js/03-audio.js" />
+  <link rel="modulepreload" href="./js/04-spawn.js" />
+  <link rel="modulepreload" href="./js/05-boss.js" />
+  <link rel="modulepreload" href="./js/06-enemy.js" />
+  <link rel="modulepreload" href="./js/07-player.js" />
+  <link rel="modulepreload" href="./js/08-entities.js" />
+  <link rel="modulepreload" href="./js/09-draw-ships.js" />
+  <link rel="modulepreload" href="./js/10-draw-world.js" />
+  <link rel="modulepreload" href="./js/11-draw-boss.js" />
+  <link rel="modulepreload" href="./js/12-ui.js" />
+  <link rel="modulepreload" href="./js/13-encyclopedia.js" />
+  <link rel="modulepreload" href="./js/14-main.js" />
 </head>
 <body>
   <div class="app">
@@ -105,7 +122,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.3.6</span>
+          <span class="menu-version">v0.3.7</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
@@ -254,8 +271,8 @@
           <h2>怪物图鉴</h2>
           <!-- 快捷切换难度：四选一按钮组（静态标记，保证始终渲染；选中/置灰/提示由 13-encyclopedia 依 DIFFICULTIES 初始化） -->
           <div class="ency-diff-group" id="encyDiffGroup">
-            <button class="ency-diff-btn" data-diff="xuxiang">虚象</button>
-            <button class="ency-diff-btn" data-diff="juxiang">具象</button>
+            <button class="ency-diff-btn" data-diff="illusion">虚象</button>
+            <button class="ency-diff-btn" data-diff="form">具象</button>
             <button class="ency-diff-btn" data-diff="realme">真我</button>
             <button class="ency-diff-btn" data-diff="poem">诗篇</button>
           </div>

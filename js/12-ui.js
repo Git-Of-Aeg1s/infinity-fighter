@@ -6,7 +6,7 @@
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { delayedShots, initWingmen } from './07-player.js';
@@ -93,8 +93,12 @@
       skillGauge.style.setProperty('--skill-color', skillDef.color);
     }
     // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表 / 陵落 Q 冷却（均按 Q，满格 = 可释放）
+    // / 依击杀计数条（无按键，满格自动召唤镰刀；环形填充为 #FFC0CB→白 渐变）
+    // / 叮咚鸡计数表（按 Q，展示三层总进度：持有层 ×8 + 当前层进度 / 24）
     const pilotGaugeMode = (currentPilotMain.id === 'tianxiu' || currentPilotSub.id === 'tianxiu') ? 'tianxiu'
-      : (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? 'lingluo' : null;
+      : (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? 'lingluo'
+      : (currentPilotMain.id === 'yi' || currentPilotSub.id === 'yi') ? 'yi'
+      : (currentPilotMain.id === 'dingdongji' || currentPilotSub.id === 'dingdongji') ? 'dingdongji' : null;
     const showPilotGauge = !!pilotGaugeMode && state.mode === 'playing';
     pilotGauge.classList.toggle('hidden', !showPilotGauge);
     if (showPilotGauge) {
@@ -102,13 +106,23 @@
       if (pilotGaugeMode === 'tianxiu') {
         frac = clamp(state.princeGauge || 0, 0, 1);
         ready = frac >= 1;
+      } else if (pilotGaugeMode === 'yi') {
+        frac = clamp((state.yiCounter || 0) / PILOTS.yi.counterMax, 0, 1);
+        ready = frac >= 1;
+      } else if (pilotGaugeMode === 'dingdongji') {
+        frac = clamp(((state.ddjLayers || 0) * PILOTS.dingdongji.layerMax + (state.ddjGauge || 0))
+          / (PILOTS.dingdongji.layerCap * PILOTS.dingdongji.layerMax), 0, 1);
+        ready = (state.ddjLayers || 0) >= 1 && player.alive;
       } else {
         frac = clamp(1 - state.lingluoCdT / PILOTS.lingluo.cd, 0, 1);
         ready = state.lingluoCdT <= 0 && player.alive;
       }
-      pilotGaugeRing.style.background = `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+      // 依：环形填充按 #FFC0CB→白 渐变推进（注册色即渐变本体）；其余量表为纯色填充
+      pilotGaugeRing.style.background = pilotGaugeMode === 'yi'
+        ? `conic-gradient(#FFC0CB, #ffffff ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`
+        : `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
       pilotGauge.classList.toggle('ready', ready);
-      if (pilotGaugeKey) pilotGaugeKey.textContent = 'Q';   // 天秀忧郁王子 / 陵落技能统一 Q 键
+      if (pilotGaugeKey) pilotGaugeKey.textContent = pilotGaugeMode === 'yi' ? '自动' : 'Q';   // 天秀 / 陵落 / 叮咚鸡 Q 键；依无需按键
     }
     // 大无垠之王：BOSS 战累积增伤读数（血条上方；向上取整仅整数；未装备 / 无累积 / 非 BOSS 战阶段隐藏——
     // 显示门控额外要求 stage === 'fight'：即使状态因任何路径残留，小怪阶段也绝不显示；
@@ -166,11 +180,18 @@
     state.dagouWarnFadeT = 0;   // 大狗：预警蓝光渐隐计时归零
     state.dagouChains.length = 0;   // 大狗：待发射连射链波清空
     state.daodanChains.length = 0;   // 捣蛋来袭（副武器）：连射链待发射弹清空
-    // 哈基米大王：闪避累积加成与尾部闪避计时清零；漓：隐藏计数表与澜心量表快照归零
+    // 哈基米大王：闪避累积加成与尾部闪避计时清零；漓：持有充能与 BOSS 战护盾标记复位；依：击杀计数归零
     state.hajimiDodgeBonus = 0;
     state.hajimiTailT = 0;
-    state.lingliGauge = 0;
-    state.lingliArmorGaugePrev = 0;
+    state.lingliCharges = 0;
+    state.lingliBossShieldDone = false;
+    state.yiCounter = 0;
+    yiScythes.length = 0;   // 依：在途镰刀清扫随重开清空
+    // 叮咚鸡：计数表三层/当前层进度与暴走升级机会归零，在途导弹清空
+    state.ddjGauge = 0;
+    state.ddjLayers = 0;
+    state.ddjBerserkUps = 0;
+    ddjMissiles.length = 0;
     player.lingluoMaxDebt = 0;   // 陵落：生命上限债务清零（player.maxHp 已在下方按装甲复原）
     // 大无垠之王：BOSS 战累积增伤清零（读数淡变状态同步复位——立刻隐藏）
     state.kingDmg = 0; state.kingTaken = 0;

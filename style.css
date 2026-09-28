@@ -946,9 +946,9 @@ canvas#game {
 .loadout-panel-head {
   flex: 0 0 auto;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;   /* ✕ 关闭按钮靠右（标题绝对定位居中、脱离 flex 流，space-between 会使单元素靠左） */
   align-items: center;
-  position: relative;   /* 供标题绝对定位水平居中（✕ 仍靠右） */
+  position: relative;   /* 供标题绝对定位水平居中 */
   margin-bottom: 8px;
 }
 

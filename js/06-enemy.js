@@ -5,12 +5,12 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, score, stormVortex}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
-  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_CHANCE, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WAVE_POEM, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, enemyDmgMul, hasPilot, isPoem, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_CHANCE, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPAWN_PHASE_LEVEL, STORM, STORM2, STORM_WIND, WAVE_POEM, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, enemyDmgMul, hasPilot, isPoem, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
   import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, douzhiFx, eBullets, enemies, enemyFireIv, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, windFlows, zoneMarks } from './02-core.js';
   import { makeEnemy, spawnFashiMatrix, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
-  import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
+  import { accumulateWeaponDropHit, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, pilotStormContactMul, shieldSweepHit, testDamagePlayer, yiNoteKill } from './07-player.js';
   import { updateBossLootMarks } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvBaolingBlastBegin, achvBaolingBlastEnd, achvNoteAuraFieldKill, achvNoteDamage, achvNoteHuiHeal, achvNoteWatchClear, achvOnBossKilled, achvOnDeath, achvOnKill, unlockAchievement } from './02-achievements.js';
@@ -197,6 +197,21 @@
           e.moonFired = true;
           const cfg = ENEMY_TYPES.side;
           pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
+        }
+      }
+      // 橙旋：入场 0.8~1.5s 后生成一颗环绕弹（紫电亡语弹同款），绕自身公转；
+      // 环绕半径随机：基准 ×100%~140%（诗篇 110%~150%），每颗独立掷取；
+      // 宿主被击坠/离场后环绕弹立刻消失（随宿主移除判定见 08-entities orbit 分支）
+      if (e.type === 'side' && e.behavior === 'swirl' && !e.swirlSpawned && e.swirlT != null) {
+        e.swirlT -= dt;
+        if (e.swirlT <= 0) {
+          e.swirlSpawned = true;
+          const cfg = ENEMY_TYPES.side;
+          const ang0 = Math.random() * Math.PI * 2;
+          const mul = isPoem()
+            ? rand(SIDE_SWIRL.distMulPoem[0], SIDE_SWIRL.distMulPoem[1])
+            : rand(SIDE_SWIRL.distMul[0], SIDE_SWIRL.distMul[1]);
+          pushEBullet(e, ang0, 0, cfg, { x: e.x, y: e.y, orbit: { owner: e, dist: SIDE_SWIRL.dist * mul, ang: ang0, om: SIDE_SWIRL.om } });
         }
       }
       return;
@@ -1115,8 +1130,8 @@
       } else if (e.skill === 'violet') {
         // 紫晶：发射一枚精确追踪玩家的子弹（紫=追踪定位；较幽蓝首攻/间隔各 +0.3s、无虚化护盾）
         pushEBullet(e, Math.atan2(player.y - e.y, player.x - e.x) + rand(-0.05, 0.05), cfg.bulletSpeed, cfg);
-      } else if (e.skill === 'silent') {
-        // 霜白：不开火
+      } else if (e.skill === 'silent' || e.skill === 'fortress') {
+        // 霜白 / 坚垒护卫艇：不开火
       } else {
         // 赤红：垂直向前直射，带 ±10° 随机偏差、不追踪
         pushEBullet(e, Math.PI / 2 + rand(-Math.PI / 18, Math.PI / 18), cfg.bulletSpeed, cfg);
@@ -1473,6 +1488,7 @@
       baseAng: ang,                 // 出射基准角（蛇行摆动中心）
       age: 0,                       // 存在时长（蛇行相位推进用）
       laser: !!opts.laser,          // 自定义渲染：胶囊形紫色激光（fashiA1/A2）
+      orbit: opts.orbit || null,    // 橙旋侧翼艇环绕弹：{ owner, dist, ang, om } 锚定宿主公转（见 08-entities）
       laserBright: !!opts.laserBright, // A2 专属：激光更亮（渲染辉光与配色增强）
       lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
       growRate: opts.growRate || 0,   // 每秒生长像素
@@ -2011,12 +2027,12 @@
   //   gray / white / black 无专属掉落规则，仅作分类（gray=灰黑系特殊无人机/炮兵）
   function enemyColorTags(e) {
     switch (e.type) {
-      case 'side':      // 1类：白=pass 无规则 / 黄=shoot / 紫=kamikaze
-        return e.behavior === 'shoot' ? ['yellow'] : e.behavior === 'kamikaze' ? ['purple'] : e.behavior === 'moon' ? ['red'] : [];
+      case 'side':      // 1类：白=pass 无规则 / 黄=shoot / 紫=kamikaze（橙旋 swirl 数值沿用紫电，掉落标记同为 purple）
+        return e.behavior === 'shoot' ? ['yellow'] : (e.behavior === 'kamikaze' || e.behavior === 'swirl') ? ['purple'] : e.behavior === 'moon' ? ['red'] : [];
       case 'prolifera': // 增生侧翼艇（淡青绿）
         return ['green'];
-      case 'striker':   // 赤红 / 烈橙 / 幽蓝 / 幽暮（黑色标记，black 无专属掉落规则仅分类；霜白无规则）
-        return e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['orange'] : e.variant === 'azure' ? ['blue'] : e.variant === 'violet' ? ['purple'] : e.variant === 'dusk' ? ['black'] : [];
+      case 'striker':   // 赤红 / 烈橙 / 幽蓝 / 紫晶 / 坚垒（黄：套件×1.2，与金曜/黄1类同约定）/ 幽暮（黑色标记，black 无专属掉落规则仅分类；霜白无规则）
+        return e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['orange'] : e.variant === 'azure' ? ['blue'] : e.variant === 'violet' ? ['purple'] : e.variant === 'fortress' ? ['yellow'] : e.variant === 'dusk' ? ['black'] : [];
       case 'gunship':   // 紫 / 红 / 金（金曜按黄色计）
         return e.variant === 'violet' ? ['purple'] : e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['yellow'] : e.variant === 'orange' ? ['orange'] : e.variant === 'cyan' ? ['green'] : [];
       case 'capital':   // 红 / 蓝
@@ -2223,6 +2239,7 @@
     if (e.type === 'boss') {
       achvOnBossKilled(e.bossId);   // 成就：BOSS 击杀（直面过往 / 忧郁 / 击坠风暴 / 无伤系列 / 轰轰火花 / 持久战计时）
       if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
+      yiNoteKill(5, e.type);   // 依：BOSS = 5 类，击杀计数 +122（充满自动召唤镰刀）
       // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"）；
       // 成就「！？爆爆？！」：最终自爆（最后一条命）炸死最终 BOSS 风暴编织者
       if (state.aiyiSelfDestruct && hasPilot('aiyi')) {
@@ -2416,6 +2433,7 @@
     // 真我以下难度（虚象/具象；后续诗篇等更高难度不受影响）：清除概率 ×1.5（不超过 100%）
     const watchCls = ENEMY_CLASS[e.type];
     const bossFight = bossFlow.stage === 'fight';
+    yiNoteKill(watchCls, e.type);   // 依：按敌人类别 1/2/3/4 增加击杀计数（BOSS 战 ×3 / 四精英 ×4，见 07-player）
     const watchTable = bossFight ? currentArmor.clearChanceBoss : currentArmor.clearChance;
     let watchChance = (watchCls && watchTable && !testMode) ? watchTable[watchCls] : 0;
     if (watchChance && !isHardTier()) watchChance = Math.min(1, watchChance * 1.5);
@@ -2559,7 +2577,7 @@
         cCount = r < 0.60 ? 1 + Math.floor(Math.random() * 3) : 0;   // 1类（side / prolifera）
       }
       if (e.postBossWave) cCount = 2 * (1 + Math.floor(Math.random() * 3));   // 固定首波 1类：必掉且翻倍
-      const noDrop = (e.type === 'side' && e.behavior === 'kamikaze') || e.type === 'tornado';   // 紫电/大型龙卷不掉水晶
+      const noDrop = (e.type === 'side' && (e.behavior === 'kamikaze' || e.behavior === 'swirl')) || e.type === 'tornado';   // 紫电/橙旋/大型龙卷不掉水晶
       // BOSS 战强制波 1类（minionDrop）：不掉水晶
       if (!noDrop && !e.minionDrop && cCount > 0) {
         // 水晶分档换算（三档 + 巨型，见 01-config convertCrystalDrop）：价值守恒，巨型逐颗掷概率转化

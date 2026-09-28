@@ -1,7 +1,7 @@
 // 09-draw-ships：战机 / 僚机 / 各敌机形体与子弹预警的绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(24 名) 12-ui(3 名) 13-encyclopedia(4 名)
+  // 被依赖：10-draw-world(25 名) 12-ui(3 名) 13-encyclopedia(4 名)
   //
   import { ANVIL, BAOLING, BULWARK, CANVAS_H, CANVAS_W, CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS, DEMO_TOP, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, STARSLAYER, YU4, currentArmor, currentPlane, currentWingman } from './01-config.js';
   import { armorGlyphFx, blBombs, bossFlow, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wingmen } from './02-core.js';
@@ -3382,6 +3382,66 @@
     ctx.restore();
   }
 
+  // 坚垒护卫艇机体：2类菱形的黄色倒置版（霜白突击艇上下翻转身形：长尖尾朝上、短钝前端朝下）+ 前置能量盾 ——
+  // 盾 = 机体前方（朝向玩家一侧）两条边框线的平行线：增粗、沿外法线略微外移，端点沿边线方向延伸少许
+  // 盖过机体顶点（消除悬浮断口感）；盾线上有沿边流动的亮色光效（虚线相位随时间推进）
+  function drawFortressStrikerBody(e) {
+    const TAU = Math.PI * 2;
+    // 上下倒置的菱形顶点：普通 2类 (0,14)(15,-4)(0,-13)(-15,-4) 的 y 取反（长尖机尾朝上、短钝机头朝下）
+    ctx.beginPath();
+    ctx.moveTo(0, -14);
+    ctx.lineTo(15, 4);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(-15, 4);
+    ctx.closePath();
+    const hull = ctx.createLinearGradient(0, -14, 0, 13);
+    hull.addColorStop(0, '#8a6408');    // 机尾（上）暗金
+    hull.addColorStop(0.5, '#ffd166');  // 中段主黄
+    hull.addColorStop(1, '#fff0b0');    // 机头（下）亮黄
+    ctx.fillStyle = hull;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 中央核心：白色发光核心 + 金色辉光脉动（明黄色机体上通用半透明座舱点对比度不足，参照幽暮自带高对比核心）
+    const pulse = 0.6 + Math.sin(state.time * 3.2 + (e.wobble || 0)) * 0.4;
+    ctx.save();
+    ctx.shadowColor = '#ffbf47';
+    ctx.shadowBlur = 3 + pulse * 4;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(0, 0, 3.2, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    // 能量盾：与机头两侧边框线（(0,13)→(±15,4)）平行的两条直线 ——
+    // 沿外法线外移 3.5px（右缘外法线 (0.515, 0.858)、左缘镜像，= 边向量 (±15,-9) 旋转 90° 归一取朝外一侧），
+    // 两端沿边线单位方向 u = (±0.858, -0.515) 各延伸 2px 盖过机体顶点（线帽圆头 + 微光，读作"边框增粗外移"的盾）
+    const NX = 0.515, NY = 0.858, UX = 0.858, UY = 0.515, OFF = 3.5, EXT = 2;
+    const edge = sx => {
+      ctx.beginPath();
+      ctx.moveTo(sx * (NX * OFF - UX * EXT), 13 + NY * OFF + UY * EXT);        // 机头端（沿 -u 越过顶点）
+      ctx.lineTo(sx * (15 + NX * OFF + UX * EXT), 4 + NY * OFF - UY * EXT);    // 翼端（沿 +u 越过顶点）
+    };
+    // 底层盾线：半透明黄 + 轻微金辉（厚度 3，较机体描边 1.2 明显增粗）
+    ctx.save();
+    ctx.shadowColor = '#ffd166';
+    ctx.shadowBlur = 4;
+    ctx.strokeStyle = 'rgba(255, 209, 102, 0.6)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (const sx of [-1, 1]) { edge(sx); ctx.stroke(); }
+    // 流动光效：亮色短划沿盾线循环流动（虚线相位由 state.time 驱动；路径方向翼→机头，
+    // lineDashOffset 取负使相位沿路径正向推进 → 光点自两翼流向机头）
+    ctx.strokeStyle = '#fff6cf';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([6, 10]);
+    ctx.lineDashOffset = -state.time * 26;
+    for (const sx of [-1, 1]) { edge(sx); ctx.stroke(); }
+    ctx.setLineDash([]);
+    ctx.restore();
+    ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（同赤月侧翼艇分支约定）
+  }
+
   // 白色骷髅图标：头骨 + 下颚 + 双眼窝 + 鼻腔（hr 为头骨半径）
   function paintSkull(cx, cy, hr) {
     const TAU = Math.PI * 2;
@@ -5037,7 +5097,11 @@
       console.error('[crystal3D] 烘焙失败', tier, colorKey, f, err);
     }
   }
-  // 异步预取队列：全部 档位×颜色×24 帧分小块后台烘焙（每块 3 帧），运行时只做按需单帧补烘（≈0.3ms，无感）
+  // 异步预取队列：全部 档位×颜色×24 帧分小块后台烘焙，运行时只做按需单帧补烘（≈0.3ms，无感）
+  // 启动卡顿优化（实测）：原实现 80ms 后即开始、每块 3 帧、setTimeout(0) 链式推进——
+  // 刷新后 1~2s 内与主循环抢主线程，弱机/内嵌预览上造成可感掉帧（"刷新后卡一下"）。
+  // 现改为：延迟 600ms（让首帧/主菜单先稳定渲染）+ 每块只烘 1 帧（单帧 ≈0.5~1ms，低于一帧预算）
+  // + 优先走 requestIdleCallback（浏览器空闲期推进，不与 rAF 抢时间）。
   const CRYSTAL3D_BAKE_QUEUE = [];
   for (const tier of ['small', 'mid', 'big', 'giant']) {
     for (const ck of (tier === 'giant' ? ['g0', 'g1'] : ['c0', 'c1', 'c2'])) {
@@ -5045,7 +5109,8 @@
     }
   }
   const crystal3DBakeStep = () => {
-    for (let n = 0; n < 3 && CRYSTAL3D_BAKE_QUEUE.length; n++) {
+    const n = 1;
+    for (let i = 0; i < n && CRYSTAL3D_BAKE_QUEUE.length; i++) {
       const [tier, ck, f] = CRYSTAL3D_BAKE_QUEUE.shift();
       try {
         bakeCrystal3DFrame(tier, ck, f);
@@ -5053,9 +5118,13 @@
         console.error('[crystal3D] 预烘焙异常', tier, ck, f, err);
       }
     }
-    if (CRYSTAL3D_BAKE_QUEUE.length) setTimeout(crystal3DBakeStep, 0);
+    if (CRYSTAL3D_BAKE_QUEUE.length) crystal3DBakeSchedule();
   };
-  setTimeout(crystal3DBakeStep, 80);
+  const crystal3DBakeSchedule = () => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(crystal3DBakeStep, { timeout: 500 });
+    else setTimeout(crystal3DBakeStep, 16);
+  };
+  setTimeout(crystal3DBakeSchedule, 600);
 
   // 取帧：按需同步补烘缺失的单帧（单帧 ≈0.3ms 无感；异步队列只负责预取其余帧）
   function getCrystal3DSprite(tier, colorKey, phaseFrac) {
@@ -5068,7 +5137,7 @@
     drawWingmen, paintWingman, paintWingmanBulwark, paintStarslayer, paintShip, drawPlayer,
     drawStarslayerBeam, bladePath, drawSlashFx, drawHarbingerBody, drawHanshuangBody, drawAnvilBody,
     drawPopianBody, drawFashiMatrixBody, drawFashiArrayBody, drawJiaoxiangBody, drawFashiA1Body, drawFashiA2Body, drawYu4Body,
-    drawDuskStrikerBody, paintSkull, paintBaolingBomb, drawBaolingBody, drawBaolingWarn, drawBaolingBombs,
+    drawDuskStrikerBody, drawFortressStrikerBody, paintSkull, paintBaolingBomb, drawBaolingBody, drawBaolingWarn, drawBaolingBombs,
     drawPopianWarn, drawPopianFx, drawSpellCubes, drawCubeHitFx, drawPlayerHitFx, paintDouzhiMark, paintDouzhiBox,
     drawDouzhiBody, drawDouzhiFx, drawWeilongBody, drawMissileWarns, drawMissiles, drawDagouMissiles, getCrystal3DSprite, crystal3DStarDraw,
   };

@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, STORM_SHIP, TEST_HP, VARIANTS, WAVE_POEM, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, PRESSURE_W, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, VARIANTS, WAVE_POEM, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -15,8 +15,8 @@
 
   // 返回 [{ id, w }]，w 为原始权重（pickVariant 内按总和归一）——与「数值与机制图鉴」共用
   const STRIKER_VARIANT_TIERS = {
-    low:  { crimson: 30, amber: 30, azure: 25, violet: 25, white: 20, dusk: 2 },   // Lv1~10
-    high: { crimson: 10, amber: 10, azure: 10, violet: 10, white: 5, dusk: 5 },    // Lv11~20
+    low:  { crimson: 30, amber: 30, azure: 25, violet: 25, white: 20, fortress: 25, dusk: 2 },   // Lv1~10
+    high: { crimson: 10, amber: 10, azure: 10, violet: 10, white: 5, fortress: 10, dusk: 5 },    // Lv11~20
   };
   function strikerVariantWeights(lv) {
     const tier = lv < 11 ? STRIKER_VARIANT_TIERS.low : STRIKER_VARIANT_TIERS.high;
@@ -64,8 +64,8 @@
   // ---------- 敌机 ----------
   /**
    * 创建敌机。behavior / variant.skill 决定移动 / 开火模式：
-   *   side:     'pass'无攻击斜插 | 'shoot'追踪射击 | 'kamikaze'亡语垂直射击
-   *   striker:  变体技能 crimson/straight(直射±10°、首发+1s) | amber/spread(前方双弹) | azure/homing(追踪、首发+1s、概率虚化护盾) | white/silent(不开火、到位停 2s)
+   *   side:     'pass'无攻击斜插 | 'shoot'追踪射击 | 'kamikaze'亡语垂直射击 | 'swirl'橙旋环绕弹（无亡语）
+   *   striker:  变体技能 crimson/straight(直射±10°、首发+1s) | amber/spread(前方双弹) | azure/homing(追踪、首发+1s、概率虚化护盾) | white/silent(不开火、到位停 2s) | fortress(坚垒护卫艇：不开火、移速 60%、停留位置下移、受伤 -20%)
    *   gunship:  pattern 0扇形 / 1环形 / 2双连炮 循环
    *   capital:  pattern 0双臂螺旋 / 1九连扇形齐射 / 2环形爆发 循环
    */
@@ -132,10 +132,10 @@
     if (variant && variant.hp != null) e.hp = e.maxHp = variant.hp * hpMul;
     // 变体专属攻击间隔（烈橙 1.4~2.4s）：首射后经 updateEnemyFire 使用
     if (variant && variant.iv) e.fireIv = variant.iv;
-    // 1类行为数值修正：黄芒（shoot）血量 10；分数 白影/增生/黄芒/赤月 50、紫电（kamikaze）80
+    // 1类行为数值修正：黄芒（shoot）血量 10；分数 白影/增生/黄芒/赤月 50、紫电（kamikaze）/橙旋（swirl）80
     if (type === 'side') {
       if (e.behavior === 'shoot') e.hp = e.maxHp = SIDE_SHOOT_HP * hpMul;
-      e.score = e.behavior === 'kamikaze' ? SIDE_KAMIKAZE_SCORE : SIDE_SCORE;
+      e.score = (e.behavior === 'kamikaze' || e.behavior === 'swirl') ? SIDE_KAMIKAZE_SCORE : SIDE_SCORE;
     } else if (type === 'prolifera') {
       e.score = SIDE_SCORE;
     }
@@ -151,6 +151,9 @@
       if (variant.entry != null) e.entrySpd = variant.entry;
       if (variant.charge != null) e.chargeBase = variant.charge;
       if (variant.id !== 'dusk') e.holdY = opts.holdY != null ? opts.holdY : rand(200, 240);
+      // 坚垒护卫艇（fortress）：停留位置较前锋停留线整体下移 48px（更靠下、贴近玩家；
+      // 「2*7」等统一 holdY 波次同样生效——阵型内若全为坚垒则按同值平移、阵型保持）
+      if (variant.id === 'fortress' && e.holdY != null) e.holdY += STRIKER_FORTRESS.holdYOffset;
     }
     // 蓝色4类(capital azure)：出现时 20% 概率带护盾，前 5s 虚化不会受伤
     if (type === 'capital' && variant && variant.id === 'azure' && Math.random() < PHASE_CHANCE) {
@@ -194,6 +197,11 @@
       e.moonFireT = rand(SIDE_MOON.fireDelay[0], SIDE_MOON.fireDelay[1]);
       e.moonFired = false;
     }
+    // 橙旋侧翼艇（橙色 1类）：入场 0.8~1.5s 后在自身周围生成一颗环绕弹（紫电亡语弹同款），无亡语（生成见 06-enemy）
+    if (type === 'side' && e.behavior === 'swirl') {
+      e.swirlT = rand(SIDE_SWIRL.delay[0], SIDE_SWIRL.delay[1]);
+      e.swirlSpawned = false;
+    }
     // 暴鸰（自爆无人机）：0 巡航下压 / 1 停车锁定（预警倒计时）/ 2 投弹后原地停留 / 3 继续俯冲
     if (type === 'baoling') {
       e.blPhase = 0;
@@ -217,8 +225,8 @@
   // 1类混合权重按关卡分档：Lv1~10 / Lv11~20 两档（SIDE_SPAWN_W，与「数值与机制图鉴」同步）
   function sideSpawnWeights(lv) { return lv < 11 ? SIDE_SPAWN_W.low : SIDE_SPAWN_W.high; }
 
-  // 1类混合权重抽取：按关卡档位取权重（low：白影70/增生5/黄芒15/紫电5/赤月20；high：60/10/20/10/25）
-  // exclude：排除特定类别（如 BOSS 后固定首波不含紫电）
+  // 1类混合权重抽取：按关卡档位取权重（low：白影70/增生5/黄芒15/紫电5/橙旋5/赤月20；high：60/10/20/10/10/25）
+  // exclude：排除特定类别（如 BOSS 后固定首波不含紫电与橙旋）
   function pickSideSpawn(exclude) {
     const W = sideSpawnWeights(levelFlow.level);
     let total = 0;
@@ -241,7 +249,7 @@
     return { vx: vx / l * spd, vy: vy / l * spd };
   }
 
-  // 1类单位统一入口：kind 由 pickSideSpawn 按权重抽取（白影/增生/黄芒/紫电/赤月），调用方也可强制指定（紫自爆流）；
+  // 1类单位统一入口：kind 由 pickSideSpawn 按权重抽取（白影/增生/黄芒/紫电/橙旋/赤月），调用方也可强制指定（紫自爆流）；
   // fast：顶部入场 / BOSS 后固定首波等特殊波次传 true（BOSS 战期间的强制快速由 sideVelocity 内部判定）
   function spawnSideUnit(x, y, vel, kind, fireTimer, fast) {
     const e = kind === 'prolifera'
@@ -520,7 +528,7 @@
   }
 
   // BOSS 击败后的固定首波：一群 1类排成长队从左或从右入场、横穿战场自另一侧离场；
-  // 本波不出现紫电（kamikaze）1类（白影/增生/黄芒/赤月按权重混入）；
+  // 本波不出现紫电（kamikaze）与橙旋（swirl）1类（白影/增生/黄芒/赤月按权重混入）；
   // BOSS 战结束后 6s 内的特殊波次：不限入场位置一律快速 200（显式传 fast）
   function spawnPostBossWave() {
     const fromLeft = Math.random() < 0.5;
@@ -532,7 +540,7 @@
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
     const startY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);  // 入场高度：场地中部略偏上
     for (let k = 0; k < count; k++) {
-      const behavior = pickSideSpawn(['kamikaze']);   // 固定首波无紫电
+      const behavior = pickSideSpawn(['kamikaze', 'swirl']);   // 固定首波无紫电/橙旋
       // 排成长队：队尾依次靠外、靠上，形成一列斜线
       const x = edgeX - dirX * k * gap;
       const y = startY - k * gap * 0.5;
@@ -1205,6 +1213,11 @@
       }
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
+        break;
+      default:
+        // 诗篇占位敌人（wip，见 01-config ENEMY_TYPES 占位批次）等无专属生成入口的类型：
+        // 通用入场——随机水平位置下降到悬停带停留（挑战模式永驻场、不攻击）
+        makeEnemy(ch.type, rand(70, CANVAS_W - 70), -50, { hoverY: rand(110, 170), holdTimer: 1e9 });
         break;
     }
   }

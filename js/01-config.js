@@ -3,7 +3,7 @@
   console.log('[InfinityFighter] JS build: 20260925-v035-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-core(5 名) 04-spawn(25 名) 05-boss(8 名) 06-enemy(45 名) 07-player(17 名) 08-entities(15 名) 09-draw-ships(16 名) 10-draw-world(6 名) 11-draw-boss(7 名) 12-ui(20 名) 13-encyclopedia(19 名) 14-main(14 名)
+  // 被依赖：02-core(5 名) 04-spawn(27 名) 05-boss(8 名) 06-enemy(46 名) 07-player(17 名) 08-entities(16 名) 09-draw-ships(16 名) 10-draw-world(8 名) 11-draw-boss(7 名) 12-ui(20 名) 13-encyclopedia(19 名) 14-main(14 名)
   //
 
 
@@ -116,7 +116,7 @@
     name: '旧日之歌',
     w: 288, h: 130,            // 宽度约 60% 屏宽
     hp: 36000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { xuxiang: 30000, juxiang: 36000, realme: 54000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 30000, form: 36000, realme: 54000 },   // 分难度血量表（虚象 / 具象 / 真我）
     score: 0,                  // 击杀分数 0：击杀奖励全部改为掉落 600 颗水晶（怪物属性总表 2026-09 批次）
     hoverY: 120,
     // 航点扫动移动（替代原 sin 定角速左右巡航，见 05-boss）：总体沿当前方向逐段横扫，
@@ -147,7 +147,7 @@
     name: '暴风之眼',
     w: 384, h: 384,            // 占屏宽 80%（CANVAS_W=480）
     hp: 50000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { xuxiang: 42000, juxiang: 50000, realme: 72000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 42000, form: 50000, realme: 72000 },   // 分难度血量表（虚象 / 具象 / 真我）
     score: 9000,               // 击杀分数 9000：本体不掉水晶（旧日之歌 600 / 风暴编织者 900 均为各自掉落，怪物属性总表 2026-09 批次）
     hoverY: 205,               // 风暴中心悬停高度
     skillCd: BOSS.skillCd * 0.5,   // 技能间基础冷却 = 旧日之歌常态间隔（2.2s）的 50%（连中同技能 ×0.2）
@@ -218,7 +218,7 @@
     name: '风暴编织者',
     w: 168, h: 94,             // 判定箱（基础 ×1.2 整体扩大；仍刻意小于模型视觉约 208 ≈ 43% 屏宽）
     hp: 36000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { xuxiang: 28000, juxiang: 36000, realme: 45000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 28000, form: 36000, realme: 45000 },   // 分难度血量表（虚象 / 具象 / 真我）
     score: 0,                  // 击杀分数 0：击杀奖励全部改为掉落 900 颗水晶（怪物属性总表 2026-09 批次）
     hoverY: 150,               // 悬停高度（较风暴中心 205 更靠下，凸显机体形态）
     // 航点扫动移动（与旧日之歌同一系统，见 05-boss；基准速度更快以保持其高机动定位）
@@ -409,6 +409,13 @@
   energyOrbSheetLoader.src = 'assets/energy-orb-sheet.webp';
   const ENERGY_ORB = { cols: 10, rows: 6, frames: 60, fps: 24, baseD: 260, offX: -12, offY: 3 };   // 网格 / 帧率 / 基准直径 / 对齐偏移（素材球在帧内偏右，左移使其对准机体核心 RX=0,RY=3）
 
+  // 依：镰刀清扫素材（透明底大镰刀）：计数充满自动召唤，绕机体旋转（绘制见 10-draw-world drawYiScythes）；
+  // 异步预加载，未加载完成时回退程序化长条镰刀形
+  let scytheImg = null;
+  const scytheLoader = new Image();
+  scytheLoader.onload = () => { scytheImg = scytheLoader; };
+  scytheLoader.src = 'assets/scythe_transparent.png';
+
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   const BOSSES = {
     song: { id: 'song', name: '旧日之歌', lv: 11 },
@@ -489,8 +496,8 @@
   //   bossSkillMods          BOSS 技能组修正（{ bossId: { skillId: {...} } }，交由 05-boss 解释）
   //   wip 难度 mods 保持 null——未实装的难度必须回退基准值，绝不允许 null 直接参与乘算。
   const DIFFICULTIES = {
-    xuxiang: {
-      id: 'xuxiang', name: '虚象',
+    illusion: {
+      id: 'illusion', name: '虚象',
       desc: '轻松难度<br>适合新玩家',   // 一句一行（<br> 分行；"设计中"由卡片角标展示）
       wip: false,
       // 虚象修正表：相对真我（刷怪框架同具象基准）总刷怪量/同屏数量约 -50~60%；
@@ -513,8 +520,8 @@
         bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
       },
     },
-    juxiang: {
-      id: 'juxiang', name: '具象',
+    form: {
+      id: 'form', name: '具象',
       desc: '挑战难度<br>适合飞机老资历',
       wip: false,
       // 具象修正表：原全 1 基准 + 刷怪减负——波次刷新间隔 ×1.3（总刷怪量/同屏数量约 -23%）
@@ -600,8 +607,8 @@
   function setDifficulty(d) { currentDifficulty = d; }
   // 当前难度修正表：未实装难度（mods 为 null）回退具象基准，保证框架先行、行为不变。
   // 后续接入点示例：makeEnemy 血量 × diffMods().enemyHpMul、BOSS 技能参数经 diffMods().bossSkillMods 查表。
-  function diffMods() { return currentDifficulty.mods || DIFFICULTIES.juxiang.mods; }
-  // BOSS 血量解析：优先按难度表 hpByDiff（xuxiang / juxiang / realme），未配置的难度回退 基准 × 当前难度 bossHpMul
+  function diffMods() { return currentDifficulty.mods || DIFFICULTIES.form.mods; }
+  // BOSS 血量解析：优先按难度表 hpByDiff（illusion / form / realme），未配置的难度回退 基准 × 当前难度 bossHpMul
   function resolveBossHp(B) {
     const id = currentDifficulty.id;
     if (B.hpByDiff && B.hpByDiff[id] != null) return B.hpByDiff[id];
@@ -631,6 +638,9 @@
   function strikerHoldMul() { const m = diffMods().strikerHoldMul; return m != null ? m : 1; }
   // 2类「2*7」无停留直通：越过前锋停留线后的速度保留比例（基准 0.8；诗篇 0.6）——mods.strikerNoHoldSpdMul，缺省回退 0.8
   function strikerNoHoldSpdMul() { const m = diffMods().strikerNoHoldSpdMul; return m != null ? m : 0.8; }
+  // 坚垒护卫艇（2类黄色变体）能量盾减伤：受到的伤害降低比例（基准 0.20；诗篇 0.35）——mods.strikerFortressDR，缺省回退 0.20
+  // （诗篇值已登记《诗篇难度修正.md》，poem.mods 实装时落地；高能爆弹为真实伤害不经此乘区，见 08-entities enemyDamageMul）
+  function strikerFortressDR() { const m = diffMods().strikerFortressDR; return m != null ? m : STRIKER_FORTRESS.dr; }
 
   // ---------- 装甲系统 ----------
   // 主界面选择、整场战斗生效的机体装甲。效果键位（按需扩展）：
@@ -703,6 +713,10 @@
     striker: 2, fashiA1: 2, fashiMatrix: 2, popian: 2, douzhi: 2,
     gunship: 3, harbinger: 3, hanshuang: 3, weilong: 3, yu4: 3, anvil: 3, baoling: 3, jiaoxiang: 3, fashiA2: 3,
     capital: 4, fashiArray: 4,
+    // 诗篇新敌占位（wip）：按其设计类别归入（黑暗之手四精英在 PILOTS.yi.elites 单独按 4 类计并 ×4）
+    popianU: 2, sponsor: 2, sponsorDeluxe: 2,
+    baolingG: 3, pulseMatrix: 3, unreal: 3,
+    warGhost: 4, puxuefeng: 4, hanxixian: 4, xiayong: 4, xinguodong: 4,
   };
 
   // 装甲技能（量表型，按 F 触发；后续新技能在此注册，逻辑见 07-player triggerArmorSkill）：
@@ -956,12 +970,20 @@
   //   dashDur/dashLv 许凯狗：开场冲刺时长（s）/ 结束时跳到的关卡等级
 //   speedFast/speedSlow 马兴犬：Shift 加速 / CapsLock 减速的移速倍率（同键再按恢复原速）
   //   chargeDur/scoreMul 埃逸：死亡蓄力自爆时长（s）/ 自爆击杀的得分倍率
+  //   chargeBonus/secondCostMul 漓：连携七日澜心的充能次数加成 / 持有第 1 个充能时第 2 次充能的水晶分数倍率
+  //   layerMax/layerCap 叮咚鸡：计数表单层上限 / 最多持有层数
+  //   missileCount/missileArc/missileSpeed/missileR/missileDmg 叮咚鸡：Q 导弹参数（发数 / 前向扇形角 / 弹速 / 弹体半径 / 直击伤害）
+  //   berserkUpsMax 叮咚鸡：升级至暴走（4→5 级）的全局次数上限（4/5 级按技能均消耗机会）
+  //   counterMax/killGain/bossKillMul/eliteKillMul/elites/bossTickGain 依：击杀计数上限 / 各类别击杀增量（1~5 类）/
+  //     BOSS 战计数倍率 / 击败四精英的倍率与其类型清单 / BOSS 战每秒自然计数
+  //   scytheR/scytheDur/scytheTickIv/scytheSpin/scytheSize/scytheBaseDmg/scytheHpPct/scytheHpPctCap 依：镰刀清扫参数
+  //     （伤害与消弹半径 / 存续时长 / 伤害结算间隔 / 旋转角速度 / 绘制边长 / 基础伤害 / 最大生命百分比 / 百分比部分封顶）
   //   gaugeFull/bossCharge/stormChargeMin~Max 天秀忧郁王子：量表所需非水晶分数 / BOSS 战每秒充能 / 暴风之眼战每秒充能（8%~12% 随机）
   //   stormDmgCut/stormCrashCut 天秀：来自暴风之眼的伤害削减（普通/碰撞）
   //   otherDmgCut 天秀：暴风之眼战期间其余我方伤害削减（友方大风暴不受此削减、另享 PRINCE_STORM.stormFightDmgMul）
   // 注册表键序 = 主菜单卡片展示顺序（none 除外，不展示）：
-  //   主槽：大狗 / 许凯狗 / 埃逸 / 可莉 / 马兴犬 / 温酒客 / 胡笛客
-  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 漓 / 哈基米大王 / 萧杨
+  //   主槽：大狗 / 许凯狗 / 埃逸 / 可莉 / 哈基米大王 / 马兴犬 / 温酒客 / 胡笛客
+  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 漓 / 依 / 叮咚鸡 / 萧杨
   // 陵落「彼岸花」矢量图标（iconSvg）：内联 SVG 字符串——currentColor 继承注册色，
   // 辉光由 .glyph-svg 的 drop-shadow 提供（渲染点：主菜单驾驶员卡片 / 数值图鉴「驾驶员」页标题）。
   function higanbanaSvg() {
@@ -974,6 +996,21 @@
       + '<g fill="currentColor" stroke="rgba(216,180,254,.5)" stroke-width=".8">' + petals + '</g>'
       + '<circle r="5.5" fill="none" stroke="rgba(233,213,254,.55)" stroke-width=".7"/>'
       + '<circle r="2.7" fill="#e9d5ff"/></svg>';
+  }
+
+  // 依「四瓣花」矢量图标（iconSvg）：内联 SVG 字符串——#FFC0CB → 白色线性渐变填充（注册色即渐变本体）
+  function yiGlyphSvg() {
+    let petals = '';
+    for (let i = 0; i < 4; i++) {
+      petals += '<path d="M0 -2.4 C2.8 -4.8 3.4 -9.6 1.2 -16 C0.4 -12 -0.4 -12 -1.2 -16 C-3.4 -9.6 -2.8 -4.8 0 -2.4 Z"'
+        + (i ? ' transform="rotate(' + i * 90 + ')"' : '') + '/>';
+    }
+    return '<svg viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">'
+      + '<defs><linearGradient id="yiGlyphGrad" x1="0" y1="1" x2="1" y2="0">'
+      + '<stop offset="0" stop-color="#FFC0CB"/><stop offset="1" stop-color="#FFFFFF"/></linearGradient></defs>'
+      + '<g fill="url(#yiGlyphGrad)" stroke="rgba(255,192,203,.55)" stroke-width=".8">' + petals + '</g>'
+      + '<circle r="5" fill="none" stroke="rgba(255,192,203,.6)" stroke-width=".7"/>'
+      + '<circle r="2.4" fill="#fff"/></svg>';
   }
 
   const PILOTS = {
@@ -1035,6 +1072,12 @@
       desc: '可莉爱用绷绷炸弹。绷绷炸弹替代高能爆弹<br>伤害为高能爆弹的 150%<br>初始额外拥有 1 颗绷绷炸弹<br>真我难度的爆弹对 BOSS 伤害减少减半<br>（-25% → -12.5%）<br>受到的瞬时区域伤害 -20%<br>（暴鸰爆炸 / 破片范围伤害 / 雷霆轰击 /<br>暴风之眼区域打击）<br>受到的导弹伤害 -20%（先兆者导弹）<br>（长条激光 / 持续灼烧 / 撞击不适用）',
     },
     // 马兴犬：Shift 加速 / CapsLock（大写锁定键）减速（同键再按恢复原速）
+    hajimi: {
+      id: 'hajimi', name: '哈基米大王', glyph: 'ω', color: '#ff9ab5', slot: 'main',   // ω 猫嘴 :3（原「喵」文字占位）；2026-09-28 由副槽移至主槽（马兴犬前）
+      dodgeBase: 0.35, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
+      brief: '暴走时有概率闪避',
+      desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害，无敌时长为正常的 70%）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
+    },
     maxingquan: {
       id: 'maxingquan', name: '马兴犬', glyph: '⇅', color: '#d9a066', slot: 'main',   // ⇅ 上/下双箭 = Shift 加速 / Caps 减速切换（🐾 emoji 自带色破坏单色风格弃用；Unicode 无单色狗形字符）
       speedFast: 1.25, speedSlow: 0.8,
@@ -1091,18 +1134,43 @@
     },
     lingli: {
       id: 'lingli', name: '漓', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
-      // 隐藏计数表（不显示于 HUD）：gaugeFull 填满所需水晶分数（类比七日澜心，无首轮 BOSS 加成、
-      // BOSS 水晶不计入）；填满立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）。
-      // lanxinDrain：连携七日澜心——澜心量表充满瞬间额外释放一次，并从本表扣除的水晶分数（可扣至负数）
-      gaugeFull: 2400, lanxinDrain: 1000,
-      brief: '积攒水晶清除弹幕，可与七日澜心联动',
-      desc: '折光穹顶之剑。拥有独立隐藏计数表<br>（不显示，逻辑类似七日澜心：按水晶得分充能，<br>无首轮 BOSS 加成且 BOSS 水晶不计入）<br>填满 2400 分后立刻清空并释放淡粉冲击波<br>（清除 250px 内所有敌方子弹，不震屏）<br>同时装备七日澜心护甲时：澜心量表充满的瞬间<br>也立刻释放一次同款冲击波，<br>且漓计数减少 1000（不足 1000 则减到负数）',
+      // 重做（2026-09-28 批次）：不再有独立计数表。
+      // chargeBonus：连携七日澜心——结晶护盾可充能次数 +1（最多同时持有 1+chargeBonus 次）；
+      // secondCostMul：已持有第 1 个充能时，第 2 次充能所需水晶分数倍率；
+      // 每次充能完毕立刻释放淡粉特效并清除 250px 内敌弹（见 07-player updatePilotStatus / lingliBurst）；
+      // 未携带七日澜心：BOSS 战开始时自动获得结晶护盾（携带七日澜心时同样生效）
+      chargeBonus: 1, secondCostMul: 1.5,
+      brief: '结晶护盾充能+1，充能完毕自动清弹',
+      desc: '折光穹顶之剑。同时携带七日澜心时：<br>结晶护盾的可充能次数 <b>+1</b><br>（最多同时持有 2 次充能），<br>持有第 1 个充能时，第 2 次充能<br>所需水晶分数 <b>+50%</b>；<br>每次充能完毕立刻释放淡粉特效<br>并清除 250px 内所有敌方子弹<br>未携带七日澜心时：<b>BOSS 战开始时<br>自动获得结晶护盾</b>（携带七日澜心时<br>此效果同样生效）',
     },
-    hajimi: {
-      id: 'hajimi', name: '哈基米大王', glyph: 'ω', color: '#ff9ab5', slot: 'sub',   // ω 猫嘴 :3（原「喵」文字占位）
-      dodgeBase: 0.35, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
-      brief: '暴走时有概率闪避',
-      desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害，无敌时长为正常的 70%）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
+    yi: {
+      id: 'yi', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 yiGlyphSvg：#FFC0CB → 白）
+      // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS）；
+      // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×3）；
+      // elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
+      // 镰刀清扫（充满自动召唤，无需按键）：scytheR 伤害/消弹半径 / scytheDur 存续时长（s）/
+      // scytheTickIv 伤害结算间隔（s）/ scytheSpin 旋转角速度（rad/s）/ scytheSize 绘制边长（px）/
+      // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）
+      counterMax: 122, killGain: { 1: 1, 2: 3, 3: 8, 4: 20, 5: 122 },
+      bossKillMul: 3, eliteKillMul: 4, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],
+      bossTickGain: 3,
+      scytheR: 300, scytheDur: 2.5, scytheTickIv: 0.25, scytheSpin: 7, scytheSize: 150,
+      scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
+      brief: '击杀积攒计数，满时召唤镰刀清扫',
+      desc: '缎带与镰刀的看板娘。左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4/5</b> 类敌人<br>分别增加 <b>1/3/8/20/122</b> 点；<br>BOSS 战期间击杀计数 <b>×3</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×4</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤巨大镰刀绕机旋转清扫：<br>对 300px 内所有敌人造成 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500），<br>并摧毁 300px 内击中的所有敌方子弹',
+    },
+    dingdongji: {
+      id: 'dingdongji', name: '叮咚鸡', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
+      // 计数表（左下角可见）：layerMax 单层上限 / layerCap 最多持有层数；
+      // 每次提升关卡等级掷增量（noteDdjLevelUp，01 值阶梯 70/10/6/3/1%）；
+      // 任一层满按 Q：missileCount 发导弹在 missileArc 前向扇形均匀射出（missileSpeed 直线弹速 /
+      // missileR 弹体半径 / missileDmg 直击伤害）→ 触发武器等级升级 → 消耗一层；
+      // 升级至暴走（4→5 级）全局仅 berserkUpsMax 次：4/5 级时按技能均消耗机会，耗尽后 4/5 级无法再按（1~3 级不限）
+      layerMax: 8, layerCap: 3,
+      missileCount: 4, missileArc: 120, missileSpeed: 520, missileR: 6, missileDmg: 400,
+      berserkUpsMax: 3,
+      brief: '攒层数：Q 射导弹并升级火力',
+      desc: '叮咚！左下角计数表（单层上限 <b>8</b>，最多积累 <b>3</b> 层）：<br>每次提升关卡等级掷一次——<b>70%</b> +1、<b>10%</b> +2、<br><b>6%</b> +3、<b>3%</b> +4、<b>1%</b> +8（其余不增加）<br>任一层计数满后按 <b>Q</b>：向前方 <b>120°</b> 范围<br>均匀射出 <b>4</b> 发叮咚鸡导弹（直击 400），<br>随后<b>触发武器等级升级</b>，然后消耗一层计数<br>升级至<b>暴走</b>的机会<b>全局仅 3 次</b>：<br>4 级或 5 级时按技能均消耗一次机会，<br>超过 3 次后 4/5 级无法再按技能；<br>1/2/3 级时只要层数够，按几次都行',
     },
     xiaoyang: {
       id: 'xiaoyang', name: '萧杨', glyph: '☘', color: '#228B22', slot: 'sub', whiteboard: true,   // ☘ 三叶草回调（🍀 emoji 自带色破坏单色风格弃用），深绿辉光保留
@@ -1353,7 +1421,76 @@
       bulletSpeed: 170, bulletR: 5, bulletDmg: 16, crashDmg: 42,
       fireInterval: [0.2, 0.3],
     },
+
+    // ---------- 诗篇难度新敌占位（wip，2026-09-28 批次） ----------
+    // 仅注册表占位 + 图鉴技能预告文案：全部不进入常规出怪（无权重、无生成调用），
+    // 数值为占位待定；技能均未实装（fireInterval 天文数字 = 不攻击）；
+    // 造型统一为白色方块占位（清单见 WIP_PLACEHOLDER_TYPES），后续逐个实装专属外观与技能；
+    // 图鉴挑战模式经 spawnChallengeTargetOne 的 default 分支可召唤（悬停带停留、不攻击）
+    popianU: {          // 破片U型（2类）：破片升级版——抵达停驻位置之前即可发动炮弹轰击
+      w: 46, h: 40, hp: 260, score: 220, color: '#ffd24d', drawScale: 1.4,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 8, crashDmg: 28,
+      fireInterval: [1e9, 1e9],
+    },
+    baolingG: {         // 暴鸰·G（3类）：暴鸰升级版——爆炸范围更大
+      w: 56, h: 60, hp: 700, score: 550, color: '#ffd8a8', drawScale: 1.2,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
+      fireInterval: [1e9, 1e9],
+    },
+    sponsor: {          // 赞助无人机（2类）：击败后得到道具
+      w: 46, h: 40, hp: 56, score: 130, color: '#ffd166', drawScale: 1.4,
+      bulletSpeed: 230, bulletR: 4, bulletDmg: 0, crashDmg: 24,
+      fireInterval: [1e9, 1e9],
+    },
+    sponsorDeluxe: {    // 豪华赞助无人机（2类）：击败后得到强力道具
+      w: 46, h: 40, hp: 56, score: 260, color: '#ffe9b0', drawScale: 1.4,
+      bulletSpeed: 230, bulletR: 4, bulletDmg: 0, crashDmg: 24,
+      fireInterval: [1e9, 1e9],
+    },
+    warGhost: {         // 战争幽灵（4类）：路径预警入场极速抵达中央，全屏打击，半血召唤铁砧与破片
+      w: 130, h: 96, hp: 4200, score: 1300, color: '#8f7bd8', drawScale: 1.7,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 44,
+      fireInterval: [1e9, 1e9],
+    },
+    pulseMatrix: {      // 脉冲矩阵（3类）：周期性造成范围伤害
+      w: 40, h: 62, hp: 160, score: 320, color: '#ff5566', drawScale: 1.2,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
+      fireInterval: [1e9, 1e9],
+    },
+    unreal: {           // 虚幻（3类）：冰霜炸弹范围伤害 + 寒冷区域；投弹前被击毁则原地殉爆并留寒冷区域
+      w: 61, h: 56, hp: 900, score: 600, color: '#bfe8ff', drawScale: 1.2,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 20,
+      fireInterval: [1e9, 1e9],
+    },
+    // 黑暗之手的四名精英随从（4类级，衍生召唤）：技能待设计
+    puxuefeng: {        // 朴学峰
+      w: 110, h: 84, hp: 1200, score: 650, color: '#c05a5a', drawScale: 1.6,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
+      fireInterval: [1e9, 1e9],
+    },
+    hanxixian: {        // 韩希先
+      w: 110, h: 84, hp: 1200, score: 650, color: '#5a7ac0', drawScale: 1.6,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
+      fireInterval: [1e9, 1e9],
+    },
+    xiayong: {          // 夏勇
+      w: 110, h: 84, hp: 1200, score: 650, color: '#5ab07a', drawScale: 1.6,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
+      fireInterval: [1e9, 1e9],
+    },
+    xinguodong: {       // 辛国栋
+      w: 110, h: 84, hp: 1200, score: 650, color: '#b09a4a', drawScale: 1.6,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
+      fireInterval: [1e9, 1e9],
+    },
   };
+
+  // 诗篇占位敌人类型清单（10-draw-world drawEnemy 用）：占位阶段统一渲染白色方块造型，
+  // 图鉴预览同规则（13-encyclopedia drawEncyPreview 按 d.wip 判定）；实装专属外观时逐个移除
+  const WIP_PLACEHOLDER_TYPES = [
+    'popianU', 'baolingG', 'sponsor', 'sponsorDeluxe', 'warGhost', 'pulseMatrix',
+    'unreal', 'puxuefeng', 'hanxixian', 'xiayong', 'xinguodong',
+  ];
 
   // 炮火先兆者参数
   const HARBINGER = {
@@ -1693,6 +1830,15 @@
   // 2类（突击艇）前锋停留线：位于 3/4 类悬停高度（y≈110~170）的前方（更靠下），凸显其前锋定位
   const STRIKER_HOLD_Y = 210;
 
+  // 坚垒护卫艇（2类黄色变体，2026-09-28 新增）：机体为霜白突击艇上下倒置 + 前置能量盾（下方机体边框两条线增粗外移 + 流光，绘制见 09-draw-ships drawFortressStrikerBody）
+  const STRIKER_FORTRESS = {
+    hp: 200,          // 血量（VARIANTS.striker 条目同步定义 hp: 200）
+    dr: 0.20,         // 常规：受到的伤害 -20%（mods.strikerFortressDR 缺省回退值）
+    drPoem: 0.35,     // 诗篇：受到的伤害 -35%（登记于《诗篇难度修正.md》，poem.mods 实装时落地 strikerFortressDR）
+    holdYOffset: 48,  // 停留位置较普通 2类前锋停留线（y 200~240）下移量（px）：更靠前、贴近玩家
+    speedMul: 0.6,    // 移速为其他突击艇的 60% —— 落地方式：VARIANTS 条目 entry/charge 取全体基准 140/120 × 0.6 = 84/72
+  };
+
   // 幽暮突击艇（2类黑色变体）参数：浮现(渐显) → 下移落点停驻 → 停 0.2s(白环预警) → 环射 6/8 发 → 随即下移同距渐隐离场
   // 图鉴挑战模式：离场消失后由 updateChallenge 自动重新生成（完整循环展示浮现→环射→离场）
   const DUSK = {
@@ -1708,7 +1854,7 @@
   };
 
   /* ---------- 2/3/4 类变体：不同颜色 + 不同技能（weight 为出现权重） ----------
-   * striker 2类：赤红(直射±10°、不追踪) / 烈橙(spread 前方双弹、夹角 40°/50°/60° 随机) / 幽蓝(homing 追踪弹、登场 10% 1s 或 10% 2s 虚化护盾) / 霜白(silent 不开火、不停留直接冲锋) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；入位/冲锋速度逐变体定义
+   * striker 2类：赤红(直射±10°、不追踪) / 烈橙(spread 前方双弹、夹角 40°/50°/60° 随机) / 幽蓝(homing 追踪弹、登场 10% 1s 或 10% 2s 虚化护盾) / 霜白(silent 不开火、不停留直接冲锋) / 坚垒(fortress 黄色倒置机体+前置能量盾：不开火、移速 60%、停留更低、受伤 -20%) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；入位/冲锋速度逐变体定义
    * gunship 3类：紫(mixed 散射+追踪) / 红(aggressive 火力猛瞄准连射) / 金(ring 环形弹幕密集)；血量/下降速度/首射延迟逐变体定义
    * capital 4类：红(barrage 密集弹幕) / 蓝(lance 瞄准齐射+螺旋；出现时 20% 带护盾，前 5s 虚化不受伤害、炮弹穿过) / 金(crgold 三技能)；下降速度逐变体定义
    */
@@ -1722,6 +1868,7 @@
       { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 140, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 10% 1s / 10% 2s 虚化护盾
       { id: 'violet',  color: '#c084fc', weight: 0.21, skill: 'violet', firstDelay: [0.5, 1], entry: 140, charge: 120, iv: [1.4, 2.3] },     // 紫晶：单发精确追踪弹（紫=追踪）；间隔较幽蓝 +0.3s、无虚化护盾、首攻不额外延长
       { id: 'white',   color: '#eaf1f8', weight: 0.15, skill: 'silent', entry: 140, charge: 120 },                              // 霜白：不开火（停留规则与普通 2类一致）
+      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 200, entry: 84, charge: 72 },                    // 坚垒护卫艇：黄色倒置机体+前置能量盾；不开火、移速 60%（84/72）、停留位置下移 48px（STRIKER_FORTRESS）；受伤 -20%（诗篇 -35%）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
       { id: 'dusk',    color: '#14161c', weight: 0.12, skill: 'dusk' },                       // 幽暮：黑色机白核；出现权重按关卡分档直接取值（Lv1~10 为 2 / Lv11~20 为 5，见 strikerVariantWeights）
     ],
     gunship: [
@@ -1809,12 +1956,14 @@
   const BOSS_LOOT_SHIELD = 0.05;
   const BOSS_LOOT_BOTH = 0.05;
 
-  // 1类侧翼艇：四种行为对应四种颜色（与图鉴一致）
-  //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击 | moon(红)：赤月定向单射
+  // 1类侧翼艇：五种行为对应五种颜色（与图鉴一致）
+  //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击
+  //   swirl(橙)：橙旋环绕弹（数值/权重/掉落规则与紫电一致，无亡语） | moon(红)：赤月定向单射
   const SIDE_BEHAVIOR_COLORS = {
     pass:     '#f0f0f5',   // 白
     shoot:    '#ffd166',   // 黄
     kamikaze: '#c084fc',   // 紫
+    swirl:    '#ff8c1a',   // 橙（橙旋侧翼艇）
     moon:     '#ff3b30',   // 赤（赤月侧翼艇）
   };
 
@@ -1826,16 +1975,28 @@
     deathShotChance: 0.12,   // 未发射即被击毁时的亡语补射概率
   };
 
+  // 橙旋侧翼艇（橙色 1类）：数值/权重/掉落规则与紫电（kamikaze）完全一致，但无亡语；
+  // 技能：入场 0.8~1.5s 后在自身周围生成一颗环绕弹（紫电亡语弹同款：弹速/半径/伤害同 ENEMY_TYPES.side），
+  // 绕自身公转（环绕半径 = 机体核心到机头距离再略远一点，逐颗随机取 dist × 倍率区间），
+  // 自身被击坠或离场后环绕弹立刻消失（见 08-entities）
+  const SIDE_SWIRL = {
+    delay: [0.8, 1.5],       // 入场后到生成环绕弹的随机延时区间（s）
+    dist: 20,                // 环绕基准半径（px）：三角箭镖机头距核心约 17（12.1 × drawScale 1.4），再远一点点
+    distMul: [1.0, 1.4],     // 环绕半径随机倍率区间（具象基准；每颗环绕弹独立掷取）
+    distMulPoem: [1.1, 1.5], // 诗篇难度的环绕半径随机倍率区间
+    om: 2.6,                 // 公转角速度（rad/s，约 0.41 圈/s）
+  };
+
   // 1类常规生成混合权重（按关卡分档，与「数值与机制图鉴-怪物权重」单一数据源同步）：
   //   low = Lv1~10 / high = Lv11~20；相对权重（非概率），由 pickSideSpawn 经 sideSpawnWeights(lv) 抽取
-  // 注意：紫自爆流不混入增生（exclude）；BOSS 后固定首波不含紫电
+  // 注意：紫自爆流不混入增生（exclude）；BOSS 后固定首波不含紫电与橙旋（swirl 与 kamikaze 一并排除）
   const SIDE_SPAWN_W = {
-    low:  { pass: 70, prolifera: 5, shoot: 15, kamikaze: 5, moon: 20 },    // Lv1~10
-    high: { pass: 60, prolifera: 10, shoot: 20, kamikaze: 10, moon: 25 },  // Lv11~20
+    low:  { pass: 70, prolifera: 5, shoot: 15, kamikaze: 5, swirl: 5, moon: 20 },    // Lv1~10
+    high: { pass: 60, prolifera: 10, shoot: 20, kamikaze: 10, swirl: 10, moon: 25 },  // Lv11~20
   };
 
   // 1类行为数值修正（makeEnemy 按行为覆盖）：黄芒（shoot）血量 10；
-  // 分数：白影/增生/黄芒/赤月 50、紫电（kamikaze 自爆）80
+  // 分数：白影/增生/黄芒/赤月 50、紫电（kamikaze 自爆）与橙旋（swirl）80
   const SIDE_SHOOT_HP = 10;
   const SIDE_SCORE = 50;
   const SIDE_KAMIKAZE_SCORE = 80;
@@ -1942,7 +2103,7 @@
     BOSS_SEQUENCE, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
     STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, energyOrbSheet, ENERGY_ORB, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, lightningImgRing, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
-    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isRealme, isPoem, isHardTier, invulnDiffMul, bossDmgMul, enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP, WAVE_POEM,
+    DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isRealme, isPoem, isHardTier, invulnDiffMul, bossDmgMul, enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, strikerFortressDR, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP, WAVE_POEM,
     DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, currentArmor, setArmor, armorMaxHp,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
@@ -1952,14 +2113,14 @@
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL,
     BAOLING, JIAOXIANG, DOUZHI, FASHI_A1, FASHI_A2, POPIAN,
     FASHI_MATRIX, FASHI_ARRAY, PRESSURE_W, PRESSURE_CAPACITY, SPAWN_SLOW_MUL, SPAWN_RUSH, SPAWN_RUSH_CAP,
-    STRIKER_HOLD_Y, DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST,
+    STRIKER_HOLD_Y, DUSK, STRIKER_FORTRESS, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST,
     SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,
     CAPITAL_PALETTE, GUNSHIP_PALETTE, STAR_COUNT, MAX_BOMBS, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO,
     CAPITAL_HIGHFIRE_DR, CAPITAL_DESCEND_DR, BOSS_LOWFIRE_BONUS, POPIAN_VULN_LV1, POPIAN_VULN_LV2, WEAPON_DROP_HITS,
     CHAOS_PIERCE_DMG_MUL, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE, DROP_KIT_YELLOW, DROP_SHIELD_RATE,
     DROP_SHIELD_BLUE, DROP_SHIELD_STACK, DROP_HP_RATE, DROP_HP_GREEN, DROP_HP_BOSS, DROP_HP_BOSS2,
-    DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W,
-    TEST_HP, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE,
+    DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W, SIDE_SWIRL,
+    TEST_HP, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE, WIP_PLACEHOLDER_TYPES, scytheImg,
     BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSS_LOOT_BOTH,
     ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED,
     CRYSTAL_TIERS, CRYSTAL_GIANT_CHANCE, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, convertCrystalDrop,

@@ -1,12 +1,12 @@
 // 07-player：玩家武器 / 僚机逻辑 / 受伤与无敌 / 拾取 / 高能爆弹 / 清弹
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(4 名) 08-entities(7 名) 12-ui(2 名) 13-encyclopedia(1 名) 14-main(7 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(5 名) 08-entities(7 名) 12-ui(2 名) 13-encyclopedia(1 名) 14-main(8 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, score}
+  //   state.{bombs, demo, flash, hurt, lives, score, yiCounter, lingliCharges, lingliBossShieldDone}
   //
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, ENEMY_CLASS, HANSHUANG, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotEntry, pilotHuiHealMul } from './01-config.js';
-  import { bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, hasteMul, hpFill, keys, menuScreen, pBullets, particles, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, state, tryBulwarkCheatDeath, wingmen, xinRings } from './02-core.js';
+  import { bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, hasteMul, hpFill, keys, menuScreen, pBullets, particles, phaseFx, player, playerHitFx, rand, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, state, tryBulwarkCheatDeath, wingmen, xinRings, yiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
@@ -1377,21 +1377,36 @@
   // 收集水晶时填充当前装甲的技能量表（amount = 本颗水晶的分数；七日澜心填满需 gaugeCrystalScore 分）
   // firstBoss = 水晶是否来自首轮 BOSS（FIRST_ROUND_BOSSES）：对量表收益按 def.firstBossBonus 额外加成（+400% → ×5）
   // 结晶护盾持续期间（player.crystalShield > 0）量表停止累计（水晶得分与吸收入场照常）
+  // 漓连携（携带七日澜心）：量表语义变为「下一次充能」进度——已持有第 1 个充能时，
+  // 第 2 次充能所需水晶分数 ×1.5（secondCostMul）；充能已满（达 1+chargeBonus 次）则不再累计
   function armorSkillGain(amount, firstBoss = false) {
     const def = ARMOR_SKILLS[currentArmor.id];
     if (!def) return;
     if (player.crystalShield > 0) return;
     if (firstBoss && def.firstBossBonus) amount *= def.firstBossBonus;
+    if (hasPilot('lingli') && currentArmor.id === 'lanxin') {
+      if ((state.lingliCharges || 0) >= 1 + (PILOTS.lingli.chargeBonus || 0)) return;   // 充能已持有满：不再累计
+      const costMul = (state.lingliCharges || 0) >= 1 ? PILOTS.lingli.secondCostMul : 1;
+      state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / (def.gaugeCrystalScore * costMul));
+      return;
+    }
     state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / def.gaugeCrystalScore);
   }
 
   // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：水晶护盾环绕 3s）
+  // 漓连携（携带七日澜心）：改为消耗「持有的充能」（充能完毕时已自动结算，见 updatePilotStatus），量表本身不满
   // 返回 true = 触发成功（14-main 的 F 键入口调用）
   function triggerArmorSkill() {
     if (state.mode !== 'playing' || state.paused) return false;
     const def = ARMOR_SKILLS[currentArmor.id];
-    if (!def || (state.armorSkillGauge || 0) < 1) return false;
-    state.armorSkillGauge = 0;
+    if (!def) return false;
+    if (currentArmor.id === 'lanxin' && hasPilot('lingli')) {
+      if ((state.lingliCharges || 0) <= 0) return false;
+      state.lingliCharges--;
+    } else {
+      if ((state.armorSkillGauge || 0) < 1) return false;
+      state.armorSkillGauge = 0;
+    }
     achvNoteArmorSkillUsed();   // 成就：忘了——装甲技能已使用
     if (currentArmor.id === 'lanxin') {
       player.crystalShield = def.dur;
@@ -1507,21 +1522,45 @@
         launchDagouWave(0);
       }
     }
-    // 漓：隐藏计数表——填满 2400 分立刻清空并释放淡粉冲击波（清除 250px 内敌弹，不震屏）；
-    // 连携七日澜心（同时装备该护甲）：澜心量表充满的瞬间（跨过 1）额外释放一次同款冲击波，
-    // 且漓计数减少 1000（不足 1000 则减到负数）；冲刺期间量表冻结（快照照常结转，避免解冻后误判「充满瞬间」）
+    // 漓（重做）：不再有独立计数表。
+    // ① 连携七日澜心：armorSkillGauge 语义为「下一次充能」进度——跨过 1 的瞬间转为持有充能
+    //    （最多 1+chargeBonus 次），并立刻释放淡粉特效清除 250px 内敌弹（lingliBurst；成就「清除空气」照常判定）；
+    //    持有第 1 个充能时第 2 次充能所需水晶分数 ×1.5（见 armorSkillGain）
+    // ② BOSS 战开始：自动获得结晶护盾（未携带七日澜心也生效；每段 BOSS 战发放一次，
+    //    victoryDelay / none 复位标记——击败 BOSS 后下一轮重新发放）
     if (hasPilot('lingli')) {
-      if (!dashFrozen && state.lingliGauge >= PILOTS.lingli.gaugeFull) {
-        state.lingliGauge = 0;
+      if (currentArmor.id === 'lanxin' && !dashFrozen &&
+          (state.armorSkillGauge || 0) >= 1 &&
+          (state.lingliCharges || 0) < 1 + (PILOTS.lingli.chargeBonus || 0)) {
+        state.armorSkillGauge = 0;
+        state.lingliCharges = (state.lingliCharges || 0) + 1;
         lingliBurst();
       }
-      const ag = state.armorSkillGauge || 0;
-      if (!dashFrozen && currentArmor.id === 'lanxin' && state.lingliArmorGaugePrev < 1 && ag >= 1) {
-        lingliBurst();
-        state.lingliGauge -= PILOTS.lingli.lanxinDrain;
+      if (bossFlow.stage === 'fight') {
+        if (!state.lingliBossShieldDone && player.alive) {
+          state.lingliBossShieldDone = true;
+          player.crystalShield = Math.max(player.crystalShield || 0, ARMOR_SKILLS.lanxin.dur);
+          if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(true);   // 成就：云心——登记开启时处于 BOSS 战
+          spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 20, 180);
+        }
+      } else {
+        state.lingliBossShieldDone = false;
       }
-      state.lingliArmorGaugePrev = ag;
     }
+    // 依：击杀计数条（左下角可见）——满 counterMax 自动召唤镰刀清扫（无需按键）；
+    // BOSS 战期间每秒 +3（警报 / 登场动画与胜利结算窗口不计）；冲刺期间冻结
+    if (hasPilot('yi') && !state.challenge) {
+      if (!dashFrozen && bossFlow.stage === 'fight' && !bossFlow.victoryDelay) {
+        state.yiCounter = Math.min(PILOTS.yi.counterMax, state.yiCounter + PILOTS.yi.bossTickGain * entranceDt(dt));
+      }
+      if (!dashFrozen && state.yiCounter >= PILOTS.yi.counterMax) {
+        state.yiCounter = 0;
+        yiScythes.push({ t: 0, rot: Math.random() * Math.PI * 2, tickT: 0 });
+        spawnParticles(player.x, player.y, '#FFC0CB', 24, 240);
+      }
+    }
+    updateYiScythes(dt);   // 镰刀为在途攻击实体：不随驾驶员计时冻结（存续/旋转/结算照常推进）
+    updateDdjMissiles(dt);   // 叮咚鸡 Q 导弹为在途实体：照常推进
     // 连发风暴（按 8 切换，作弊键不要求装备天秀）：每 0.4~1.4s 向前发射一个友方大风暴（无视量表）；
     // 警报 / BOSS 登场动画期间与正常技能同样封锁，封锁解除瞬间立即补发第一个——
     // 需在下方 tianxiu 早退之前运行（未装备天秀时开关置位同样生效）
@@ -1549,7 +1588,7 @@
     if (delta > 0 && !dashFrozen) state.princeGauge = Math.min(1, state.princeGauge + delta / PILOTS.tianxiu.gaugeFull);
   }
 
-  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子、陵落均按 Q——天秀：友方大风暴（量表满）；陵落：强行暴走（冷却结束）
+  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子、陵落、叮咚鸡均按 Q
   function triggerPilotSkill(keyName = 'q') {
     if (state.mode !== 'playing' || state.paused) return false;
     // 警报 / BOSS 登场动画期间不可释放技能（入场演出收尾、battle 尚未正式展开）
@@ -1561,6 +1600,45 @@
       launchFriendStorm();
       shake(5, 0.25);
       achvNotePilotSkillUsed();   // 成就：忘了——天秀 Q 技能已使用
+      return true;
+    }
+    // 叮咚鸡：计数表任一层满时按 Q——向前方 120° 均匀射出 4 发导弹 → 触发武器等级升级 → 消耗一层；
+    // 升级至暴走（4→5 级）全局仅 3 次：4/5 级时按技能均消耗一次机会，耗尽后 4/5 级无法再按；
+    // 1/2/3 级时升级不占机会（只要层数够可无限按）
+    if (hasPilot('dingdongji') && keyName === 'q') {
+      const cfg = PILOTS.dingdongji;
+      if ((state.ddjLayers || 0) < 1) return false;
+      if (player.weapon >= 4 && (state.ddjBerserkUps || 0) >= cfg.berserkUpsMax) return false;
+      state.ddjLayers--;
+      // 导弹齐射：前向扇形角内均匀分布（朝向以竖直向上为基准）
+      for (let k = 0; k < cfg.missileCount; k++) {
+        const off = -cfg.missileArc / 2 + cfg.missileArc * (k + 0.5) / cfg.missileCount;   // -45°/-15°/+15°/+45°
+        const ang = (-90 + off) * Math.PI / 180;
+        ddjMissiles.push({ x: player.x, y: player.y - 20, vx: Math.cos(ang) * cfg.missileSpeed, vy: Math.sin(ang) * cfg.missileSpeed, r: cfg.missileR });
+      }
+      // 触发武器等级升级
+      if (player.weapon < 4) {
+        player.weapon++;
+        player.cooldown = 0;
+        spawnParticles(player.x, player.y, '#ffb545', 14, 200);
+      } else {
+        state.ddjBerserkUps = (state.ddjBerserkUps || 0) + 1;   // 4/5 级按技能均消耗暴走升级机会
+        if (player.weapon === 4) {
+          player.weapon = 5;
+          player.berserk = BERSERK.duration;
+          player.berserkBanner = 1.5;
+          tryChengyueShield();   // 澄月：暴走触发判定一次（与 pickupKit 同约定）
+          berserkBurst.active = true; berserkBurst.t = 0;
+          berserkBurst.x = player.x; berserkBurst.y = player.y; berserkBurst.big = true;
+          spawnParticles(player.x, player.y, '#ffb545', 26, 260);
+        } else {
+          // 已在暴走（5 级）：机会照常消耗，暴走倒计时续满
+          player.berserk = BERSERK.duration;
+          tryChengyueShield();
+          player.berserkBanner = 1.0;
+        }
+      }
+      achvNotePilotSkillUsed();   // 成就：忘了——叮咚鸡 Q 技能已使用
       return true;
     }
     // 陵落：按 Q 触发暴走——立刻损失 40 生命（不会致死）；冷却 40s（开局技力条为空不能释放）。
@@ -1610,6 +1688,96 @@
     // 成就「清除空气」：触发清除弹幕但实际消除数为 0
     achvNoteLingliBurst(clearEnemyBulletsNear(player.x, player.y, 250));
     spawnParticles(player.x, player.y, '#FFC0CB', 20, 200);
+  }
+
+  // 依：击杀计数结算（06-enemy killEnemy 调用）——cls 1~5（5 类 = BOSS）；
+  // BOSS 战期间计数 ×3，击败黑暗之手四精英改为 ×4（替换 ×3）；挑战 / 测试模式不计
+  function yiNoteKill(cls, type) {
+    if (state.challenge || !hasPilot('yi')) return;
+    const cfg = PILOTS.yi;
+    let gain = cfg.killGain[cls] || 0;
+    if (!gain) return;
+    if (bossFlow.stage === 'fight') gain *= cfg.elites.includes(type) ? cfg.eliteKillMul : cfg.bossKillMul;
+    state.yiCounter = Math.min(cfg.counterMax, state.yiCounter + gain);
+  }
+
+  // 依：镰刀清扫——巨大镰刀绕机体高速旋转（素材 assets/scythe_transparent.png，绘制见 10-draw-world drawYiScythes），
+  // 存续期间每 scytheTickIv 秒对 300px 内所有敌人造成 1500 + 20% 最大生命伤害（20% 部分封顶 2500），
+  // 并清除同半径内所有敌方子弹；以玩家实时位置为圆心（跟随主机移动）；伤害为普通伤害（可被御4光环削减）
+  function updateYiScythes(dt) {
+    if (!yiScythes.length) return;
+    for (let i = yiScythes.length - 1; i >= 0; i--) {
+      const sc = yiScythes[i];
+      sc.t += dt;
+      sc.rot += PILOTS.yi.scytheSpin * dt;
+      if (sc.t >= PILOTS.yi.scytheDur) { yiScythes.splice(i, 1); continue; }
+      sc.tickT -= dt;
+      if (sc.tickT > 0) continue;
+      sc.tickT = PILOTS.yi.scytheTickIv;
+      const r2 = PILOTS.yi.scytheR * PILOTS.yi.scytheR;
+      for (let k = enemies.length - 1; k >= 0; k--) {
+        const en = enemies[k];
+        if (en.phase > 0) continue;                                 // 虚化护盾期间不受伤害
+        if (en.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：镰刀穿透
+        const dx = en.x - player.x, dy = en.y - player.y;
+        if (dx * dx + dy * dy > r2) continue;
+        const dmg = PILOTS.yi.scytheBaseDmg + Math.min(en.maxHp * PILOTS.yi.scytheHpPct, PILOTS.yi.scytheHpPctCap);
+        en.hp -= dmg * yu4AuraMul(en);
+        if (Math.random() < 0.4) spawnParticles(en.x + rand(-10, 10), en.y + rand(-10, 10), '#FFC0CB', 1, 90);
+        if (en.hp <= 0) killEnemy(k);
+      }
+      clearEnemyBulletsNear(player.x, player.y, PILOTS.yi.scytheR);
+    }
+  }
+
+  // 叮咚鸡：关卡提升掷计数增量（01-config 值阶梯：70% +1 / 10% +2 / 6% +3 / 3% +4 / 1% +8，其余 +0；
+  // 14-main 关卡提升处调用）——增量计入当前层进度，满 8 转入一层持有（最多 3 层，溢出顺延计入下一层；
+  // 三层已满后溢出丢弃）
+  function noteDdjLevelUp() {
+    const cfg = PILOTS.dingdongji;
+    if ((state.ddjLayers || 0) >= cfg.layerCap) return;   // 三层已满：不再累积
+    const r = Math.random();
+    let n = 0;
+    if (r < 0.70) n = 1;
+    else if (r < 0.80) n = 2;
+    else if (r < 0.86) n = 3;
+    else if (r < 0.89) n = 4;
+    else if (r < 0.90) n = 8;
+    if (!n) return;
+    let v = (state.ddjGauge || 0) + n;
+    while (v >= cfg.layerMax && (state.ddjLayers || 0) < cfg.layerCap) {
+      v -= cfg.layerMax;
+      state.ddjLayers++;
+    }
+    state.ddjGauge = Math.min(v, cfg.layerMax);   // 满层持有中：进度停在 8（下一层不可再积）
+  }
+
+  // 叮咚鸡：Q 导弹更新——直线飞行、命中第一个敌人直接造成伤害（白光闪核 + 冲击圈反馈）；
+  // 登场虚化 BOSS 穿透；出屏移除（绘制见 10-draw-world drawDdjMissiles）
+  function updateDdjMissiles(dt) {
+    if (!ddjMissiles.length) return;
+    const cfg = PILOTS.dingdongji;
+    for (let i = ddjMissiles.length - 1; i >= 0; i--) {
+      const m = ddjMissiles[i];
+      m.x += m.vx * dt;
+      m.y += m.vy * dt;
+      if (Math.random() < 0.5) spawnParticles(m.x, m.y, '#ffd166', 1, 40);   // 尾焰余粒
+      let hit = null;
+      for (const e of enemies) {
+        if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+        if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：导弹穿透不命中
+        if (Math.abs(m.x - e.x) < e.w / 2 + m.r && Math.abs(m.y - e.y) < e.h / 2 + m.r) { hit = e; break; }
+      }
+      if (hit) {
+        hit.hp -= cfg.missileDmg * kingDmgBonusMul();
+        dashKillFx.push({ x: m.x, y: m.y, t: 0, max: 0.3, r: m.r * 1.8 });
+        spawnParticles(m.x, m.y, '#ffd166', 10, 180);
+        if (hit.hp <= 0) { const j = enemies.indexOf(hit); if (j >= 0) killEnemy(j); }
+        ddjMissiles.splice(i, 1);
+        continue;
+      }
+      if (m.y < -40 || m.y > CANVAS_H + 40 || m.x < -40 || m.x > CANVAS_W + 40) ddjMissiles.splice(i, 1);
+    }
   }
 
   // 大狗：召唤一波 8 颗导弹雨——均匀分布（屏宽 / count 等分），中间两发先射出、随后向两侧
@@ -1987,5 +2155,5 @@
     accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
     handlePlayerDeath, aiyiSelfDestruct, updateAiyiWaves, stormBossFightActive, pilotStormContactMul,
     princeOtherDmgMul, princeStormKillGain, updatePilotStatus, triggerPilotSkill, updateFriendStorms, kingDmgBonusMul,
-    updateDagouMissiles,
+    updateDagouMissiles, yiNoteKill, noteDdjLevelUp,
   };

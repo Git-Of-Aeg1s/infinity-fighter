@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, currentArmor } from './01-config.js';
-  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings } from './02-core.js';
+  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, scytheImg } from './01-config.js';
+  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, yiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
@@ -25,7 +25,22 @@
     return g;
   }
 
+  // 诗篇占位敌人（wip）：统一白色方块占位造型（碰撞盒同尺寸，清单见 01-config WIP_PLACEHOLDER_TYPES；
+  // 专属外观待逐个实装后从清单移除）
+  function drawWipPlaceholderBody(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.fillRect(-e.w / 2, -e.h / 2, e.w, e.h);
+    ctx.strokeRect(-e.w / 2, -e.h / 2, e.w, e.h);
+    ctx.restore();
+  }
+
   function drawEnemy(e) {
+    // 诗篇占位敌人（wip）：统一白色方块占位造型
+    if (WIP_PLACEHOLDER_TYPES.includes(e.type)) { drawWipPlaceholderBody(e); return; }
     if (e.type === 'tornado') { drawTornado(e); return; }   // 龙卷专用绘制（自身处理 translate）
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -77,6 +92,8 @@
       drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
       drawDuskStrikerBody(e); // 自带填充与描边（暗黑渐变菱形 + 微亮描边 + 中央白色发光核心；渐显/渐隐透明度内含）
+    } else if (e.type === 'striker' && e.skill === 'fortress') {
+      drawFortressStrikerBody(e); // 自带填充与描边（黄色倒置菱形 + 前置能量盾：盾沿增粗外移 + 流光；见 09-draw-ships）
     } else {
     if (e.type === 'side' && e.behavior === 'moon') {
       // 赤月侧翼艇：红色箭镖，造型与其他 1类完全一致，仅将顶角精确旋转到当前航向（= 子弹发射方向）
@@ -1964,6 +1981,55 @@
     }
   }
 
+  // 叮咚鸡：Q 导弹视觉——黄白小导弹沿飞行方向取向（主体白 + 黄头 + 淡黄尾焰粒子由更新侧撒布）
+  function drawDdjMissiles() {
+    if (!ddjMissiles.length) return;
+    const cfg = PILOTS.dingdongji;
+    for (const m of ddjMissiles) {
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 2);   // 弹体纵向沿飞行方向
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, -m.r * 1.6);
+      ctx.lineTo(m.r * 0.8, m.r);
+      ctx.lineTo(-m.r * 0.8, m.r);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = cfg.color;
+      ctx.beginPath(); ctx.arc(0, -m.r * 0.9, m.r * 0.55, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // 依：镰刀清扫视觉——巨大镰刀（assets/scythe_transparent.png，未加载回退淡粉长条）绕机体高速旋转，
+  // 外围淡粉范围圈指示 300px 伤害/消弹半径；随主机移动（逻辑见 07-player updateYiScythes），首尾快速淡入淡出
+  function drawYiScythes() {
+    if (!yiScythes.length) return;
+    const cfg = PILOTS.yi;
+    for (const sc of yiScythes) {
+      const alpha = Math.min(clamp(sc.t / 0.2, 0, 1), clamp((cfg.scytheDur - sc.t) / 0.3, 0, 1));
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.globalAlpha = alpha * 0.30;
+      ctx.strokeStyle = cfg.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, cfg.scytheR, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = alpha;
+      ctx.rotate(sc.rot);
+      const sz = cfg.scytheSize;
+      if (scytheImg) ctx.drawImage(scytheImg, -sz / 2, -sz / 2, sz, sz);
+      else {
+        ctx.fillStyle = cfg.color;
+        ctx.fillRect(-sz / 2, -3, sz, 6);   // 素材未加载回退：淡粉长条
+      }
+      ctx.restore();
+    }
+  }
+
   function render() {
     // 抖动
     ctx.save();
@@ -2018,6 +2084,7 @@
     drawBullets();
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
+    drawDdjMissiles();   // 叮咚鸡：黄白导弹（前向扇形直线飞行，直击）
     drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
@@ -2089,9 +2156,10 @@
       ctx.restore();
     }
 
+    drawYiScythes();   // 依：镰刀清扫（绕机旋转，淡入淡出 + 淡粉范围圈）
+
     // 结晶护盾解除冲击波：样式同量子护盾冲击波（淡粉色），但扩散范围有限——对应其 250px 消弹半径
-    if (crystalBurst.active) {
-      const p = crystalBurst.t / crystalBurst.duration;   // 0→1
+    if (crystalBurst.active) {      const p = crystalBurst.t / crystalBurst.duration;   // 0→1
       const ease = 1 - Math.pow(1 - p, 3);                // easeOutCubic：初始快、末尾慢
       const maxR = 265;                                   // 略大于 250px 消弹半径
       const r = 36 + ease * (maxR - 36);
