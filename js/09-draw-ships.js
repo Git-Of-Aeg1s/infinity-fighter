@@ -4672,8 +4672,8 @@
   // 颜色直接分配到面上（小档顶亮底暗 / 中档中央白高光减半 / 大档淡色玻璃感 / 原石色标渐变 + 刻面交替），底光 / 间隙光 / 内孔高亮全部烘焙进帧内；
   // 运行时每颗水晶每帧仅 1 次 drawImage（1:1 整数位贴图）。
   const CRYSTAL3D_FRAMES = 24;                 // 自转一周 24 帧（15°/帧，12 帧/半圈，对齐 QQ雷电老动画口径）
-  const CRYSTAL3D_BAKE = { small: 40, mid: 48, big: 56, giant: 52 };   // 原石与大型宝石同大小   // 烘焙底板边长（含光晕余量）
-  const CRYSTAL3D_R = { small: 6, mid: 10, big: 16, giant: 14 };   // 2026-09-27 定稿调大：大档 13 → 16；giant = 16/1.15 ≈ 13.9 ≈ 14，星模纵向芒尖 1.15R ≈ 16，与大型宝石最大半径一致
+  const CRYSTAL3D_BAKE = { small: 40, mid: 48, big: 90, giant: 52 };   // 大档 2026-09-28 长宽 ×1.6（56 → 90 含光晕余量）；原石宽度不变   // 烘焙底板边长（含光晕余量）
+  const CRYSTAL3D_R = { small: 6, mid: 10, big: 25.6, giant: 14 };   // 2026-09-28：大档长宽 +60%（16 → 25.6），原石宽度不变（giant 仍为 14，星模纵向芒尖 1.15R ≈ 16）；2026-09-27 定稿：giant = 星模芒尖对齐大档旧口径
   const CRYSTAL3D_COLORS = ['#39c5bb', '#46aaff', '#ffc0cb'];   // 普通水晶三色（原青 + 水蓝 + 粉；与 01-config CRYSTAL_COLORS 一致；当前无引用，保留备用）
   const crystal3DSprites = new Map();          // key: `${tier}:${colorKey}` → { frames: [canvas × 24], size }
 

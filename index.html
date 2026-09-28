@@ -1,27 +1,13 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>大无垠战机 · Big Infinity Fighter</title>
   <link rel="stylesheet" href="./style.css" />
-  <!-- 模块预加载：14 个 ES modules 在解析入口前按序串行获取，刷新时串行往返是首帧前主要等待之一；
-       modulepreload 让浏览器并行预取 + 预编译，缩短刷新后白屏/卡顿窗口（无行为改变） -->
-  <link rel="modulepreload" href="./js/01-config.js" />
-  <link rel="modulepreload" href="./js/02-achievements.js" />
-  <link rel="modulepreload" href="./js/02-core.js" />
-  <link rel="modulepreload" href="./js/03-audio.js" />
-  <link rel="modulepreload" href="./js/04-spawn.js" />
-  <link rel="modulepreload" href="./js/05-boss.js" />
-  <link rel="modulepreload" href="./js/06-enemy.js" />
-  <link rel="modulepreload" href="./js/07-player.js" />
-  <link rel="modulepreload" href="./js/08-entities.js" />
-  <link rel="modulepreload" href="./js/09-draw-ships.js" />
-  <link rel="modulepreload" href="./js/10-draw-world.js" />
-  <link rel="modulepreload" href="./js/11-draw-boss.js" />
-  <link rel="modulepreload" href="./js/12-ui.js" />
-  <link rel="modulepreload" href="./js/13-encyclopedia.js" />
-  <link rel="modulepreload" href="./js/14-main.js" />
+  <!-- 曾尝试 modulepreload 并行预取 14 个 ES modules（v0.3.7）：实测刷新后 JS 就绪时间几乎不变
+       （本机 http 瀑布式加载仅 ~90ms），反而把 1.5MB JS 的编译+顶层执行集中到同一帧，
+       造成刷新后 ~69ms 长任务 + 主菜单零点几秒可感掉帧。已回滚，勿再加。 -->
 </head>
 <body>
   <div class="app">
