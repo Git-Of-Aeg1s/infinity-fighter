@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(13 名) 06-enemy(33 名) 07-player(35 名) 08-entities(18 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(85 名) 13-encyclopedia(18 名) 14-main(34 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(13 名) 06-enemy(33 名) 07-player(35 名) 08-entities(18 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(86 名) 13-encyclopedia(18 名) 14-main(34 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -22,6 +22,7 @@
 
   const hpFill = document.getElementById('hpFill');
   const hpBarrier = document.getElementById('hpBarrier');   // 青时炮艇支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
+  const hpPermBarrier = document.getElementById('hpPermBarrier');   // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；12-ui updateHUD 驱动宽度）
   const scoreText = document.getElementById('scoreText');
   const stonePanel = document.getElementById('stonePanel');   // 原石收集计数面板（当局；12-ui updateHUD 驱动显隐）
   const stoneCount = document.getElementById('stoneCount');   // 原石收集个数（巨型水晶拾取，08-entities 写入 state.gachaStones）
@@ -159,6 +160,8 @@
     jiukeT: 0,             // 酒客之影：透明化剩余时长（s；0 = 未激活）
     jiukeHits: 0,          // 酒客之影：剩余免疫次数（2；07-player damagePlayer 消耗，归零或到时立即解除）
     gachaFx: null,         // 哦哦！抽卡！：全套演出状态机 { phase, t, stones[], color, meteor, shock } （07-player updateGachaFx 驱动，10-draw-world 绘制）
+    xinFuryRing: null,     // 辛国栋大怒：固定扩散火环 { x, y, r, rMax, t, phase, dps, tick, tickT, alpha }（不移动、半径扩张 6s→全屏、6s 后灼烧全场、再 4s 渐隐）
+    honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
     gachaStones: 0,          // 原石（巨型水晶）当局收集数（HUD 左上显示；08-entities 拾取点写入，结算页读取）
     gachaStoneMilestone: false, // 原石 16 颗里程碑已触发（一局仅一次获得机会，触发后不再重复）
     gachaStoneOwed: false,   // 里程碑触发时道具栏被占用——当前道具用掉后立刻补发「哦哦！抽卡！」（07-player useRewardItem 结算）
@@ -221,6 +224,10 @@
     shield: 0,         // 量子护盾剩余时间
     shieldMax: 0,      // 本次护盾的总时长（读条分母：通用与澄月均 6s，见 12-ui）
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
+    barrier: 0,        // 青时炮艇支援弹屏障（临时，优先吸收；到期自动消散）
+    barrierMax: 0,     // 本次屏障的总量（绘制/衰减分母）
+    barrierT: 0,       // 屏障剩余时长
+    permBarrier: 0,    // 永久屏障（瓶中精灵主动使用获得：整局不随时间衰减，在 barrier 右侧以青色段显示）
     bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
     bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
     chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
@@ -619,7 +626,7 @@
   }
 
   export {
-    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, scoreText, stonePanel, stoneCount,
+    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, kingBonus,
     itemGauge, itemGaugeRing, itemGaugeIcon,

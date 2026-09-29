@@ -103,6 +103,26 @@
   // 首轮 BOSS（每局第一个登场的 BOSS）名单：其掉落的水晶对七日澜心量表有额外加成（ARMOR_SKILLS.lanxin.firstBossBonus）。
   // 后续新增"可作为首轮"的 BOSS 时，把 bossId 加入本表即可（现在只有旧日之歌）
   const FIRST_ROUND_BOSSES = ['song'];
+
+  // ---------- 【设计登记 · 尚未接入流程】5 轮 BOSS 轮次制（2026-09-29 定稿） ----------
+  // 目标流程：每局共 5 轮「普通敌人 + BOSS」——每轮刷怪 50s、+10 级（BOSS 依次登场于 Lv11 / 21 / 31 / 41 / 51）；
+  // 每轮等清场后从该轮候选池随机抽取 1 个 BOSS（第 1 / 3 / 5 轮池内仅 1 个，无随机）；仅击败第五轮 BOSS 后通关。
+  // 轮次绑定（待设计 BOSS 以 wip 登记，名字先行，ID 2026-09-29 定稿）：
+  //   第1轮 旧日之歌(song，已实装)
+  //   第2轮 黑暗之手(darkhand) / 晨星(dawnstar)
+  //   第3轮 暴风之眼(storm，已实装) —— 击败后直接召唤风暴编织者(storm2)：两阶段连续战斗，整体为一个轮次
+  //   第4轮 归星(returnstar) / 颂歌(carol)
+  //   第5轮 月亮领主(moonlord) —— 最终 BOSS
+  // 实装时：以本表为单一来源做随机选取、替换 BOSS_SEQUENCE 接线；SPAWN_PHASE_TIMES 扩为五段、
+  //         SPAWN_PHASE_LEVEL 补至第五轮、胜利判定从 storm2 改到第五轮 BOSS。
+  const BOSS_ROUNDS = [
+    { round: 1, bossLv: 11, pool: ['song'] },
+    { round: 2, bossLv: 21, pool: ['darkhand', 'dawnstar'] },
+    { round: 3, bossLv: 31, pool: ['storm'] },          // storm2 为 storm 的连续二阶段，不单独占轮
+    { round: 4, bossLv: 41, pool: ['returnstar', 'carol'] },
+    { round: 5, bossLv: 51, pool: ['moonlord'] },
+  ];
+
   const SPAWN_PHASE_TIMES = [50, 50];        // 各阶段刷怪时长（s）：两轮均为 50s（第二轮与第一轮节奏一致）
   // 关卡由“非 BOSS 期间的有效刷怪时间”驱动（不再随分数增长，切断高分→怪多→更高分的正反馈）：
   // 出怪期间每 5s +1（50s 刷怪期恰好 +10 级）：第一轮 1 级起步 → 50s 后恰好 11 级（首个 BOSS 登场即 11 级）；
@@ -116,7 +136,7 @@
     name: '旧日之歌',
     w: 288, h: 130,            // 宽度约 60% 屏宽
     hp: 36000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { illusion: 30000, form: 36000, realme: 54000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 30000, form: 36000, realme: 54000, poem: 82000 },   // 分难度血量表（虚象 / 具象 / 真我 / 诗篇；2026-09-29 已同步总表：第4行血量口径默认真我 54000、第5行诗篇血量 82000）
     score: 0,                  // 击杀分数 0：击杀奖励全部改为掉落 600 颗水晶（怪物属性总表 2026-09 批次）
     hoverY: 120,
     // 航点扫动移动（替代原 sin 定角速左右巡航，见 05-boss）：总体沿当前方向逐段横扫，
@@ -147,7 +167,7 @@
     name: '暴风之眼',
     w: 384, h: 384,            // 占屏宽 80%（CANVAS_W=480）
     hp: 50000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { illusion: 42000, form: 50000, realme: 72000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 42000, form: 50000, realme: 72000, poem: 120000 },   // 分难度血量表（虚象 / 具象 / 真我 / 诗篇；2026-09-29 已同步总表：真我 72000 / 诗篇 120000）
     score: 9000,               // 击杀分数 9000：本体不掉水晶（旧日之歌 600 / 风暴编织者 900 均为各自掉落，怪物属性总表 2026-09 批次）
     hoverY: 205,               // 风暴中心悬停高度
     skillCd: BOSS.skillCd * 0.5,   // 技能间基础冷却 = 旧日之歌常态间隔（2.2s）的 50%（连中同技能 ×0.2）
@@ -218,7 +238,7 @@
     name: '风暴编织者',
     w: 168, h: 94,             // 判定箱（基础 ×1.2 整体扩大；仍刻意小于模型视觉约 208 ≈ 43% 屏宽）
     hp: 36000,                 // 基准血量（具象；各难度见 hpByDiff）
-    hpByDiff: { illusion: 28000, form: 36000, realme: 45000 },   // 分难度血量表（虚象 / 具象 / 真我）
+    hpByDiff: { illusion: 28000, form: 36000, realme: 45000, poem: 70000 },   // 分难度血量表（虚象 / 具象 / 真我 / 诗篇；2026-09-29 已同步总表：真我 45000 / 诗篇 70000）
     score: 0,                  // 击杀分数 0：击杀奖励全部改为掉落 900 颗水晶（怪物属性总表 2026-09 批次）
     hoverY: 150,               // 悬停高度（较风暴中心 205 更靠下，凸显机体形态）
     // 航点扫动移动（与旧日之歌同一系统，见 05-boss；基准速度更快以保持其高机动定位）
@@ -440,10 +460,20 @@
   xinguodongLoader.src = 'assets/xinguodong_transparent.png';
 
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
+  // wip=true：待设计 BOSS（轮次绑定见 BOSS_ROUNDS）——名字与预定登场登记先行，实体/技能未实装，当前流程不会抽取
   const BOSSES = {
     song: { id: 'song', name: '旧日之歌', lv: 11 },
+    // 黑暗之手血量（2026-09-29 用户指定，已同步总表：新增「黑暗之手」列，真我 60000 / 诗篇 100000）：
+    // 虚象 32000 / 具象 39000 / 真我 60000 / 诗篇 100000。
+    // BOSS 未实装，暂无独立配置块——血量表先挂注册表条目；实装时迁入 DARKHAND 配置并经 resolveBossHp 读取
+    darkhand: { id: 'darkhand', name: '黑暗之手', lv: 21, wip: true,
+      hp: 39000, hpByDiff: { illusion: 32000, form: 39000, realme: 60000, poem: 100000 } },   // 第二轮候选（成就/形象已先行登记，见 README）
+    dawnstar: { id: 'dawnstar', name: '晨星', lv: 21, wip: true },       // 第二轮候选
     storm: { id: 'storm', name: '暴风之眼', lv: 21 },
     storm2: { id: 'storm2', name: '风暴编织者', lv: 21 },
+    returnstar: { id: 'returnstar', name: '归星', lv: 41, wip: true },   // 第四轮候选
+    carol: { id: 'carol', name: '颂歌', lv: 41, wip: true },             // 第四轮候选
+    moonlord: { id: 'moonlord', name: '月亮领主', lv: 51, wip: true },   // 第五轮最终 BOSS
   };
   // 警报演出时长：横杠滑入 → 红色区域与名号展示 → 整体淡出
   const BOSS_WARN = { slide: 0.9, hold: 1.9, fade: 0.5 };
@@ -1475,16 +1505,6 @@
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
       fireInterval: [1e9, 1e9],   // 不攻击：投弹流程由移动状态机驱动（同暴鸰）
     },
-    sponsor: {          // 赞助无人机（2类）：击败后得到道具
-      w: 46, h: 40, hp: 56, score: 130, color: '#ffd166', drawScale: 1.4,
-      bulletSpeed: 230, bulletR: 4, bulletDmg: 0, crashDmg: 24,
-      fireInterval: [1e9, 1e9],
-    },
-    sponsorDeluxe: {    // 豪华赞助无人机（2类）：击败后得到强力道具
-      w: 46, h: 40, hp: 56, score: 260, color: '#ffe9b0', drawScale: 1.4,
-      bulletSpeed: 230, bulletR: 4, bulletDmg: 0, crashDmg: 24,
-      fireInterval: [1e9, 1e9],
-    },
     warGhost: {         // 战争幽灵（4类，诗篇新敌）：风波预警极速入场冲撞 → 驻留中场技能循环 → 直线预警加速斩出；
                         // 光环强化破片系/铁砧、半血召唤（见 WAR_GHOST 与 06-enemy warGhost 分支）
       w: 130, h: 96, hp: 4200, score: 1300, color: '#ffd24a', drawScale: 1.7,   // 金黄渐变流动机体；体量同炮火先兆者级
@@ -1621,9 +1641,9 @@
     speedPost: 240,      // 投弹后俯冲速度
     armDelay: 0.8,       // 登场后武装延时（此后才具备投弹判定）
     triggerDist: CANVAS_H * 0.4,   // 索敌半径：40% 屏高（原 1/3；进入后停车锁定投弹）
-    warnTime: 0.35,      // 预警区出现 → 炸弹脱离的间隔
-    dropTimeMin: 0.4,    // 炸弹脱离后的低速下坠时长下限（逐弹随机 0.4~0.6s，原 0.8 固定值）
-    dropTimeMax: 0.6,    // 低速下坠时长上限；结束后加速飞向预警区中心
+    warnTime: 0.35,      // 预警区显示时长（2026-09-29 起炸弹在停车锁定瞬间即脱离，预警倒计时与下坠并行；机体停车段）
+    dropTimeMin: 0.6,    // 炸弹脱离后的低速下坠时长下限（逐弹随机 0.6~0.8s；2026-09-29 起锁定瞬间即投弹（起点提前 0.35s），时长两轮 +0.1s，原 0.8 固定值）
+    dropTimeMax: 0.8,    // 低速下坠时长上限；结束后加速飞向预警区中心
     postThrowWait: 1.2,  // 投弹后原地停留时长（原 1.5 减少 0.3s），随后才继续俯冲
     dropSpeed: 70,       // 脱离/下坠初速（低速：不直接给高初速）
     strikeAccel: 4200,   // 飞向预警区中心的加速度（极强加速）
@@ -1639,7 +1659,7 @@
 
   // 暴鸰·G 参数（特殊3类，诗篇新敌实装 2026-09-29）：全部数值与暴鸰一致，仅——
   //   移速 -15%（speedSlow / speedPost）、爆炸半径 +30%（blastR / deathBlastR）、HP 800（见 ENEMY_TYPES.baolingG）；
-  // 其余字段全部引用 BAOLING 原值（BAOLING 数值调整时自动跟随）
+  // 其余字段全部引用 BAOLING 原值（BAOLING 数值调整时自动跟随；投弹时机等流程字段三机同规则，见 BAOLING / 06-enemy 状态机）
   const BAOLING_G = {
     speedSlow: BAOLING.speedSlow * 0.85,     // 投弹前下降速度（102 = 120 × 0.85）
     speedPost: BAOLING.speedPost * 0.85,     // 投弹后俯冲速度（204 = 240 × 0.85）
@@ -1854,8 +1874,8 @@
 
   // 战争幽灵参数（特殊4类，诗篇新敌实装 2026-09-29）：白色风波预警 → 极速入场冲撞（50 伤害+强击退）→
   // 抵达演出 → 驻留中场技能循环（首个从{2,3}随机、之后固定 1→2→3）→ 驻留 30s 后直线预警加速斩出离场；
-  // 驻留期间光环：场上破片/破片U型/铁砧移速与加速度 ×3、破片无视攻击距离（作用点 06-enemy warGhostAura
-  // 与 popian / anvil 分支）；半血一次性召唤：近侧边缘铁砧 + 远侧边缘破片U型（spawnWarGhost / 06-enemy）
+  // 驻留期间光环：场上破片/破片U型/铁砧移速与加速度 ×2（+100%，2026-09-29 由 ×3 下调）、破片无视攻击距离（作用点 06-enemy warGhostAura
+  // 与 popian / anvil 分支）；半血一次性召唤：目标点在幽灵身侧略微后方（06-enemy）
   const WAR_GHOST = {
     // —— 入场 ——
     stayYPctMin: 0.50, stayYPctMax: 0.65,   // 停留点高度区间（占屏高比，从上往下）
@@ -1895,8 +1915,11 @@
     exitAccel: 5200,       // 离场斩击加速度（px/s²，速度从 0 平滑加速，≈0.46s 到满速）
     exitMaxSpeed: 2400,    // 离场速度上限（px/s，沿锁定直线斩出直到出界）
     // —— 光环 ——
-    auraSpdMul: 3,         // 破片/破片U型/铁砧移速倍率
-    auraAccMul: 3,         // 同三者加速度倍率（移速 ×3 时逼近率同步 ×3，防止高速下冲过停留锚点）
+    auraSpdMul: 2,         // 破片/破片U型/铁砧移速倍率（2026-09-29：3 → 2，即 +100%）
+    auraAccMul: 2,         // 同三者加速度倍率（移速 ×2 时逼近率同步 ×2，防止高速下冲过停留锚点）
+    // —— 半血召唤目标点 ——（2026-09-29：由屏幕两侧边缘改为幽灵身侧略微后方）
+    summonSideGap: 70,     // 目标点距幽灵的横向间距（左右各一）
+    summonBackY: 40,       // 目标点距幽灵的纵向靠后量（幽灵机头朝下→后方即上方）
   };
 
   // 法术矩阵参数（特殊2类白红菱形法师无人机）：慢速下降到悬停带停稳 → 朝玩家左右 ±15° 发射发光正方体（独立 spellCubes 弹道）
@@ -2085,7 +2108,7 @@
   };
   const STRIKER_SPEED_MUL = 0.7;   // （已废弃：2类入位/冲锋速度改由 VARIANTS.striker 逐变体 entry/charge 定义）
   // 1类虚象级（侧翼艇）两速体系：速度模长恒定、方向由生成点基值决定（生成时归一化写入 _sideVel）
-  const SIDE_SPEED_FAST = 200;     // 快速：顶部入场（对角奇袭 / 图鉴挑战顶部斜插）；BOSS 战期间与 BOSS 后固定首波等特殊波次的 1类不限入场位置均为快速
+  const SIDE_SPEED_FAST = 200;     // 快速：顶部入场（232111 / 图鉴挑战顶部斜插）；BOSS 战期间与 BOSS 后固定首波等特殊波次的 1类不限入场位置均为快速
   const SIDE_SPEED_SLOW = 150;     // 慢速：侧翼入场（常规编队 / 1类长队 / 侧翼斜扫 / 紫自爆流）
   const SIDE_ENTRY_BOOST = 1.6;    // 1类入场冲刺倍率：入场瞬间 ×1.6（快速 320 / 慢速 240），随后快速衰减
   const SIDE_ENTRY_DECAY = 5;      // 入场冲刺指数衰减系数（/s）：约 0.7s 内衰减至常规速度
@@ -2139,9 +2162,15 @@
     magnetShroom: { id: 'magnetShroom', rarity: 'normal', name: '磁力菇', glyph: '🍄',
                     desc: '水晶拾取半径 +40，持续一整局，可叠加。' },
     noLingluo:    { id: 'noLingluo',    rarity: 'normal', name: '不再陵落', glyph: '🗡',
-                    desc: '持续 6s：以 16 发/s 向周身螺旋射出无界飞剑（起始朝上、每发顺时针偏转 40°，每圈自带 40° 偏移）；射出方向在水平线以下的飞剑对 BOSS 只造成 50% 伤害。' },
+                    desc: '持续 9s：以 32 发/s 向周身螺旋射出无界飞剑（起始朝上、每发顺时针偏转 25°，每圈自带 25° 偏移）；射出方向在水平线以下的飞剑对 BOSS 只造成 50% 伤害。' },
     frostGen:     { id: 'frostGen',     rarity: 'normal', name: '寒霜发生器', glyph: '❄',
                     desc: '周身 160px 寒霜力场（青白色半透明）：力场内敌机射速/移速与敌方子弹弹速 -35%，持续 12s；到期后力场朝正上方以 80px/s 发射离场。力场内焦香螺旋桨的火环失效，其机体在力场内每 0.1s 受 30 点灼烧（每次递增 1，离场重置）。' },
+    xinguodongFury: { id: 'xinguodongFury', rarity: 'normal', name: '辛国栋大怒', glyph: '🔥',
+                    desc: '以使用瞬间自身位置为中心生成一个不移动的辛国栋同款火环，半径持续扩大，6s 后几乎布满全屏并对全体敌人造成一次灼烧伤害，随后再持续 4s 渐隐消失。火环对辛国栋造成 5 倍伤害。' },
+    honghongBomb: { id: 'honghongBomb', rarity: 'normal', name: '轰轰炸弹', glyph: '💣',
+                    desc: '持续 20s：击败敌人后立刻对其周围一定距离内的敌人造成相当于该机最大生命值 20% 的伤害（红橙色冲击波），可连锁爆炸。1/2/3/4 类敌人的扩散距离分别为 40/50/60/70px；BOSS 战中 1 类敌人的伤害 ×10（即最大生命值 200%）；BOSS 本身不触发该效果。' },
+    handDouzhi:   { id: 'handDouzhi',   rarity: 'normal', name: '手持斗志昂扬', glyph: '🎯',
+                    desc: '使用后立刻在场地上生成一架斗志昂扬（从屏幕左/右侧横穿），其生命值 -40%。' },
     // ---- 稀有（金色）----
     bengbag:      { id: 'bengbag',      rarity: 'rare', name: '绷绷背包', glyph: '🎒',
                     desc: '高能爆弹 / 绷绷炸弹携带上限 +1 并立刻补充 1 枚，持续一整局；该道具一局限掉落一次。' },
@@ -2149,6 +2178,8 @@
                     desc: '机体透明化加深，可免疫接下来 2 次受击，持续 30s；受击 2 次或到时后立即解除。' },
     gacha:        { id: 'gacha',        rarity: 'rare', name: '哦哦！抽卡！', glyph: '🎲',
                     desc: '16 颗原石自四面八方随机先后汇集机体（约 2.5s，期间无敌、我方输出 -60%），收束后清除周身 300px 敌弹并抽卡：70% 蓝 / 25% 紫 / 5% 金——场中巨影闪现，同色陨石轰击场心（蓝 6000 / 紫 16000 全场伤害；金秒杀全场敌方单位——与埃逸殉爆同款：禁用增生分裂 / 法术矩阵爆发等召唤型亡语、无法秒杀二阶段风暴编织者）；陨石同时清除全场敌我弹幕与预警（暴风之眼风波/风柱、风暴编织者雷霆/激光预警、战争幽灵登场——登场的战争幽灵直接被砸死）。' },
+    bottleSpirit: { id: 'bottleSpirit', rarity: 'rare', name: '瓶中精灵', glyph: '🧪',
+                    desc: '被动：被击坠时免于死亡，立刻恢复生命至 30%、清除周围 250px 弹幕（青绿色冲击波）并获得 3s 无敌。主动使用：获得 30% 独立永久屏障（血条上青色段，位于普通屏障右侧）。同时拥有屏障与永久屏障时优先消耗屏障；拥有屏障时被击中只要没掉血即算无伤；屏障到期消散不影响永久屏障；永久屏障具备抵御效果——若该次伤害大于永久屏障+屏障总量，仅扣除两个屏障、不扣血（吃掉一次溢出伤害）。' },
   };
 
   // 测试模式（图鉴挑战）：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）
@@ -2320,7 +2351,7 @@
 
   export {
     CANVAS_W, CANVAS_H, PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
-    BOSS_SEQUENCE, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
+    BOSS_SEQUENCE, BOSS_ROUNDS, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
     STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, energyOrbSheet, ENERGY_ORB, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, lightningImgRing, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
     DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isRealme, isPoem, isHardTier, invulnDiffMul, bossDmgMul, enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, strikerFortressDR, warGhostFanRange, SONG_SHIP, STORM2_SHIP, BOSS_MINION_WAVE, STORM_SHIP, WAVE_POEM,

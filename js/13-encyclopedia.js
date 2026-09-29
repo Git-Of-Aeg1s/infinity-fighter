@@ -7,7 +7,7 @@
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
-  import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
+  import { paintShip, paintWingman, paintWingmanBulwark, paintWarGhostCandidate, paintDouzhiMark, paintDouzhiBox, paintMarkA, paintMarkB, paintMarkC, paintMarkD, paintMarkE, paintBoxMark1, paintBoxMark2, paintBoxMark3, paintBoxMark4, paintBoxMark5 } from './09-draw-ships.js';
   import { drawEnemy } from './10-draw-world.js';
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';
@@ -18,9 +18,7 @@
   // ---------- 怪物图鉴 ----------
   const ENCY_GRADES = [
     { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_swirl', 'side_moon', 'prolifera'] },
-    // 具象级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：破片U型（赞助无人机 / 豪华赞助无人机已实装专属外观）
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix', 'popianU', 'sponsor', 'sponsorDeluxe'] },
-    // 真我级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：脉冲矩阵（暴鸰·G / 虚幻已实装专属外观）
     { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'gunship_orange', 'gunship_cyan', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2', 'baolingG', 'pulseMatrix', 'unreal'] },
     // 诗篇级：全部实装（法术阵列 / 战争幽灵，专属外观预览）
     // （黑暗之手四精英为衍生级条目：不入分页，仅经黑暗之手 desc 内名称点击跳转，见 jumpToEncyEntry）
@@ -138,7 +136,7 @@
     baoling: {
       name: '暴鸰', type: 'baoling', color: '#e3e6ec', hp: 550, score: 500,
       lore: '敌方人员操纵的无人战舰，飞行速度缓慢。携带有爆破弹头，将会在接近我方战机时投掷，并造成范围物理伤害。据说设计灵感来自某种幻想生物。虽然在投弹之后不再具有任何攻击性，但是因重量减轻而得以更快速地移动。',
-      desc: '自爆无人机：<b>不悬停</b>、径直下压，进入<b>索敌半径（40% 屏幕高度）</b>即<b>停车锁定</b>——玩家位置浮现红色预警区，炸弹脱离后经 <b>0.4~0.6s（逐弹随机）</b>低速下坠再<b>极速加速</b>冲向预警区中心爆炸：<b>玩家 40 伤害</b>（不伤敌人）。<b>预警区形成前被击毁则原地自爆</b>（伴随红色扩散爆炸波，<b>不伤玩家</b>）：<b>周围 250px 内所有敌方单位</b>受 600 + 20% 最大生命伤害（封顶 2000，可连锁殉爆）；<b>预警区一旦形成，炸弹即视为脱离——击毁暴鸰也无法终止，炸弹仍将抵达目标位置并爆炸</b>。投弹后<b>停留 1.2s</b> 再俯冲离场；碰撞 <b>24</b>。<b>玩家处于爆圈内时对暴鸰增伤 35%</b>（无论是否已投弹）。普通炮艇 <b>1.5%</b> 概率替换出现（成对编队则两架均为暴鸰）；<b>Lv11 起也占特殊 3 类槽位权重</b>。',
+      desc: '自爆无人机：<b>不悬停</b>、径直下压，进入<b>索敌半径（40% 屏幕高度）</b>即<b>停车锁定</b>——玩家位置浮现红色预警区（<b>0.35s</b>），<b>锁定瞬间炸弹即脱离</b>（预警与下坠并行），经 <b>0.6~0.8s（逐弹随机）</b>低速下坠再<b>极速加速</b>冲向预警区中心爆炸：<b>玩家 40 伤害</b>（不伤敌人）。<b>预警区形成前被击毁则原地自爆</b>（伴随红色扩散爆炸波，<b>不伤玩家</b>）：<b>周围 250px 内所有敌方单位</b>受 600 + 20% 最大生命伤害（封顶 2000，可连锁殉爆）；<b>预警区一旦形成，炸弹即视为脱离——击毁暴鸰也无法终止，炸弹仍将抵达目标位置并爆炸</b>。投弹后<b>停留 1.2s</b> 再俯冲离场；碰撞 <b>24</b>。<b>玩家处于爆圈内时对暴鸰增伤 35%</b>（无论是否已投弹）。普通炮艇 <b>1.5%</b> 概率替换出现（成对编队则两架均为暴鸰）；<b>Lv11 起也占特殊 3 类槽位权重</b>。',
     },
 
     jiaoxiang: {
@@ -265,52 +263,52 @@ boss_storm: {
       desc: '暴风之眼技能2 召唤的衍生体：蓄力后自机体前方推出，<b>约占屏宽 30%</b>，可击毁、<b>缓慢下移直至脱离战场</b>（轻微左右摇摆），随机 360° 快速射出 <b>16 伤害风条</b>，碰撞 <b>32</b> 伤害。<b>受到战机主武器伤害 -50%、受僚机伤害 +150%</b>（僚机是其弱点）；<b>守愿者弹每次命中判定两次伤害</b>。<b>不掉落水晶与道具</b>（真我难度血量 <b>6000</b>）。不计入场面压力。',
     },
 
-    // ---------- 诗篇难度新敌（逐个实装中）：已实装的移除 wip 并换专属外观/数值，未实装的仍为占位 ----------
+    // ---------- 新增敌人批次（逐个实装中）：已实装的移除 wip 并换专属外观/数值，未实装的仍为占位 ----------
     // wip: true → 图鉴预览统一白色方块（13-encyclopedia drawEncyPreview；例外：黑暗之手 / 四精英已导入素材形象，画真实形象）；实装时逐个替换专属外观与数值
     popianU: {
       name: '破片U型', type: 'popianU', color: '#cfd6e0', hp: 250, score: 220,
-      desc: '<span class="ency-link" data-ency="popian">破片</span>的升级版（<b>2类</b>，<b>诗篇新敌</b>）：外形与破片一致，<b>核心描边、中心双杠与炮口为红色</b>。与原版不同：<b>入场后无需锁停就位</b>——飞行途中即<b>旋转瞄准玩家</b>（尾焰始终朝向移动方向），<b>入场 1.8~2s</b>（诗篇 <b>1.6~2s</b>）后即可攻击：玩家处于索敌范围内时在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）——<b>首发 10 伤害</b>、后两发各 <b>7</b>（破片 8/5 各 +2）；<b>若首发命中，后两发无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。移动/停留规则与碰撞伤害（<b>24</b>）同破片：直飞选定点后急停锁停、原地小幅漂移。<b>生命值 250</b>（破片 200）。<b>诗篇出怪接入待实装</b>（当前可经图鉴挑战召唤）。',
+      desc: '<span class="ency-link" data-ency="popian">破片</span>的升级版（<b>2类</b>）：外形与破片一致，<b>核心描边与炮口为红色、菱形四角带红段，中心双杠为黑底红色能量流动</b>。与原版不同：<b>入场后无需锁停就位</b>——飞行途中即<b>旋转瞄准玩家</b>（尾焰始终朝向移动方向），<b>入场 1.8~2s</b>（诗篇 <b>1.6~2s</b>）后即可攻击：玩家处于索敌范围内时在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）——<b>首发 10 伤害</b>、后两发各 <b>7</b>（破片 8/5 各 +2）；<b>若首发命中，后两发无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。移动/停留规则与碰撞伤害（<b>24</b>）同破片：直飞选定点后急停锁停、原地小幅漂移。<b>生命值 250</b>（破片 200）。<b>诗篇出怪接入待实装</b>（当前可经图鉴挑战召唤）。',
     },
     baolingG: {
       name: '暴鸰·G', type: 'baolingG', color: '#ffd8a8', hp: 800, score: 500,
       pvDy: -3.8,   // 预览垂直偏移：胶囊弹大且挂点靠下，构图包围盒中心比暴鸰低约 3.8 世界像素——上移对齐视觉中心
-      desc: '【诗篇新敌 · 已实装】<span class="ency-link" data-ency="baoling">暴鸰</span>的升级版（3类）：外观为暴鸰的<b>放大版（+5%）</b>，炸弹由圆形改为<b>胶囊形</b>（半圆+矩形+半圆，矩形段多道红色横杠）。攻击方式与暴鸰完全一致（索敌停车锁定 → 投弹 → 爆炸），差异：<b>HP 800</b>（暴鸰 550）、<b>移速 -15%</b>、<b>爆炸半径 +30%</b>（预警圈 / 玩家伤害半径 95、亡语自爆波及 325，均可连锁殉爆）；玩家处于爆圈内同样<b>增伤 35%</b>。',
+      desc: '<span class="ency-link" data-ency="baoling">暴鸰</span>的升级版（3类）：外观为暴鸰的<b>放大版（+5%）</b>，炸弹由圆形改为<b>胶囊形</b>（半圆+矩形+半圆，矩形段多道红色横杠）。攻击方式与暴鸰完全一致（索敌停车锁定 → 投弹 → 爆炸），差异：<b>HP 800</b>（暴鸰 550）、<b>移速 -15%</b>、<b>爆炸半径 +30%</b>（预警圈 / 玩家伤害半径 95、亡语自爆波及 325，均可连锁殉爆）；玩家处于爆圈内同样<b>增伤 35%</b>。',
     },
     sponsor: {
       name: '赞助无人机', type: 'sponsor', color: '#f2f5fa', hp: 280, score: 100,
-      desc: '【诗篇新敌 · 已实装】白色赞助无人机（2类）：造型与行动同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>（左右横穿 + 上下浮动，无攻击、无碰撞、互相穿过），差异：盒子为<b>白色</b>且<b>高度略低（-15%）</b>、<b>移速 -20%</b>、<b>上下摆动幅度大幅降低</b>。<b>击毁后掉落一个奖励道具</b>：<b>90% 普通 / 10% 稀有</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
+      desc: '白色赞助无人机（2类）：造型与行动同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>（左右横穿 + 上下浮动，无攻击、无碰撞、互相穿过），差异：盒子为<b>白色</b>且<b>高度略低（-15%）</b>、<b>移速 -20%</b>、<b>上下摆动幅度大幅降低</b>。<b>击毁后掉落一个奖励道具</b>：<b>90% 普通 / 10% 稀有</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
     },
     sponsorDeluxe: {
       name: '豪华赞助无人机', type: 'sponsorDeluxe', color: '#ffe9a8', hp: 280, score: 100,
-      desc: '【诗篇新敌 · 已实装】淡黄色豪华赞助无人机（2类）：<span class="ency-link" data-ency="sponsor">赞助无人机</span>的豪华版——造型与行动完全一致（同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>横穿浮动，无攻击、无碰撞），仅盒子为<b>淡黄色</b>。<b>击毁后必定掉落一个稀有奖励道具</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
+      desc: '淡黄色豪华赞助无人机（2类）：<span class="ency-link" data-ency="sponsor">赞助无人机</span>的豪华版——造型与行动完全一致（同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>横穿浮动，无攻击、无碰撞），仅盒子为<b>淡黄色</b>。<b>击毁后必定掉落一个稀有奖励道具</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
     },
     warGhost: {
       name: '战争幽灵', type: 'warGhost', color: '#ffd24a', hp: 4200, score: 1300,
-      desc: '【诗篇新敌 · 已实装】金黄渐变流动的突击驻留型 4 类舰，体量与<span class="ency-link" data-ency="harbinger">炮火先兆者</span>相当。<b>入场</b>：屏外白色风波预警 1s（停留点涟漪 + 来向路径流带）→ 极速冲刺入场，<b>冲撞命中 50 伤害 + 强力击退</b>；抵达时能量刃转一圈金色爆发，随后<b>驻留中场</b>小幅摆动（停留高度约 50%~65%）。<b>技能循环</b>（首个随机，之后固定 1→2→3，间隔 2.2s）：①<b>扇斩</b>——0.8s 扇形预警（锁定瞬间方向）后，对半径 160、90° 扇区内的玩家造成 40 伤害（诗篇半径 180）；②<b>双斩流</b>——双平行斩线跟随玩家 0.5s 后锁定 0.8s，射出两道高速斩击流（35 伤害 / 道）；③<b>环形弹幕</b>——三方向（互成 120°）各 3 连发、共三波（第 2 波旋转 60°、第 3 波同第 1 波），每发 10 伤害。<b>光环</b>：驻留期间场上<span class="ency-link" data-ency="popian">破片</span>、<span class="ency-link" data-ency="popianU">破片U型</span>、<span class="ency-link" data-ency="anvil">铁砧</span>移速与加速度 <b>×3</b>、破片无视攻击距离。<b>半血召唤</b>：血量首次降至 50% 时于两侧边缘召唤一座铁砧（近侧、固定横位）与一架破片U型（远侧）。<b>离场</b>：驻留 30s 后瞄准玩家所在直线释放 1s 风波预警（纯直线、无落点），预警结束获得巨大加速度沿直线斩出，直到出界离开战场。',
+      desc: '金黄渐变流动的突击驻留型 4 类舰，体量与<span class="ency-link" data-ency="harbinger">炮火先兆者</span>相当。<b>入场</b>：屏外白色风波预警 1s（停留点涟漪 + 来向路径流带）→ 极速冲刺入场，<b>冲撞命中 50 伤害 + 强力击退</b>；抵达时能量刃转一圈金色爆发，随后<b>驻留中场</b>小幅摆动（停留高度约 50%~65%）。<b>技能循环</b>（首个随机，之后固定 1→2→3，间隔 2.2s）：①<b>扇斩</b>——0.8s 扇形预警（锁定瞬间方向）后，对半径 160、90° 扇区内的玩家造成 40 伤害（诗篇半径 180）；②<b>双斩流</b>——双平行斩线跟随玩家 0.5s 后锁定 0.8s，射出两道高速斩击流（35 伤害 / 道）；③<b>环形弹幕</b>——三方向（互成 120°）各 3 连发、共三波（第 2 波旋转 60°、第 3 波同第 1 波），每发 10 伤害。<b>光环</b>：驻留期间场上<span class="ency-link" data-ency="popian">破片</span>、<span class="ency-link" data-ency="popianU">破片U型</span>、<span class="ency-link" data-ency="anvil">铁砧</span>移速与加速度 <b>+100%（×2）</b>、破片无视攻击距离。<b>半血召唤</b>：血量首次降至 50% 时于<b>自身左右身侧略微后方</b>（横向间距 70px、后方即上方 40px）召唤一座铁砧（固定横位）与一架破片U型（顶部入场、目标点同处后方水平线）。<b>离场</b>：驻留 30s 后瞄准玩家所在直线释放 1s 风波预警（纯直线、无落点），预警结束获得巨大加速度沿直线斩出，直到出界离开战场。',
     },
     boss_darkhand: {
-      name: '黑暗之手', type: 'boss', bossId: 'darkhand', wip: true, previewOnly: true, color: '#b04ad4', hp: 99999, score: 0,
-      desc: '【诗篇新敌 · 占位预告】第二轮登场的 BOSS。<b>能够召唤<span class="ency-link" data-ency="puxuefeng">朴学峰</span>、<span class="ency-link" data-ency="hanxixian">韩希先</span>、<span class="ency-link" data-ency="xiayong">夏勇</span>、<span class="ency-link" data-ency="xinguodong">辛国栋</span>等精英敌人协助攻击</b>——本体与召唤物协同构成多层次弹幕压力。<br /><i>（占位条目：形象取自素材图，BOSS 未实装，试炼 / 测试入口待实装后开放）</i>',
+      name: '黑暗之手', type: 'boss', bossId: 'darkhand', wip: true, previewOnly: true, color: '#b04ad4', hp: 39000, score: 0,   // 具象血量 39000（2026-09-29；四难度表见 01-config BOSSES.darkhand，已同步总表）
+      desc: '【占位预告】第二轮登场的 BOSS。<b>能够召唤<span class="ency-link" data-ency="puxuefeng">朴学峰</span>、<span class="ency-link" data-ency="hanxixian">韩希先</span>、<span class="ency-link" data-ency="xiayong">夏勇</span>、<span class="ency-link" data-ency="xinguodong">辛国栋</span>等精英敌人协助攻击</b>——本体与召唤物协同构成多层次弹幕压力。<br /><i>（占位条目：形象取自素材图，BOSS 未实装，试炼 / 测试入口待实装后开放）</i>',
     },
     puxuefeng: {
       name: '朴学峰', type: 'puxuefeng', wip: true, color: '#c05a5a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
+      desc: '【占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     hanxixian: {
       name: '韩希先', type: 'hanxixian', wip: true, color: '#5a7ac0', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
+      desc: '【占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     xiayong: {
       name: '夏勇', type: 'xiayong', wip: true, color: '#5ab07a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
+      desc: '【占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     xinguodong: {
       name: '辛国栋', type: 'xinguodong', wip: true, color: '#b09a4a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
+      desc: '【占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     pulseMatrix: {
       name: '脉冲矩阵', type: 'pulseMatrix', color: '#ff4d5e', hp: 800, score: 600,
@@ -318,7 +316,7 @@ boss_storm: {
     },
     unreal: {
       name: '虚幻', type: 'unreal', color: '#bfe8ff', hp: 550, score: 500,
-      desc: '<span class="ency-link" data-ency="baoling">暴鸰</span>的同型冰霜投弹机（3类）：外观同暴鸰机体——机身标识由骷髅换成<b>雪花</b>，挂载<b>蓝/深蓝渐变矩形炸弹</b>（圆柱弹体涂装）。<b>各项数值与暴鸰等同，全部伤害为暴鸰的 70%</b>：投弹流程完全一致（索敌停车锁定 → 投弹 → 爆炸，<b>玩家 28 伤害</b>），预警区为<b>深蓝色</b>；炸弹爆炸后原点留下<b>半径 100px 的寒冷区域</b>（持续 <b>3~5s</b>，间歇浮现雪花）：圈内我方战机<b>射速/移速 -35%</b>（寒霜同款）——<b>投掷出去的炸弹，其寒冷区域只对玩家生效</b>。<b>预警区形成前被击毁则原地殉爆</b>：周围 <b>250px</b> 内敌人受 <b>420 + 14% 最大生命</b>伤害（封顶 1400，可连锁殉爆），殉爆同样留下寒冷区域但<b>只对敌人生效</b>——圈内敌机<b>移速 -35%</b>（<b>BOSS 受到的减速/减移效果减半</b>）。<b>诗篇难度下，寒冷区域不论来源均对双方生效</b>。<b>玩家处于爆圈内时对虚幻增伤 35%</b>（无论是否已投弹）。<b>替换权重：Lv11 前 0% / Lv11 起 3 类槽位 15</b>。',
+      desc: '<span class="ency-link" data-ency="baoling">暴鸰</span>的同型冰霜投弹机（3类）：外观同暴鸰机体——机身标识由骷髅换成<b>雪花</b>，挂载<b>青蓝渐变圆柱炸弹</b>（椭圆顶面、筒身两道半圆弧线均分）。<b>各项数值与暴鸰等同，全部伤害为暴鸰的 70%</b>：投弹流程完全一致（索敌停车锁定 → 投弹 → 爆炸，<b>玩家 28 伤害</b>），预警区为<b>深蓝色</b>；炸弹爆炸后原点留下<b>半径 100px 的寒冷区域</b>（持续 <b>3~5s</b>，间歇浮现雪花）：圈内我方战机<b>射速/移速 -35%</b>（寒霜同款）——<b>投掷出去的炸弹，其寒冷区域只对玩家生效</b>。<b>预警区形成前被击毁则原地殉爆</b>：周围 <b>250px</b> 内敌人受 <b>420 + 14% 最大生命</b>伤害（封顶 1400，可连锁殉爆），殉爆同样留下寒冷区域但<b>只对敌人生效</b>——圈内敌机<b>移速 -35%</b>（<b>BOSS 受到的减速/减移效果减半</b>）。<b>诗篇难度下，寒冷区域不论来源均对双方生效</b>。<b>玩家处于爆圈内时对虚幻增伤 35%</b>（无论是否已投弹）。<b>替换权重：Lv11 前 0% / Lv11 起 3 类槽位 15</b>。',
     },
   };
 
@@ -494,6 +492,13 @@ boss_storm: {
     xinguodong: () => xinguodongImg,
   };
 
+  // 图鉴预览的贴图效果（键同 WIP_PREVIEW_IMG：BOSS 用 bossId / 其余用 type；无配置即原样贴图）
+  // 黑暗之手：素材本体近黑——以 canvas filter 提亮 + 轻微对比度；不修改素材文件（无轮廓光晕，2026-09-29 应要求移除）
+  const WIP_PREVIEW_FX = {
+    // fit：预览框占用率（默认 0.66）——黑暗之手近黑且细节密集，放大至 0.82 更清晰
+    darkhand: { brightness: 1.6, contrast: 1.08, fit: 0.82 },
+  };
+
   function drawEncyPreview(d, cvs, LW = 220, LH = 140, small = false) {
     if (!cvs) return;
     // 高 DPI 适配：物理像素按 DPR 放大
@@ -505,17 +510,29 @@ boss_storm: {
     pctx.scale(DPR, DPR);
     pctx.clearRect(0, 0, LW, LH);
     withPreviewCtx(pctx, () => {
-      // 占位条目（wip，诗篇新敌）：已导入素材形象的画真实形象（等比适配画布，如黑暗之手 / 四精英），
+      // 占位条目（wip）：已导入素材形象的画真实形象（等比适配画布，如黑暗之手 / 四精英），
       // 其余统一白色方块预览（专属造型待实装；BOSS 占位用固定示意尺寸）
       if (d.wip) {
-        const pvGet = WIP_PREVIEW_IMG[d.type === 'boss' ? d.bossId : d.type];
+        const pvKey = d.type === 'boss' ? d.bossId : d.type;
+        const pvGet = WIP_PREVIEW_IMG[pvKey];
         const pvImg = pvGet ? pvGet() : null;
         if (pvImg) {
-          const s = Math.min(LW * 0.66 / pvImg.naturalWidth, LH * 0.66 / pvImg.naturalHeight);
+          const fx = WIP_PREVIEW_FX[pvKey];
+          const fit = (fx && fx.fit) || 0.66;   // 预览框占用率（黑暗之手放大到 0.82）
+          const s = Math.min(LW * fit / pvImg.naturalWidth, LH * fit / pvImg.naturalHeight);
           const dw = pvImg.naturalWidth * s, dh = pvImg.naturalHeight * s;
+          const dx = LW / 2 - dw / 2, dy = LH / 2 - dh / 2;
           pctx.imageSmoothingEnabled = true;
           pctx.imageSmoothingQuality = 'high';
-          pctx.drawImage(pvImg, LW / 2 - dw / 2, LH / 2 - dh / 2, dw, dh);
+          if (fx) {
+            // 提亮 + 轻微对比度的本体（filter 只作用于本层；无轮廓光晕——2026-09-29 应要求移除）
+            pctx.save();
+            pctx.filter = 'brightness(' + fx.brightness + ') contrast(' + fx.contrast + ')';
+            pctx.drawImage(pvImg, dx, dy, dw, dh);
+            pctx.restore();
+          } else {
+            pctx.drawImage(pvImg, dx, dy, dw, dh);
+          }
           return;
         }
         const t = d.type === 'boss' ? { w: 150, h: 110 } : ENEMY_TYPES[d.type];
@@ -697,7 +714,7 @@ boss_storm: {
   const fu = (ency, x, y, vx, vy, extra) => ({ ency, x, y, vx, vy, ...(extra || {}) });
   const INFO_FORMATIONS = [
     {
-      fn: spawnSideGroup, name: '1类小组', ency: 'side_pass', period: 6.5,
+      fn: spawnSideGroup, name: '1类小队', ency: 'side_pass', period: 6.5,
       note: '3~5 架 1类自单侧斜插穿越（队形随机：纵队 / 斜线 / 横排梯队 / V 字——图中为斜线队）',
       sim: () => {
         const y0 = CANVAS_H * 0.41;
@@ -733,7 +750,7 @@ boss_storm: {
       },
     },
     {
-      fn: spawnSideSweep, name: '双侧对称斜扫', ency: 'side_pass', period: 6.5,
+      fn: spawnSideSweep, name: '双侧斜扫', ency: 'side_pass', period: 6.5,
       note: '两队 1类（各 6~8 架）自左右两侧相向斜扫、交叉穿越',
       sim: () => {
         const y0 = CANVAS_H * 0.40, out = [];
@@ -1183,7 +1200,7 @@ boss_storm: {
 
     if (infoWeightKind === 'side') {
       infoBody.appendChild(buildWeightTable(headers, infoSideRows()));
-      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电与橙旋，其余按权重混入。');
+      infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（1类小队 / 1类长队 / 双侧斜扫 / 232111 等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电与橙旋，其余按权重混入。');
     } else if (infoWeightKind === 'striker') {
       infoBody.appendChild(buildWeightTable(headers, infoStrikerRows()));
       infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/紫晶25/霜白20/坚垒25/幽暮2；Lv11~20：10/10/10/10/5/10/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；<b>奖励无人机</b>（斗志昂扬 / 赞助无人机 / 豪华赞助无人机）为<b>每次关卡提升</b>时按当前难度概率刷新一架（每次至多一架，非波次权重，击败 BOSS 的跳变升级不触发），三种按 ' + REWARD_DRONES.weights.douzhi + '/' + REWARD_DRONES.weights.sponsor + '/' + REWARD_DRONES.weights.sponsorDeluxe + ' 加权抽取（触发概率：虚象 12% / 具象 10% / 真我与诗篇 7%）。');
@@ -1556,6 +1573,8 @@ boss_storm: {
       { id: 'achievements', name: '成就' },
       { id: 'test1',    name: '测试1' },
       { id: 'test2',    name: '测试2' },
+      { id: 'test3',    name: '测试3' },
+      { id: 'test4',    name: '测试4' },
     ];
     for (const d of defs) {
       const b = document.createElement('button');
@@ -1574,6 +1593,8 @@ boss_storm: {
     else if (infoTab === 'achievements') renderInfoAchievements();
     else if (infoTab === 'test1') renderInfoTest1();
     else if (infoTab === 'test2') renderInfoTest2();
+    else if (infoTab === 'test3') renderInfoTest3();
+    else if (infoTab === 'test4') renderInfoTest4();
     else renderInfoMods();
   }
 
@@ -1610,17 +1631,827 @@ boss_storm: {
     infoAppendNote('道具由赞助无人机掉落：常规赞助 90% 普通 / 10% 稀有，豪华赞助必稀有；已有道具时再击坠不重复获得（绷绷背包一局限掉落一次）。道具按 <b>E</b> 使用（与驾驶员技能 Q 独立），左下角量表显示持有与稀有度。');
   }
 
-  // ---------- 测试1 / 测试2 页签（开发工作区，内容已清空）----------
-  // 2026-09-28：原水晶定稿预览（测试1）与矢量图标预览（测试2）内容已按用户要求清空；
-  // 页签壳保留，后续新工作区内容在此重建（原实现见 git 历史或本窗口会话备份）。
+  // ---------- 测试1：战争幽灵重绘候选（开发工作区）----------
+  // 2026-09-29 二轮：能量刃已定稿（方案A巨镰形、基本垂直机头），本页改为评选 4 种机身
+  // 动态预览（金白配色、机头朝下），绘制实现在 09-draw-ships.js paintWarGhostCandidate；选中编号后移植回 drawWarGhostBody。
+  // 原 2026-09-28 水晶定稿预览内容已按用户要求清空（原实现见 git 历史或本窗口会话备份）。
+  const wgCand = { raf: 0, last: 0, t: 0, items: [] };
+  const WG_CAND_DEFS = [
+    { name: '机身 A · 鹰翼「掠魂」', desc: '尖长机头 + 前掠双翼 + 双尾叉，空优战机轮廓；座舱菱形 + 翼骨流光线。' },
+    { name: '机身 B · 重装「戍卫」', desc: '宽厚机身 + 两舷浮游炮舱（炮口白热点呼吸），重甲平台轮廓，装甲缝线。' },
+    { name: '机身 C · 幽蝠「夜幕」', desc: '弧线连体弯翼（蝙蝠膜翅双凹）+ 膜凹节点亮点，幽灵感最强的圆润轮廓。' },
+    { name: '机身 D · 棱晶「裂魂」', desc: '全直线折面棱角机身 + 面板分色 + 中轴裂纹光线闪烁，科幻晶体风。' },
+  ];
+
   function renderInfoTest1() {
     infoBody.innerHTML = '';
-    infoAppendNote('（内容已清空）');
+    if (wgCand.raf) { cancelAnimationFrame(wgCand.raf); wgCand.raf = 0; }
+    wgCand.items = [];
+    for (let i = 0; i < WG_CAND_DEFS.length; i++) {
+      const d = WG_CAND_DEFS[i];
+      const card = document.createElement('div');
+      card.className = 'info-wave-card';
+      const h = document.createElement('h4');
+      h.textContent = d.name;
+      h.style.color = '#ffd166';
+      const cv = document.createElement('canvas');
+      cv.width = 240 * DPR; cv.height = 260 * DPR;
+      cv.style.cssText = 'width:240px;height:260px;display:block;margin:6px auto;background:rgba(8,12,26,0.85);border:1px solid rgba(124,231,255,0.18);border-radius:8px;';
+      const p = document.createElement('p');
+      p.textContent = d.desc;
+      p.style.cssText = 'font-size:12px;color:#9fb4d8;';
+      card.append(h, cv, p);
+      infoBody.appendChild(card);
+      wgCand.items.push(cv);
+    }
+    infoAppendNote('<b>战争幽灵重绘候选</b>——能量刃已定稿（方案A巨镰形、基本垂直机头、微后掠），本页评选<b>机身</b>，均为动态预览。看中哪个把字母编号告知即可，我将该机身 + 垂直巨镰移植进正式机体 drawWarGhostBody。');
+    wgCand.last = 0;
+    wgCand.raf = requestAnimationFrame(wgCandFrame);
+  }
+
+  // 候选预览动画帧：canvas 被移出 DOM（切页签/清空）或图鉴关闭时自动停止
+  function wgCandFrame(ts) {
+    wgCand.raf = 0;
+    const cv0 = wgCand.items[0];
+    if (!cv0 || !cv0.isConnected || infoModal.classList.contains('hidden')) return;
+    wgCand.raf = requestAnimationFrame(wgCandFrame);
+    const dt = wgCand.last ? Math.min(0.05, (ts - wgCand.last) / 1000) : 0;
+    wgCand.last = ts;
+    wgCand.t += dt;
+    for (let i = 0; i < wgCand.items.length; i++) {
+      const c = wgCand.items[i].getContext('2d');
+      c.setTransform(DPR, 0, 0, DPR, 0, 0);
+      c.clearRect(0, 0, 240, 260);
+      c.save();
+      c.translate(120, 122);
+      paintWarGhostCandidate(c, wgCand.t, i);
+      c.restore();
+    }
+  }
+
+  // ---------- 测试3：脉冲矩阵「三座菱形拼合」造型候选 ----------
+  // 正确拓扑（用户 2026-09-29 定义）：
+  //   一座法术矩阵 = 菱形，长对角线两端点称 A（2 个），短对角线两端点称 B（2 个）。
+  //   三座矩阵组装一个等边三角形：每座的长对角线恰好骑在三角形的一条边上（矩阵中心=边中点），
+  //   6 个 A 点两两重合于三角形的 3 个顶点（黑框连接点）；短轴沿边法线，一个 B 尖朝外鼓出、
+  //   一个 B 尖朝内（原比例 13:24 下三座内 B 尖距中心≈1.4px，几乎交于一点，由暗红核心覆盖）。
+  //   外轮廓 = 3 个三角形顶点(A点对) + 3 个外 B 尖交替的六角形。
+  function renderInfoTest3() {
+    infoBody.innerHTML = '';
+    infoAppendNote('<b>脉冲矩阵造型候选 · P2 方向微调</b>——拓扑已定：三座菱形的长对角线各骑等边三角形的一条边，<b>6 个 A 点两两重合于三角形 3 个顶点</b>；方向与大小沿用 P2（一尖朝上、右下折角，R=44），本页仅逐档缩小短对角线。鼠标悬停放大，下方为草图对照。');
+
+    // 单座矩阵几何：给定边中点方位 a（屏幕 y 向下，度）、三角形外接半径 R、长半轴 AH、短半轴 AW
+    function matGeom(aDeg, R, AH, AW) {
+      const a = aDeg * Math.PI / 180;
+      const ux = Math.cos(a + Math.PI / 2), uy = Math.sin(a + Math.PI / 2); // 沿边切向（长轴）
+      const vx = Math.cos(a), vy = Math.sin(a);                            // 边法线，朝三角形外（短轴）
+      const cx = vx * R / 2, cy = vy * R / 2;                              // 矩阵中心 = 边中点（距中心 R/2）
+      return {
+        A1: [cx + ux * AH, cy + uy * AH],   // 长对角线端点 A（= 三角形顶点，当 L=边长 时）
+        A2: [cx - ux * AH, cy - uy * AH],   // 长对角线端点 A
+        Bo: [cx + vx * AW, cy + vy * AW],   // 短轴外端 B（朝三角形外鼓出）
+        Bi: [cx - vx * AW, cy - vy * AW],   // 短轴内端 B（朝中心，三座近汇于一点）
+        ring: [[cx + ux * AH * 0.5, cy + uy * AH * 0.5],
+               [cx + vx * AW * 0.6, cy + vy * AW * 0.6],
+               [cx - ux * AH * 0.5, cy - uy * AH * 0.5],
+               [cx - vx * AW * 0.6, cy - vy * AW * 0.6]],
+        gradIn: [cx - vx * AW, cy - vy * AW],
+        gradOut: [cx + vx * AW, cy + vy * AW],
+      };
+    }
+
+    function drawPulse(c, opt) {
+      const { R = 44, ratio = 13 / 24, rot = 0, triColor = false, marks = false } = opt;
+      const sideLen = Math.sqrt(3) * R;          // 等边三角形边长 = √3·R
+      const L = sideLen;                         // 长对角线 = 边长（6 个 A 点恰好两两重合）
+      const AH = L / 2, AW = AH * ratio;
+      // 三条边的中点（外 B 尖）方位：上 / 右下 / 左下（屏幕 y 向下），整体再旋转 rot
+      const EDGE = [-90, 30, 150].map(d => d + rot);
+      const triColors = ['#4a96ff', '#3fd97a', '#ff5a4d'];   // 蓝（上）/ 绿（右下）/ 红（左下），对应三色草图
+      const mats = EDGE.map(a => matGeom(a, R, AH, AW));
+      const path = pts => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); };
+      // 填充（沿内 B→外 B 渐变：内侧深红、外尖白亮）
+      mats.forEach((m, i) => {
+        path([m.A1, m.Bo, m.A2, m.Bi]);
+        if (triColor) {
+          // 三色示意（不打渐变，半透明以便看见拼合处重叠）
+          const rgbaMap = { '#4a96ff': 'rgba(74,150,255,0.78)', '#3fd97a': 'rgba(63,217,122,0.78)', '#ff5a4d': 'rgba(255,90,77,0.78)' };
+          c.fillStyle = rgbaMap[triColors[i]];
+        } else {
+          const grd = c.createLinearGradient(m.gradIn[0], m.gradIn[1], m.gradOut[0], m.gradOut[1]);
+          grd.addColorStop(0, '#ff4d5e'); grd.addColorStop(0.5, '#ff9a9a'); grd.addColorStop(1, '#fff2f2');
+          c.shadowColor = 'rgba(255,90,110,0.8)'; c.shadowBlur = 8;
+          c.fillStyle = grd;
+        }
+        c.fill(); c.shadowBlur = 0;
+      });
+      // 白描边（内部棱边保留 → 读得出三座菱形）
+      mats.forEach(m => { path([m.A1, m.Bo, m.A2, m.Bi]); c.strokeStyle = 'rgba(255,240,240,0.85)'; c.lineWidth = 1; c.stroke(); });
+      // 内细黑菱形环（与法术矩阵同款，每座中心在边中点）
+      mats.forEach(m => { path(m.ring); c.strokeStyle = 'rgba(12,7,9,0.92)'; c.lineWidth = 1.1; c.stroke(); });
+      // 中央暗红核心（三座内 B 尖交汇处）
+      const cg = c.createRadialGradient(0, 0, 0, 0, 0, 12);
+      cg.addColorStop(0, '#7a1020'); cg.addColorStop(1, '#3a0810');
+      c.shadowColor = '#a01828'; c.shadowBlur = 6; c.fillStyle = cg;
+      c.beginPath(); c.arc(0, 0, 11, 0, Math.PI * 2); c.fill(); c.shadowBlur = 0;
+
+      if (marks) {
+        // 等边三角形骨架（虚线）+ 3 个顶点黑框（= A 点两两重合的连接点，对应草图黑框）
+        const VDEG = [-150, -30, 90].map(d => (d + rot) * Math.PI / 180);
+        const V = VDEG.map(a => [Math.cos(a) * R, Math.sin(a) * R]);
+        c.setLineDash([4, 4]); c.strokeStyle = 'rgba(160,200,255,0.55)'; c.lineWidth = 1;
+        path(V); c.stroke(); c.setLineDash([]);
+        // 6 个 A 点（黄点）：L=边长时每两个重合在顶点
+        mats.forEach(m => [m.A1, m.A2].forEach(p => {
+          c.fillStyle = '#ffd166'; c.beginPath(); c.arc(p[0], p[1], 2.4, 0, Math.PI * 2); c.fill();
+        }));
+        // 顶点黑框
+        V.forEach(p => {
+          c.strokeStyle = '#000'; c.lineWidth = 2;
+          c.strokeRect(p[0] - 6, p[1] - 6, 12, 12);
+        });
+        // 外 B 尖标注（青色小点）
+        mats.forEach(m => { c.fillStyle = '#5ae0ff'; c.beginPath(); c.arc(m.Bo[0], m.Bo[1], 2, 0, Math.PI * 2); c.fill(); });
+      }
+    }
+
+    // 已定方向（用户 2026-09-30 选定 P2：R=44 / rot=0 一尖朝上偏右折角），本页只微调短对角线宽窄。
+    // ratio=菱形短半轴/长半轴；0.45 为 P2 基准，以下逐档缩小短对角线。
+    const cands = [
+      { id: 'P2',   R: 44, ratio: 0.45, rot: 0, note: '基准（短/长=0.45）' },
+      { id: 'P2-a', R: 44, ratio: 0.42, rot: 0, note: '短对角线微缩 0.42' },
+      { id: 'P2-b', R: 44, ratio: 0.39, rot: 0, note: '短对角线缩小 0.39' },
+      { id: 'P2-c', R: 44, ratio: 0.36, rot: 0, note: '更窄 0.36' },
+      { id: 'P2-d', R: 44, ratio: 0.33, rot: 0, note: '最窄 0.33（内B尖间隙≈9.5px，仍被核心覆盖）' },
+    ];
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;';
+    infoBody.appendChild(row);
+    cands.forEach(m => {
+      const card = document.createElement('div');
+      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;';
+      const cvs = document.createElement('canvas');
+      cvs.width = 110; cvs.height = 110;
+      cvs.style.cssText = 'width:110px;height:110px;border-radius:8px;background:#0a0f20;border:1px solid rgba(120,180,255,0.12);transition:transform 0.15s,border-color 0.15s;';
+      cvs.addEventListener('mouseenter', () => { cvs.style.transform = 'scale(1.9)'; cvs.style.borderColor = 'rgba(255,209,102,0.5)'; cvs.style.zIndex = '5'; cvs.style.position = 'relative'; });
+      cvs.addEventListener('mouseleave', () => { cvs.style.transform = ''; cvs.style.borderColor = 'rgba(120,180,255,0.12)'; cvs.style.zIndex = ''; });
+      const c = cvs.getContext('2d');
+      c.translate(55, 55);
+      drawPulse(c, m);
+      card.appendChild(cvs);
+      const lbl = document.createElement('span');
+      lbl.textContent = `${m.id} ${m.note}`;
+      lbl.style.cssText = 'font-size:11px;color:#9fb4d8;max-width:130px;text-align:center;';
+      card.appendChild(lbl);
+      row.appendChild(card);
+    });
+
+    // 草图对照
+    const refTitle = document.createElement('h3');
+    refTitle.textContent = '草图对照';
+    refTitle.style.cssText = 'margin:20px 0 8px;color:#ffd166;font-size:14px;';
+    infoBody.appendChild(refTitle);
+    const refRow = document.createElement('div');
+    refRow.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;';
+    infoBody.appendChild(refRow);
+    [['草图1·线稿（三座菱形拼合的外轮廓）', 'assets/dev-ref/pulse-ref-line.png'],
+     ['草图2·三色拼合点（黑框=A点两两连接）', 'assets/dev-ref/pulse-ref-tri.png']].forEach(([label, file]) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;';
+      const img = document.createElement('img');
+      img.src = file;
+      img.style.cssText = 'width:200px;background:#fff;border-radius:8px;border:1px solid rgba(120,180,255,0.12);';
+      card.appendChild(img);
+      const lbl = document.createElement('span');
+      lbl.textContent = label;
+      lbl.style.cssText = 'font-size:11px;color:#9fb4d8;';
+      card.appendChild(lbl);
+      refRow.appendChild(card);
+    });
+
+    infoAppendNote('当前只调 <b>ratio</b>（短半轴/长半轴）：从 P2 基准 0.45 逐档缩小到 0.33，三座菱形越来越细长、内 B 尖离中心略远（最窄档约 9.5px，仍在 r11 暗红核心覆盖内，不会漏空）。告诉我看中的编号（如 P2-b）或具体数值，我据此实装到机体。');
+  }
+
+  // ---------- 测试4：黑暗之手 + 四连携随从 技能方案 / 效果演示（2026-09-29 设计工作区）----------
+  // 动画为循环轻量模拟（188x246 竖版小场，蓝三角＝玩家，位置按 sin 规律横移），每个演示帧自检 isConnected：
+  // 切走页签 / 关闭弹窗后 canvas 脱链、帧循环自动退出，无需外部注销。
+  function renderInfoTest4() {
+    infoBody.innerHTML = '';
+    infoAppendNote('本页是 <b>黑暗之手</b>（第二轮 BOSS）与四个连携随从（朴学峰 / 韩希先 / 夏勇 / 辛国栋）的技能设计工作区：'
+      + '先定 <b>整体战斗框架</b>（A/B/C，三选一或混搭），再从技能池里勾选。所有动画均为实装效果的等比模拟，循环播放。');
+
+    // ── 一、战斗框架 ──
+    infoBody.appendChild(t4Head('一、整体战斗框架（三选一 / 可混搭）'));
+    [
+      { name: '方案A · 五指序章（血量召唤）',
+        desc: 'BOSS 血量 80% / 60% / 40% / 20% 时依次召唤一名随从（朴 → 韩 → 夏 → 辛），同时场上最多 1 随从；随从存活期间 BOSS 主动攻击频率降低，'
+          + '每击败一名随从，BOSS 五指断一指、弹幕节奏随之改变；四随从全灭后进入最终阶段（纯 BOSS 弹幕连发）。'
+          + '<b>优点</b>：节奏清晰、同屏实体少（低端机友好）、便于玩家逐个学习随从机制。' },
+      { name: '方案B · 黑手议会（同场群战）',
+        desc: '开战四随从全部登场、分列四角环绕 BOSS；每死一名随从，BOSS 将其「吸收」为黑手指节并永久获得该随从的一种弹幕碎片（技能池逐场扩张）。'
+          + '<b>优点</b>：场面压迫感最强、最贴合「黑手」群像设定；<b>风险</b>：同屏实体多，需给弹幕总量设上限并做性能分级。' },
+      { name: '方案C · 点名轮转（节奏博弈）',
+        desc: '四随从轮转在场（同时 1~2 名），BOSS 每 10s <b>点名</b>一名随从（红色光束连线 + 音效）：被点名者伤害 ×1.6、但受伤 ×1.8，'
+          + '玩家可选择强杀点名目标（快速减员）或避战拖时间；随从被击倒后 8s 补下一名。<b>优点</b>：博弈感强，战损节奏由玩家掌控。' },
+    ].forEach(f => infoBody.appendChild(t4TextCard(f.name, f.desc, '#ff8a8a')));
+
+    // ── 二、BOSS 技能池（动画候选）──
+    infoBody.appendChild(t4Head('二、黑暗之手 · 技能池（动画演示为选中候选）'));
+    t4DemoGrid([
+      { title: '五指收束', sub: '五道刃光收束 · 指缝＝安全区', period: 4.2, draw: t4DrawFiveFingers },
+      { title: '黑手之握', sub: '脚下手掌预警 · 合拢多段伤害', period: 3, draw: t4DrawGrasp },
+      { title: '刃翼X斩', sub: '交叉刃气扫过全屏', period: 3.6, draw: t4DrawXSlash },
+      { title: '黑暗涟漪', sub: '多层错相位环形弹幕', period: 3.8, draw: t4DrawRipples },
+      { title: '四管炮幕', sub: '四门前炮交替扇形速射', period: 3, draw: t4DrawQuadCannon },
+    ]);
+    [
+      ['黑羽散落（纯文字候选）', '双翼高频抖动，抖落大量不规则慢速黑羽弹向下飘落（封走位不封死），弹点随机、偶尔夹杂一枚红色加速羽；持续约 4s。'],
+      ['夜幕降临（纯文字候选）', '背景骤然变暗、视野只剩玩家周围一小圈与红色弹道轨迹；BOSS 隐入黑暗 1.5s 后沿预警红线发动一次快速冲撞，贯穿全屏。'],
+      ['暗影钩爪（纯文字候选）', '手掌钩爪沿直线快速射出，命中玩家造成伤害并向 BOSS 方向拖拽；未命中则钩在屏边，0.4s 后收回（收回路径同样有伤害）。'],
+    ].forEach(([n, d]) => infoBody.appendChild(t4TextCard(n, d, '#dd8888')));
+
+    // ── 三、四个随从 ──
+    infoBody.appendChild(t4Head('三、四个连携随从 · 技能候选'));
+    const MINION_T4 = [
+      { name: '朴学峰', img: puxuefengImg, role: '定位：极速截击（高机动 / 穿刺）',
+        demos: [{ title: '流星穿刺', sub: '预警线 → 高速贯穿 → 换线折返', period: 3.6, draw: t4DrawPierce }],
+        cands: [
+          ['翼根连弩', '肩部弹匣格逐格亮起，朝玩家方向三段扇形连射高速弹（每段 5 发、段间隔 0.25s）；射击结束后有 1.5s 装填空档（输出窗口）。'],
+          ['残像换影', '高速移动中在原位留下暗影残像（持续 0.8s），残像消失时向四周爆开 12 发短弹；本体从另一侧斜角突入并刺击一次。'],
+        ] },
+      { name: '韩希先', img: hanxixianImg, role: '定位：三眼炮座（光束 / 锁定）',
+        demos: [{ title: '三眼齐光', sub: '三眼蓄力 → 三道竖光 · 光间留缝', period: 4, draw: t4DrawThreeEyes }],
+        cands: [
+          ['凝视锁定', '顶部大眼发出红色细追踪线锁定玩家 1s（持续跟随转动），锁定完成后发射粗重持续激光 0.9s；保持横移可让激光扫空。'],
+          ['旋眼火螺', '三座眼状炮塔脱离机体、环绕本体旋转，持续 3s 螺旋线弹幕（每眼每 0.18s 一发），旋转方向中途反转一次。'],
+        ] },
+      { name: '夏勇', img: xiayongImg, role: '定位：重装壁垒（护盾 / 重压）',
+        demos: [
+          { title: '重压坠击', sub: '影子锁定 → 重砸 + 冲击波环', period: 3.6, draw: t4DrawSlam },
+          { title: '暗壁', sub: '护盾挡正面弹 · 绕背 / 爆弹可破', period: 3.5, draw: t4DrawShield },
+        ],
+        cands: [
+          ['核心膨胀', '背部大核心过载，向玩家方向推出一颗缓慢膨胀的暗红能量球（最大半径 60，持续 5s 后原地爆散环形弹幕）；膨胀期间本体移速下降。'],
+        ] },
+      { name: '辛国栋', img: xinguodongImg, role: '定位：轰炸平台（导弹 / 地毯轰炸）',
+        demos: [
+          { title: '地毯轰炸', sub: '横移投弹 · 落点预警连锁爆炸', period: 4.2, draw: t4DrawBombs },
+          { title: '十二连发', sub: '12 管两批扇形 · 轻追踪导弹', period: 4, draw: t4DrawMissiles },
+        ],
+        cands: [
+          ['（分阶段备注）', '地毯轰炸与十二连发建议分阶段使用：常规阶段十二连发，血量 50% 后追加地毯轰炸；两技连放间隔不少于 5s，避免弹幕过密无处可走。'],
+        ] },
+    ];
+    MINION_T4.forEach(m => {
+      const hr = document.createElement('div');
+      hr.style.cssText = 'display:flex;align-items:center;gap:10px;margin:16px 0 6px';
+      if (m.img && m.img.src) {
+        const im = document.createElement('img');
+        im.src = m.img.src;
+        im.style.cssText = 'width:54px;filter:brightness(1.45) contrast(1.05)';
+        hr.appendChild(im);
+      }
+      const tx = document.createElement('div');
+      const h = document.createElement('h4');
+      h.style.cssText = 'color:#ffb0b0;margin:0';
+      h.textContent = m.name;
+      const sp = document.createElement('span');
+      sp.style.cssText = 'font-size:11px;color:#9fb4d8';
+      sp.textContent = m.role;
+      tx.append(h, sp);
+      hr.appendChild(tx);
+      infoBody.appendChild(hr);
+      if (m.demos) t4DemoGrid(m.demos);
+      m.cands.forEach(([n, d]) => infoBody.appendChild(t4TextCard(n, d, '#e09a9a')));
+    });
+
+    infoAppendNote('<b>怎么用本页</b>：告诉我框架选哪个 + BOSS / 各随从技能勾哪几个（例如：「A 框架；BOSS 要五指收束 + 黑手之握 + 四管炮幕；朴学峰流星穿刺；韩希先三眼齐光；夏勇暗壁；辛国栋十二连发」），'
+      + '我据此实装到 06-enemy / 09-draw-ships 等模块。动画里的尺寸 / 弹速 / 预警时长均为暂定，实装时再精调。');
+  }
+
+  // ── 测试4 公共小工具 ──
+  function t4Head(text) {
+    const h = document.createElement('h3');
+    h.className = 'info-achv-tier-head';
+    h.style.color = '#ff8585';
+    h.textContent = text;
+    return h;
+  }
+  function t4TextCard(title, desc, color) {
+    const d = document.createElement('div');
+    d.className = 'info-wave-card';
+    const h = document.createElement('h4');
+    h.style.color = color || '#ff9a9a';
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.innerHTML = desc;
+    d.append(h, p);
+    return d;
+  }
+  function t4DemoGrid(demos) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px';
+    demos.forEach(d => row.appendChild(t4Demo(d)));
+    infoBody.appendChild(row);
+  }
+  function t4Demo(opt) {
+    const { title, sub, period = 4, draw } = opt;
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
+    const W = 188, H = 246, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cvs = document.createElement('canvas');
+    cvs.width = W * dpr; cvs.height = H * dpr;
+    cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#070a13;border:1px solid rgba(255,90,90,0.16)';
+    const c = cvs.getContext('2d');
+    c.scale(dpr, dpr);
+    const st = { bullets: [], flashes: [], misc: {} };
+    let last = performance.now();
+    function frame(now) {
+      if (!cvs.isConnected) return;                 // 脱链即停（切页签 / 关弹窗）
+      let dt = (now - last) / 1000; last = now;
+      if (dt > 0.1) dt = 0.1;
+      const t = (now / 1000) % period;
+      c.clearRect(0, 0, W, H);
+      t4Field(c, W, H, t);
+      draw(c, t, dt, W, H, st);
+      const pp = t4PlayerPos(t, W, H);
+      t4Player(c, pp[0], pp[1]);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:188px';
+    lbl.innerHTML = '<b style="color:#e8c0c0">' + title + '</b><br>' + sub;
+    card.append(cvs, lbl);
+    return card;
+  }
+  // 背景星点（缓慢下移制造纵深感）
+  function t4Field(c, W, H, t) {
+    c.fillStyle = 'rgba(130,160,230,0.14)';
+    for (let i = 0; i < 20; i++) {
+      const x = (i * 53) % W, y = (i * 97 + t * 14) % H;
+      c.fillRect(x, y, 1, 1);
+    }
+  }
+  // 假玩家：规律横移的蓝白三角（所有演示共用，弹幕读起来有攻防关系）
+  function t4PlayerPos(t, W, H) {
+    return [W / 2 + Math.sin(t * 1.35) * W * 0.3, H - 28];
+  }
+  function t4Player(c, x, y) {
+    c.save();
+    c.fillStyle = '#8fd6ff'; c.strokeStyle = '#dff4ff'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(x, y - 9); c.lineTo(x - 8, y + 8); c.lineTo(x + 8, y + 8);
+    c.closePath(); c.fill(); c.stroke();
+    c.restore();
+  }
+  // BOSS 简形：黑甲棱体 + 红线 + 四管前炮
+  function t4Boss(c, x, y, s) {
+    c.save();
+    c.translate(x, y); c.scale(s, s);
+    c.fillStyle = '#161a23'; c.strokeStyle = 'rgba(255,70,70,0.8)'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, -14); c.lineTo(27, -2); c.lineTo(20, 12); c.lineTo(-20, 12); c.lineTo(-27, -2);
+    c.closePath(); c.fill(); c.stroke();
+    c.strokeStyle = 'rgba(255,60,60,0.55)';
+    [-14, -5, 5, 14].forEach(bx => { c.beginPath(); c.moveTo(bx, 10); c.lineTo(bx, 19); c.stroke(); });
+    c.restore();
+  }
+  // 发光直线 / 虚线预警
+  function t4Line(c, x1, y1, x2, y2, w, color, glow) {
+    c.save();
+    c.lineCap = 'round';
+    if (glow) { c.shadowColor = color; c.shadowBlur = glow; }
+    c.strokeStyle = color; c.lineWidth = w;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.restore();
+  }
+  function t4WarnLine(c, x1, y1, x2, y2, alpha) {
+    c.save();
+    c.setLineDash([6, 5]);
+    c.strokeStyle = 'rgba(255,80,80,' + alpha + ')'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.restore();
+  }
+  // 随从简形：朴学峰（尖刺飞镖，dir：1 向下 / -1 向上）
+  function t4Dart(c, x, y, dir) {
+    c.save();
+    c.translate(x, y);
+    if (dir < 0) c.rotate(Math.PI);
+    c.strokeStyle = 'rgba(255,90,90,0.3)';
+    c.beginPath(); c.moveTo(0, -8); c.lineTo(0, -26); c.stroke();
+    c.fillStyle = '#151923'; c.strokeStyle = 'rgba(255,70,70,0.9)'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, 13); c.lineTo(-9, -8); c.lineTo(0, -3); c.lineTo(9, -8);
+    c.closePath(); c.fill(); c.stroke();
+    c.restore();
+  }
+  // 随从简形：夏勇（重装方甲 + 顶部核心环）
+  function t4Heavy(c, x, y, s) {
+    s = s || 1;
+    c.save();
+    c.translate(x, y); c.scale(s, s);
+    c.fillStyle = '#151922'; c.strokeStyle = 'rgba(255,70,70,0.75)'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(-18, -10); c.lineTo(18, -10); c.lineTo(14, 12); c.lineTo(-14, 12);
+    c.closePath(); c.fill(); c.stroke();
+    c.strokeStyle = 'rgba(255,80,80,0.95)'; c.lineWidth = 2;
+    c.beginPath(); c.arc(0, -10, 6, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = '#c23';
+    c.beginPath(); c.arc(0, -10, 3, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+  // 随从简形：辛国栋（宽翼轰炸机 + 中央大环）
+  function t4Bomber(c, x, y, s) {
+    s = s || 1;
+    c.save();
+    c.translate(x, y); c.scale(s, s);
+    c.fillStyle = '#141821'; c.strokeStyle = 'rgba(255,70,70,0.7)'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(-40, 4); c.lineTo(-14, -8); c.lineTo(14, -8); c.lineTo(40, 4); c.lineTo(24, 12); c.lineTo(-24, 12);
+    c.closePath(); c.fill(); c.stroke();
+    c.strokeStyle = 'rgba(255,90,90,0.9)'; c.lineWidth = 2;
+    c.beginPath(); c.arc(0, 0, 8, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
+
+  // ── 测试4 演示绘制：① 五指收束（五根顶部起点 → 向玩家活动带中心收束，指缝留安全道）──
+  function t4DrawFiveFingers(c, t, dt, W, H, st) {
+    t4Boss(c, W / 2, 24, 0.8);
+    const cx = W / 2, cy = H * 0.68;
+    let a;
+    if (t < 2) a = 0.3 + 0.18 * Math.sin(t * 10);
+    else if (t < 2.8) a = 1;
+    else a = Math.max(0, 1 - (t - 2.8) / 0.6);
+    for (let i = 0; i < 5; i++) {
+      const x = W * (0.08 + i * 0.21);
+      const ex = cx + (x - cx) * 0.3, ey = cy;
+      if (t < 2) t4WarnLine(c, x, 34, ex, ey, a);
+      else {
+        t4Line(c, x, 34, ex, ey, 6.5 * a, 'rgba(255,60,60,' + 0.5 * a + ')', 8);
+        t4Line(c, x, 34, ex, ey, 2.2 * a, 'rgba(255,232,232,' + a + ')', 0);
+      }
+    }
+  }
+  // ② 黑手之握（预警圆跟随玩家 → 五指收拢 → 掌心多段伤害）
+  function t4DrawGrasp(c, t, dt, W, H, st) {
+    t4Boss(c, W / 2, 24, 0.8);
+    const pp = t4PlayerPos(t, W, H);
+    let r, a = 1, fill = 0;
+    if (t < 1.3) { r = 33; a = 0.55 + 0.3 * Math.sin(t * 12); }
+    else if (t < 1.8) { const p = (t - 1.3) / 0.5; r = 33 * (1 - p) + 9; fill = p; }
+    else { r = 9; fill = 0.9; a = 1 - Math.max(0, (t - 2.2) / 0.6); }
+    c.save();
+    c.translate(pp[0], pp[1]);
+    if (fill > 0) {
+      c.fillStyle = 'rgba(255,40,40,' + 0.35 * fill + ')';
+      c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+    }
+    c.strokeStyle = 'rgba(255,70,70,' + a + ')'; c.lineWidth = 2;
+    c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke();
+    // 五个指尖沿上半弧排列
+    for (let i = 0; i < 5; i++) {
+      const ang = Math.PI + (i / 4) * Math.PI;
+      c.fillStyle = 'rgba(255,90,90,' + a + ')';
+      c.beginPath(); c.arc(Math.cos(ang) * r, Math.sin(ang) * r, 2.6, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
+  }
+  // ③ 刃翼X斩（全屏交叉两条线预警 → 高亮刃气扫过）
+  function t4DrawXSlash(c, t, dt, W, H, st) {
+    t4Boss(c, W / 2, 24, 0.85);
+    const L1 = [[2, H * 0.2], [W - 2, H * 0.94]], L2 = [[W - 2, H * 0.2], [2, H * 0.94]];
+    if (t < 1.6) {
+      [L1, L2].forEach(L => t4WarnLine(c, L[0][0], L[0][1], L[1][0], L[1][1], 0.35 + 0.2 * Math.sin(t * 9)));
+    } else {
+      const p = t < 2.4 ? 1 : Math.max(0, 1 - (t - 2.4) / 0.7);
+      [L1, L2].forEach(L => {
+        t4Line(c, L[0][0], L[0][1], L[1][0], L[1][1], 7 * p, 'rgba(255,60,60,' + 0.55 * p + ')', 10);
+        t4Line(c, L[0][0], L[0][1], L[1][0], L[1][1], 2.4 * p, 'rgba(255,245,245,' + p + ')', 0);
+      });
+    }
+  }
+  // ④ 黑暗涟漪（三环错相位扩张，弹点随半径淡出）
+  function t4DrawRipples(c, t, dt, W, H, st) {
+    t4Boss(c, W / 2, 44, 0.8);
+    const cx = W / 2, cy = 58, n = 16;
+    for (let k = 0; k < 3; k++) {
+      const r = 20 + ((t * 44 + k * 32) % 150);
+      const fade = 1 - r / 150, off = t * 0.7 + k * 0.8;
+      for (let i = 0; i < n; i++) {
+        const ang = off + i / n * Math.PI * 2;
+        c.fillStyle = 'rgba(255,80,80,' + 0.85 * fade + ')';
+        c.beginPath(); c.arc(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 2.2, 0, Math.PI * 2); c.fill();
+      }
+    }
+  }
+  // ⑤ 四管炮幕（每 0.5s 四管齐射，左右交替小偏角）
+  function t4DrawQuadCannon(c, t, dt, W, H, st) {
+    t4Boss(c, W / 2, 36, 0.9);
+    const cx = W / 2, muzz = [-20, -7, 7, 20];
+    const tick = Math.floor(t / 0.5);
+    if (st.misc.tick !== tick) {
+      if (st.misc.tick === undefined || tick < st.misc.tick) st.bullets.length = 0;
+      st.misc.tick = tick;
+      const bias = tick % 2 ? 0.12 : -0.12;
+      muzz.forEach((dx, i) => {
+        st.bullets.push({ x: cx + dx, y: 50, vx: Math.sin((i - 1.5) * 0.18 + bias) * 95, vy: 150 });
+      });
+    }
+    for (let i = st.bullets.length - 1; i >= 0; i--) {
+      const b = st.bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.y > H + 4) { st.bullets.splice(i, 1); continue; }
+      c.fillStyle = '#ff5a5a';
+      c.beginPath(); c.arc(b.x, b.y, 2.5, 0, Math.PI * 2); c.fill();
+    }
+  }
+  // ⑥ 朴学峰·流星穿刺（1 号线预警贯穿 → 2 号线折返）
+  function t4DrawPierce(c, t, dt, W, H, st) {
+    const x1 = W * 0.4, x2 = W * 0.62;
+    if (t < 1.4) t4WarnLine(c, x1, 24, x1, H, 0.4 + 0.25 * Math.sin(t * 10));
+    else if (t < 2.1) t4Dart(c, x1, 18 + (t - 1.4) / 0.7 * (H + 34), 1);
+    if (t >= 2 && t < 2.25) t4WarnLine(c, x2, H, x2, 24, 0.5);
+    if (t >= 2.25 && t < 3.0) t4Dart(c, x2, H + 12 - (t - 2.25) / 0.75 * (H + 24), -1);
+  }
+  // ⑦ 韩希先·三眼齐光（三眼充能 → 三道竖光，光间留两缝）
+  function t4DrawThreeEyes(c, t, dt, W, H, st) {
+    const xs = [0.3, 0.5, 0.7].map(v => v * W);
+    c.fillStyle = '#141821';
+    c.fillRect(W / 2 - 32, 16, 64, 22);
+    xs.forEach(x => {
+      const ch = t < 1.8 ? 2 + t / 1.8 * 4 : 6;
+      c.fillStyle = 'rgba(255,60,60,0.9)';
+      c.beginPath(); c.arc(x, 38, ch, 0, Math.PI * 2); c.fill();
+      if (t < 1.8) t4WarnLine(c, x, 46, x, H, 0.35 + 0.2 * Math.sin(t * 10));
+      else {
+        const a = t < 2.7 ? 1 : Math.max(0, 1 - (t - 2.7) / 0.7);
+        t4Line(c, x, 44, x, H, 8 * a, 'rgba(255,60,60,' + 0.5 * a + ')', 10);
+        t4Line(c, x, 44, x, H, 2.4 * a, 'rgba(255,250,250,' + a + ')', 0);
+      }
+    });
+  }
+  // ⑧ 夏勇·重压坠击（影子跟随 → 锁定 → 重砸闪光 + 冲击环）
+  function t4DrawSlam(c, t, dt, W, H, st) {
+    const lockX = W / 2 + Math.sin(1.2 * 1.35) * W * 0.3;
+    if (t < 1.2) {
+      const pp = t4PlayerPos(t, W, H);
+      c.save(); c.setLineDash([5, 4]); c.strokeStyle = 'rgba(255,90,70,' + (0.45 + 0.25 * Math.sin(t * 10)) + ')';
+      c.beginPath(); c.ellipse(pp[0], H - 14, 22, 8, 0, 0, Math.PI * 2); c.stroke(); c.restore();
+      t4Heavy(c, pp[0], 84, 0.9);
+    } else if (t < 1.6) {
+      const p = (t - 1.2) / 0.4;
+      c.save(); c.setLineDash([5, 4]); c.strokeStyle = 'rgba(255,90,70,0.85)';
+      c.beginPath(); c.ellipse(lockX, H - 14, 22, 8, 0, 0, Math.PI * 2); c.stroke(); c.restore();
+      t4Heavy(c, lockX, 84 + p * 120, 0.9);
+    } else {
+      const p = t - 1.6;
+      t4Heavy(c, lockX, H - 38, 0.9);
+      const fr = Math.max(0, 1 - p / 0.22);
+      if (fr > 0) {
+        c.fillStyle = 'rgba(255,120,70,' + 0.5 * fr + ')';
+        c.beginPath(); c.arc(lockX, H - 20, 26, 0, Math.PI * 2); c.fill();
+      }
+      if (p < 0.9) {
+        c.strokeStyle = 'rgba(255,150,90,' + 0.8 * (1 - p / 0.9) + ')'; c.lineWidth = 3;
+        c.beginPath(); c.arc(lockX, H - 20, p / 0.9 * 74, 0, Math.PI * 2); c.stroke();
+      }
+    }
+  }
+  // ⑨ 夏勇·暗壁（下方半圆护盾：中路弹被挡 → 蓝火花；两侧绕边弹命中本体 → 红火花）
+  function t4DrawShield(c, t, dt, W, H, st) {
+    const mx = W / 2, my = 112;
+    t4Heavy(c, mx, my, 0.9);
+    c.save();
+    const grd = c.createRadialGradient(mx, my, 30, mx, my, 54);
+    grd.addColorStop(0, 'rgba(120,180,255,0.02)');
+    grd.addColorStop(1, 'rgba(140,200,255,0.2)');
+    c.fillStyle = grd;
+    c.beginPath(); c.arc(mx, my, 50, Math.PI * 0.12, Math.PI * 0.88); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(140,200,255,0.8)'; c.lineWidth = 2;
+    c.beginPath(); c.arc(mx, my, 50, Math.PI * 0.12, Math.PI * 0.88); c.stroke();
+    c.restore();
+    const tick = Math.floor(t / 0.24);
+    if (st.misc.tick !== tick) {
+      if (st.misc.tick === undefined || tick < st.misc.tick) { st.bullets.length = 0; st.flashes.length = 0; }
+      st.misc.tick = tick;
+      st.bullets.push({ x: mx, y: H - 24, vx: 0, vy: 200, side: 0 });
+      st.bullets.push({ x: 14, y: H - 24, vx: 92, vy: 180, side: -1 });
+      st.bullets.push({ x: W - 14, y: H - 24, vx: -92, vy: 180, side: 1 });
+    }
+    for (let i = st.bullets.length - 1; i >= 0; i--) {
+      const b = st.bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      let hit = false;
+      if (!b.side) {
+        if (b.y <= my + 48) { st.flashes.push({ x: mx, y: my + 48, age: 0, cc: '150,200,255' }); hit = true; }
+      } else {
+        const dx = b.x - mx, dy = b.y - my;
+        if (dx * dx + dy * dy < 26 * 26) { st.flashes.push({ x: b.x, y: b.y, age: 0, cc: '255,120,90' }); hit = true; }
+      }
+      if (hit || b.y < -12) st.bullets.splice(i, 1);
+    }
+    st.bullets.forEach(b => {
+      c.fillStyle = b.side ? '#9fe0ff' : '#cfeaff';
+      c.beginPath(); c.arc(b.x, b.y, 2.6, 0, Math.PI * 2); c.fill();
+    });
+    for (let i = st.flashes.length - 1; i >= 0; i--) {
+      const f = st.flashes[i];
+      f.age += dt;
+      const a = 1 - f.age / 0.3;
+      if (a <= 0) { st.flashes.splice(i, 1); continue; }
+      c.strokeStyle = 'rgba(' + f.cc + ',' + a + ')'; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(f.x, f.y, 3 + f.age * 42, 0, Math.PI * 2); c.stroke();
+    }
+  }
+  // ⑩ 辛国栋·地毯轰炸（横移投弹 → 落点圈预警 → 橙闪连锁爆炸）
+  function t4DrawBombs(c, t, dt, W, H, st) {
+    const mx = W / 2 + Math.sin(t * 1.2) * 58, my = 32;
+    t4Bomber(c, mx, my, 0.9);
+    c.strokeStyle = 'rgba(255,255,255,0.08)';
+    c.beginPath(); c.moveTo(0, H - 14); c.lineTo(W, H - 14); c.stroke();
+    const tick = Math.floor(t / 0.5);
+    if (st.misc.tick !== tick) {
+      if (st.misc.tick === undefined || tick < st.misc.tick) { st.bullets.length = 0; st.flashes.length = 0; }
+      st.misc.tick = tick;
+      st.bullets.push({ x: mx, y: my + 10 });
+    }
+    for (let i = st.bullets.length - 1; i >= 0; i--) {
+      const b = st.bullets[i];
+      b.y += 135 * dt;
+      c.save(); c.setLineDash([3, 3]); c.strokeStyle = 'rgba(255,140,70,0.6)';
+      c.beginPath(); c.arc(b.x, H - 16, 10, 0, Math.PI * 2); c.stroke(); c.restore();
+      if (b.y >= H - 16) {
+        st.flashes.push({ x: b.x, age: 0 });
+        st.bullets.splice(i, 1);
+        continue;
+      }
+      c.fillStyle = '#ff8a4d';
+      c.beginPath(); c.arc(b.x, b.y, 3, 0, Math.PI * 2); c.fill();
+    }
+    for (let i = st.flashes.length - 1; i >= 0; i--) {
+      const f = st.flashes[i];
+      f.age += dt;
+      const a = 1 - f.age / 0.35;
+      if (a <= 0) { st.flashes.splice(i, 1); continue; }
+      c.fillStyle = 'rgba(255,140,60,' + 0.5 * a + ')';
+      c.beginPath(); c.arc(f.x, H - 16, 8 + f.age * 55, 0, Math.PI * 2); c.fill();
+    }
+  }
+  // ⑪ 辛国栋·十二连发（两批各 12 发，轻追踪：vx 朝玩家位置缓慢修正）
+  function t4DrawMissiles(c, t, dt, W, H, st) {
+    t4Bomber(c, W / 2, 32, 0.95);
+    [0.3, 1.7].forEach((vt, v) => {
+      const key = 'v' + v;
+      if (t < vt) { st.misc[key] = 0; return; }
+      if (!st.misc[key]) {
+        st.misc[key] = 1;
+        for (let i = 0; i < 12; i++) {
+          const x = W * (0.1 + 0.8 * i / 11);
+          st.bullets.push({ x, y: 50, vx: (x - W / 2) * 0.9, vy: 70 });
+        }
+      }
+    });
+    if (t < 0.05) st.bullets.length = 0;
+    const pp = t4PlayerPos(t, W, H);
+    for (let i = st.bullets.length - 1; i >= 0; i--) {
+      const b = st.bullets[i];
+      b.vy = Math.min(160, b.vy + 130 * dt);
+      b.vx += Math.max(-60, Math.min(60, (pp[0] - b.x) * 1.5)) * dt;
+      const ox = b.x - b.vx * 0.05, oy = b.y - b.vy * 0.05;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      c.strokeStyle = 'rgba(255,90,70,0.5)'; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(ox, oy); c.lineTo(b.x, b.y); c.stroke();
+      if (b.y > H + 4) { st.bullets.splice(i, 1); continue; }
+      c.fillStyle = '#ff5a4d';
+      c.beginPath(); c.arc(b.x, b.y, 2.4, 0, Math.PI * 2); c.fill();
+    }
   }
 
   function renderInfoTest2() {
     infoBody.innerHTML = '';
-    infoAppendNote('（内容已清空）');
+    infoAppendNote('<b>赞助无人机图案备选</b>——核心标志（机体中心）与道具箱图案（盒子中心）分开评选。鼠标悬停可放大查看。');
+
+    // ── 核心标志备选 ──
+    const markTitle = document.createElement('h3');
+    markTitle.textContent = '核心标志（机体中心）';
+    markTitle.style.cssText = 'margin:16px 0 8px;color:#ffd166;font-size:14px;';
+    infoBody.appendChild(markTitle);
+    const markRow = document.createElement('div');
+    markRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;';
+    infoBody.appendChild(markRow);
+    const marks = [
+      { fn: paintDouzhiMark, label: '当前', name: '上扬双箭头' },
+      { fn: paintMarkA, label: 'A', name: '交叉闪电' },
+      { fn: paintMarkB, label: 'B', name: '六边形宝石' },
+      { fn: paintMarkC, label: 'C', name: '五角星辉光' },
+      { fn: paintMarkD, label: 'D', name: '菱形钻石' },
+      { fn: paintMarkE, label: 'E', name: '礼物蝴蝶结' },
+    ];
+    marks.forEach(m => {
+      const card = document.createElement('div');
+      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;';
+      const cvs = document.createElement('canvas');
+      cvs.width = 64; cvs.height = 64;
+      cvs.style.cssText = 'width:64px;height:64px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(120,180,255,0.1);transition:transform 0.15s,border-color 0.15s;';
+      cvs.addEventListener('mouseenter', () => { cvs.style.transform = 'scale(1.8)'; cvs.style.borderColor = 'rgba(255,209,102,0.5)'; });
+      cvs.addEventListener('mouseleave', () => { cvs.style.transform = ''; cvs.style.borderColor = 'rgba(120,180,255,0.1)'; });
+      const c = cvs.getContext('2d');
+      c.translate(32, 32);
+      // 用暗底色模拟机体背景
+      c.fillStyle = '#1a1d23'; c.fillRect(-20, -20, 40, 40);
+      withPreviewCtx(c, () => {
+        m.fn(0, 0, 8, 0.5 + Math.sin(state.time * 2) * 0.5);
+      });
+      card.appendChild(cvs);
+      const lbl = document.createElement('span');
+      lbl.textContent = `${m.label} ${m.name}`;
+      lbl.style.cssText = 'font-size:11px;color:#9fb4d8;';
+      card.appendChild(lbl);
+      markRow.appendChild(card);
+    });
+
+    // ── 道具箱图案备选 ──
+    const boxTitle = document.createElement('h3');
+    boxTitle.textContent = '道具箱图案（盒子中心标记）';
+    boxTitle.style.cssText = 'margin:16px 0 8px;color:#ffd166;font-size:14px;';
+    infoBody.appendChild(boxTitle);
+    const boxRow = document.createElement('div');
+    boxRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;';
+    infoBody.appendChild(boxRow);
+    // 用赞助无人机白盒样式画背景
+    const boxColors = { mark: '#2b6fd6', light: '#ffffff', mid: '#dfe6ee', dark: '#aeb9c6', base: '#1a1d23' };
+    const boxes = [
+      { fn: paintBoxMark1, label: '1', name: '问号' },
+      { fn: paintBoxMark2, label: '2', name: '小闪电' },
+      { fn: paintBoxMark3, label: '3', name: '蝴蝶结' },
+      { fn: paintBoxMark4, label: '4', name: '六角星' },
+      { fn: paintBoxMark5, label: '5', name: '钻石切割' },
+    ];
+    // 当前图案（空心正方形）也展示对比
+    const currentBox = document.createElement('div');
+    currentBox.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;';
+    const curCvs = document.createElement('canvas');
+    curCvs.width = 64; curCvs.height = 64;
+    curCvs.style.cssText = 'width:64px;height:64px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(120,180,255,0.1);transition:transform 0.15s,border-color 0.15s;';
+    curCvs.addEventListener('mouseenter', () => { curCvs.style.transform = 'scale(1.8)'; curCvs.style.borderColor = 'rgba(255,209,102,0.5)'; });
+    curCvs.addEventListener('mouseleave', () => { curCvs.style.transform = ''; curCvs.style.borderColor = 'rgba(120,180,255,0.1)'; });
+    const cc = curCvs.getContext('2d');
+    cc.translate(32, 32);
+    cc.fillStyle = '#1a1d23'; cc.fillRect(-20, -20, 40, 40);
+    withPreviewCtx(cc, () => {
+      // 画白盒背景 + 当前空心正方形
+      const hw = 10.5, hh = 8.6 * 0.85, r = 2.6;
+      const rr = (x, y, w, h, rad) => { ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); };
+      rr(-hw, -hh, hw * 2, hh * 2, r); ctx.fillStyle = boxColors.base; ctx.fill();
+      const bg = ctx.createLinearGradient(-hw, -hh, hw, hh);
+      bg.addColorStop(0, boxColors.light); bg.addColorStop(0.5, boxColors.mid); bg.addColorStop(1, boxColors.dark);
+      rr(-hw, -hh, hw * 2, hh * 2, r); ctx.fillStyle = bg; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; rr(-hw, -hh, hw * 2, hh * 2, r); ctx.stroke();
+      // 当前图案：空心正方形
+      ctx.strokeStyle = boxColors.mark; ctx.lineWidth = 1.6;
+      ctx.strokeRect(-4.5, -4.5, 9, 9);
+    });
+    currentBox.appendChild(curCvs);
+    const curLbl = document.createElement('span');
+    curLbl.textContent = '当前 空心正方形';
+    curLbl.style.cssText = 'font-size:11px;color:#9fb4d8;';
+    currentBox.appendChild(curLbl);
+    boxRow.appendChild(currentBox);
+
+    boxes.forEach(b => {
+      const card = document.createElement('div');
+      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;';
+      const cvs = document.createElement('canvas');
+      cvs.width = 64; cvs.height = 64;
+      cvs.style.cssText = 'width:64px;height:64px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(120,180,255,0.1);transition:transform 0.15s,border-color 0.15s;';
+      cvs.addEventListener('mouseenter', () => { cvs.style.transform = 'scale(1.8)'; cvs.style.borderColor = 'rgba(255,209,102,0.5)'; });
+      cvs.addEventListener('mouseleave', () => { cvs.style.transform = ''; cvs.style.borderColor = 'rgba(120,180,255,0.1)'; });
+      const c = cvs.getContext('2d');
+      c.translate(32, 32);
+      c.fillStyle = '#1a1d23'; c.fillRect(-20, -20, 40, 40);
+      withPreviewCtx(c, () => {
+        // 画白盒背景
+        const hw = 10.5, hh = 8.6 * 0.85, r = 2.6;
+        const rr = (x, y, w, h, rad) => { ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); };
+        rr(-hw, -hh, hw * 2, hh * 2, r); ctx.fillStyle = boxColors.base; ctx.fill();
+        const bg = ctx.createLinearGradient(-hw, -hh, hw, hh);
+        bg.addColorStop(0, boxColors.light); bg.addColorStop(0.5, boxColors.mid); bg.addColorStop(1, boxColors.dark);
+        rr(-hw, -hh, hw * 2, hh * 2, r); ctx.fillStyle = bg; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; rr(-hw, -hh, hw * 2, hh * 2, r); ctx.stroke();
+        // 候选图案
+        b.fn(0, 0, 4.5, boxColors.mark);
+      });
+      card.appendChild(cvs);
+      const lbl = document.createElement('span');
+      lbl.textContent = `${b.label} ${b.name}`;
+      lbl.style.cssText = 'font-size:11px;color:#9fb4d8;';
+      card.appendChild(lbl);
+      boxRow.appendChild(card);
+    });
+
+    infoAppendNote('选定后告知编号，我替换到机体/盒子上。核心标志颜色统一淡黄辉光（与斗志昂扬一致），道具箱图案颜色用盒子反差色（白盒→深蓝 / 淡黄盒→深金）。');
   }
 
   function openInfoModal() {

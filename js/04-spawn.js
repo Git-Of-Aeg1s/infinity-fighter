@@ -244,7 +244,7 @@
   }
 
   // 1类两速体系：快速 200（SIDE_SPEED_FAST）/ 慢速 150（SIDE_SPEED_SLOW），方向取编队基值方向、模长归一。
-  // 规则：顶部入场（对角奇袭 / 图鉴挑战顶部斜插）快速；侧翼入场（常规编队/长队/斜扫/紫自爆流）慢速；
+  // 规则：顶部入场（232111 / 图鉴挑战顶部斜插）快速；侧翼入场（常规编队/长队/斜扫/紫自爆流）慢速；
   // BOSS 战期间（bossFlow.stage === 'fight'）不限入场位置一律快速；BOSS 后固定首波由调用方显式传 fast
   function sideVelocity(vx, vy, fast) {
     const spd = (fast || bossFlow.stage === 'fight') ? SIDE_SPEED_FAST : SIDE_SPEED_SLOW;
@@ -678,7 +678,7 @@
     { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10, sideEntry: true },        // 双侧斜扫
     { fn: spawnStrikerVee,         w1: 0,  w10: 30, wHigh: 30 },                            // 2类 V 字俯冲
     { fn: spawnSideKamikazeStream, w1: 0,  w10: 5,  wHigh: 15, sideEntry: true },        // 紫自爆流（两侧纵列）
-    { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 对角奇袭（含炮艇）
+    { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 232111（含炮艇）
     { fn: spawnGunshipWings,       w1: 0,  w10: 30, wHigh: 40, slotGunship: true },         // 双炮艇压阵
   ];
 
@@ -854,7 +854,7 @@
   // 特殊2类：破片U型（诗篇新敌）—— 破片升级版：样式同破片（核心描边/双杠/炮口红色细节）、
   // 导弹 10/7/7；入场无需锁停就位、途中即旋转瞄准玩家，入场 1.8~2s（诗篇 1.6~2s）后才能射击。
   // 暂未接入常规出怪（诗篇出怪接入另行批次）；图鉴挑战召唤入口见 spawnChallengeTargetOne；
-  // 战争幽灵半血召唤也经此入口（远侧边缘固定横位入场）
+  // 战争幽灵半血召唤也经此入口（幽灵身侧横位、顶部入场，目标点为其身后水平线）
   function spawnPopianU(x, y, o) {
     return spawnPopian(x, y, o, 'popianU');
   }
@@ -1274,7 +1274,7 @@
     const cx = CANVAS_W / 2;
     switch (ch.type) {
       case 'side':
-        // 侧翼艇：50% 顶部斜插（对角奇袭同款方向基值 ±24 / 90~111 → 快速 200）/ 50% 侧翼斜插——仅从左侧窜出（同常规 1类侧翼入场 → 慢速 150）；
+        // 侧翼艇：50% 顶部斜插（232111 同款方向基值 ±24 / 90~111 → 快速 200）/ 50% 侧翼斜插——仅从左侧窜出（同常规 1类侧翼入场 → 慢速 150）；
         // 两速体系与正常游戏一致（含入场冲刺），飞出屏幕后由 updateChallenge 重新生成
         if (Math.random() < 0.5) {
           spawnSideUnit(-36, rand(CANVAS_H * 0.35, CANVAS_H * 0.45),

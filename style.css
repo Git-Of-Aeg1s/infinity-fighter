@@ -346,6 +346,18 @@ canvas#game {
   pointer-events: none;
 }
 
+/* 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；不随时间衰减，仅被击中消耗） */
+.hp-perm-barrier {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(270deg, #5fe8d0, #2ee6c0);
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(46, 230, 192, 0.7);
+}
+
 /* 测试模式血量回满：血条动画速度 ×300%（0.18s → 0.06s），由回满瞬间临时挂 fast 类 */
 .hp-fill.fast { transition: width 0.06s ease, background 0.1s ease; }
 

@@ -405,6 +405,7 @@ try {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
     if (spawn.spawnWarGhost && core.enemies && core.player) {
       key('p'); frames(5); key('p', false);
       elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
@@ -452,6 +453,39 @@ try {
         if (!sawSlashes) errors.push({ key: '战争幽灵技能2未出斩击流', stack: '640 帧内 wgSlashes 未出现 ≥2 道（锁定后发射分支异常？）' });
         if (!sawBarrage) errors.push({ key: '战争幽灵技能3未出弹幕', stack: '640 帧内未见幽灵子弹（scheduled 排弹 / fire 分支内推进异常？）' });
         if (!sawSkill1) errors.push({ key: '战争幽灵技能1未施放', stack: '640 帧内未进入技能1（序列应 2→3→1）' });
+
+        // 半血召唤校验：hp 置 50% → 推进 2 帧（不隔离，保留召唤物）——
+        // 光环配置应为 ×2（+100%）；铁砧 / 破片U型目标点须在幽灵左右身侧略微后方（后方即上方）
+        if (cfg.WAR_GHOST.auraSpdMul !== 2 || cfg.WAR_GHOST.auraAccMul !== 2) {
+          errors.push({ key: '战争幽灵光环倍率异常', stack: 'auraSpdMul=' + cfg.WAR_GHOST.auraSpdMul + ' auraAccMul=' + cfg.WAR_GHOST.auraAccMul + '（应均为 2）' });
+        }
+        e.hp = e.maxHp * 0.5;
+        const gx = e.x, gy = e.y;                    // 快照：召唤在本帧内按此位置取点（下帧幽灵自身会摆动）
+        frames(2);
+        const aS = core.enemies.find(x => x !== e && x.type === 'anvil');
+        const uS = core.enemies.find(x => x !== e && x.type === 'popianU');
+        if (!aS || !uS) {
+          errors.push({ key: '战争幽灵半血未召唤', stack: 'anvil=' + !!aS + ' popianU=' + !!uS });
+        } else {
+          const W = core.canvas.width;
+          const expY = Math.max(60, gy - cfg.WAR_GHOST.summonBackY);
+          const expAnvilX = Math.max(46, Math.min(W - 46, gx - cfg.WAR_GHOST.summonSideGap));
+          const expUX = Math.max(46, Math.min(W - 46, gx + cfg.WAR_GHOST.summonSideGap));
+          if (!(aS.hoverY < e.y && uS.tpY < e.y)) {
+            errors.push({ key: '召唤目标点不在后方', stack: 'anvil.hoverY=' + aS.hoverY.toFixed(1) + ' popianU.tpY=' + uS.tpY.toFixed(1) + ' ghost.y=' + e.y.toFixed(1) + '（应均在幽灵上方）' });
+          }
+          // 召唤在帧内「幽灵移动之后」发生，取点相对帧前快照有 <1px 的帧内摆动偏移，按 ±1px 容差校验
+          if (Math.abs(aS.hoverY - expY) > 1 || Math.abs(uS.tpY - expY) > 1) {
+            errors.push({ key: '召唤后方偏移量异常', stack: 'anvil.hoverY=' + aS.hoverY + ' U.tpY=' + uS.tpY + ' 期望=' + expY });
+          }
+          if (Math.abs(aS.x - expAnvilX) > 1 || Math.abs(uS.tpX - expUX) > 1) {
+            errors.push({ key: '召唤身侧间距异常', stack: 'anvil.x=' + aS.x.toFixed(1) + '（期望 ' + expAnvilX.toFixed(1) + '）U.tpX=' + uS.tpX + '（期望 ' + expUX + '）' });
+          }
+          if (!((aS.x - e.x) * (uS.x - e.x) < 0)) {
+            errors.push({ key: '召唤物未分居两侧', stack: 'anvil.x=' + aS.x.toFixed(1) + ' U.x=' + uS.x.toFixed(1) + ' ghost.x=' + e.x.toFixed(1) });
+          }
+        }
+
         // ③ 离场：驻留倒计时置短 → 相位 4 直线预警 1s → 相位 5 加速斩出 → 出界移除
         e.wgDwellT = 0.1;
         let prevSpd = -1, spdMono = true, maxExitStep = 0, gone = false;
@@ -504,6 +538,87 @@ try {
       if (matrices > 0) errors.push({ key: '秒杀禁亡语召唤失效（法术阵列）', stack: 'sweepKill 期间击杀法术阵列仍爆发 ' + matrices + ' 个法术矩阵' });
       core.enemies.length = 0;
       sample('统一规则 秒杀禁亡语召唤（增生 / 法术阵列）');
+    }
+  }
+
+  // 御4 / 铁砧：到位悬停后除左右巡航外，应有小幅上下浮动（2026-09-29 用户反馈新增）——
+  // 直调 spawnYu4 / spawnAnvil（长 holdTimer，不走自然刷怪），跟踪到位后纵向轨迹：
+  // ① 到位瞬间纵向偏移 = 0（与悬停锚点严格连续）
+  // ② 缓入后纵向确有上下往复（dy 最大/最小 ≈ ±10px 量级），相邻帧位移连续无瞬跳（速度曲线铁律）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    if (spawn.spawnYu4 && spawn.spawnAnvil && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      for (const [label, mk] of [['御4', spawn.spawnYu4], ['铁砧', spawn.spawnAnvil]]) {
+        core.enemies.length = 0;
+        if (core.pBullets) core.pBullets.length = 0;
+        const e = mk.call(spawn, 1000);              // holdTimer 1000s：观察窗口内不进入离场
+        if (!e || (label === '御4' ? e.type !== 'yu4' : e.type !== 'anvil')) {
+          errors.push({ key: label + ' 生成失败', stack: label + ' spawn 未返回预期实体' });
+          continue;
+        }
+        // 出生横位挪到玩家侧方（±200px）：避开玩家主炮竖直弹道，防止到位前被击毁导致摆程采样不全
+        const Wb = core.canvas.width;
+        e.x = Math.max(46, Math.min(Wb - 46, core.player.x + (label === '御4' ? -200 : 200)));
+        // 每帧隔离：清他机 / 清敌弹 / 清我方弹（只验证到位悬停摆动）
+        const isolate = () => {
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          if (playerMod.clearEnemyBullets) playerMod.clearEnemyBullets();
+          if (core.pBullets) core.pBullets.length = 0;
+        };
+        let arrived = false, arriveDy = null, f = 0;
+        for (; f < 240 && !arrived; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          frames(1); isolate(); arrived = e.arrived;
+        }
+        if (!arrived) {
+          errors.push({ key: label + ' 未到位', stack: '240 帧内 arrived=false（入场减速分支异常？）' });
+          continue;
+        }
+        if (!core.enemies.includes(e) || e.hp <= 0) {
+          errors.push({ key: label + ' 到位前损失', stack: '入场途中被击毁/移除（hp=' + e.hp + '），场景隔离不足' });
+          continue;
+        }
+        arriveDy = e.y - e.hoverY;
+        if (Math.abs(arriveDy) > 0.5) {
+          errors.push({ key: label + ' 到位纵向不连续', stack: '到位瞬间 dy=' + arriveDy.toFixed(2) + 'px（应为 0）——位置连续性铁律' });
+        }
+        // 到位后跟踪 600 帧（≈10s，纵向周期 ≈5.2s，覆盖近 2 个往复）
+        let minDy = 0, maxDy = 0, maxStep = 0, mismatch = 0, prevY = e.y;
+        for (let k = 0; k < 600; k++) {
+          if (core.pBullets) core.pBullets.length = 0;   // 帧前清弹：防止本帧内开火命中机体导致测量中断
+          frames(1); isolate();
+          // 位置公式复核：dy 应严格等于 hoverY 锚点上的缓入正弦（bobT/swayT 均为到位后起算）
+          const st = Math.min(1, (e.swayT || 0) / 0.8);
+          const sIn = st * st * (3 - 2 * st);
+          const expDy = Math.sin((e.bobT || 0) * 1.2) * 10 * sIn;
+          const dy = e.y - e.hoverY;
+          if (Math.abs(dy - expDy) > 0.05) mismatch++;
+          minDy = Math.min(minDy, dy);
+          maxDy = Math.max(maxDy, dy);
+          maxStep = Math.max(maxStep, Math.abs(e.y - prevY));
+          prevY = e.y;
+        }
+        if (mismatch) {
+          errors.push({ key: label + ' 纵向公式被改写', stack: '600 帧内 ' + mismatch + ' 帧 dy 偏离位置公式（有其他力抢写 e.y？）' });
+        }
+        if (maxDy < 8 || minDy > -8) {
+          errors.push({ key: label + ' 纵向未上下往复', stack: '到位 10s 内 dy 区间 [' + minDy.toFixed(1) + ', ' + maxDy.toFixed(1) + ']（应达 ≈ ±10px）' });
+        }
+        if (Math.max(Math.abs(minDy), Math.abs(maxDy)) > 14) {
+          errors.push({ key: label + ' 纵向摆幅过大', stack: 'dy 极值 |' + minDy.toFixed(1) + '/' + maxDy.toFixed(1) + '|（设计 ≈ 10px）' });
+        }
+        if (maxStep > 0.6) {
+          errors.push({ key: label + ' 纵向存在瞬跳', stack: '到位后相邻帧最大纵向位移 ' + maxStep.toFixed(2) + 'px（>0.6px，理论上限 12px/s@60fps=0.2px）——速度曲线铁律' });
+        }
+        sample(label + ' 到位悬停纵向微摆跑帧');
+      }
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
 

@@ -6,7 +6,7 @@
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, rewardItem, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeHits, gachaFx, gachaStones, gachaStoneMilestone, gachaStoneOwed}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, REWARD_ITEMS, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, itemGauge, itemGaugeIcon, itemGaugeRing, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, frostZones, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoEntryBtn, itemGauge, itemGaugeIcon, itemGaugeRing, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
@@ -46,6 +46,10 @@
     const barRatio = (player.barrier || 0) > 0
       ? clamp(player.barrier / Math.max(player.barrierMax || 0, maxHp), 0, 1) : 0;
     hpBarrier.style.width = (barRatio * 100) + '%';
+    // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；不随时间衰减）
+    const permRatio = (player.permBarrier || 0) > 0
+      ? clamp(player.permBarrier / maxHp, 0, 1) : 0;
+    hpPermBarrier.style.width = (permRatio * 100) + '%';
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
 
     hpFill.classList.toggle('danger', ratio <= 0.25);
@@ -171,6 +175,9 @@
     state.bombCapAdd = 0; state.bengbagGot = false;
     state.jiukeT = 0; state.jiukeHits = 0;
     state.gachaFx = null;
+    state.xinFuryRing = null;
+    state.honghongT = 0;
+    player.permBarrier = 0; player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;
     state.gachaStones = 0; state.gachaStoneMilestone = false; state.gachaStoneOwed = false;
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
@@ -295,6 +302,7 @@
     missileWarns.length = 0;
     missiles.length = 0;
     blBombs.length = 0;
+    frostZones.length = 0;   // 虚幻寒冷区域随重开清空（否则回主页面后更新停止、渲染仍在，冰蓝区域冻结残留）
     popianMissiles.length = 0;
     wgSlashes.length = 0;   // 战争幽灵技能2斩击流随重开清空
     spellCubes.length = 0;

@@ -62,7 +62,7 @@
     } else if (e.type === 'baolingG') {
       drawBaolingGBody(e);    // 暴鸰·G：同暴鸰机体 ×1.05 + 前挂胶囊形炸弹（半圆+矩形+半圆，矩形多道横杠）
     } else if (e.type === 'unreal') {
-      drawUnrealBody(e);      // 虚幻：同暴鸰机体 + 机身雪花标识 + 前挂蓝/深蓝渐变矩形炸弹（圆柱涂装）
+      drawUnrealBody(e);      // 虚幻：同暴鸰机体 + 冰青桨心 + 机身雪花标识 + 前挂青蓝渐变圆柱炸弹（椭圆顶面 + 两道半圆弧线）
     } else if (e.type === 'douzhi' || e.type === 'sponsor' || e.type === 'sponsorDeluxe') {
       drawDouzhiBody(e);      // 奖励无人机（斗志昂扬/赞助/豪华赞助）：类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂盒子（盒色/高度按类型）
     } else if (e.type === 'hanshuang') {
@@ -91,7 +91,7 @@
     } else if (e.type === 'popian') {
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
     } else if (e.type === 'popianU') {
-      drawPopianUBody(e);     // 破片U型：同破片机体（核心描边/双杠/炮口改红，尾焰随移动方向）
+      drawPopianUBody(e);     // 破片U型：同破片机体（菱形四角/核心描边改红，双杠黑底红能流动，炮口改红，尾焰随移动方向）
     } else if (e.type === 'fashiMatrix') {
       drawFashiMatrixBody(e); // 自带填充与描边（竖菱形白红渐变外体 + 细黑菱形环 + 白红核心）
     } else if (e.type === 'fashiArray') {
@@ -891,6 +891,64 @@
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  // 奖励道具·辛国栋大怒：固定位置的扩散火环（不移动，半径随时间扩张）。
+  // 复用辛国栋之怒同款视觉（玫红→粉流动火舌 + 火星 + 边界环），整体透明度由 state.xinFuryRing.alpha 驱动
+  function drawXinFuryRing() {
+    const g = state.xinFuryRing;
+    if (!g) return;
+    const a = 0.85 * g.alpha;
+    const r = g.r;
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.globalAlpha = a;
+    const glow = ctx.createRadialGradient(0, 0, r * 0.15, 0, 0, r);
+    glow.addColorStop(0, 'rgba(255, 45, 110, 0.13)');
+    glow.addColorStop(0.5, 'rgba(255, 30, 90, 0.08)');
+    glow.addColorStop(0.85, 'rgba(230, 20, 80, 0.05)');
+    glow.addColorStop(1, 'rgba(230, 20, 80, 0)');
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = glow; ctx.fill();
+    const tongues = 40;
+    const layers = [
+      { lr: r * 0.92, amp: 4.0, spd: 2.2, ph: 0,    color: 'rgba(255, 45, 110, 0.55)', lw: 2.4 },
+      { lr: r * 0.96, amp: 3.0, spd: -1.6, ph: 1.3, color: 'rgba(255, 105, 160, 0.4)', lw: 1.8 },
+      { lr: r * 0.88, amp: 5.0, spd: 3.0, ph: 2.7,  color: 'rgba(255, 175, 205, 0.28)', lw: 1.2 },
+    ];
+    for (const L of layers) {
+      ctx.beginPath();
+      for (let k = 0; k <= tongues; k++) {
+        const an = (k / tongues) * Math.PI * 2;
+        const wave = Math.sin(an * 6 + state.time * L.spd + L.ph) * L.amp
+                   + Math.sin(an * 11 - state.time * L.spd * 0.7 + L.ph * 2) * L.amp * 0.5;
+        const rr = L.lr + wave;
+        if (k === 0) ctx.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
+        else ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = L.color;
+      ctx.lineWidth = L.lw;
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255, 160, 200, 0.85)';
+    for (let k = 0; k < 12; k++) {
+      const seed = k * 137.508;
+      const sa = (seed % (Math.PI * 2));
+      const sr = r * (0.4 + 0.5 * ((seed * 0.618) % 1));
+      const rise = ((state.time * 28 + seed * 3) % 50) - 25;
+      const sx = Math.cos(sa) * sr + Math.sin(state.time * 1.2 + k) * 2;
+      const sy = Math.sin(sa) * sr - rise;
+      const sparkR = 1.0 + Math.sin(state.time * 4 + k * 2) * 0.4;
+      if (Math.hypot(sx, sy) < r) {
+        ctx.beginPath(); ctx.arc(sx, sy, sparkR, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 80, 140, 0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
   }
 
   // 圆角弹体路径（手工 arc 实现，不依赖 roundRect——旧浏览器内核无此 API 会静默回退直角）：
@@ -2325,6 +2383,7 @@
     drawTrailGhosts();
     drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
     drawXinRings();       // 副武器·辛国栋之怒：灼烧火环（子弹之下）
+    drawXinFuryRing();    // 奖励道具·辛国栋大怒：固定位置扩散火环（子弹之下）
     drawFeijianWaves();   // 副武器·无界飞剑：待发射飞剑（凝聚下沉 → 分裂悬浮）
     drawBullets();
     drawMissiles();
@@ -2334,7 +2393,7 @@
     drawFrostField();   // 奖励道具·寒霜发生器：我方青白力场（低图层地面效果，存在感刻意压低）
     drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹（虚幻：深蓝预警圈 + 矩形炸弹）
-    drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
+    drawPopianFx();       // 破片 / 破片U型：红圈预警 + 三连发不可击毁导弹
     drawWarGhostSlashes();   // 战争幽灵：技能2双斩击流（金色高速斩击）
     drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）
     drawCubeHitFx();      // 法术矩阵：正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）

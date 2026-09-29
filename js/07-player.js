@@ -3,11 +3,11 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 05-boss(3 名) 06-enemy(9 名) 08-entities(11 名) 12-ui(2 名) 13-encyclopedia(1 名) 14-main(16 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, rewardItem, score, yiCounter, lingliCharges, lingliBossShieldDone, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeHits, gachaFx}
+  //   state.{bombs, demo, flash, hurt, lives, rewardItem, score, yiCounter, lingliCharges, lingliBossShieldDone, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeHits, gachaFx, xinFuryRing, honghongT}
   //
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, ENEMY_CLASS, HANSHUANG, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, REWARD_ITEMS, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotEntry, pilotHuiHealMul } from './01-config.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, yiScythes, ddjMissiles } from './02-core.js';
-  import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
+  import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul, spawnDouzhi } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
   import { achvAddDagouCheat, achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLingliBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
@@ -1097,6 +1097,8 @@
     player.shieldMax = 0;         // 护盾读条分母复位
     player.bulwarkUsed = false;   // 最终壁垒：每条命一次，重生重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
+    player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;   // 屏障随重生清空
+    player.permBarrier = 0;       // 永久屏障随重生清空（一命一得）
     player.tianshuArmedT = 0; player.tianshuCycleT = 0;   // 天枢圣卫：圣守周期随重生重置
     player.hitCount = 0;
     player.hitFxT = 0;
@@ -1146,10 +1148,27 @@
       if (state.jiukeHits <= 0) state.jiukeT = 0;   // 免疫耗尽：立即解除透明化
       return true;
     }
-    // 屏障（青时炮艇支援弹）：优先于血量吸收伤害（完全吸收时不给无敌帧、不计受击）
-    if (player.barrier > 0 && amount > 0) {
-      const abs = Math.min(player.barrier, amount);
-      player.barrier -= abs; amount -= abs;
+    // 屏障（青时炮艇支援弹）+ 永久屏障（瓶中精灵）：优先消耗普通屏障，再消耗永久屏障；
+    // 拥有屏障时被击中只要没掉血即算无伤（return false 不记受击）；
+    // 永久屏障具备抵御效果：若该次伤害 > barrier + permBarrier，仅扣除两个屏障、不扣血（吃掉一次溢出伤害）
+    if ((player.barrier > 0 || player.permBarrier > 0) && amount > 0) {
+      const totalShield = player.barrier + player.permBarrier;
+      if (amount >= totalShield) {
+        // 溢出：两个屏障全扣完，本次伤害不再扣血（抵御一次溢出）
+        player.barrier = 0; player.permBarrier = 0;
+        spawnParticles(player.x, player.y, '#9ff0e0', 8, 150);
+        spawnParticles(player.x, player.y, '#5fe8d0', 6, 180);
+        return false;
+      }
+      // 未溢出：先扣 barrier，剩余扣 permBarrier
+      if (player.barrier > 0) {
+        const abs = Math.min(player.barrier, amount);
+        player.barrier -= abs; amount -= abs;
+      }
+      if (amount > 0 && player.permBarrier > 0) {
+        const abs = Math.min(player.permBarrier, amount);
+        player.permBarrier -= abs; amount -= abs;
+      }
       if (amount <= 0) { spawnParticles(player.x, player.y, '#9ff0e0', 8, 150); return false; }
     }
     // 天枢圣卫：圣守窗口——窗口内受击在伤害结算前触发无敌，该次伤害完全免除；
@@ -1233,6 +1252,20 @@
     if (player.hp <= 0) {
       // 最终壁垒：每条命一次——致死伤害（含导弹等强制击杀）不死后恢复 1 点生命、3s 无敌、清除 250px 内敌弹
       if (tryBulwarkCheatDeath()) return true;
+      // 瓶中精灵（被动）：被击坠时免于死亡——恢复 30% 生命、清除 250px 弹幕（青绿色冲击波）、3s 无敌，消耗道具
+      if (state.rewardItem && state.rewardItem.id === 'bottleSpirit') {
+        state.rewardItem = null;
+        const maxHp = player.maxHp || PLAYER_CFG.maxHp;
+        player.hp = Math.ceil(maxHp * 0.3);
+        player.invuln = 3 * invulnDiffMul() * invulnMul; player.invulnBlink = true;
+        clearEnemyBulletsNear(player.x, player.y, 250);
+        spawnBlastRing(player.x, player.y, 250, '#5fe8d0');
+        spawnParticles(player.x, player.y, '#5fe8d0', 30, 280);
+        spawnParticles(player.x, player.y, '#9ff0e0', 20, 220);
+        shake(8, 0.3);
+        hpFillFastRefill();
+        return true;
+      }
       player.hp = 0;
       player.alive = false;
       state.lives--;
@@ -1629,8 +1662,8 @@
       case 'magnetShroom': // 磁力菇：水晶拾取半径 +40（一整局、可叠加；08-entities 水晶吸附读取）
         state.magnetBonus += 40;
         break;
-      case 'noLingluo':    // 不再陵落：6s 螺旋飞剑风暴（16 发/s，起始朝上每发 +40°，每圈自带 40° 偏移）
-        state.swordStormT = 6;
+      case 'noLingluo':    // 不再陵落：9s 螺旋飞剑风暴（32 发/s，起始朝上每发 +25°，每圈自带 25° 偏移）
+        state.swordStormT = 9;
         state.swordStormAng = -Math.PI / 2;   // 每次使用重置起始朝向（正上方）
         state.swordStormAcc = 0;
         break;
@@ -1647,6 +1680,26 @@
         break;
       case 'gacha':        // 哦哦！抽卡！：原石汇集演出 → 抽色 → 陨石（状态机见 startGacha/updateGachaFx）
         startGacha();
+        break;
+      case 'xinguodongFury':   // 辛国栋大怒：固定位置生成扩散火环，6s 后全屏灼烧，再 4s 渐隐
+        state.xinFuryRing = { x: player.x, y: player.y, r: 10, rMax: Math.hypot(CANVAS_W, CANVAS_H) * 0.6, t: 0, expandDur: 6, burnDur: 4, dps: 200, tick: 0.2, tickT: 0, burnt: false, alpha: 1 };
+        break;
+      case 'honghongBomb':     // 轰轰炸弹：20s 内击败敌人触发连锁爆炸（06-enemy killEnemy 读取 state.honghongT）
+        state.honghongT = 20;
+        break;
+      case 'handDouzhi':       // 手持斗志昂扬：生成一架斗志昂扬，生命值 -40%
+        {
+          const before = enemies.length;
+          spawnDouzhi('douzhi');
+          if (enemies.length > before) {
+            const d = enemies[enemies.length - 1];
+            d.maxHp = Math.ceil(d.maxHp * 0.6);
+            d.hp = d.maxHp;
+          }
+        }
+        break;
+      case 'bottleSpirit':     // 瓶中精灵（主动）：获得 30% 永久屏障
+        player.permBarrier = Math.max(player.permBarrier, (player.maxHp || PLAYER_CFG.maxHp) * 0.3);
         break;
     }
     // 原石 16 颗里程碑的补发结算：里程碑触发时道具栏被占用（gachaStoneOwed）——当前道具用掉后立刻补发
@@ -1687,7 +1740,7 @@
       r: f.r, dmg: lv.dmg, len: f.len, sword: true, sub: true, mainPierce: 0,
       ...(Math.sin(ang) > 0 ? { lowArc: true } : {}),
     });
-    state.swordStormAng += 40 * Math.PI / 180;   // 顺时针偏转 40°（非 45°：每圈转完自带 40° 偏移）
+    state.swordStormAng += 25 * Math.PI / 180;   // 顺时针偏转 25°（每圈转完自带 25° 偏移）
   }
 
   // 奖励道具效果逐帧推进（updatePlayer 调用；演示屏不调用——道具仅在实战局掉落）。
@@ -1700,11 +1753,11 @@
     if (Math.abs(state.laodaMul - laodaTarget) < 0.002) state.laodaMul = laodaTarget;
     if (state.laodaT > 0) state.laodaT = Math.max(0, state.laodaT - dt);
 
-    // 不再陵落：16 发/s 累加器推进
+    // 不再陵落：32 发/s 累加器推进
     if (state.swordStormT > 0) {
       if (!playerFireLocked()) {
         state.swordStormT = Math.max(0, state.swordStormT - dt);
-        state.swordStormAcc += dt * 16;
+        state.swordStormAcc += dt * 32;
         while (state.swordStormAcc >= 1) {
           state.swordStormAcc -= 1;
           fireSwordStormOne();
@@ -1733,6 +1786,40 @@
 
     // 抽卡演出推进
     if (state.gachaFx) updateGachaFx(dt);
+
+    // 轰轰炸弹：倒计时（连锁爆炸结算见 06-enemy killEnemy）
+    if (state.honghongT > 0) state.honghongT = Math.max(0, state.honghongT - dt);
+
+    // 辛国栋大怒：固定位置扩散火环（不移动）。0~6s 半径扩张至全屏，6s 时对全场灼烧一次，再 4s 渐隐
+    const xr = state.xinFuryRing;
+    if (xr) {
+      xr.t += dt;
+      if (xr.t < xr.expandDur) {
+        // 扩张阶段：半径从 10 → rMax（线性）
+        xr.r = 10 + (xr.rMax - 10) * (xr.t / xr.expandDur);
+      } else if (!xr.burnt) {
+        // 6s 到达：对全场敌人灼烧一次（对辛国栋 ×5）
+        xr.burnt = true;
+        xr.r = xr.rMax;
+        achvSetKillSrc('xinguodong');
+        const killed = [];
+        for (const e of enemies) {
+          if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+          if (e.type === 'boss') continue;   // BOSS 不被这次全场灼烧（避免直接秒杀）
+          const dmg = e.type === 'xinguodong' ? xr.dps * 5 : xr.dps;
+          e.hp -= dmg * rewardOutMul();
+          spawnParticles(e.x, e.y, '#ff8fab', 3, 100);
+          if (e.hp <= 0) killed.push(e);
+        }
+        for (const t of killed) { const j = enemies.indexOf(t); if (j >= 0) killEnemy(j); }
+        achvClearKillSrc();
+      } else {
+        // 渐隐阶段：4s 内 alpha 1→0
+        const fadeT = xr.t - xr.expandDur;
+        xr.alpha = Math.max(0, 1 - fadeT / xr.burnDur);
+        if (fadeT >= xr.burnDur) state.xinFuryRing = null;
+      }
+    }
   }
 
   // 哦哦！抽卡！状态机启动：16 颗原石自画面外四面八方生成（随机方向、随机先后——非同时出现），
