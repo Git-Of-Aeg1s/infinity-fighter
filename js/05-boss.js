@@ -1,13 +1,13 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 06-enemy(2 名) 11-draw-boss(2 名) 14-main(2 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(5 名) 11-draw-boss(5 名) 14-main(3 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
   //
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, isRealme, resolveBossHp } from './01-config.js';
   import { clamp, ctx, eBullets, enemies, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
-  import { makeEnemy, spawnHarbinger } from './04-spawn.js';
+  import { enemyFrostZoneMoveMul, makeEnemy, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
@@ -1560,6 +1560,7 @@
   // 转向扫动：期望速度 = 段速 × mul，分轴逼近航点——速度跨段延续、转弯走弧线、抵点不刹停；
   // wpHold（技能6 中线驻留）时靠分轴制动上限自然减速、静停于航点
   function bossMoveUpdate(e, M, dt, mul) {
+    mul *= enemyFrostZoneMoveMul(e);   // 虚幻寒冷区域（对敌生效）：BOSS 移速减速，效果减半（UNREAL.bossResist，见 04-spawn）
     if (!e.wp) bossPickWaypoint(e, M);
     const dist = Math.hypot(e.wp.tx - e.x, e.wp.ty - e.y);
     if (e.wpHold && dist < 0.5) {   // 驻留：已抵达航点（中线），静停等发射

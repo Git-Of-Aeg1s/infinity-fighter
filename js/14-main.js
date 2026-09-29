@@ -5,13 +5,13 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods } from './01-config.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
-  import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateMissiles, updatePopianMissiles, updateSpellCubes } from './06-enemy.js';
-  import { clearEnemyBullets, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes } from './06-enemy.js';
+  import { clearEnemyBullets, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb, useRewardItem } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
@@ -54,6 +54,7 @@
     if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发）
+    if (k === 'e' && state.mode === 'playing' && !state.paused) useRewardItem();   // 奖励道具（赞助无人机掉落，左下角道具槽；无道具时无效）
     // 大狗导弹雨连发开关（作弊键，不要求装备大狗——任意驾驶员均可触发）：
     // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备大狗时：开启即启用整套导弹雨系统并以连发间隔运行）。
     // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应；
@@ -222,7 +223,9 @@
       if (levelFlow.level > levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
-        else if (!state.challenge && Math.random() < DOUZHI.spawnChance) spawnDouzhi();
+        // 奖励无人机（斗志昂扬/赞助/豪华赞助）：每次关卡提升按难度概率刷新一架（每次至多一架，5/4/1 加权抽取）；
+        // 击败 BOSS 的跳变升级豁免（douzhiSkipOnce）对三种一并生效；挑战模式不刷
+        else if (!state.challenge && Math.random() < rewardDroneChance()) spawnDouzhi(pickRewardDroneType());
         // 叮咚鸡：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
       } else if (levelFlow.level < levelFlow.prevLevel) {
@@ -424,7 +427,9 @@
       updateBullets(dt);
       updateMissiles(dt);
       updateBaolingBombs(dt);   // 暴鸰：炸弹下坠 / 加速冲向预警区中心 / 爆炸
+      updateFrostZones(dt);     // 虚幻：寒冷区域倒计时 / 间歇雪花特效（减速判定在 04-spawn / 06-enemy 逐帧挂钩）
       updatePopianMissiles(dt); // 破片：三连发导弹飞行 / 命中结算（条件性无视无敌）
+      updateWgSlashes(dt);      // 战争幽灵：技能2双斩击流飞行 / 命中结算（每道命中一次）
       updateSpellCubes(dt);     // 法术矩阵：发光正方体飞行 / 限程减速黯淡 / 停留 / 渐隐 / 命中结算
       updateDouzhiFx(dt);       // 斗志昂扬：死亡演出推进 + 增益时长衰减
       updateSlashFx(dt);        // 群星之杀：空间斩击特效存留时长推进 / 到期移除
@@ -458,6 +463,7 @@
             (state.challenge ? '<br />' : '<br /><br />') +   // 挑战模式无得分行：不插空行（避免三行间距过大）
             `<span class="result-stats">` +
             (state.challenge ? '' : `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />`) +
+            (state.challenge || state.testBoss ? '' : `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}</b><br />`) +
             `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>` +
             (state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`) +
             `</span>`,

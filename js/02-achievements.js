@@ -63,7 +63,7 @@
     _dagouSeqC4: false,  // 当前链序列已计 4 轮
     auraFieldKills: 0,   // 御4力场 / 铁砧光圈内击坠数（其实是打不到 ≥12）
     harbingerKills: 0,   // 炮火先兆者击坠数（灵巧突围 ≥8）
-    giantCrystals: 0,    // 巨型水晶（原石）拾取数（抽卡！抽卡！ ≥16）
+    giantCrystals: 0,    // 巨型水晶（原石）拾取数（金色传说：≥16 且抽卡抽出金）
   };
 
   // 测试 / 图鉴挑战模式不产出任何成就
@@ -168,11 +168,17 @@
     if (achv.pickups >= 15) unlockAchievement('pickup15');
   }
 
-  // 巨型水晶（原石）拾取（08-entities updateCrystals 三个拾取点；水晶不走 applyPowerupPickup 故单独上报；抽卡！抽卡！ ≥16）
+  // 巨型水晶（原石）拾取（08-entities updateCrystals 三个拾取点；水晶不走 applyPowerupPickup 故单独上报）。
+  // 仅计数——解锁判定移至抽卡抽出金色时（achvNoteGachaGold：≥16 且金 =「金色传说」）
   function achvNoteGiantCrystal() {
     if (!achvGateOk()) return;
     achv.giantCrystals++;
-    if (achv.giantCrystals >= 16) unlockAchievement('chouka');
+  }
+
+  // 哦哦！抽卡！抽出金色传说（07-player updateGachaFx 彩光抽色处上报）：本局原石拾取 ≥16 则解锁「金色传说」
+  function achvNoteGachaGold() {
+    if (!achvGateOk()) return;
+    if (achv.giantCrystals >= 16) unlockAchievement('goldLegend');
   }
 
   // 群星守望消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥60）
@@ -601,5 +607,5 @@
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,
     achvNoteChengyueRoll, achvNoteHajimiDodge, achvNoteQixingBigHalve, achvNoteMaxinSpeed, achvNoteHuiHeal,
     achvNoteLanxinShieldStart, achvNoteLanxinAbsorb, achvNoteLanxinShieldEnd, achvNoteLingliBurst,
-    achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill, achvNoteGiantCrystal,
+    achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill, achvNoteGiantCrystal, achvNoteGachaGold,
   };

@@ -343,6 +343,170 @@ try {
     }
   }
 
+  // 破片U型（诗篇新敌）跑帧：modules 模式直调 spawnPopianU（强制停留点在玩家侧上方、避开主武器弹道）——
+  // 覆盖移动/开火状态机 U型分支：① 入场即计时（不等锁停，atkT 1.8~2s）② 途中旋转瞄准玩家
+  // ③ 延迟到期后红圈预警 → 三连发出弹（U型伤害路径 spawnPopianMissile dmgF/dmgW）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    if (spawn.spawnPopianU && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      // 出生/停留点整体避开玩家主武器竖直弹道（玩家固定不动、弹幕持续上扫，且屏外实体也可被命中——
+      // 生成在弹道正上方会在入场途中被击毁，实体移除后 atkT 冻结，断言全部失真）
+      const sx = core.player.x - 180;
+      const e = spawn.spawnPopianU(sx, -50, {
+        tpX: sx + 80,
+        tpY: 360,
+      });
+      if (!e || e.type !== 'popianU') {
+        errors.push({ key: '破片U型生成失败', stack: 'spawnPopianU 未返回 popianU 实体' });
+      } else {
+        const atk0 = e.atkT;
+        if (!(atk0 > 1.5 && atk0 <= 2.0 + 1e-6)) {
+          errors.push({ key: '破片U型首攻延迟初值异常', stack: 'atkT=' + atk0 + '（真我难度应为 1.8~2s 随机，见 POPIAN_U.firstDelay）' });
+        }
+        // 每帧隔离：清他机 / 清敌弹 / 清我方弹——本场景只验证 U型状态机（途中瞄准 + 入场即计时 + 延迟开火），不验证其生存性
+        const isolate = () => {
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          if (playerMod.clearEnemyBullets) playerMod.clearEnemyBullets();
+          if (core.pBullets) core.pBullets.length = 0;
+        };
+        for (let f = 0; f < 100; f++) { frames(1); isolate(); }   // ≈1.67s：仍在入场飞行（行程 ≈2.2s）
+        if (e.hp <= 0) {
+          errors.push({ key: '破片U型测量窗口内被击毁', stack: 'hp=' + e.hp + '（场景隔离不足：我方弹幕仍命中 U型）' });
+        }
+        if (e.atkT > atk0 - 1.0) {
+          errors.push({ key: '破片U型入场未计时', stack: '飞行中 atkT=' + e.atkT.toFixed(2) + '（初值 ' + atk0.toFixed(2) + '）——U型应入场即计时，不等锁停' });
+        }
+        let sawMissiles = false;
+        for (let f = 0; f < 420 && !sawMissiles; f++) {   // 最多 7s：入场 ≈2.2s + 延迟 ≤2s + 索敌增长至覆盖 + 红圈 0.8s + 出弹
+          frames(1);
+          isolate();
+          if (core.popianMissiles.length > 0) sawMissiles = true;
+        }
+        if (!sawMissiles) {
+          errors.push({ key: '破片U型未开火', stack: '420 帧内未见三连发导弹（延迟门控/途中瞄准/索敌分支异常？）' });
+        }
+        sample('破片U型 跑帧（途中瞄准 + 延迟开火）');
+      }
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
+    }
+  }
+
+  // 战争幽灵（诗篇新敌）跑帧：modules 模式直调 spawnWarGhost——覆盖状态机全相位：
+  // ① 入场风波 1s → 极速冲刺（逐帧步长 ≤ 巡航速上限，速度曲线铁律）→ 抵达演出 → 驻留
+  // ② 技能序列（强制首技能 2 → 之后固定 1→2→3）：技能2 出双斩流 wgSlashes → 技能3 排入 scheduled 出弹幕 → 技能1 扇斩
+  // ③ 驻留倒计时置短：离场直线预警 1s → 加速斩出（wgSpd 单调升、步长 ≤ 满速上限）→ 出界移除
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    if (spawn.spawnWarGhost && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      const e = spawn.spawnWarGhost(false);
+      if (!e || e.type !== 'warGhost') {
+        errors.push({ key: '战争幽灵生成失败', stack: 'spawnWarGhost 未返回 warGhost 实体' });
+      } else {
+        // 停留点挪到玩家侧上方（避开主武器弹道与冲撞路径）；首技能强制 2（序列 2→3→1 全可断言）
+        e.wgStay = { x: core.player.x - 190, y: 300 };
+        e.wgFirst = 2; e.wgNext = null;
+        if (e.wgPhase !== 0) {
+          errors.push({ key: '战争幽灵初始相位异常', stack: 'wgPhase=' + e.wgPhase + '（应为 0 入场预警）' });
+        }
+        // 每帧隔离：清他机 / 清敌弹 / 清我方弹（只验证幽灵状态机本身）
+        const isolate = () => {
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          if (playerMod.clearEnemyBullets) playerMod.clearEnemyBullets();
+          if (core.pBullets) core.pBullets.length = 0;
+        };
+        // ① 入场全程跟踪（预警 1s + 冲刺 ≈1s + 演出 0.6s ≈ 160 帧）
+        let maxStep = 0, prev = null, sawArrive = false;
+        for (let f = 0; f < 190 && !sawArrive; f++) {
+          frames(1); isolate();
+          if (prev) maxStep = Math.max(maxStep, Math.hypot(e.x - prev.x, e.y - prev.y));
+          prev = { x: e.x, y: e.y };
+          if (e.wgPhase >= 3) sawArrive = true;
+        }
+        if (!sawArrive) {
+          errors.push({ key: '战争幽灵未抵达驻留', stack: '190 帧内未进入相位 3（wgPhase=' + e.wgPhase + '）' });
+        }
+        if (maxStep > 42) {
+          errors.push({ key: '战争幽灵入场存在瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(1) + 'px（> 42px，巡航 1500px/s @60fps 上限余量）——速度曲线铁律' });
+        }
+        // ② 技能序列 2→3→1（间隔 2.2s）：≈1.2 + 1.3 + 2.2 + 1.1 + 2.2 + 0.8 ≈ 8.9s，给 640 帧余量
+        let sawSlashes = false, sawBarrage = false, sawSkill1 = false;
+        for (let f = 0; f < 640 && !(sawSlashes && sawBarrage && sawSkill1); f++) {
+          frames(1);
+          // 断言先于隔离：隔离会 clearEnemyBullets，弹幕存在性必须在清理前采样
+          if (e.wgSkill && e.wgSkill.kind === 1) sawSkill1 = true;
+          if (core.wgSlashes.length >= 2) sawSlashes = true;
+          if (core.eBullets.some(b => b.owner === e)) sawBarrage = true;
+          isolate();
+        }
+        if (!sawSlashes) errors.push({ key: '战争幽灵技能2未出斩击流', stack: '640 帧内 wgSlashes 未出现 ≥2 道（锁定后发射分支异常？）' });
+        if (!sawBarrage) errors.push({ key: '战争幽灵技能3未出弹幕', stack: '640 帧内未见幽灵子弹（scheduled 排弹 / fire 分支内推进异常？）' });
+        if (!sawSkill1) errors.push({ key: '战争幽灵技能1未施放', stack: '640 帧内未进入技能1（序列应 2→3→1）' });
+        // ③ 离场：驻留倒计时置短 → 相位 4 直线预警 1s → 相位 5 加速斩出 → 出界移除
+        e.wgDwellT = 0.1;
+        let prevSpd = -1, spdMono = true, maxExitStep = 0, gone = false;
+        prev = { x: e.x, y: e.y };
+        for (let f = 0; f < 400 && !gone; f++) {
+          frames(1); isolate();
+          maxExitStep = Math.max(maxExitStep, Math.hypot(e.x - prev.x, e.y - prev.y));
+          prev = { x: e.x, y: e.y };
+          if (e.wgPhase === 5) {
+            if (prevSpd >= 0 && e.wgSpd + 1e-6 < prevSpd) spdMono = false;
+            prevSpd = e.wgSpd;
+          }
+          gone = !core.enemies.includes(e);
+        }
+        if (!gone) errors.push({ key: '战争幽灵离场未出界', stack: '400 帧后仍在场（wgPhase=' + e.wgPhase + ' wgSpd=' + (e.wgSpd || 0).toFixed(0) + '）' });
+        if (!spdMono) errors.push({ key: '战争幽灵离场速度回退', stack: '相位 5 内 wgSpd 出现下降（应为固定加速度平滑积分）' });
+        if (maxExitStep > 45) errors.push({ key: '战争幽灵离场存在瞬跳', stack: '相邻帧最大位移 ' + maxExitStep.toFixed(1) + 'px（> 45px，满速 2400px/s @60fps 上限余量）——速度曲线铁律' });
+        sample('战争幽灵 跑帧（入场 / 技能 2→3→1 / 离场斩出）');
+      }
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
+    }
+  }
+
+  // 统一伤害规则 · 秒杀类禁亡语召唤：state.sweepKill 置位期间击杀增生侧翼艇 / 法术阵列，
+  // 不得分裂卫护飞船 / 爆发法术矩阵（金色陨石秒杀通道的门控回归；规则锚点见 07-player gachaMeteorImpact）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const spawnMod = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+    if (enemyMod.killEnemy && spawnMod.makeEnemy && core.enemies && core.state) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      core.enemies.length = 0;                      // 清场，保证断言只看本场景产物
+      // ① 增生侧翼艇：sweepKill 内击杀 → 不得分裂卫护飞船
+      const p1 = spawnMod.makeEnemy('prolifera', 400, 200);
+      core.state.sweepKill = true;
+      enemyMod.killEnemy(core.enemies.indexOf(p1));
+      core.state.sweepKill = false;
+      const escorts = core.enemies.filter(x => x && x.type === 'escort').length;
+      if (escorts > 0) errors.push({ key: '秒杀禁亡语召唤失效（增生）', stack: 'sweepKill 期间击杀增生侧翼艇仍分裂出 ' + escorts + ' 艘卫护飞船' });
+      // ② 法术阵列：sweepKill 内击杀 → 不得爆发法术矩阵
+      core.enemies.length = 0;
+      const p2 = spawnMod.makeEnemy('fashiArray', 400, 200);
+      core.state.sweepKill = true;
+      enemyMod.killEnemy(core.enemies.indexOf(p2));
+      core.state.sweepKill = false;
+      const matrices = core.enemies.filter(x => x && x.type === 'fashiMatrix').length;
+      if (matrices > 0) errors.push({ key: '秒杀禁亡语召唤失效（法术阵列）', stack: 'sweepKill 期间击杀法术阵列仍爆发 ' + matrices + ' 个法术矩阵' });
+      core.enemies.length = 0;
+      sample('统一规则 秒杀禁亡语召唤（增生 / 法术阵列）');
+    }
+  }
+
   elements.musicToggle.click();                 // 静音开关
   frames(10);
 } catch (err) {

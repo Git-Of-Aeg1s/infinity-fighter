@@ -142,6 +142,35 @@ canvas#game {
   text-shadow: 0 0 8px rgba(77, 208, 255, 0.5);
 }
 
+/* 原石收集计数（当局）：样式对齐计分表；✦ 图标做上粉下蓝渐变贴合原石（巨型水晶）配色 */
+.stone-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 170, 220, 0.22);
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.stone-panel .stone-icon {
+  font-size: 13px;
+  background: linear-gradient(180deg, #ff9ed2 0%, #ffffff 50%, #7cb8ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+.stone-panel b {
+  color: #ffc9e2;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(255, 158, 210, 0.45);
+}
+
 /* 大无垠之王：BOSS 战累积增伤读数（金色 = PILOTS.king.color；hud-bl 列内位于量表之下 / 血条之上）
    显示 / 隐藏由 12-ui stepKingBonusFade 驱动：透明度渐显渐隐，hidden 仅在渐隐完成后挂上回收布局 */
 .king-bonus {
@@ -386,6 +415,20 @@ canvas#game {
 
 .bomb-icon.infinite::after { display: none; }
 
+/* 空栏位：虚线空圈（绷绷背包扩容后的未持有槽位——无引信火花、低对比虚线描边） */
+.bomb-icon.empty {
+  border-style: dashed;
+  border-color: rgba(160, 190, 205, 0.30);
+  background: none;
+  box-shadow: none;
+}
+
+.bomb-icon.empty::after { display: none; }
+
+.bomb-icons.klee .bomb-icon.empty {
+  border-color: rgba(255, 170, 120, 0.32);
+}
+
 /* ---------- 音乐 / 音效开关：骑在游戏画面右上角上、向外超出 ---------- */
 .music-toggle {
   position: absolute;   /* 以 game-wrap（游戏画面框）为定位参照 */
@@ -607,6 +650,29 @@ canvas#game {
 .skill-gauge.ready .skill-gauge-key {
   color: var(--skill-color);
   text-shadow: 0 0 8px var(--skill-color);
+}
+
+/* 奖励道具槽（赞助无人机掉落）：计数表同款式——满环颜色 = 道具稀有度
+   （普通 = 白 / 稀有 = 金，12-ui updateHUD 按 state.rewardItem 写入 --skill-color），中间为道具图标 */
+.item-gauge {
+  --skill-color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
+}
+
+/* 道具槽右下角的小按键角标（按 E 使用） */
+.item-gauge .item-gauge-key {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  z-index: 1;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 4px;
+  background: rgba(5, 9, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--muted);
 }
 
 @keyframes skillReady {

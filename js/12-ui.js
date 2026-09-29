@@ -1,15 +1,15 @@
-﻿// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
+// 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：06-enemy(1 名) 07-player(1 名) 13-encyclopedia(1 名) 14-main(11 名)
+  // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(12 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, rewardItem, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeHits, gachaFx, gachaStones, gachaStoneMilestone, gachaStoneOwed}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, subGrid, titleBar, trailGhosts, watchClearFx, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, REWARD_ITEMS, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, gameoverHomeBtn, hpBarrier, hpFill, infoEntryBtn, itemGauge, itemGaugeIcon, itemGaugeRing, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
-  import { delayedShots, initWingmen } from './07-player.js';
+  import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
   import { openEncyclopedia } from './13-encyclopedia.js';
@@ -52,15 +52,22 @@
     // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
     scoreText.parentElement.style.display = state.challenge ? 'none' : '';
     scoreText.textContent = state.score;
-    // 右上角爆弹图标：图标数量代表爆弹数（上限随难度，真我 2）；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
+    // 原石收集计数（当局）：战斗中常显（挑战/测试不掉水晶，隐藏避免常驻 0 的噪音）；resetGame 归零后随首颗原石点亮
+    const showStones = !state.challenge && !state.testBoss && state.mode === 'playing';
+    stonePanel.classList.toggle('hidden', !showStones);
+    if (showStones) stoneCount.textContent = state.gachaStones;
+    // 右上角爆弹图标：实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
+    // 真我 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd））；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
     if (state.challenge) {
       bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>';
     } else {
       const n = Math.max(0, state.bombs);
-      if (bombIcons.childElementCount !== n) {
+      const cap = Math.max(n, currentBombCap());
+      if (bombIcons.childElementCount !== cap || bombIcons.dataset.filled !== String(n)) {
         let html = '';
-        for (let i = 0; i < n; i++) html += '<span class="bomb-icon"></span>';
-        bombIcons.innerHTML = html;   // 仅数量变化时重建，避免每帧重排
+        for (let i = 0; i < cap; i++) html += i < n ? '<span class="bomb-icon"></span>' : '<span class="bomb-icon empty"></span>';
+        bombIcons.innerHTML = html;   // 仅数量/栏位变化时重建，避免每帧重排
+        bombIcons.dataset.filled = String(n);
       }
     }
     livesText.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
@@ -133,6 +140,17 @@
     if (showKingBonus) kingBonus.textContent = '♛ 增伤 +' + Math.ceil(state.kingDmg * 100) + '%';
     // 可莉：绷绷炸弹 HUD 图标着色（红橙火花主题）
     bombIcons.classList.toggle('klee', currentPilotMain.id === 'keli' || currentPilotSub.id === 'keli');
+    // 奖励道具槽（左下角，赞助无人机掉落）：持有道具时显示——环形颜色 = 稀有度（普通 白 / 稀有 金），
+    // 中间为道具图标（REWARD_ITEMS 注册 glyph）；按 E 使用（07-player useRewardItem）
+    const it = state.rewardItem;
+    itemGauge.classList.toggle('hidden', !it || state.mode !== 'playing');
+    if (it) {
+      const rare = it.rarity === 'rare';
+      const col = rare ? '#ffd166' : '#ffffff';
+      itemGauge.style['--skill-color'] = col;   // 自定义属性直写（setProperty 在 smoke 的 DOM stub 上不可用）
+      itemGaugeRing.style.background = `conic-gradient(${col} 360deg, rgba(255,255,255,0.10) 0deg)`;
+      itemGaugeIcon.textContent = (REWARD_ITEMS[it.id] && REWARD_ITEMS[it.id].glyph) || (rare ? '✦' : '◆');
+    }
   }
   // ---------- 流程控制 ----------
   function resetGame(autoStart = false, opts = {}) {
@@ -144,6 +162,16 @@
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
+    state.rewardItem = null;   // 奖励道具槽（赞助无人机掉落）清空
+    // 奖励道具效果状态归位（07-player useRewardItem 置位 / updateRewardFx 推进）
+    state.laodaT = 0; state.laodaMul = 1;
+    state.magnetBonus = 0;
+    state.swordStormT = 0; state.swordStormAng = -Math.PI / 2; state.swordStormAcc = 0;
+    state.frostField = null;
+    state.bombCapAdd = 0; state.bengbagGot = false;
+    state.jiukeT = 0; state.jiukeHits = 0;
+    state.gachaFx = null;
+    state.gachaStones = 0; state.gachaStoneMilestone = false; state.gachaStoneOwed = false;
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
@@ -268,6 +296,7 @@
     missiles.length = 0;
     blBombs.length = 0;
     popianMissiles.length = 0;
+    wgSlashes.length = 0;   // 战争幽灵技能2斩击流随重开清空
     spellCubes.length = 0;
     cubeHitFx.length = 0;
     playerHitFx.length = 0;   // 命中玩家特效随重开清空
@@ -651,6 +680,7 @@
     showOverlay(
       '战机陨落',
       `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
+       原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}</b><br />
        关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>${state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`}<br />
        剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b></span><br /><br />
        按 <kbd>R</kbd> 或点击下方按钮再次出击`,

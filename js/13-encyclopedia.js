@@ -1,9 +1,9 @@
 // 13-encyclopedia：怪物图鉴数据 / UI / 形态预览绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：12-ui(1 名) 14-main(1 名)
+  // 被依赖：12-ui(1 名) 14-main(2 名)
   //
-  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, STARSLAYER, STORM, STORM2, SUB_WEAPONS, VARIANTS, WAVE_POEM, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, diffMods, resolveBossHp, setDifficulty } from './01-config.js';
+  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, REWARD_DRONES, REWARD_ITEMS, STARSLAYER, STORM, STORM2, SUB_WEAPONS, VARIANTS, WAVE_POEM, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, darkhandImg, diffMods, hanxixianImg, puxuefengImg, resolveBossHp, rewardDroneChance, setDifficulty, xiayongImg, xinguodongImg } from './01-config.js';
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
@@ -18,15 +18,15 @@
   // ---------- 怪物图鉴 ----------
   const ENCY_GRADES = [
     { name: '虚象级', entries: ['side_pass', 'side_shoot', 'side_kamikaze', 'side_swirl', 'side_moon', 'prolifera'] },
-    // 具象级尾部 3 项为诗篇新敌占位（wip，白色方块预览）：破片U型 / 赞助无人机 / 豪华赞助无人机
+    // 具象级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：破片U型（赞助无人机 / 豪华赞助无人机已实装专属外观）
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'douzhi', 'fashiA1', 'popian', 'fashiMatrix', 'popianU', 'sponsor', 'sponsorDeluxe'] },
-    // 真我级尾部 3 项为诗篇新敌占位（wip，白色方块预览）：暴鸰·G / 脉冲矩阵 / 虚幻
+    // 真我级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：脉冲矩阵（暴鸰·G / 虚幻已实装专属外观）
     { name: '真我级', entries: ['gunship_violet', 'gunship_crimson', 'gunship_amber', 'gunship_orange', 'gunship_cyan', 'harbinger', 'weilong', 'hanshuang', 'yu4', 'anvil', 'baoling', 'jiaoxiang', 'fashiA2', 'baolingG', 'pulseMatrix', 'unreal'] },
-    // 诗篇级尾部 1 项为诗篇新敌占位（wip，白色方块预览）：战争幽灵
+    // 诗篇级：全部实装（法术阵列 / 战争幽灵，专属外观预览）
     // （黑暗之手四精英为衍生级条目：不入分页，仅经黑暗之手 desc 内名称点击跳转，见 jumpToEncyEntry）
     { name: '诗篇级', entries: ['capital_crimson', 'capital_azure', 'capital_crgold', 'fashiArray', 'warGhost'] },
 
-    // 长歌级末位为诗篇 BOSS 占位（wip，白色方块预览）：黑暗之手
+    // 长歌级末位为诗篇 BOSS 占位（wip，素材形象预览）：黑暗之手
     { name: '长歌级', entries: ['boss', 'boss_storm', 'boss_storm2', 'boss_darkhand'] },
 
     // 衍生级（escort / tornado）不设标签页：无法从分页列表直接点击，仅经母体条目 desc 内的名称跳转进入
@@ -156,7 +156,7 @@
     douzhi: {
       name: '斗志昂扬', type: 'douzhi', color: '#c9d8ea', hp: 280, score: 100,
       lore: '艾伦精选科技公司感谢您别出心裁的赞助！这架无人战舰将时刻为场上战舰播报商业联合会精选广告段落，刺激大家的神经，让竞赛现场更加燥热！',
-      desc: '增益无人机：<b>无碰撞伤害、不攻击</b>（与玩家互相穿过）。<b>每次关卡提升时有 4% 概率</b>从屏幕<b>左侧或右侧</b>出现，朝另一侧横穿（沿余弦曲线小幅上下浮动）。<b>击毁时</b>：我方战机与僚机的<b>攻击速度、弹道飞行速度翻倍，持续 8s</b>（伴随蓝盒脱离、光环演出后本体渐隐）。',
+      desc: '增益无人机：<b>无碰撞伤害、不攻击</b>（与玩家互相穿过）。属于<b>奖励无人机</b>之一——<b>每次关卡提升时按当前难度概率</b>（虚象 12% / 具象 10% / 真我与诗篇 7%）与赞助系三选一刷出，从屏幕<b>左侧或右侧</b>出现，朝另一侧横穿（沿余弦曲线小幅上下浮动）。<b>击毁时</b>：我方战机与僚机的<b>攻击速度、弹道飞行速度翻倍，持续 8s</b>（伴随蓝盒脱离、光环演出后本体渐隐）。',
     },
 
     fashiA1: {
@@ -168,7 +168,7 @@
     popian: {
       name: '破片', type: 'popian', color: '#cfd6e0', hp: 200, score: 160,
       lore: '敌方的攻击型空援无人战舰，攻击造成范围性物理伤害。',
-      desc: '三连发炮弹无人机：<b>只沿直线飞行</b>——出场选定一个随机点（停留于 <b>30%~80%</b> 屏高、<b>不进入两侧 15% 边缘区</b>，离自身近的高度概率更高），直飞到点后<b>急停锁停</b>，除非被击毁不再移动；停稳后才能攻击。<b>20%</b> 概率从<b>侧翼</b>入场。<b>索敌范围 30% 屏高、每秒 +5%</b>；玩家进入范围后在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）：<b>首发 8 伤害</b>、后两发各 <b>5</b>；<b>若首发命中，则后两发炮弹无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。<b>碰撞伤害分段</b>：入场 0.5s 内无伤害、0.5~2s 为 20、2s 后为 37.5。<b>火力 Lv1 / Lv2 时受到 30% / 10% 易伤</b>。<b>Lv11 前出现权重极低，Lv11 起正常出现</b>。',
+      desc: '三连发炮弹无人机：<b>只沿直线飞行</b>——出场选定一个随机点（停留于 <b>30%~80%</b> 屏高、<b>不进入两侧 15% 边缘区</b>，离自身近的高度概率更高），直飞到点后<b>急停锁停</b>，除非被击毁不再移动；停稳后才能攻击。<b>20%</b> 概率从<b>侧翼</b>入场。<b>索敌范围 30% 屏高起步、每秒 +5%</b>（<b>封顶 120% 屏高</b>——已超过屏幕对角线，约 18s 后覆盖全场，<b>等效无攻击范围限制</b>）；玩家进入范围后在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）：<b>首发 8 伤害</b>、后两发各 <b>5</b>；<b>若首发命中，则后两发炮弹无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。<b>碰撞伤害 24</b>。<b>火力 Lv1 / Lv2 时受到 30% / 10% 易伤</b>。<b>Lv11 前出现权重极低，Lv11 起正常出现</b>。',
     },
 
     fashiMatrix: {
@@ -265,59 +265,60 @@ boss_storm: {
       desc: '暴风之眼技能2 召唤的衍生体：蓄力后自机体前方推出，<b>约占屏宽 30%</b>，可击毁、<b>缓慢下移直至脱离战场</b>（轻微左右摇摆），随机 360° 快速射出 <b>16 伤害风条</b>，碰撞 <b>32</b> 伤害。<b>受到战机主武器伤害 -50%、受僚机伤害 +150%</b>（僚机是其弱点）；<b>守愿者弹每次命中判定两次伤害</b>。<b>不掉落水晶与道具</b>（真我难度血量 <b>6000</b>）。不计入场面压力。',
     },
 
-    // ---------- 诗篇难度新敌占位（wip）：技能均未实装，数值为占位待定 ----------
-    // wip: true → 图鉴预览统一白色方块（13-encyclopedia drawEncyPreview）；实装时逐个替换专属外观与数值
+    // ---------- 诗篇难度新敌（逐个实装中）：已实装的移除 wip 并换专属外观/数值，未实装的仍为占位 ----------
+    // wip: true → 图鉴预览统一白色方块（13-encyclopedia drawEncyPreview；例外：黑暗之手 / 四精英已导入素材形象，画真实形象）；实装时逐个替换专属外观与数值
     popianU: {
-      name: '破片U型', type: 'popianU', wip: true, color: '#ffd24d', hp: 260, score: 220,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="popian">破片</span>的升级版（2类）。与原版不同：<b>抵达停驻位置之前即可发动炮弹轰击</b>——无需先完成锁停，入场途中即展开压制。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '破片U型', type: 'popianU', color: '#cfd6e0', hp: 250, score: 220,
+      desc: '<span class="ency-link" data-ency="popian">破片</span>的升级版（<b>2类</b>，<b>诗篇新敌</b>）：外形与破片一致，<b>核心描边、中心双杠与炮口为红色</b>。与原版不同：<b>入场后无需锁停就位</b>——飞行途中即<b>旋转瞄准玩家</b>（尾焰始终朝向移动方向），<b>入场 1.8~2s</b>（诗篇 <b>1.6~2s</b>）后即可攻击：玩家处于索敌范围内时在其位置<b>红圈预警 0.8s</b>，随后<b>快速三连发高速炮弹</b>（<b>不可被击毁</b>）——<b>首发 10 伤害</b>、后两发各 <b>7</b>（破片 8/5 各 +2）；<b>若首发命中，后两发无视玩家的无敌效果</b>，首发未命中而后两发命中则该次无敌时间 <b>-30%</b>。移动/停留规则与碰撞伤害（<b>24</b>）同破片：直飞选定点后急停锁停、原地小幅漂移。<b>生命值 250</b>（破片 200）。<b>诗篇出怪接入待实装</b>（当前可经图鉴挑战召唤）。',
     },
     baolingG: {
-      name: '暴鸰·G', type: 'baolingG', wip: true, color: '#ffd8a8', hp: 700, score: 550,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="baoling">暴鸰</span>的升级版（3类）。攻击方式同暴鸰（停车锁定 → 投掷引导炸弹），但<b>造成的爆炸范围更大</b>，威胁覆盖更广。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '暴鸰·G', type: 'baolingG', color: '#ffd8a8', hp: 800, score: 500,
+      pvDy: -3.8,   // 预览垂直偏移：胶囊弹大且挂点靠下，构图包围盒中心比暴鸰低约 3.8 世界像素——上移对齐视觉中心
+      desc: '【诗篇新敌 · 已实装】<span class="ency-link" data-ency="baoling">暴鸰</span>的升级版（3类）：外观为暴鸰的<b>放大版（+5%）</b>，炸弹由圆形改为<b>胶囊形</b>（半圆+矩形+半圆，矩形段多道红色横杠）。攻击方式与暴鸰完全一致（索敌停车锁定 → 投弹 → 爆炸），差异：<b>HP 800</b>（暴鸰 550）、<b>移速 -15%</b>、<b>爆炸半径 +30%</b>（预警圈 / 玩家伤害半径 95、亡语自爆波及 325，均可连锁殉爆）；玩家处于爆圈内同样<b>增伤 35%</b>。',
     },
     sponsor: {
-      name: '赞助无人机', type: 'sponsor', wip: true, color: '#ffd166', hp: 56, score: 130,
-      desc: '【诗篇新敌 · 占位预告】金色赞助无人机（2类）。自身无攻击能力，但<b>击败后得到道具</b>——击坠即有回报，打与不打取决于玩家取舍。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '赞助无人机', type: 'sponsor', color: '#f2f5fa', hp: 280, score: 100,
+      desc: '【诗篇新敌 · 已实装】白色赞助无人机（2类）：造型与行动同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>（左右横穿 + 上下浮动，无攻击、无碰撞、互相穿过），差异：盒子为<b>白色</b>且<b>高度略低（-15%）</b>、<b>移速 -20%</b>、<b>上下摆动幅度大幅降低</b>。<b>击毁后掉落一个奖励道具</b>：<b>90% 普通 / 10% 稀有</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
     },
     sponsorDeluxe: {
-      name: '豪华赞助无人机', type: 'sponsorDeluxe', wip: true, color: '#ffe9b0', hp: 56, score: 260,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="sponsor">赞助无人机</span>的豪华版（2类）。同样无攻击能力，但<b>击败后得到强力道具</b>（更稀有、更珍贵的掉落）。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '豪华赞助无人机', type: 'sponsorDeluxe', color: '#ffe9a8', hp: 280, score: 100,
+      desc: '【诗篇新敌 · 已实装】淡黄色豪华赞助无人机（2类）：<span class="ency-link" data-ency="sponsor">赞助无人机</span>的豪华版——造型与行动完全一致（同<span class="ency-link" data-ency="douzhi">斗志昂扬</span>横穿浮动，无攻击、无碰撞），仅盒子为<b>淡黄色</b>。<b>击毁后必定掉落一个稀有奖励道具</b>——道具显示在左下角道具槽（计数表样式），<b>按 E 使用</b>；<b>已有道具时无法获得</b>（不覆盖）。',
     },
     warGhost: {
-      name: '战争幽灵', type: 'warGhost', wip: true, color: '#8f7bd8', hp: 4200, score: 1300,
-      desc: '【诗篇新敌 · 占位预告】幽紫色的突击型 4 类舰。<b>突击能力强大</b>：<b>出场前飞行路径出现预警</b>（红线预告突击路线），<b>出场时极速抵达场地中央位置</b>；<b>技能多为全屏打击</b>；<b>血量降至一半后能召唤<span class="ency-link" data-ency="anvil">铁砧</span>与<span class="ency-link" data-ency="popian">破片</span></b>协助作战。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '战争幽灵', type: 'warGhost', color: '#ffd24a', hp: 4200, score: 1300,
+      desc: '【诗篇新敌 · 已实装】金黄渐变流动的突击驻留型 4 类舰，体量与<span class="ency-link" data-ency="harbinger">炮火先兆者</span>相当。<b>入场</b>：屏外白色风波预警 1s（停留点涟漪 + 来向路径流带）→ 极速冲刺入场，<b>冲撞命中 50 伤害 + 强力击退</b>；抵达时能量刃转一圈金色爆发，随后<b>驻留中场</b>小幅摆动（停留高度约 50%~65%）。<b>技能循环</b>（首个随机，之后固定 1→2→3，间隔 2.2s）：①<b>扇斩</b>——0.8s 扇形预警（锁定瞬间方向）后，对半径 160、90° 扇区内的玩家造成 40 伤害（诗篇半径 180）；②<b>双斩流</b>——双平行斩线跟随玩家 0.5s 后锁定 0.8s，射出两道高速斩击流（35 伤害 / 道）；③<b>环形弹幕</b>——三方向（互成 120°）各 3 连发、共三波（第 2 波旋转 60°、第 3 波同第 1 波），每发 10 伤害。<b>光环</b>：驻留期间场上<span class="ency-link" data-ency="popian">破片</span>、<span class="ency-link" data-ency="popianU">破片U型</span>、<span class="ency-link" data-ency="anvil">铁砧</span>移速与加速度 <b>×3</b>、破片无视攻击距离。<b>半血召唤</b>：血量首次降至 50% 时于两侧边缘召唤一座铁砧（近侧、固定横位）与一架破片U型（远侧）。<b>离场</b>：驻留 30s 后瞄准玩家所在直线释放 1s 风波预警（纯直线、无落点），预警结束获得巨大加速度沿直线斩出，直到出界离开战场。',
     },
     boss_darkhand: {
       name: '黑暗之手', type: 'boss', bossId: 'darkhand', wip: true, previewOnly: true, color: '#b04ad4', hp: 99999, score: 0,
-      desc: '【诗篇新敌 · 占位预告】第二轮登场的 BOSS。<b>能够召唤<span class="ency-link" data-ency="puxuefeng">朴学峰</span>、<span class="ency-link" data-ency="hanxixian">韩希先</span>、<span class="ency-link" data-ency="xiayong">夏勇</span>、<span class="ency-link" data-ency="xinguodong">辛国栋</span>等精英敌人协助攻击</b>——本体与召唤物协同构成多层次弹幕压力。<br /><i>（占位条目：预览为白色方块，BOSS 未实装，试炼 / 测试入口待实装后开放）</i>',
+      desc: '【诗篇新敌 · 占位预告】第二轮登场的 BOSS。<b>能够召唤<span class="ency-link" data-ency="puxuefeng">朴学峰</span>、<span class="ency-link" data-ency="hanxixian">韩希先</span>、<span class="ency-link" data-ency="xiayong">夏勇</span>、<span class="ency-link" data-ency="xinguodong">辛国栋</span>等精英敌人协助攻击</b>——本体与召唤物协同构成多层次弹幕压力。<br /><i>（占位条目：形象取自素材图，BOSS 未实装，试炼 / 测试入口待实装后开放）</i>',
     },
     puxuefeng: {
       name: '朴学峰', type: 'puxuefeng', wip: true, color: '#c05a5a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     hanxixian: {
       name: '韩希先', type: 'hanxixian', wip: true, color: '#5a7ac0', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     xiayong: {
       name: '夏勇', type: 'xiayong', wip: true, color: '#5ab07a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     xinguodong: {
       name: '辛国栋', type: 'xinguodong', wip: true, color: '#b09a4a', hp: 1200, score: 650,
       parent: 'boss_darkhand', derived: true,
-      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      desc: '【诗篇新敌 · 占位预告】<span class="ency-link" data-ency="boss_darkhand">黑暗之手</span>召唤的精英敌人之一（4类级随从）。专属技能待设计。<br /><i>（占位条目：形象取自素材图，技能未实装、数值待定）</i>',
     },
     pulseMatrix: {
-      name: '脉冲矩阵', type: 'pulseMatrix', wip: true, color: '#ff5566', hp: 160, score: 320,
-      desc: '【诗篇新敌 · 占位预告】脉冲发生装置（3类）。<b>周期性造成范围伤害</b>——以自身为中心周期性释放伤害脉冲，逼迫玩家保持距离或抢在脉冲间隙输出。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '脉冲矩阵', type: 'pulseMatrix', color: '#ff4d5e', hp: 800, score: 600,
+      desc: '三座<span class="ency-link" data-ency="fashiMatrix">法术矩阵</span>（<b>不变形</b>）的<b>较长对角线互成 120°</b>、自机体中心向外放射（内端顶点在中心相连，外端顶点构成等边三角形，整体呈 Y 字拼合），中央嵌<b>较暗的暗红核心</b>，<b>本体自转</b>（转速与法术矩阵等同）。<b>周期性造成范围伤害</b>：入场后 <b>2.1s</b> 首次释放，此后每 <b>2.2s</b> 一次（诗篇 <b>1.9s</b>）；<b>释放前 0.6s 有微微红圈收缩预警</b>，收缩完毕后自身略微放大（动效）并爆出<b>暗红色冲击波</b>——半径内（<b>等同焦香螺旋桨火焰光环</b>）我方战机受 <b>30</b> 伤害。<b>60% 概率从侧翼入场</b>（朝另一侧横移 20%~60% 屏宽后停驻、微微上下摆动），<b>40% 从上方入场</b>（下移 60%~80% 屏高后停驻）；停驻 20s 后离场。血量 <b>800</b>（诗篇 <b>1000</b>）；<b>分数与水晶掉落与焦香螺旋桨等同</b>。<b>替换权重：Lv11 前 0% / Lv11 起 3 类槽位 15</b>。',
     },
     unreal: {
-      name: '虚幻', type: 'unreal', wip: true, color: '#bfe8ff', hp: 900, score: 600,
-      desc: '【诗篇新敌 · 占位预告】冰霜投掷无人机（3类）。<b>投掷冰霜炸弹造成范围伤害，并留下一片寒冷区域</b>（区域滞留减速）；<b>如果发射炸弹之前就被击毁，则会在死亡位置殉爆并留下寒冷区域</b>——提前击杀也无法完全规避威胁。<br /><i>（占位条目：预览为白色方块，技能未实装、数值待定）</i>',
+      name: '虚幻', type: 'unreal', color: '#bfe8ff', hp: 550, score: 500,
+      desc: '<span class="ency-link" data-ency="baoling">暴鸰</span>的同型冰霜投弹机（3类）：外观同暴鸰机体——机身标识由骷髅换成<b>雪花</b>，挂载<b>蓝/深蓝渐变矩形炸弹</b>（圆柱弹体涂装）。<b>各项数值与暴鸰等同，全部伤害为暴鸰的 70%</b>：投弹流程完全一致（索敌停车锁定 → 投弹 → 爆炸，<b>玩家 28 伤害</b>），预警区为<b>深蓝色</b>；炸弹爆炸后原点留下<b>半径 100px 的寒冷区域</b>（持续 <b>3~5s</b>，间歇浮现雪花）：圈内我方战机<b>射速/移速 -35%</b>（寒霜同款）——<b>投掷出去的炸弹，其寒冷区域只对玩家生效</b>。<b>预警区形成前被击毁则原地殉爆</b>：周围 <b>250px</b> 内敌人受 <b>420 + 14% 最大生命</b>伤害（封顶 1400，可连锁殉爆），殉爆同样留下寒冷区域但<b>只对敌人生效</b>——圈内敌机<b>移速 -35%</b>（<b>BOSS 受到的减速/减移效果减半</b>）。<b>诗篇难度下，寒冷区域不论来源均对双方生效</b>。<b>玩家处于爆圈内时对虚幻增伤 35%</b>（无论是否已投弹）。<b>替换权重：Lv11 前 0% / Lv11 起 3 类槽位 15</b>。',
     },
   };
 
@@ -481,6 +482,18 @@ boss_storm: {
 
   // 图鉴预览：复用游戏内真实绘制逻辑（经 withPreviewCtx 临时将全局 ctx 指向目标画布）
   // 详情大图与列表缩略图共用；small = 缩略图模式：严格按比例完整显示（不设缩放上下限）
+
+  // 诗篇占位条目的素材形象（01-config 异步预加载的 Image）：图鉴预览用——
+  // getter 在绘制时取值（import 为活绑定，模块加载期 img 尚为 null，不能把值拷进映射表）；
+  // 键：BOSS 用 bossId（darkhand），四精英用 type；未命中 / 未加载完成时回退白色方块（见 drawEncyPreview d.wip 分支）
+  const WIP_PREVIEW_IMG = {
+    darkhand:   () => darkhandImg,
+    puxuefeng:  () => puxuefengImg,
+    hanxixian:  () => hanxixianImg,
+    xiayong:    () => xiayongImg,
+    xinguodong: () => xinguodongImg,
+  };
+
   function drawEncyPreview(d, cvs, LW = 220, LH = 140, small = false) {
     if (!cvs) return;
     // 高 DPI 适配：物理像素按 DPR 放大
@@ -492,8 +505,19 @@ boss_storm: {
     pctx.scale(DPR, DPR);
     pctx.clearRect(0, 0, LW, LH);
     withPreviewCtx(pctx, () => {
-      // 占位条目（wip，诗篇新敌）：统一白色方块预览（专属造型待实装；BOSS 占位用固定示意尺寸）
+      // 占位条目（wip，诗篇新敌）：已导入素材形象的画真实形象（等比适配画布，如黑暗之手 / 四精英），
+      // 其余统一白色方块预览（专属造型待实装；BOSS 占位用固定示意尺寸）
       if (d.wip) {
+        const pvGet = WIP_PREVIEW_IMG[d.type === 'boss' ? d.bossId : d.type];
+        const pvImg = pvGet ? pvGet() : null;
+        if (pvImg) {
+          const s = Math.min(LW * 0.66 / pvImg.naturalWidth, LH * 0.66 / pvImg.naturalHeight);
+          const dw = pvImg.naturalWidth * s, dh = pvImg.naturalHeight * s;
+          pctx.imageSmoothingEnabled = true;
+          pctx.imageSmoothingQuality = 'high';
+          pctx.drawImage(pvImg, LW / 2 - dw / 2, LH / 2 - dh / 2, dw, dh);
+          return;
+        }
         const t = d.type === 'boss' ? { w: 150, h: 110 } : ENEMY_TYPES[d.type];
         const s = Math.min(LW * 0.66 / t.w, LH * 0.66 / t.h);
         const sw = t.w * s, sh = t.h * s;
@@ -595,7 +619,9 @@ boss_storm: {
           // 缩略图：不设下限（4 类等大体型完整入图），上限与详情图一致（1.7）；pvZoom 仅允许缩小缩略图
           // （Math.min(1, z) 封顶——放大展示不作用于缩略图；卫护飞船等小体型衍生体则按实机大小展示）
           const scale = small ? Math.min(fit, 1.7) * Math.min(1, z) : clamp(fit * z, 0.4, 1.7 * z);
-          blit(drawOffscreen(d), LW / 2, LH / 2, scale);
+          // pvDy：条目级预览垂直偏移（世界像素，随 scale 缩放）——机身挂载大件炸弹的敌机（暴鸰·G）
+          // 构图包围盒中心偏下，据此上移使视觉中心与暴鸰一致
+          blit(drawOffscreen(d), LW / 2, LH / 2 + (d.pvDy || 0) * scale, scale);
         }
       }
     });
@@ -1069,9 +1095,11 @@ boss_storm: {
     });
     rows.push({
       canvas: infoShipCanvas('douzhi'),
-      label: '斗志昂扬（升级触发）',
-      vals: tierMask(INFO_TIERS.map(() => DOUZHI.spawnChance)),
-      fmt: rawFmt,   // Excel 原值为小数（0.04），原样展示
+      label: '奖励无人机（升级触发·当前难度）',
+      // 奖励无人机体系（2026-09-29）：每次关卡提升按当前难度概率刷新一架（每次至多一架），
+      // 三种按 斗志昂扬5 / 赞助无人机4 / 豪华赞助无人机1 加权抽取——表中为当前难度的触发概率（不随关卡档位变化）
+      vals: tierMask(INFO_TIERS.map(() => rewardDroneChance())),
+      fmt: rawFmt,   // 概率 ×100 显示为权重数字（小数原样：0.12 / 0.10 / 0.07）
     });
     return rows;
   }
@@ -1158,7 +1186,7 @@ boss_storm: {
       infoAppendNote(INFO_TIER_NOTE + '常规 1类编队（小组 / 长队 / 斜扫 / 对角奇袭等）中每架按此相对权重抽取构成；权重按关卡分两档（Lv1~10 / Lv11~20）。<b>紫自爆流不混入增生</b>；BOSS 后固定首波不含紫电与橙旋，其余按权重混入。');
     } else if (infoWeightKind === 'striker') {
       infoBody.appendChild(buildWeightTable(headers, infoStrikerRows()));
-      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/紫晶25/霜白20/坚垒25/幽暮2；Lv11~20：10/10/10/10/5/10/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；斗志昂扬为<b>每次关卡提升</b>时的出现概率（非波次权重，击败 BOSS 的跳变升级不触发）。');
+      infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/紫晶25/霜白20/坚垒25/幽暮2；Lv11~20：10/10/10/10/5/10/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；<b>奖励无人机</b>（斗志昂扬 / 赞助无人机 / 豪华赞助无人机）为<b>每次关卡提升</b>时按当前难度概率刷新一架（每次至多一架，非波次权重，击败 BOSS 的跳变升级不触发），三种按 ' + REWARD_DRONES.weights.douzhi + '/' + REWARD_DRONES.weights.sponsor + '/' + REWARD_DRONES.weights.sponsorDeluxe + ' 加权抽取（触发概率：虚象 12% / 具象 10% / 真我与诗篇 7%）。');
     } else if (infoWeightKind === 'special3') {
       infoBody.appendChild(buildWeightTable(headers, infoSpecial3Rows()));
       infoAppendNote(INFO_TIER_NOTE + '特殊3类<b>随常规波次登场</b>（每波 25% 概率附带一台，按表中权重抽取）。<b>0 表示该阶段不出场</b>；Lv11 以下仅三色炮艇（合计 260） / 先兆者出场，Lv11 起按高权重列抽取。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>（场上已有同种则该次不生成），其余特殊3类不限数量。紫晶 / 赤红 / 金曜炮艇为<b>独立条目</b>（紫80 / 赤100 / 金80），抽取直接决定涂装。');
@@ -1524,6 +1552,7 @@ boss_storm: {
       { id: 'armors',   name: '护甲' },
       { id: 'subs',     name: '副武器' },
       { id: 'pilots',   name: '驾驶员' },
+      { id: 'items',    name: '道具' },
       { id: 'achievements', name: '成就' },
       { id: 'test1',    name: '测试1' },
       { id: 'test2',    name: '测试2' },
@@ -1541,10 +1570,44 @@ boss_storm: {
     else if (infoTab === 'armors') renderInfoArmors();
     else if (infoTab === 'subs') renderInfoSubs();
     else if (infoTab === 'pilots') renderInfoPilots();
+    else if (infoTab === 'items') renderInfoItems();
     else if (infoTab === 'achievements') renderInfoAchievements();
     else if (infoTab === 'test1') renderInfoTest1();
     else if (infoTab === 'test2') renderInfoTest2();
     else renderInfoMods();
+  }
+
+  // ---------- 道具：REWARD_ITEMS 注册表驱动（赞助无人机掉落的一次性道具，普通/稀有两档） ----------
+  // 版式对齐成就页：每档一个大标题（info-achv-tier-head）分隔普通/稀有，标题色 = 档位色（白 / 金）
+  function renderInfoItems() {
+    infoBody.innerHTML = '';
+    const groups = [
+      { rarity: 'normal', label: '普通', color: '#ffffff' },
+      { rarity: 'rare',   label: '稀有', color: '#ffd166' },
+    ];
+    for (const g of groups) {
+      const head = document.createElement('h3');
+      head.className = 'info-achv-tier-head';
+      head.textContent = g.label;
+      head.style.color = g.color;
+      infoBody.appendChild(head);
+      for (const id in REWARD_ITEMS) {
+        const it = REWARD_ITEMS[id];
+        if (it.rarity !== g.rarity) continue;
+        const div = document.createElement('div');
+        div.className = 'info-wave-card';
+        const h = document.createElement('h4');
+        h.style.color = g.color;
+        const glyph = document.createElement('span');
+        glyph.textContent = it.glyph || '□';
+        h.append(glyph, document.createTextNode(' ' + it.name));
+        const p = document.createElement('p');
+        p.innerHTML = it.desc;
+        div.append(h, p);
+        infoBody.appendChild(div);
+      }
+    }
+    infoAppendNote('道具由赞助无人机掉落：常规赞助 90% 普通 / 10% 稀有，豪华赞助必稀有；已有道具时再击坠不重复获得（绷绷背包一局限掉落一次）。道具按 <b>E</b> 使用（与驾驶员技能 Q 独立），左下角量表显示持有与稀有度。');
   }
 
   // ---------- 测试1 / 测试2 页签（开发工作区，内容已清空）----------

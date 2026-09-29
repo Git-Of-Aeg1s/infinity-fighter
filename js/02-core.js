@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：03-audio(3 名) 04-spawn(8 名) 05-boss(13 名) 06-enemy(24 名) 07-player(20 名) 08-entities(13 名) 09-draw-ships(14 名) 10-draw-world(20 名) 11-draw-boss(9 名) 12-ui(78 名) 13-encyclopedia(15 名) 14-main(25 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(13 名) 06-enemy(33 名) 07-player(35 名) 08-entities(18 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(85 名) 13-encyclopedia(18 名) 14-main(34 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -23,6 +23,8 @@
   const hpFill = document.getElementById('hpFill');
   const hpBarrier = document.getElementById('hpBarrier');   // 青时炮艇支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
   const scoreText = document.getElementById('scoreText');
+  const stonePanel = document.getElementById('stonePanel');   // 原石收集计数面板（当局；12-ui updateHUD 驱动显隐）
+  const stoneCount = document.getElementById('stoneCount');   // 原石收集个数（巨型水晶拾取，08-entities 写入 state.gachaStones）
   const bombIcons = document.getElementById('bombIcons');
   const livesText = document.getElementById('livesText');
   const berserkBar = document.getElementById('berserkBar');
@@ -41,6 +43,10 @@
   const pilotGauge = document.getElementById('pilotGauge');
   const pilotGaugeRing = document.getElementById('pilotGaugeRing');
   const pilotGaugeKey = document.getElementById('pilotGaugeKey');
+  // 奖励道具槽（赞助无人机掉落）：左下角计数表样式，中间道具图标；按 E 使用（12-ui updateHUD 渲染）
+  const itemGauge = document.getElementById('itemGauge');
+  const itemGaugeRing = document.getElementById('itemGaugeRing');
+  const itemGaugeIcon = document.getElementById('itemGaugeIcon');
   // 大无垠之王：BOSS 战累积增伤读数（左下角血条上方文字，见 index.html / 12-ui updateHUD）
   const kingBonus = document.getElementById('kingBonus');
 
@@ -115,6 +121,9 @@
     princeScoreBase: 0,    // 天秀忧郁王子：上一帧分数快照（逐帧差分 = 非水晶得分增量）
     princeCrystalGain: 0,  // 天秀忧郁王子：本帧水晶得分累计（08-entities 水晶拾取写入，差分时扣除 → 只计非水晶得分）
     aiyiSelfDestruct: false,  // 埃逸：自爆结算中（killEnemy 得分按 20% 结算；扩散波扫完全场后复位）
+    sweepKill: false,         // 秒杀类技能结算中（金色陨石；与 aiyiSelfDestruct 同为「秒杀类通道」门控：
+                              // killEnemy 据此禁非 BOSS 敌人的召唤型亡语——增生分裂 / 法术矩阵爆发。
+                              // 统一伤害规则全文见 07-player gachaMeteorImpact 注释；结算循环结束即复位）
     aiyiFinalDeath: false,    // 埃逸：最后一条命的死亡（endGame 延后到自爆结算之后；若自爆带来胜利则跳过）
     selfDestructVictory: false, // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就占位标记见 06-enemy killEnemy）
     aiyiWaves: [],            // 埃逸：自爆扩散波 {x,y,r,id,final,speed,delay,maxR}（见 07-player updateAiyiWaves）
@@ -136,6 +145,23 @@
     ddjBerserkUps: 0,      // 叮咚鸡：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
     lingliCharges: 0,      // 漓：持有的结晶护盾充能次数（0~2，仅连携七日澜心时累计；满自动释放清弹特效）
     lingliBossShieldDone: false, // 漓：本段 BOSS 战开始护盾已发放标记（每段 BOSS 战一次，见 07-player updatePilotStatus）
+    rewardItem: null,      // 奖励道具槽（赞助无人机掉落）：{ id, rarity: 'normal' | 'rare', source }；按 E 使用，已有道具时击坠赞助无人机不再获得（06-enemy 写入 / 07-player useRewardItem 消耗；池见 01-config REWARD_ITEMS）
+    // ---- 奖励道具效果状态（07-player useRewardItem 置位与推进，resetGame 归位）----
+    laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +35%
+    laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.35/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
+    magnetBonus: 0,        // 磁力菇：水晶拾取半径加成（px；一整局、可叠加，08-entities 水晶吸附读取）
+    swordStormT: 0,        // 不再陵落：螺旋飞剑剩余时长（s；0 = 无效）
+    swordStormAng: 0,      // 不再陵落：下一发飞剑射向角（弧度，0=+x；起始 -π/2 朝上，每发 +40° = 每圈自带 40° 偏移）
+    swordStormAcc: 0,      // 不再陵落：发射累加器（16 发/s，07-player 推进）
+    frostField: null,      // 寒霜发生器：{ x, y, r:160, t, launched, vy }（未发射时随机体；到期朝上 80px/s 离场；07-player updateFrostField 推进，06-enemy/08-entities 读减速）
+    bombCapAdd: 0,         // 绷绷背包：爆弹携带上限加成（+1；一整局；拾取 08-entities / HUD 12-ui 共同读取）
+    bengbagGot: false,     // 绷绷背包：本局已掉落标记（一局限一次，06-enemy grantRewardItem 过滤）
+    jiukeT: 0,             // 酒客之影：透明化剩余时长（s；0 = 未激活）
+    jiukeHits: 0,          // 酒客之影：剩余免疫次数（2；07-player damagePlayer 消耗，归零或到时立即解除）
+    gachaFx: null,         // 哦哦！抽卡！：全套演出状态机 { phase, t, stones[], color, meteor, shock } （07-player updateGachaFx 驱动，10-draw-world 绘制）
+    gachaStones: 0,          // 原石（巨型水晶）当局收集数（HUD 左上显示；08-entities 拾取点写入，结算页读取）
+    gachaStoneMilestone: false, // 原石 16 颗里程碑已触发（一局仅一次获得机会，触发后不再重复）
+    gachaStoneOwed: false,   // 里程碑触发时道具栏被占用——当前道具用掉后立刻补发「哦哦！抽卡！」（07-player useRewardItem 结算）
     achvBulwarkLowBoss: null, // 成就「最后一搏」：最终壁垒不死触发瞬间的低血量(<10%) BOSS id（tryBulwarkCheatDeath 写入，02-achievements 消费）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
@@ -227,7 +253,9 @@
   /** @type {Array} */ const missileWarns = [];   // 炮火先兆者导弹垂直预警线
   /** @type {Array} */ const missiles = [];       // 预警结束后从上方下落的导弹
   /** @type {Array} */ const blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
+  /** @type {Array} */ const frostZones = [];    // 虚幻寒冷区域（炸弹爆炸 / 殉爆留下：半径内减速，{x,y,r,t,dur,affectsPlayer,affectsEnemies,seed}）
   /** @type {Array} */ const popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
+  /** @type {Array} */ const wgSlashes = [];       // 战争幽灵技能2斩击流（双道高速金色斩击，直线飞行、每道命中一次）
   /** @type {Array} */ const spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
   /** @type {Array} */ const cubeHitFx = [];       // 法术矩阵正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
   /** @type {Array} */ const zoneMarks = [];      // 暴风之眼：白色区域标记（风流/风柱打击预警：风流约 1.1s / 风柱 1.3s）
@@ -387,6 +415,21 @@
   function enemyFireIv(cfg) {
     const m = diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1;
     return rand(cfg.fireInterval[0] * m, cfg.fireInterval[1] * m);
+  }
+
+  // 奖励道具·寒霜发生器：敌机位于我方寒霜力场（state.frostField，160px）内时开火冷却流速 ×0.65（-35%）；
+  // BOSS 与移速减速同约定效果减半（×0.825，参照 UNREAL.bossResist）。调用点：06-enemy 各类开火冷却递减
+  function enemyFieldFireMul(e) {
+    const ff = state.frostField;
+    if (!ff) return 1;
+    if (Math.hypot(e.x - ff.x, e.y - ff.y) > ff.r) return 1;
+    return e.type === 'boss' ? 0.825 : 0.65;
+  }
+
+  // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器伤害乘区）。
+  // 调用点：08-entities 我方弹命中 / 捣蛋与叮咚导弹 / 辛国栋火环灼烧等伤害结算处乘算
+  function rewardOutMul() {
+    return state.gachaFx ? 0.4 : 1;
   }
 
   // 敌机是否与屏幕可见区域相交（碰撞盒 vs 可视画布）——完全在屏幕外的敌人不可被我方武器伤害。
@@ -576,9 +619,10 @@
   }
 
   export {
-    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, scoreText,
+    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, kingBonus,
+    itemGauge, itemGaugeRing, itemGaugeIcon,
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, fpsMeter, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
@@ -588,12 +632,12 @@
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
-    missileWarns, missiles, blBombs, popianMissiles, spellCubes, cubeHitFx,
+    missileWarns, missiles, blBombs, frostZones, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
     zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, yiScythes, ddjMissiles,
     slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
-    enemyFireIv,
+    enemyFireIv, enemyFieldFireMul, rewardOutMul,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst, spawnBlastRing,
     shake,

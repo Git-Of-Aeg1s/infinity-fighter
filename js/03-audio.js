@@ -1,7 +1,7 @@
 // 03-audio：BGM 切换 / BOSS 警报音效 / 全局静音开关
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(1 名) 12-ui(1 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(1 名) 12-ui(2 名) 14-main(3 名)
   //
   import { bossFlow, musicToggle, state } from './02-core.js';
 

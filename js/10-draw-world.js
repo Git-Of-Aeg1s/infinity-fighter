@@ -6,7 +6,7 @@
   import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, scytheImg } from './01-config.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, yiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawFrostZones, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
@@ -42,6 +42,8 @@
     // 诗篇占位敌人（wip）：统一白色方块占位造型
     if (WIP_PLACEHOLDER_TYPES.includes(e.type)) { drawWipPlaceholderBody(e); return; }
     if (e.type === 'tornado') { drawTornado(e); return; }   // 龙卷专用绘制（自身处理 translate）
+    // 战争幽灵：世界坐标层预警（入场/离场风波 + 技能1扇形 / 技能2双线），先于本体绘制（图层在机体之下）
+    if (e.type === 'warGhost') drawWarGhostWarns(e);
     ctx.save();
     ctx.translate(e.x, e.y);
     // 虚化（护盾期）：机身半透明闪烁
@@ -57,8 +59,12 @@
       drawWeilongBody(e);     // 自带填充与描边（四角环状旋翼 + 磨角矩形机身 + 指向炮管 + 橙黄渐变）
     } else if (e.type === 'baoling') {
       drawBaolingBody(e);     // 自带填充与描边（白灰磨角方形机体 + 黑横杠风扇 + 前挂红道黑炸弹）
-    } else if (e.type === 'douzhi') {
-      drawDouzhiBody(e);      // 自带填充与描边（类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂蓝色盒子）
+    } else if (e.type === 'baolingG') {
+      drawBaolingGBody(e);    // 暴鸰·G：同暴鸰机体 ×1.05 + 前挂胶囊形炸弹（半圆+矩形+半圆，矩形多道横杠）
+    } else if (e.type === 'unreal') {
+      drawUnrealBody(e);      // 虚幻：同暴鸰机体 + 机身雪花标识 + 前挂蓝/深蓝渐变矩形炸弹（圆柱涂装）
+    } else if (e.type === 'douzhi' || e.type === 'sponsor' || e.type === 'sponsorDeluxe') {
+      drawDouzhiBody(e);      // 奖励无人机（斗志昂扬/赞助/豪华赞助）：类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂盒子（盒色/高度按类型）
     } else if (e.type === 'hanshuang') {
       drawHanshuangBody(e);   // 自带填充与描边（四角圆角矩形旋翼舱 + 灰黑渐变机身 + 天蓝霜纹边缘 + 冰蓝光圈）
     } else if (e.type === 'yu4') {
@@ -84,10 +90,16 @@
       drawFashiA2Body(e);     // 自带填充与描边（A1 强化版：炫紫更白亮 + 紫心风扇圆 + 更粗更长炮管）
     } else if (e.type === 'popian') {
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
+    } else if (e.type === 'popianU') {
+      drawPopianUBody(e);     // 破片U型：同破片机体（核心描边/双杠/炮口改红，尾焰随移动方向）
     } else if (e.type === 'fashiMatrix') {
       drawFashiMatrixBody(e); // 自带填充与描边（竖菱形白红渐变外体 + 细黑菱形环 + 白红核心）
     } else if (e.type === 'fashiArray') {
       drawFashiArrayBody(e);  // 自带填充与描边（三座法术矩阵样式菱形 + 灰黑底座；中央血红色带流动特效）
+    } else if (e.type === 'pulseMatrix') {
+      drawPulseMatrixBody(e); // 自带填充与描边（三座法术矩阵顶点相连 + 暗红核心；含脉冲预警收缩圈/冲击波/放大动效）
+    } else if (e.type === 'warGhost') {
+      drawWarGhostBody(e);    // 自带填充与描边（金黄渐变流动机体 + 晶格流光 + 尖机头 + 两翼能量刃；抵达刃转演出/离场尾焰内含）
     } else if (e.type === 'jiaoxiang') {
       drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
@@ -2005,29 +2017,262 @@
     }
   }
 
-  // 依：镰刀清扫视觉——巨大镰刀（assets/scythe_transparent.png，未加载回退淡粉长条）绕机体高速旋转，
-  // 外围淡粉范围圈指示 300px 伤害/消弹半径；随主机移动（逻辑见 07-player updateYiScythes），首尾快速淡入淡出
+  // 依：镰刀清扫视觉——刀柄贴着机体、刀刃扫至 300px 外圈（素材沿半径方向取向：绘制长度 = scytheR），
+  // 刀刃后方留淡粉残影弧（斩击轨迹），外围淡粉范围圈指示 300px 半径；
+  // 随主机移动（逻辑见 07-player updateYiScythes），首尾快速淡入淡出；素材未加载回退淡粉长条
   function drawYiScythes() {
     if (!yiScythes.length) return;
     const cfg = PILOTS.yi;
     for (const sc of yiScythes) {
-      const alpha = Math.min(clamp(sc.t / 0.2, 0, 1), clamp((cfg.scytheDur - sc.t) / 0.3, 0, 1));
+      const alpha = Math.min(clamp(sc.t / 0.08, 0, 1), clamp((cfg.scytheDur - sc.t) / 0.15, 0, 1));
       ctx.save();
       ctx.translate(player.x, player.y);
+      // 范围指示圈（淡粉细环）
       ctx.globalAlpha = alpha * 0.30;
       ctx.strokeStyle = cfg.color;
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(0, 0, cfg.scytheR, 0, Math.PI * 2); ctx.stroke();
+      // 已扫过弧残影：跟在刀刃后方的淡粉粗弧，快速渐隐
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, cfg.scytheR * 0.94, sc.ang - 1.1, sc.ang);
+      ctx.stroke();
+      // 镰刀本体：刀柄在机体、刀刃达外圈（素材沿方位角方向铺开）
       ctx.globalAlpha = alpha;
-      ctx.rotate(sc.rot);
-      const sz = cfg.scytheSize;
-      if (scytheImg) ctx.drawImage(scytheImg, -sz / 2, -sz / 2, sz, sz);
+      ctx.rotate(sc.ang);
+      const len = cfg.scytheR, h = cfg.scytheWidth;
+      if (scytheImg) ctx.drawImage(scytheImg, 0, -h / 2, len, h);
       else {
         ctx.fillStyle = cfg.color;
-        ctx.fillRect(-sz / 2, -3, sz, 6);   // 素材未加载回退：淡粉长条
+        ctx.fillRect(0, -3, len, 6);   // 素材未加载回退：淡粉长条
       }
       ctx.restore();
     }
+  }
+
+  // 奖励道具·寒霜发生器：我方寒霜力场（160px）——青白色半透明双环 + 极淡径向内衬，
+  // 刻意压低存在感（与敌方冰蓝寒霜区域区分：色偏青白、透明度更低、无雪花粒子）；
+  // 发射离场态（launched）随 y 上移照常绘制，出屏后由推进端移除
+  function drawFrostField() {
+    const ff = state.frostField;
+    if (!ff) return;
+    ctx.save();
+    const pulse = 1 + Math.sin(state.time * 2.2) * 0.02;
+    const r = ff.r * pulse;
+    // 内衬：极淡青白径向渐变（不干扰弹幕判断）
+    const g = ctx.createRadialGradient(ff.x, ff.y, r * 0.2, ff.x, ff.y, r);
+    g.addColorStop(0, 'rgba(210, 245, 255, 0)');
+    g.addColorStop(0.75, 'rgba(205, 242, 255, 0.045)');
+    g.addColorStop(1, 'rgba(225, 250, 255, 0.075)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(ff.x, ff.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // 外环：青白细线（虚线旋转让"力场"可读但不抢眼）
+    ctx.globalAlpha = 0.30;
+    ctx.strokeStyle = '#cdeeff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 14]);
+    ctx.lineDashOffset = -state.time * 22;
+    ctx.beginPath();
+    ctx.arc(ff.x, ff.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // 内环：更淡的实线（层次）
+    ctx.globalAlpha = 0.16;
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ff.x, ff.y, r * 0.97, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 奖励道具·哦哦！抽卡！全套演出（gather→flash→shadow→meteor→shock，状态机见 07-player updateGachaFx）：
+  //   gather  原石自四面八方随机先后飞向机体（越靠近越加速，命中即微光收束；纯演出不掉分）
+  //   flash   彩光自机体爆发（按抽中颜色染色）+ 周身 300px 清弹（结算在推进端）
+  //   shadow  场心巨影压境（暗色椭圆 + 内圈漩涡感，由淡转深）
+  //   meteor  同色陨石自屏幕上方加速砸向场心（拖尾 + 火蚀边；金色附加彩色流光环绕）
+  //   shock   巨型多层冲击波扩散 + 闪核（结算在推进端 gachaMeteorImpact）
+  const GACHA_COLORS = {
+    blue:   { main: '#4da3ff', light: '#9cc8ff', deep: '#1c5fd6', glow: 'rgba(77,163,255,' },
+    purple: { main: '#b06cff', light: '#d9b3ff', deep: '#6d2fd0', glow: 'rgba(176,108,255,' },
+    gold:   { main: '#ffd24a', light: '#ffe9a8', deep: '#d69a1c', glow: 'rgba(255,210,74,' },
+  };
+
+  function drawGachaFx() {
+    const g = state.gachaFx;
+    if (!g) return;
+    const cx = CANVAS_W / 2, cy = CANVAS_H * 0.45;
+    ctx.save();
+    if (g.phase === 'gather') {
+      // 原石：白核 + 微彩光晕，自起点向机体当前实时位置飞行（ease-in 加速逼近）
+      for (const s of g.stones) {
+        const p = clamp((s.t - s.delay) / 0.5, 0, 1);
+        if (p <= 0 || p >= 1) continue;
+        const ease = p * p * (0.4 + 0.6 * p);   // 轻微 ease-in：越近越快
+        const x = s.sx + (player.x - s.sx) * ease;
+        const y = s.sy + (player.y - s.sy) * ease;
+        const a = Math.min(1, p * 3) * (0.65 + 0.35 * Math.sin(state.time * 18 + s.delay * 40));
+        // 飞行拖线
+        const tx = s.sx + (player.x - s.sx) * Math.max(0, ease - 0.16);
+        const ty = s.sy + (player.y - s.sy) * Math.max(0, ease - 0.16);
+        ctx.globalAlpha = a * 0.4;
+        ctx.strokeStyle = '#cfe6ff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        // 石体：白核 + 青白光晕
+        ctx.globalAlpha = a;
+        const gg = ctx.createRadialGradient(x, y, 0, x, y, 9);
+        gg.addColorStop(0, 'rgba(255,255,255,0.95)');
+        gg.addColorStop(0.45, 'rgba(190,225,255,0.55)');
+        gg.addColorStop(1, 'rgba(160,210,255,0)');
+        ctx.fillStyle = gg;
+        ctx.beginPath();
+        ctx.arc(x, y, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (g.phase === 'flash') {
+      const p = g.t / 0.35;
+      const a = 1 - p;
+      const c = GACHA_COLORS[g.color] || GACHA_COLORS.blue;
+      // 全彩光斑：自机体急速扩张的多层光环
+      const r = 20 + (1 - Math.pow(1 - p, 3)) * 300;
+      ctx.globalAlpha = a * 0.75;
+      const rg = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, r);
+      rg.addColorStop(0, '#ffffff');
+      rg.addColorStop(0.35, `${c.glow}${(0.7 * a).toFixed(3)})`);
+      rg.addColorStop(1, `${c.glow}0)`);
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = a * 0.9;
+      ctx.strokeStyle = c.light;
+      ctx.lineWidth = 5 * (1 - p) + 1;
+      ctx.shadowColor = c.main;
+      ctx.shadowBlur = 24;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (g.phase === 'shadow' || g.phase === 'meteor' || g.phase === 'shock') {
+      const c = GACHA_COLORS[g.color] || GACHA_COLORS.blue;
+      // 巨影：shadow 期由淡转深压入场心，meteor/shock 期维持（被陨石与冲击波覆盖）
+      const shP = g.phase === 'shadow' ? clamp(g.t / 0.7, 0, 1) : 1;
+      const shA = 0.5 * shP;
+      ctx.globalAlpha = shA;
+      ctx.fillStyle = '#04060f';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 150 * (0.4 + 0.6 * shP), 60 * (0.4 + 0.6 * shP), 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 影缘微光（预示陨石颜色）
+      ctx.globalAlpha = shA * 0.5;
+      ctx.strokeStyle = c.main;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 150 * (0.4 + 0.6 * shP), 60 * (0.4 + 0.6 * shP), 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (g.phase === 'meteor') {
+        // 陨石：自屏幕上方加速砸向场心（与推进端 0.55s 同步），二次 ease-in
+        const p = clamp(g.t / 0.55, 0, 1);
+        const y = -80 + (cy + 80) * p * p;
+        const R = 46;
+        // 拖尾：自陨石尾部向上的渐变光带（长度随速度增长）
+        const tail = 120 + 260 * p;
+        const tg = ctx.createLinearGradient(cx, y - tail, cx, y);
+        tg.addColorStop(0, `${c.glow}0)`);
+        tg.addColorStop(0.7, `${c.glow}${(0.35).toFixed(3)})`);
+        tg.addColorStop(1, `${c.glow}0.8)`);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = tg;
+        ctx.beginPath();
+        ctx.moveTo(cx - R * 0.85, y - 6);
+        ctx.quadraticCurveTo(cx, y - tail, cx + R * 0.85, y - 6);
+        ctx.lineTo(cx + R * 0.5, y);
+        ctx.lineTo(cx - R * 0.5, y);
+        ctx.closePath();
+        ctx.fill();
+        // 石体：深色内核 + 同色火蚀边 + 外发光
+        ctx.shadowColor = c.main;
+        ctx.shadowBlur = 34;
+        ctx.fillStyle = c.deep;
+        ctx.beginPath();
+        ctx.arc(cx, y, R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        const bg = ctx.createRadialGradient(cx - R * 0.3, y - R * 0.3, R * 0.1, cx, y, R);
+        bg.addColorStop(0, c.light);
+        bg.addColorStop(0.55, c.main);
+        bg.addColorStop(1, c.deep);
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(cx, y, R * 0.88, 0, Math.PI * 2);
+        ctx.fill();
+        // 金色限定：周身彩色流光（三色小光点环绕流动）
+        if (g.color === 'gold') {
+          const hues = ['#4da3ff', '#b06cff', '#5cffc0', '#ff8a5c'];
+          for (let k = 0; k < hues.length; k++) {
+            const ang = state.time * 5 + k * Math.PI / 2;
+            const ox = Math.cos(ang) * (R + 14), oy = Math.sin(ang) * (R + 14) * 0.6;
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = hues[k];
+            ctx.shadowColor = hues[k];
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(cx + ox, y + oy, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+
+      if (g.phase === 'shock') {
+        // 巨型冲击波：三层环（同色主环 + 白热内环 + 淡色外环）急速扩张至全屏
+        const p = clamp(g.t / 0.9, 0, 1);
+        const ease = 1 - Math.pow(1 - p, 2.4);
+        const maxR = Math.hypot(CANVAS_W, CANVAS_H) / 2 + 60;
+        const r = 30 + ease * maxR;
+        const a = 1 - p;
+        ctx.globalAlpha = a * 0.9;
+        ctx.strokeStyle = c.main;
+        ctx.shadowColor = c.light;
+        ctx.shadowBlur = 40 * a;
+        ctx.lineWidth = 30 * (1 - ease) + 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = a * 0.75;
+        ctx.strokeStyle = '#ffffff';
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 10 * (1 - ease) + 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.88, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = a * 0.5;
+        ctx.strokeStyle = c.light;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 1.1, 0, Math.PI * 2);
+        ctx.stroke();
+        // 闪核：冲击瞬间白热径向光斑快速衰减
+        if (p < 0.3) {
+          ctx.globalAlpha = (1 - p / 0.3) * 0.9;
+          const fg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 220);
+          fg.addColorStop(0, '#ffffff');
+          fg.addColorStop(0.4, `${c.glow}0.8)`);
+          fg.addColorStop(1, `${c.glow}0)`);
+          ctx.fillStyle = fg;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 220, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
   }
 
   function render() {
@@ -2085,9 +2330,12 @@
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
     drawDdjMissiles();   // 叮咚鸡：黄白导弹（前向扇形直线飞行，直击）
+    drawFrostZones();   // 虚幻：寒冷区域（冰蓝地面层 + 间歇雪花，位于预警圈/炸弹之下）
+    drawFrostField();   // 奖励道具·寒霜发生器：我方青白力场（低图层地面效果，存在感刻意压低）
     drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
-    drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹
+    drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹（虚幻：深蓝预警圈 + 矩形炸弹）
     drawPopianFx();       // 破片：红圈预警 + 三连发不可击毁导弹
+    drawWarGhostSlashes();   // 战争幽灵：技能2双斩击流（金色高速斩击）
     drawSpellCubes();     // 法术矩阵：发光正方体（白光体 + 红光棱边，限程后黯淡渐隐）
     drawCubeHitFx();      // 法术矩阵：正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）
     drawPhaseFx();        // 碎盾特效（群星之杀斩碎虚化护盾）：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片
@@ -2098,6 +2346,7 @@
     drawParticles();
     drawBossBars();       // BOSS 顶部血条：顶层绘制（实体/弹幕/粒子之上）——BOSS 靠上时机体不再遮挡血条
     drawChallengeBar();   // 测试模式：顶部测试目标血条（图鉴挑战·敌人测试）
+    drawGachaFx();        // 奖励道具·哦哦！抽卡！：原石汇集/彩光/巨影/陨石/冲击波（顶层演出）
 
     // BOSS 警报演出（全屏覆盖层）
     if (bossFlow.stage === 'warn') drawBossWarning(bossFlow.warnT);

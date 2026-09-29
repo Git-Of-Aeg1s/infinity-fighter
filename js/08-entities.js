@@ -1,15 +1,15 @@
 // 08-entities：子弹 / 道具 / 水晶 / 粒子更新 + 全屏特效状态（state.flash / 冲击波）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(3 名) 10-draw-world(2 名) 12-ui(1 名) 14-main(8 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(4 名) 10-draw-world(3 名) 12-ui(3 名) 14-main(9 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem, strikerFortressDR } from './01-config.js';
-  import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem, strikerFortressDR } from './01-config.js';
+  import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
-  import { armorSkillGain, kingDmgBonusMul, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
+  import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
   import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
@@ -24,9 +24,11 @@
     if (capVuln && (e.type === 'capital' || e.type === 'fashiArray')) mul *= capVuln;
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
-    // 暴鸰：玩家处于其炸弹爆圈内时对暴鸰增伤 35%（无论炸弹是否已投出）
-    if (e.type === 'baoling' && player.alive &&
-        Math.hypot(player.x - e.x, player.y - e.y) <= BAOLING.blastR) mul *= 1 + BAOLING.vuln;
+    // 暴鸰 / 暴鸰·G / 虚幻：玩家处于其炸弹爆圈内时增伤 35%（无论炸弹是否已投出；暴鸰·G 爆圈半径 ×1.3）
+    if ((e.type === 'baoling' || e.type === 'baolingG' || e.type === 'unreal') && player.alive) {
+      const BLC = e.type === 'baolingG' ? BAOLING_G : e.type === 'unreal' ? UNREAL : BAOLING;
+      if (Math.hypot(player.x - e.x, player.y - e.y) <= BLC.blastR) mul *= 1 + BLC.vuln;
+    }
     if (e.type === 'harbinger' && isWing) mul *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
     if (e.type === 'tornado') {
       // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；真我：僚机易伤额外 +150%（加算，不乘算）
@@ -166,7 +168,10 @@
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
           // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
-          let dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm);
+          // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
+          // 奖励道具·不再陵落：螺旋飞剑射出方向在水平线以下（lowArc）——对 BOSS 仅 50% 伤害
+          let dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm) * rewardOutMul();
+          if (b.lowArc && e.type === 'boss') dmg *= 0.5;
           if (e.barrier > 0) {
             const abs = Math.min(e.barrier, dmg);
             e.barrier -= abs; dmg -= abs;   // 屏障优先吸收（dmg 需可变：吸收后余量继续扣血）
@@ -288,7 +293,10 @@
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
       } else if (!b.shieldBlocked) {
-        b.x += b.vx * dt; b.y += b.vy * dt;
+        // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.65（-35%）
+        const ffd = state.frostField;
+        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.65 : 1;
+        b.x += b.vx * fm * dt; b.y += b.vy * fm * dt;
       }
       // 反弹光束（技能3）/ 技能6 暗黑子弹：触左右边界反弹，实际弹道呈"<"形折线；
       // bounceMax > 0 时限制反弹次数（暗黑子弹每颗最多 3 次），达到上限后不再反弹、直飞出屏移除
@@ -563,8 +571,7 @@
       player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
-      const cap = diffMods().bombCap;
-      state.bombs = Math.min(state.bombs + 1, cap != null ? cap : MAX_BOMBS);   // 真我：上限 2（mods.bombCap）
+      state.bombs = Math.min(state.bombs + 1, currentBombCap());   // 真我上限 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd）
       spawnParticles(p.x, p.y, '#ffb545', 12, 160);
     } else if (p.kind === 'shield') {
       // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
@@ -634,8 +641,9 @@
 
   // ---------- 水晶 ----------
   function updateCrystals(dt) {
-    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 132 → 198）
-    const magR = PLAYER_CFG.magnetRadius * (state.crystalMagnetMul || 1);
+    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 132 → 198）；
+    // 奖励道具·磁力菇：叠加固定加成 +40px/个（state.magnetBonus，一整局可叠加）
+    const magR = PLAYER_CFG.magnetRadius * (state.crystalMagnetMul || 1) + (state.magnetBonus || 0);
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
@@ -643,7 +651,7 @@
       if (state.pilotDashT > 0 && player.alive) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
-        if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
+        if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
         continue;
@@ -669,7 +677,7 @@
             // 水晶系统后续重构将新增多种水晶，均按各自 val 自动等比计入（见 ARMOR_SKILLS.gaugeCrystalScore），无需改动此处
             // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
             armorSkillGain(c.val, c.firstBoss);
-            if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
+            if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -690,7 +698,7 @@
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表（updatePilotStatus 差分时扣除）
         // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
         armorSkillGain(c.val, c.firstBoss);
-        if (c.tier === 'giant') achvNoteGiantCrystal();   // 抽卡！抽卡！：原石（巨型水晶）拾取计数
+        if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
       }

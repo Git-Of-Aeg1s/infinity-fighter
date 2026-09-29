@@ -46,6 +46,10 @@
             <span class="score-label">SCORE</span>
             <b id="scoreText">0</b>
           </div>
+          <!-- 原石收集计数（当局；巨型水晶拾取，集满 16 颗里程碑赠予「哦哦！抽卡！」——见 07-player noteGachaStone） -->
+          <div class="stone-panel hidden" id="stonePanel" title="原石收集（当局）：集满 16 颗可获得一次「哦哦！抽卡！」">
+            <span class="stone-icon">✦</span><b id="stoneCount">0</b>
+          </div>
           <!-- 当前难度标签（战斗中显示；buildDiffCards 难度注册表驱动） -->
           <div class="diff-label hidden" id="diffLabel"></div>
         </div>
@@ -66,6 +70,12 @@
         <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
           <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
           <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
+        </div>
+        <!-- 奖励道具槽（赞助无人机掉落）：计数表样式、中间道具图标；按 E 使用；已有道具时击坠赞助无人机不再获得 -->
+        <div class="skill-gauge item-gauge hidden" id="itemGauge" title="奖励道具：按 E 使用">
+          <div class="skill-gauge-ring" id="itemGaugeRing"></div>
+          <span class="skill-gauge-key" id="itemGaugeIcon">◆</span>
+          <span class="item-gauge-key">E</span>
         </div>
         <!-- 大无垠之王：BOSS 战累积增伤读数（位于血条上方、量表之下，flex 列排布不与量表重叠；向上取整整数百分比） -->
         <div class="king-bonus hidden" id="kingBonus" title="大无垠之王：BOSS 战累积增伤（怒意蔓延）"></div>
@@ -108,7 +118,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.3.7</span>
+          <span class="menu-version">v0.3.8</span>
         <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
         <div class="help-panel hidden" id="helpPanel">
