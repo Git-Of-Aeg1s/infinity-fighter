@@ -1,11 +1,11 @@
-﻿// 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
+// 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：10-draw-world(6 名) 13-encyclopedia(1 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
-  import { BOSSES, BOSS_BULLET, BOSS_WARN, CANVAS_H, CANVAS_W, ENERGY_ORB, STORM, STORM2, STORM2_SHIP, energyOrbSheet, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, stormEyeImg } from './01-config.js';
+  import { BOSSES, BOSS_BULLET, BOSS_WARN, CANVAS_H, CANVAS_W, DARKHAND, ENERGY_ORB, STORM, STORM2, STORM2_SHIP, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, xinguodongImg, xiayongImg } from './01-config.js';
   import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 
@@ -556,7 +556,7 @@
       const flash = 1 - revealP;                      // 登场瞬间的青白爆闪
 
       const bw = 360, bh = 13;
-      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
+      const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
       const taper = 15;
       const x0 = cx - bw / 2, x1 = cx + bw / 2;
       // 长六边形轮廓（与旧日之歌同款：左右两端各收出一个尖点）
@@ -723,7 +723,7 @@
         ctx.shadowBlur = 6;
         ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 35);
+        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, top - 6);
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
       }
@@ -1615,7 +1615,14 @@
   // 主体不再纯白（电弧感由锯齿内芯承担），锯齿 1/12s 步进换形（seed 稳定伪随机）；
   // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
   //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
-  function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap) {
+  // 光束配色（drawS2Beam 第 9 参可选）：{glow 外辉光 rgb / mid 热斑中层 rgb / core 内芯边缘 rgb / hot 内芯白热 rgb}；
+  // 缺省 = 风暴编织者电弧蓝白（全部既有调用零改动）；黑暗之手技能4 传黑红毁灭配色（DH_BEAM_COLORS）
+  const DH_STORM_BEAM = { glow: '111, 184, 255', mid: '170, 220, 255', core: '120, 190, 255', hot: '216, 236, 255' };
+  // 黑暗之手毁灭光束（2026-10-03 用户定稿三轮：紫改红）：本体纯黑（hot 近黑芯），边缘 = 明红内芯边（core）+ 外围红色光芒带（glow）
+  const DH_BEAM_COLORS = { glow: '255, 70, 50', mid: '255, 96, 72', core: '255, 128, 104', hot: '2, 0, 6' };
+
+  function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap, colors) {
+    const C = colors || DH_STORM_BEAM;
     if (len <= 0.5) return;
     ctx.save();
     ctx.translate(x, y);
@@ -1624,9 +1631,9 @@
     const w0 = root ? halfW * 0.22 : halfW;   // 根部宽度（root 时收为细点）
     const tw = root ? Math.min(len * 0.6, halfW * 3.2) : 0;   // 收束段长度（至全宽）
     const g = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
-    g.addColorStop(0, 'rgba(111, 184, 255, 0)');
-    g.addColorStop(0.5, 'rgba(111, 184, 255, 0.45)');
-    g.addColorStop(1, 'rgba(111, 184, 255, 0)');
+    g.addColorStop(0, 'rgba(' + C.glow + ', 0)');
+    g.addColorStop(0.5, 'rgba(' + C.glow + ', 0.45)');
+    g.addColorStop(1, 'rgba(' + C.glow + ', 0)');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0, -w0 * 1.9);
@@ -1648,9 +1655,9 @@
       ctx.fill();
     }
     const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
-    g2.addColorStop(0, 'rgba(120, 190, 255, 0.85)');
-    g2.addColorStop(0.5, '#d8ecff');
-    g2.addColorStop(1, 'rgba(120, 190, 255, 0.85)');
+    g2.addColorStop(0, 'rgba(' + C.core + ', 0.85)');
+    g2.addColorStop(0.5, 'rgb(' + C.hot + ')');
+    g2.addColorStop(1, 'rgba(' + C.core + ', 0.85)');
     ctx.fillStyle = g2;
     ctx.beginPath();
     ctx.moveTo(0, -w0);
@@ -1670,9 +1677,9 @@
     if (root) {
       // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
       const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
-      rg.addColorStop(0, 'rgba(235, 249, 255, 0.9)');
-      rg.addColorStop(0.45, 'rgba(170, 220, 255, 0.45)');
-      rg.addColorStop(1, 'rgba(120, 190, 255, 0)');
+      rg.addColorStop(0, 'rgba(' + C.hot + ', 0.9)');
+      rg.addColorStop(0.45, 'rgba(' + C.mid + ', 0.45)');
+      rg.addColorStop(1, 'rgba(' + C.core + ', 0)');
       ctx.fillStyle = rg;
       ctx.beginPath();
       ctx.arc(0, 0, halfW * 1.6, 0, Math.PI * 2);
@@ -1683,21 +1690,21 @@
     ctx.arc(len, 0, halfW, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
     const hgl = ctx.createRadialGradient(len, 0, 1, len, 0, halfW * 1.7);
-    hgl.addColorStop(0, 'rgba(235, 249, 255, 0.95)');
-    hgl.addColorStop(0.45, 'rgba(170, 220, 255, 0.5)');
-    hgl.addColorStop(1, 'rgba(120, 190, 255, 0)');
+    hgl.addColorStop(0, 'rgba(' + C.hot + ', 0.95)');
+    hgl.addColorStop(0.45, 'rgba(' + C.mid + ', 0.5)');
+    hgl.addColorStop(1, 'rgba(' + C.core + ', 0)');
     ctx.fillStyle = hgl;
     ctx.beginPath();
     ctx.arc(len, 0, halfW * 1.7, 0, Math.PI * 2);
     ctx.fill();
     if (len > 12) {
-      // 锯齿电弧：沿光束主轴双 pass（蓝辉外弧 + 白热细芯），每 1/12s 换一次形状
+      // 锯齿电弧：沿光束主轴双 pass（配色层外弧 + 白热细芯），每 1/12s 换一次形状
       const seg = Math.max(4, Math.floor(len / 26));
       const rnd = s2Seeded(Math.floor(state.time * 12) * 31 + seg * 17 + ((x * 7 + y * 3) | 0) % 97);
-      for (const [w2, col] of [[2.6, 'rgba(143, 212, 255, 0.55)'], [1.1, 'rgba(255, 255, 255, 0.9)']]) {
+      for (const [w2, col] of [[2.6, 'rgba(' + C.mid + ', 0.55)'], [1.1, 'rgba(255, 255, 255, 0.9)']]) {
         ctx.strokeStyle = col;
         ctx.lineWidth = w2;
-        ctx.shadowColor = '#bfe6ff';
+        ctx.shadowColor = 'rgb(' + C.mid + ')';
         ctx.shadowBlur = 6;
         ctx.beginPath();
         ctx.moveTo(0, 0);
@@ -1981,14 +1988,173 @@
   // 三 BOSS 血条从各 drawBoss 函数体内移出，由 10-draw-world render() 在实体/弹幕/粒子
   // 全部绘制完之后统一调用（drawBossBars）——图层高于一切场上元素：
   // BOSS 靠上时机体/弹幕/粒子不再遮挡血条（原旧日之歌血条在机体绘制前画，会被本体盖住）
-  function drawSongBar(e) {
+  function drawSongBar(e, isDh) {
     if (e.phase !== 'combat') return;
+    if (isDh) {
+      // 黑暗之手血条（2026-10-03 用户定稿：测试2 D2 四连爪痕方案）——黑条上四道爪痕撕口，
+      // 每道撕口精准落在连携召唤血量阈值（80/60/40/20%）上，血量白热前线划过撕口 = 该精英
+      // 被召唤、撕口随之迸亮常驻（「每个爪痕召唤一个敌人」）。登场 = 黑条浮现 → 爪痕连撕 ×4
+      //（按召唤顺序自右向左）→ 红芯自左灌入。旧日之歌血条（幽紫→猩红→金橙）保持原路径不变。
+      const bw = 360, bh = 13;
+      const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
+      const x0 = cx - bw / 2, x1 = cx + bw / 2;
+      const easeO = (p) => 1 - Math.pow(1 - p, 3);
+      const ths = [0.8, 0.6, 0.4, 0.2];                  // 连携召唤阈值（召唤顺序）
+      const gashXs = ths.map((t) => x0 + bw * t);        // 撕口位置：自右向左 80 → 60 → 40 → 20%
+      const slashT = (k) => 0.20 + k * 0.26;             // 第 k 道爪痕撕下时刻（0.26s 间隔保证每道撕痕动画可感知）
+      const openT = (k) => slashT(k) + 0.16;             // 撕口裂开时刻
+      const bt = e.barT;
+      const slabA = clamp(bt / 0.12, 0, 1);              // 黑条浮现
+      const flash = 1 - clamp(bt / 0.25, 0, 1);          // 登场红光爆闪（收敛：过强会罩出血条一圈红晕像 bug）
+      const floodP = easeO(clamp((bt - 1.15) / 0.35, 0, 1));   // 红芯灌入（末道撕完 1.14s 后开始）
+      const cutN = ths.filter((t, k) => bt >= openT(k)).length;
+      const ratio = clamp(e.hp / e.maxHp, 0, 1);
+      const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
+      // 六边条体 - 已撕开爪痕斜带（上缘入刀、左斜 8px、宽 4px）的 evenodd 裁剪
+      const clawClip = () => {
+        ctx.beginPath();
+        ctx.moveTo(x0, mid);
+        ctx.lineTo(x0 + 15, top); ctx.lineTo(x1 - 15, top); ctx.lineTo(x1, mid);
+        ctx.lineTo(x1 - 15, bot); ctx.lineTo(x0 + 15, bot);
+        ctx.closePath();
+        for (let k = 0; k < cutN; k++) {
+          const gx = gashXs[k];
+          ctx.moveTo(gx + 2, top - 1);
+          ctx.lineTo(gx + 6, top - 1);
+          ctx.lineTo(gx - 2, bot + 1);
+          ctx.lineTo(gx - 6, bot + 1);
+          ctx.closePath();
+        }
+      };
+      ctx.save();
+      ctx.globalAlpha = slabA;
+      // 底座黑条 + 红色辉光呼吸 / 登场爆闪（撕口挖除）
+      ctx.shadowColor = '#c22030';
+      ctx.shadowBlur = 14 + Math.sin(state.time * 2.5) * 4 + flash * 10;
+      clawClip();
+      ctx.fillStyle = `rgba(24, 3, 7, ${(0.88 + flash * 0.06).toFixed(3)})`;
+      ctx.fill('evenodd');
+      ctx.strokeStyle = `rgba(224, 52, 48, ${Math.min(1, 0.5 + flash * 0.3).toFixed(3)})`;
+      ctx.lineWidth = 1.6;
+      clawClip();
+      ctx.stroke('evenodd');
+      ctx.shadowBlur = 0;
+      // 内部：白色余像 → 血量（红芯灌入门控）→ 白热前线 → 高光 → 刻度 → 黑红罩染
+      ctx.save();
+      clawClip();
+      ctx.clip('evenodd');
+      if (trail > ratio + 0.002) {
+        ctx.fillStyle = 'rgba(255, 228, 222, 0.5)';
+        ctx.fillRect(x0, top, (x1 - x0) * trail * floodP, bh);
+      }
+      const fillW = (x1 - x0) * ratio * floodP;
+      if (fillW > 0.5) {
+        const hg = ctx.createLinearGradient(x0, 0, x1, 0);
+        // 黑红渐变提亮（2026-10-03 修复「血条始终是空的」：旧值 #3a060c→0.45 #a11226 左半段过暗融入黑底）
+        hg.addColorStop(0, '#7a0d18'); hg.addColorStop(0.35, '#c01830'); hg.addColorStop(1, '#ff5a4e');
+        ctx.fillStyle = hg;
+        ctx.fillRect(x0, top + 1.2, fillW, bh - 2.4);
+        if (floodP < 1) {                    // 灌入前沿亮线
+          ctx.fillStyle = 'rgba(255, 217, 200, 0.9)';
+          ctx.shadowColor = '#ff4642'; ctx.shadowBlur = 8;
+          ctx.fillRect(x0 + fillW - 1.5, top + 1.2, 3, bh - 2.4);
+          ctx.shadowBlur = 0;
+        }
+      }
+      if (floodP >= 1 && ratio > 0.005 && ratio < 1) {   // 白热前线（血量前端）
+        ctx.fillStyle = 'rgba(255, 226, 220, 0.9)';
+        ctx.shadowColor = '#ff8a7a'; ctx.shadowBlur = 6;
+        ctx.fillRect(x0 + (x1 - x0) * ratio - 1, top + 1.2, 2, bh - 2.4);
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+      ctx.fillRect(x0, top + 1.2, fillW, 2.5);
+      ctx.fillStyle = 'rgba(10, 2, 6, 0.55)';
+      for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
+      const tint = ctx.createLinearGradient(0, top, 0, bot);
+      tint.addColorStop(0, 'rgba(224, 40, 40, 0.26)');
+      tint.addColorStop(0.55, 'rgba(224, 40, 40, 0.05)');
+      tint.addColorStop(1, 'rgba(60, 6, 14, 0.30)');
+      ctx.fillStyle = tint;
+      ctx.fillRect(x0, top, x1 - x0, bh);
+      ctx.restore();
+      ctx.restore();
+      // 撕口红光：常态红光呼吸（增强，撕痕始终有存在感）；血量划过阈值（该精英被召唤）后常亮脉冲更醒目
+      for (let k = 0; k < cutN; k++) {
+        const gx = gashXs[k];
+        const crossed = ratio < ths[k];
+        const a = crossed ? 0.9 + 0.1 * Math.sin(state.time * 5) : 0.5 + 0.25 * Math.sin(state.time * 2.2 + k);
+        ctx.strokeStyle = crossed ? `rgba(255, 106, 90, ${a.toFixed(3)})` : `rgba(224, 52, 48, ${a.toFixed(3)})`;
+        ctx.lineWidth = crossed ? 2 : 1.5;
+        ctx.shadowColor = '#ff4642';
+        ctx.shadowBlur = crossed ? 9 : 7;
+        ctx.beginPath();
+        ctx.moveTo(gx + 4, top - 1);
+        ctx.lineTo(gx - 4, bot + 1);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+      // 撕裂瞬间：亮痕划过（拉长增强）+ 碎屑迸开（barT 驱动、无状态）
+      for (let k = 0; k < 4; k++) {
+        const sp = clamp((bt - slashT(k)) / 0.16, 0, 1);
+        if (sp > 0 && sp < 1) {
+          const gx = gashXs[k];
+          ctx.save();
+          ctx.globalAlpha = slabA * Math.sin(sp * Math.PI);
+          ctx.strokeStyle = '#ffd9c8';
+          ctx.lineWidth = 3;
+          ctx.shadowColor = '#ff4642'; ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.moveTo(gx + 12, top - 14);
+          ctx.lineTo(gx - 12, bot + 14);
+          ctx.stroke();
+          // 亮痕内芯白热线（撕裂瞬间双层更醒目）
+          ctx.strokeStyle = '#fff3ec';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(gx + 12, top - 14);
+          ctx.lineTo(gx - 12, bot + 14);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+        const tp = clamp((bt - openT(k)) / 0.4, 0, 1);
+        if (tp > 0 && tp < 1) {
+          const gx = gashXs[k];
+          for (let j = 0; j < 4; j++) {
+            const sd = j % 2 ? 1 : -1;
+            ctx.save();
+            ctx.globalAlpha = slabA * (1 - tp);
+            ctx.translate(gx + sd * (4 + easeO(tp) * 15), top + 2 + j * 2.4 + easeO(tp) * 4 * (j % 2 ? 1 : -1));
+            ctx.rotate(state.time * 5 + j + k);
+            ctx.fillStyle = j % 2 ? '#eec2ba' : '#ff8a6c';
+            ctx.fillRect(-1.4, -1.4, 2.8, 2.8);
+            ctx.restore();
+          }
+        }
+      }
+      // 名称与数值（黑条浮现后 0.55s 淡入——对齐旧日之歌 0.45s 口径，勿等灌入完成）
+      const txtA = clamp((e.barT - 0.55) / 0.35, 0, 1);
+      if (txtA > 0.01) {
+        ctx.globalAlpha = txtA;
+        ctx.fillStyle = '#ffdcd6';
+        ctx.shadowColor = '#c22030';
+        ctx.shadowBlur = 6;
+        ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, top - 6);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+      return;
+    }
+    // 旧日之歌血条（幽紫→猩红→金橙原版；破碎感碎块主题）
       const revealP = clamp(e.barT / 0.8, 0, 1);
       const reveal = 1 - Math.pow(1 - revealP, 3);   // easeOutCubic：以中心为基准横向展开
-      const flash = 1 - revealP;                      // 登场瞬间的紫光爆闪
+      const flash = 1 - revealP;                      // 登场瞬间的紫/红光爆闪（旧日之歌紫 / 黑暗之手红）
 
       const bw = 360, bh = 13;   // 高度缩短 20%（16 → 13）
-      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
+      const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
       const taper = 15;
       const x0 = cx - bw / 2, x1 = cx + bw / 2;
       // 长六边形轮廓（左右两端各收出一个尖点）
@@ -2006,13 +2172,13 @@
       ctx.save();
       ctx.translate(cx, 0); ctx.scale(reveal, 1); ctx.translate(-cx, 0);
 
-      // 底座 + 暗紫光芒笼罩（呼吸辉光 + 登场爆闪）
-      ctx.shadowColor = '#8b5cf6';
+      // 底座 + 暗紫/暗红光芒笼罩（呼吸辉光 + 登场爆闪）
+      ctx.shadowColor = isDh ? '#c22030' : '#8b5cf6';
       ctx.shadowBlur = 14 + Math.sin(state.time * 2.5) * 4 + flash * 22;
       hexPath();
-      ctx.fillStyle = `rgba(26, 10, 48, ${(0.88 + flash * 0.12).toFixed(3)})`;
+      ctx.fillStyle = isDh ? `rgba(24, 3, 7, ${(0.88 + flash * 0.12).toFixed(3)})` : `rgba(26, 10, 48, ${(0.88 + flash * 0.12).toFixed(3)})`;
       ctx.fill();
-      ctx.strokeStyle = `rgba(167, 139, 250, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})`;
+      ctx.strokeStyle = isDh ? `rgba(224, 52, 48, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})` : `rgba(167, 139, 250, ${Math.min(1, 0.5 + flash * 0.5).toFixed(3)})`;
       ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -2024,41 +2190,55 @@
       const ratio = clamp(e.hp / e.maxHp, 0, 1);
       const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
       if (trail > ratio + 0.002) {          // 刚扣除的血量以白色余条缓慢消退
-        ctx.fillStyle = 'rgba(255, 230, 240, 0.5)';
+        ctx.fillStyle = isDh ? 'rgba(255, 228, 222, 0.5)' : 'rgba(255, 230, 240, 0.5)';
         ctx.fillRect(x0, top, (x1 - x0) * trail, bh);
       }
-      const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 主血量：幽紫 → 猩红 → 金橙
-      hg.addColorStop(0, '#6d28d9');
-      hg.addColorStop(0.3, '#ff4d6d');
-      hg.addColorStop(1, '#ffb545');
-      ctx.fillStyle = hg;
+      if (isDh) {
+        const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 黑暗之手主血量：黑红渐变（与四精英血条同语言）
+        hg.addColorStop(0, '#3a060c');
+        hg.addColorStop(0.45, '#a11226');
+        hg.addColorStop(1, '#ff4642');
+        ctx.fillStyle = hg;
+      } else {
+        const hg = ctx.createLinearGradient(x0, 0, x1, 0);   // 主血量：幽紫 → 猩红 → 金橙
+        hg.addColorStop(0, '#6d28d9');
+        hg.addColorStop(0.3, '#ff4d6d');
+        hg.addColorStop(1, '#ffb545');
+        ctx.fillStyle = hg;
+      }
       ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, bh - 2.4);
       // 能量前线：血量填充最前端的发光亮线，随血量减少而滑动
       if (ratio > 0.005 && ratio < 1) {
-        ctx.fillStyle = 'rgba(240, 225, 255, 0.9)';
-        ctx.shadowColor = '#c4b5fd';
+        ctx.fillStyle = isDh ? 'rgba(255, 226, 220, 0.9)' : 'rgba(240, 225, 255, 0.9)';
+        ctx.shadowColor = isDh ? '#ff8a7a' : '#c4b5fd';
         ctx.shadowBlur = 6;
         ctx.fillRect(x0 + (x1 - x0) * ratio - 1, top + 1.2, 2, bh - 2.4);
         ctx.shadowBlur = 0;
       }
       ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';          // 顶部高光
       ctx.fillRect(x0, top + 1.2, (x1 - x0) * ratio, 2.5);
-      ctx.fillStyle = 'rgba(10, 4, 24, 0.55)';              // 每 10% 一道刻度
+      ctx.fillStyle = isDh ? 'rgba(10, 2, 6, 0.55)' : 'rgba(10, 4, 24, 0.55)';   // 每 10% 一道刻度
       for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
-      const tint = ctx.createLinearGradient(0, top, 0, bot); // 暗紫罩染：血量也蒙上紫气
-      tint.addColorStop(0, 'rgba(139, 92, 246, 0.30)');
-      tint.addColorStop(0.55, 'rgba(139, 92, 246, 0.05)');
-      tint.addColorStop(1, 'rgba(46, 16, 84, 0.30)');
+      const tint = ctx.createLinearGradient(0, top, 0, bot); // 暗紫/暗红罩染：血量蒙上同系气息
+      if (isDh) {
+        tint.addColorStop(0, 'rgba(224, 40, 40, 0.26)');
+        tint.addColorStop(0.55, 'rgba(224, 40, 40, 0.05)');
+        tint.addColorStop(1, 'rgba(60, 6, 14, 0.30)');
+      } else {
+        tint.addColorStop(0, 'rgba(139, 92, 246, 0.30)');
+        tint.addColorStop(0.55, 'rgba(139, 92, 246, 0.05)');
+        tint.addColorStop(1, 'rgba(46, 16, 84, 0.30)');
+      }
       ctx.fillStyle = tint;
       ctx.fillRect(x0, top, x1 - x0, bh);
       ctx.restore();
 
       ctx.restore();
 
-      // 破碎感主题：泛白紫碎块在血条周围持续剥落、漂移、消散（旧日之歌 = 空间异物）
+      // 破碎感主题：泛白紫/泛白红碎块在血条周围持续剥落、漂移、消散（旧日之歌 = 空间异物 / 黑暗之手 = 黑红）
       if (!e.shards) {
         e.shards = [];
-        const SHARD_COLS = ['#ece6fa', '#dcd0f6', '#cdc0f0', '#f4f0fc'];
+        const SHARD_COLS = isDh ? ['#f5dedb', '#eec6c0', '#e2aca5', '#fbeeeb'] : ['#ece6fa', '#dcd0f6', '#cdc0f0', '#f4f0fc'];
         for (let i = 0; i < 10; i++) {
           const vn = 3 + Math.floor(Math.random() * 2);   // 3~4 边不规则碎形
           const pts = [];
@@ -2092,7 +2272,7 @@
         ctx.rotate(state.time * s.rspd + s.ph);
         ctx.globalAlpha = a;
         ctx.fillStyle = s.col;
-        ctx.shadowColor = '#b9a8f5';
+        ctx.shadowColor = isDh ? '#e88a80' : '#b9a8f5';
         ctx.shadowBlur = 5;
         ctx.beginPath();
         ctx.moveTo(s.pts[0][0] * s.sz, s.pts[0][1] * s.sz);
@@ -2115,8 +2295,8 @@
           ctx.translate(px2, py2);
           ctx.rotate(state.time * 3 + i);
           ctx.globalAlpha = flash * (0.85 - (i % 4) * 0.1);
-          ctx.fillStyle = i % 2 ? '#e8e2f8' : '#cfc0f2';
-          ctx.shadowColor = '#b9a8f5';
+          ctx.fillStyle = i % 2 ? (isDh ? '#fbe3df' : '#e8e2f8') : (isDh ? '#eec2ba' : '#cfc0f2');
+          ctx.shadowColor = isDh ? '#e88a80' : '#b9a8f5';
           ctx.shadowBlur = 6;
           ctx.beginPath();
           ctx.moveTo(sz2, 0);
@@ -2133,12 +2313,12 @@
       const txtA = clamp((e.barT - 0.45) / 0.35, 0, 1);
       if (txtA > 0.01) {
         ctx.globalAlpha = txtA;
-        ctx.fillStyle = '#e6d5ff';
-        ctx.shadowColor = '#8b5cf6';
+        ctx.fillStyle = isDh ? '#ffdcd6' : '#e6d5ff';
+        ctx.shadowColor = isDh ? '#c22030' : '#8b5cf6';
         ctx.shadowBlur = 6;
         ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, 35);
+        ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, CANVAS_W / 2, top - 6);
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
       }
@@ -2152,7 +2332,7 @@
       const revealP = clamp(e.barT / 0.8, 0, 1);
       const reveal = 1 - Math.pow(1 - revealP, 3);
       const bw = 300, bh = 13;
-      const cx = CANVAS_W / 2, top = 8, mid = top + bh / 2, bot = top + bh;
+      const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
       const taper = 15;
       const x0 = cx - bw / 2, x1 = cx + bw / 2;
       const hex = () => {
@@ -2362,7 +2542,7 @@
           ctx.shadowBlur = 6;
           ctx.font = 'bold 12px "Microsoft YaHei", sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, cx, bot + 15);
+          ctx.fillText(`${e.name} · ${Math.ceil(e.hp)} / ${e.maxHp}`, cx, top - 6);
           ctx.shadowBlur = 0;
           ctx.restore();
         }
@@ -2375,7 +2555,391 @@
       if (e.type !== 'boss' || e.dying || e.ency || e.phase !== 'combat') continue;
       if (e.bossId === 'storm') drawStormBar(e);
       else if (e.bossId === 'storm2') drawStorm2Bar(e);
-      else drawSongBar(e);
+      else drawSongBar(e, e.bossId === 'darkhand');   // 黑暗之手：黑红变体血条（2026-10-03）
+    }
+  }
+
+  // ---------- 黑暗之手：绘制（登场演出专属四段式 + 素材立绘本体 + 黑红气息；2026-10-03 全链紫改红） ----------
+  // phase 'preview'（图鉴预览）：跳过入场与血条，直接画完整机体（13-encyclopedia 经离屏包围盒适配）
+  // 登场深邃黑形态上的白芒星流动（2026-10-01 用户定稿）：确定性伪随机撒点（同 drawBossWarning 星点做法）
+  // 在机体包围盒内缓慢上浮 + 闪烁，部分星带四芒光芒；k = 整体淡入淡出系数（reveal 淡入 / combat 真色渐入时淡出）。
+  // 调用约定：处于已 translate 到机体中心的局部坐标系（reveal / combat 渲染块同构）
+  function drawDhStars(e, k) {
+    if (k <= 0.01) return;
+    const bw = e.w * 0.94, bh = e.h * 0.94;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-bw / 2, -bh / 2, bw, bh);
+    ctx.clip();
+    for (let i = 0; i < 22; i++) {
+      const sd = (i * 127.31 + 11.7) % 1;
+      const sd2 = (i * 311.7 + 5.3) % 1;
+      const sd3 = (i * 74.7 + 41.9) % 1;
+      const px = (sd - 0.5) * bw;
+      const cyc = ((sd2 - state.time * 0.05 * (0.6 + sd3)) % 1 + 1) % 1;   // 上浮循环 0..1（负 mod 修正）
+      const py = (cyc - 0.5) * bh;
+      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(state.time * (3 + sd3 * 4) + i * 2.3));   // 闪烁
+      const r = (0.8 + sd3 * 1.5) * (0.6 + 0.4 * tw);
+      ctx.globalAlpha = k * tw * 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+      ctx.shadowBlur = 5;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (sd3 > 0.55) {   // 部分星带四芒光芒
+        ctx.globalAlpha = k * tw * 0.5;
+        ctx.fillRect(px - r * 3, py - 0.4, r * 6, 0.8);
+        ctx.fillRect(px - 0.4, py - r * 3, 0.8, r * 6);
+      }
+    }
+    ctx.restore();
+  }
+
+  // 黑暗之手红色饰条掩码（2026-10-02 用户定稿「机翼/机体红色加红白流动特效」）：惰性烘焙一次——
+  // 逐像素检测素材红色（红显著高于绿蓝；灰黑装甲 r≈g≈b 不命中），软阈值按红优势给 alpha，生成白描红区掩码。
+  // smoke 无头桩 naturalWidth 为 undefined → 门控跳过，不执行像素代码
+  let dhRedMask = null, dhFlowTmp = null;
+  function ensureDhRedMask() {
+    const img = darkhandImg;
+    if (dhRedMask || !img || !img.naturalWidth) return;
+    dhRedMask = document.createElement('canvas');
+    dhRedMask.width = img.naturalWidth; dhRedMask.height = img.naturalHeight;
+    const c0 = dhRedMask.getContext('2d');
+    c0.drawImage(img, 0, 0);
+    const d = c0.getImageData(0, 0, dhRedMask.width, dhRedMask.height), px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const hot = px[i] - Math.max(px[i + 1], px[i + 2]) * 1.5;
+      const m = hot > 12 ? Math.min(1, hot / 70) : 0;
+      px[i] = 255; px[i + 1] = 255; px[i + 2] = 255;
+      px[i + 3] = Math.min(px[i + 3], m * 255);
+    }
+    c0.putImageData(d, 0, 0);
+    dhFlowTmp = document.createElement('canvas');
+    dhFlowTmp.width = dhRedMask.width; dhFlowTmp.height = dhRedMask.height;
+  }
+  // 红白流光层（每帧合成）：tmp 画斜向红白条纹（白热前锋 + 红尾，随相位向机头方向流动），
+  // destination-in 用红区掩码裁剪 → 只剩红色饰条上的流光；主画布 lighter 叠加
+  function paintDhRedFlow(t) {
+    const c0 = dhFlowTmp.getContext('2d');
+    const W0 = dhRedMask.width, H0 = dhRedMask.height;
+    c0.setTransform(1, 0, 0, 1, 0, 0);
+    c0.globalCompositeOperation = 'source-over';
+    c0.clearRect(0, 0, W0, H0);
+    c0.save();
+    c0.translate(W0 / 2, H0 * 0.62);
+    c0.rotate(-0.09);                            // 轻微斜向，流光似沿爪翼走势滑过
+    const per = H0 * 0.16, off = (t * 52) % per;
+    c0.translate(-W0, -H0 * 0.7 - off);
+    for (let y = 0; y < H0 * 2.2; y += per) {
+      const g1 = c0.createLinearGradient(0, y, 0, y + per);
+      g1.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      g1.addColorStop(0.18, 'rgba(255, 246, 240, 0.95)');   // 白热前锋
+      g1.addColorStop(0.42, 'rgba(255, 120, 90, 0.55)');    // 红尾拖光
+      g1.addColorStop(1, 'rgba(255, 60, 50, 0)');
+      c0.fillStyle = g1;
+      c0.fillRect(0, y, W0 * 2, per * 0.62);
+    }
+    c0.restore();
+    c0.globalCompositeOperation = 'destination-in';
+    c0.drawImage(dhRedMask, 0, 0);
+    c0.globalCompositeOperation = 'source-over';
+  }
+  // 黑暗之手引擎尾焰（2026-10-02 用户定稿）：机尾（屏上方中央梯形装甲）朝上喷焰——
+  // 黑红配色（焰根暗红 → 深红 → 近黑淡出，lighter 叠加下暗红近黑自然消隐于深色太空底）+ 亮红内芯，
+  // 贝塞尔锥形外焰，焰尖随相位微摆 + 呼吸；焰根压在装甲顶边内、随定稿下移（baseY -0.32h → -0.24h），
+  // 变窄（半宽 0.105w → 0.075w）变短（len 0.46h → 0.34h，2026-10-02 第二轮定稿）。
+  // 相位 e.flameT 由 updateBossDarkhand 推进（gameover 后 update 停 → 尾焰定格，规避大狗导弹尾焰同类 bug）。
+  // 调用方传 alpha：reveal 乘 pr / combat 乘 realFade 渐入
+  function dhEngineFlame(e, alpha) {
+    if (alpha <= 0.02) return;
+    const len = e.h * 0.34, w = e.w * 0.075, baseY = -e.h * 0.24;
+    const ft = e.flameT || 0;
+    const sway = Math.sin(ft * 7.3) * 6, pulse = 1 + Math.sin(ft * 9.1) * 0.09;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = alpha;
+    let g = ctx.createLinearGradient(0, baseY, 0, baseY - len);
+    g.addColorStop(0, 'rgba(168, 24, 34, 0.8)');
+    g.addColorStop(0.3, 'rgba(130, 14, 24, 0.5)');
+    g.addColorStop(0.7, 'rgba(80, 8, 16, 0.22)');
+    g.addColorStop(1, 'rgba(48, 4, 10, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-w, baseY);
+    ctx.quadraticCurveTo(-w * 0.62, baseY - len * 0.55, -w * 0.16 + sway, baseY - len * pulse);
+    ctx.quadraticCurveTo(w * 0.62, baseY - len * 0.55, w, baseY);
+    ctx.closePath();
+    ctx.fill();
+    g = ctx.createLinearGradient(0, baseY, 0, baseY - len * 0.62);
+    g.addColorStop(0, 'rgba(255, 96, 72, 0.85)');
+    g.addColorStop(0.45, 'rgba(200, 40, 36, 0.45)');
+    g.addColorStop(1, 'rgba(130, 16, 22, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.34, baseY);
+    ctx.quadraticCurveTo(-w * 0.2, baseY - len * 0.34, -w * 0.06 + sway * 0.55, baseY - len * 0.62 * pulse);
+    ctx.quadraticCurveTo(w * 0.2, baseY - len * 0.34, w * 0.34, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDarkhandBoss(e) {
+    const img = darkhandImg;
+    // mode：real 真色提亮（默认）/ shadow 纯黑剪影（登场阴影掠过）/ ghost 白剪影 + 红边四向 drop-shadow（登场轮廓）
+    const drawBody = (scale, mode) => {
+      mode = mode || 'real';
+      if (!img) {   // 素材未加载回退：方块剪影（碰撞盒同尺寸）
+        ctx.fillStyle = mode === 'shadow' ? '#000000' : '#ffffff';
+        ctx.strokeStyle = mode === 'ghost' ? 'rgba(255, 42, 64, 0.95)' : 'rgba(0, 0, 0, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(-e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+        ctx.strokeRect(-e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+        return;
+      }
+      ctx.save();
+      // real：素材近黑 → 近原色直出（2026-10-02 用户定稿：装甲压暗贴合四精英暗黑风——精英素材原色直出无提亮，
+      // 原 brightness 1.6 提亮使装甲发亮偏离暗黑感；现 1.06 轻提亮保细节 + 对比拉高沉暗部。
+      // 黑紫染罩已按用户指令移除——视觉似补丁，改由素材原色 + 周身暗红辉光表达暗黑气质（2026-10-03 辉光紫改红））
+      ctx.filter = mode === 'shadow' ? 'brightness(0)'
+        : mode === 'ghost' ? 'brightness(0) invert(1) drop-shadow(2px 0 0 rgba(255,42,64,0.9)) drop-shadow(-2px 0 0 rgba(255,42,64,0.9)) drop-shadow(0 2px 0 rgba(255,42,64,0.9)) drop-shadow(0 -2px 0 rgba(255,42,64,0.9))'
+        : 'brightness(1.06) contrast(1.15) saturate(1.08)';
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, -e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+      ctx.restore();
+    };
+
+    // 图鉴预览：直接完整机体
+    if (e.phase === 'preview') { drawBody(1); return; }
+
+    // 登场演出（2026-10-01 四段式，替换旧黑洞入场；状态机见 05-boss updateBossDarkhand，时长参数见 01-config DARKHAND.entrance）：
+    //   lurk 潜伏不可见 → sweep 黑色阴影沿中线飞速掠过 → outline 白主体红边轮廓 → reveal 渐变深邃黑（结束释放震荡波）
+    if (e.phase === 'lurk') return;
+
+    // 登场连携黑暗凝聚（2026-10-01 用户定稿，纯渲染演出）：白红轮廓开始浮现后，黑暗之手四周四个角
+    // 出现四名连携精英的黑暗形态（立绘黑剪影 + 暗红辉光，由小放大凝聚成形）；黑暗之手显形完成
+    // （combat 开始）瞬间化作粒子消散（粒子爆发见 05-boss combat 转换点，此处立即停止绘制）。
+    // 进度直接由 phase/phaseT 推导：outline 凝聚 0.9s / reveal 保持，无新增状态字段
+    if (e.phase === 'outline' || e.phase === 'reveal') {
+      const ghosts = [puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg];
+      let gAlpha = 0, gScale = 1;
+      if (e.phase === 'outline') {
+        const g = clamp(e.phaseT / 0.9, 0, 1);   // 凝聚：0.9s 淡入 + 由小放大（outlineDelay 停顿期 phaseT<0 不显示）
+        if (g > 0) { gAlpha = g * 0.85; gScale = 0.55 + 0.45 * g; }
+      } else {
+        gAlpha = 0.85;                           // reveal：已凝聚，保持黑暗形态压场
+      }
+      if (gAlpha > 0.01) {
+        // 黑暗之手四周四个角（相对机体中心的偏移锚点；外层无 translate，用世界坐标）。
+        // 画布 480×792：机体 w=375 已占 78% 屏宽——偏移取 e.w×0.6=225 且双向 clamp 屏内
+        // （2026-10-01 用户三次反馈「凝聚不在屏幕内」根因：e.w×0.82=246 > 屏半宽 240；2026-10-02 体型 +25% 后 clamp 继续兜底）
+        const ox = e.w * 0.6, oy = e.h * 0.75;
+        const h0 = 118;
+        for (let i = 0; i < 4; i++) {
+          const img = ghosts[i];
+          if (!img) continue;
+          const w0 = h0 * (img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0.72);
+          const ax = clamp(e.x + (i % 2 ? ox : -ox), 55, CANVAS_W - 55);
+          const ay = clamp(e.y + (i < 2 ? -oy : oy), 70, CANVAS_H - 120);   // 上排防越屏顶（机体悬停 y≈151）
+          const bob = Math.sin(state.time * 2.4 + i * 1.7) * 5;   // 凝聚期轻微浮动
+          ctx.save();
+          ctx.translate(ax, ay + bob);
+          ctx.globalAlpha = gAlpha;
+          ctx.scale(gScale, gScale);
+          ctx.shadowColor = '#c22030';   // 凝聚精英暗红辉光（2026-10-03 黑红化，原紫 #7a2bb8）
+          ctx.shadowBlur = 16 + Math.sin(state.time * 5 + i) * 6;
+          ctx.filter = 'brightness(0)';          // 黑暗形态：纯黑剪影
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, -w0 / 2, -h0 / 2, w0, h0);
+          ctx.restore();
+        }
+      }
+    }
+
+    if (e.phase === 'sweep') {
+      // 掠过擦除（2026-10-01 用户定稿）：黑影冲到哪，前方预警带保留、已掠过区域熄灭——
+      // 剩余带从黑影头部底缘延展到屏底（渐变锚固定全带样式一致；topY 附近由黑影剪影遮盖）
+      {
+        const headY = e.y + e.h * 0.5;
+        if (headY < CANVAS_H) drawDhWarnStrip(Math.max(0, headY), CANVAS_H);
+      }
+      // 黑色阴影：纯黑剪影（brightness(0) 保留 alpha）+ 暗红辉光；机尾向上长拖尾（黑红渐变收窄带 ≈450px，
+      // 2026-10-01 用户定稿；辉光/拖尾 2026-10-03 黑红化）
+      {
+        const trailLen = 450, baseY = -e.h * 0.45;
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        const tg = ctx.createLinearGradient(0, baseY, 0, baseY - trailLen);
+        tg.addColorStop(0, 'rgba(24, 3, 7, 0.5)');       // 机尾根部：深黑红（2026-10-03 黑红化，原黑紫）
+        tg.addColorStop(0.35, 'rgba(24, 3, 7, 0.26)');
+        tg.addColorStop(1, 'rgba(24, 3, 7, 0)');         // 尾端淡出
+        ctx.fillStyle = tg;
+        ctx.beginPath();
+        ctx.moveTo(-e.w * 0.36, baseY);
+        ctx.lineTo(e.w * 0.36, baseY);
+        ctx.lineTo(e.w * 0.12, baseY - trailLen);        // 尾端收窄
+        ctx.lineTo(-e.w * 0.12, baseY - trailLen);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      for (let k = 2; k >= 1; k--) {
+        ctx.save();
+        ctx.translate(e.x, e.y - k * 78);
+        ctx.globalAlpha = 0.22 - k * 0.07;
+        ctx.shadowColor = '#5a0d18';   // 阴影残影暗红辉光（2026-10-03 黑红化，原紫 #4a1a6e）
+        ctx.shadowBlur = 24;
+        drawBody(1, 'shadow');
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.globalAlpha = 0.92;
+      ctx.shadowColor = '#5a0d18';   // 阴影主体暗红辉光（2026-10-03 黑红化）
+      ctx.shadowBlur = 30;
+      drawBody(1, 'shadow');
+      ctx.restore();
+      return;
+    }
+    if (e.phase === 'outline') {
+      // 白主体红边轮廓浮现（0.45s 平方淡入 + 微脉动）：darkhandImg 经 brightness(0) invert(1) 得白剪影，
+      // 四向 drop-shadow 叠出红色描边（红框醒目、主体留白）；相位可为负（outlineDelay 停顿期）clamp 0 不可见
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      const pin = clamp(e.phaseT / 0.45, 0, 1);   // 淡入窗口随 outlineT ×0.6（2026-10-01 用户定稿：白红光时长 -40%）
+      ctx.globalAlpha = pin * pin * (0.85 + Math.sin(state.time * 10) * 0.15);   // 平方淡入：最开始更淡
+      drawBody(1, 'ghost');
+      ctx.restore();
+      return;
+    }
+    if (e.phase === 'reveal') {
+      // 白红轮廓 → 深邃黑形态交叉渐变（revealT = 0.675s；2026-10-01 用户定稿：登场显形为深邃黑色 +
+      // 白芒星在其间流动，combat 初期再过渡到真色立绘——见下方战斗渲染块；同帧叠加无空档、无瞬跳）
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      const pr = clamp(e.phaseT / 0.675, 0, 1);
+      dhEngineFlame(e, pr * 0.85);               // 尾焰随显形渐入（下层，焰根被机体遮盖）
+      ctx.globalAlpha = 1 - pr;
+      drawBody(1, 'ghost');
+      ctx.globalAlpha = pr;
+      ctx.shadowColor = '#5a0d18';   // reveal 深邃黑辉光（2026-10-03 黑红化）
+      ctx.shadowBlur = 26;
+      drawBody(1, 'shadow');
+      ctx.globalAlpha = 1;
+      drawDhStars(e, pr);
+      ctx.restore();
+      return;
+    }
+
+    // 登场收束震荡波：reveal 结束瞬间放出（05-boss 置 e.shock = {t, dur}），两道白红椭圆波环
+    // 自机体急速向外扩散（外圈白红在前、内圈红色追随 0.12 相位差），0.55s 内淡出（shockDur）；
+    // 2026-10-03 黑红化（原白紫/紫）
+    if (e.shock) {
+      const sp = clamp(e.shock.t / e.shock.dur, 0, 1);
+      for (let k = 1; k >= 0; k--) {
+        const p2 = clamp(sp - k * 0.12, 0, 1);
+        if (p2 <= 0 || p2 >= 1) continue;
+        ctx.save();
+        ctx.globalAlpha = (1 - p2) * 0.7;
+        ctx.strokeStyle = k === 0 ? '#ffd9d4' : '#e04848';
+        ctx.lineWidth = 3.5 - p2 * 2.4;
+        ctx.beginPath();
+        ctx.ellipse(e.x, e.y, e.w * 0.6 + p2 * CANVAS_W * 0.55, e.h * 0.7 + p2 * CANVAS_W * 0.4, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 战斗：暗红气息辉光（呼吸，2026-10-01 用户定稿：较初版更淡更小；2026-10-03 辉光紫改红）→ 素材立绘本体；
+    // 登场衔接（2026-10-01 用户定稿）：combat 前 0.6s 深邃黑形态 + 白芒星随真色渐入淡出（防显形瞬跳）
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    const realFade = (e.phase === 'combat' && e.phaseT < 0.6) ? clamp(e.phaseT / 0.6, 0, 1) : 1;
+    dhEngineFlame(e, realFade);                  // 尾焰：combat 前 0.6s 随真色同步渐入（下层）
+    if (realFade < 1) {
+      ctx.globalAlpha = 1 - realFade;
+      ctx.shadowColor = '#5a0d18';   // 衔接深黑形态辉光（2026-10-03 黑红化）
+      ctx.shadowBlur = 26;
+      drawBody(1, 'shadow');
+      ctx.globalAlpha = 1;
+      drawDhStars(e, 1 - realFade);
+    }
+    ctx.globalAlpha = realFade;
+    ctx.shadowColor = 'rgba(224, 40, 40, 0.5)';   // 周身暗红气息辉光（2026-10-03 黑红化，原紫 rgba(176,74,212)）
+    ctx.shadowBlur = 11 + Math.sin(state.time * 2.2) * 3.5;
+    drawBody(1);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    // 红白流动特效（2026-10-02 用户定稿）：红色饰条掩码裁剪的斜向红白流光，lighter 叠加——
+    // 相位 e.flameT 与尾焰同源（update 推进，gameover 定格）；alpha 随显形渐入 + 轻呼吸
+    ensureDhRedMask();
+    if (dhRedMask) {
+      paintDhRedFlow(e.flameT || 0);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = realFade * (0.55 + Math.sin((e.flameT || 0) * 2.6) * 0.15);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(dhFlowTmp, -e.w / 2, -e.h / 2, e.w, e.h);
+      ctx.restore();
+    }
+    // 技能蓄能提示环已删（2026-10-02 用户定稿「黑暗之手周围的紫色圈去掉」）
+    ctx.restore();
+    // 技能4 爪翼毁灭光束（2026-10-02 / 2026-10-03 三轮定稿）：三组发射点依次「预警 → 发射」（世界坐标，机体上层）——
+    // 预警 = 暗红虚线方向束 + 端点光斑闪动（呼吸相位用 e.skill.pt，gameover 随 update 冻结自动定格；紫改红随黑红弹幕同系；
+    // 2026-10-03 五轮定稿：线宽 2→3.5 增粗 + 红辉光，闪动频率/幅度加大更醒目）；
+    // 光束本体 = 黑红配色（DH_BEAM_COLORS）逐段绘制（折线含真我/诗篇反弹段），vis 与 05-boss 判伤同式
+    //（strikeVis 形状公式 inline），出现/淡出节拍与伤害窗口严格一致
+    if (e.skill && e.skill.id === 3) {
+      const c4 = DARKHAND.s4, s = e.skill;
+      if (s.st === 'warn') {
+        for (const gm of c4.groups[s.gi]) {
+          const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h;
+          // 预警线长度 = 沿朝向延伸至出屏（2026-10-03 四轮定稿：同 dhBeamSegments 出屏口径——前两轮下达屏底、
+          // 第三轮斜出侧缘，+30 出屏余量与光束折线一致），端点光斑随线尾移动
+          let wl = 190;
+          {
+            const ddx = Math.cos(gm.ang), ddy = Math.sin(gm.ang);
+            let tMin = Infinity;
+            if (ddx > 1e-6) tMin = Math.min(tMin, (CANVAS_W - sx) / ddx);
+            if (ddx < -1e-6) tMin = Math.min(tMin, -sx / ddx);
+            if (ddy > 1e-6) tMin = Math.min(tMin, (CANVAS_H + 30 - sy) / ddy);
+            if (tMin < Infinity) wl = tMin;
+          }
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(gm.ang);
+          ctx.globalAlpha = 0.4 + Math.sin(s.pt * 26) * 0.4;   // 0~0.8 大幅闪动（原 0.05~0.65）
+          ctx.strokeStyle = '#ff4632';
+          ctx.lineWidth = 3.5;                                 // 增粗（原 2；2026-10-03 用户定稿 4.5→3.5）
+          ctx.setLineDash([12, 9]);
+          ctx.shadowColor = '#ff2030';
+          ctx.shadowBlur = 7 + Math.sin(s.pt * 26) * 3;        // 红辉光随闪动呼吸
+          ctx.beginPath();
+          ctx.moveTo(6, 0);
+          ctx.lineTo(wl, 0);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.55 + Math.sin(s.pt * 20) * 0.4;  // 端点光斑同步大闪（原 0.2~0.8）
+          ctx.fillStyle = '#ffb3a6';
+          ctx.beginPath();
+          ctx.arc(wl, 0, 6.5, 0, Math.PI * 2);                 // 光斑加大（原 4.5）
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      for (const b of s.beams) {
+        const life = b.t / c4.beamDur, rise = c4.rise;
+        const vis = clamp(life < rise ? life / rise : 1 - (life - rise) / (1 - rise), 0, 1);
+        for (const sg of b.segs) {
+          drawS2Beam(sg.x1, sg.y1, Math.atan2(sg.y2 - sg.y1, sg.x2 - sg.x1),
+            Math.hypot(sg.x2 - sg.x1, sg.y2 - sg.y1), c4.r, vis, false, true, DH_BEAM_COLORS);
+        }
+      }
     }
   }
 
@@ -2383,6 +2947,7 @@
   function drawBoss(e) {
       if (e.bossId === 'storm2') { drawStormBossII(e); return; }   // 风暴编织者（二阶段飞舰：当前仅图鉴预览）
       if (e.bossId === 'storm') { drawStormBoss(e); return; }   // 暴风之眼专用绘制
+      if (e.bossId === 'darkhand') { drawDarkhandBoss(e); return; }   // 黑暗之手专用绘制
     const isEntering = (e.phase === 'blackhole' || e.phase === 'emerge' || e.phase === 'assemble');
 
     // ---------- 黑洞特效（进场演出期间始终绘制） ----------
@@ -2653,6 +3218,71 @@
     ctx.fillRect(x, y + h, w, 2);
   }
 
+  // 黑暗之手警报杠：黑红渐变流动（暗底 + 两道流动红带 + 上下红亮边；2026-10-03 用户定稿由黑紫改黑红）
+  // dir 决定红带流向、ph 相位错开 → 双杠明暗轮换（见 drawBossWarning darkhand 分支）
+  function drawWarnBarDh(x, y, w, h, dir, ph) {
+    ctx.fillStyle = 'rgba(12, 2, 5, 0.85)';
+    ctx.fillRect(x, y, w, h);
+    for (let k = 0; k < 2; k++) {
+      const span = w + 260;
+      const off = ((ph + k * 0.5) % 1) * span;
+      const gx = dir > 0 ? x + off - 130 : x + span - off - 130;
+      const g = ctx.createLinearGradient(gx, 0, gx + 260, 0);
+      g.addColorStop(0, 'rgba(140, 16, 26, 0)');
+      g.addColorStop(0.5, `rgba(200, 36, 44, ${(0.45 + 0.3 * Math.sin(ph * 6.283 + k * 3)).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(140, 16, 26, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+    }
+    ctx.fillStyle = 'rgba(255, 96, 88, 0.85)';
+    ctx.fillRect(x, y - 2, w, 2);
+    ctx.fillRect(x, y + h, w, 2);
+  }
+
+  // 黑暗之手红色竖向预警带（sweep 掠过路径预告）：场中央渐变红主体（顶部浓 → 底部淡）+ 两条竖向亮缘闪烁。
+  // 样式恒定：渐变锚固定为 [0, bottomY]（警报延展段 bottomY = 生长端；sweep 段 bottomY = 屏底），
+  // 剩余段与全带样式完全一致（2026-10-01 用户反馈：剩余段不得另起渐变浓度）。
+  // 生命周期与警报淡出解耦：警报段以恒定 alpha 绘制（不随警报 fade 消失），
+  // sweep 阶段「掠过擦除」：drawDhWarnStrip(黑影头部, CANVAS_H)——已掠过区域不再绘制、前方保留
+  // （topY 处由黑影剪影本体遮盖，无需额外熄灭渐变）
+  function drawDhWarnStrip(topY, bottomY) {
+    const halfW = 150, hgt = bottomY - topY;
+    if (hgt <= 0.5) return;
+    ctx.save();
+    ctx.globalAlpha = 0.30 * (0.75 + 0.25 * Math.sin(state.time * 9));
+    const g = ctx.createLinearGradient(0, 0, 0, bottomY);
+    g.addColorStop(0, 'rgba(255, 30, 60, 0.85)');
+    g.addColorStop(1, 'rgba(255, 30, 60, 0.12)');
+    ctx.fillStyle = g;
+    ctx.fillRect(CANVAS_W / 2 - halfW, topY, halfW * 2, hgt);
+    // 两条竖向亮缘（闪烁）
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(state.time * 14);
+    ctx.fillStyle = 'rgba(255, 96, 118, 0.9)';
+    ctx.fillRect(CANVAS_W / 2 - halfW, topY, 2.5, hgt);
+    ctx.fillRect(CANVAS_W / 2 + halfW - 2.5, topY, 2.5, hgt);
+    ctx.restore();
+  }
+
+  // —— BOSS 警报字体（2026-10-02 用户定稿）：警报大字统一华文行楷，系统缺失该字体时以楷体显示。
+  // 判定的是「当前指定字体是否已存在」（document.fonts.check；华文行楷加查英文 PS 名 STXingkai，
+  // 结果按字体名缓存只查一次）——之后其他 BOSS 换用其他字体时传入 family 复用同一判定，不写死字体名。
+  // 检测不可用（桩环境 / 异常）一律按缺失回退楷体链，canvas 字体串仍保留多级回退兜底
+  const alarmFontAvail = {};
+  function alarmFont(px, family) {
+    family = family || '华文行楷';
+    if (alarmFontAvail[family] == null) {
+      let ok = false;
+      try {
+        const fs = document.fonts;
+        ok = !!fs && fs.check(px + 'px "' + family + '"');
+        if (!ok && family === '华文行楷') ok = !!fs && fs.check(px + 'px "STXingkai"');   // 华文行楷英文 PS 名
+      } catch (err) { ok = false; }
+      alarmFontAvail[family] = ok;
+    }
+    const primary = alarmFontAvail[family] ? '"' + family + '", ' : '';
+    return px + 'px ' + primary + '"楷体", "KaiTi", "STKaiti", serif';
+  }
+
   // BOSS 警报演出：双横杠滑入 → 中间红色区域 + Lv 徽标 + BOSS 名（流动渐变艺术字）→ 淡出
   function drawBossWarning(t) {
     const { slide, hold, fade } = BOSS_WARN;
@@ -2663,34 +3293,65 @@
 
     ctx.save();
     ctx.globalAlpha = alpha;
+    const isDh = bossFlow.pending === 'darkhand';   // 黑暗之手：黑红警报变体（杠/区域/字/星点，2026-10-03 用户定稿由黑紫改黑红）+ 中段红色竖向预警
+
+    // 黑暗之手：警报中段（提前 0.4s，2026-10-01 用户定稿——警报尚未结束即开始出现）场中央自上而下
+    // 延展红色竖向预警带（0.85s 展开至屏底）——预告 sweep 阴影掠过路径；带以恒定 alpha 绘制（不随警报
+    // fade 消失，2026-10-01 用户反馈），持续到 sweep 掠过擦除（见 drawDhWarnStrip / drawDarkhandBoss）
+    if (isDh) {
+      const pw = clamp((t - (slide + hold * 0.45 - 0.4)) / 0.85, 0, 1);   // 起始 t = 1.755s - 0.4 = 1.355s（警报 3.3s 中段）
+      if (pw > 0) drawDhWarnStrip(0, CANVAS_H * ease(pw));
+    }
 
     // 左侧偏上横杠从左向右滑入；右侧偏下横杠从右向左滑入（均贯穿全屏）
     const bw = CANVAS_W, bh = 16;
     const p = ease(t / slide);
-    drawWarnBar(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1);
-    drawWarnBar(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1);
+    if (isDh) {
+      // 黑暗之手：黑红流动杠，双杠相位错开成轮换
+      drawWarnBarDh(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1, state.time * 0.55);
+      drawWarnBarDh(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1, state.time * 0.55 + 0.5);
+    } else {
+      drawWarnBar(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1);
+      drawWarnBar(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1);
+    }
 
     // 两杠到位：中间红色区域淡入（半透明 + 描边）
     if (pz > 0) {
-      ctx.save();
-      ctx.globalAlpha = alpha * pz * 0.30;
-      ctx.fillStyle = '#e01030';
-      ctx.fillRect(56, 288, 368, 128);
-      ctx.globalAlpha = alpha * pz * 0.85;
-      ctx.strokeStyle = 'rgba(255, 96, 118, 0.9)';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(56, 288, 368, 128);
-      ctx.restore();
+      if (isDh) {
+        // 黑暗之手：黑红渐变区 + 红描边（2026-10-03 用户定稿：由黑紫改黑红，与三精英配色统一；
+        // 静置无流动、暗底衬红调白字）
+        const g = ctx.createLinearGradient(56, 288, 424, 416);
+        g.addColorStop(0, 'rgba(18, 2, 6, 0.88)');
+        g.addColorStop(0.5, 'rgba(112, 16, 24, 0.6)');
+        g.addColorStop(1, 'rgba(18, 2, 6, 0.88)');
+        ctx.globalAlpha = alpha * pz;
+        ctx.fillStyle = g;
+        ctx.fillRect(56, 288, 368, 128);
+        ctx.globalAlpha = alpha * pz * 0.85;
+        ctx.strokeStyle = 'rgba(224, 36, 36, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(56, 288, 368, 128);
+      } else {
+        ctx.save();
+        ctx.globalAlpha = alpha * pz * 0.30;
+        ctx.fillStyle = '#e01030';
+        ctx.fillRect(56, 288, 368, 128);
+        ctx.globalAlpha = alpha * pz * 0.85;
+        ctx.strokeStyle = 'rgba(255, 96, 118, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(56, 288, 368, 128);
+        ctx.restore();
+      }
     }
 
     // 横杠左侧：Lv 徽标
     const pLv = clamp((t - slide * 0.55) / 0.3, 0, 1);
     if (pLv > 0) {
       ctx.globalAlpha = alpha * pLv;
-      ctx.fillStyle = '#ff8a9a';
-      ctx.shadowColor = '#ff4d6d';
+      ctx.fillStyle = isDh ? '#ffd9d4' : '#ff8a9a';   // 黑暗之手：红调白（黑红底上可读，2026-10-03 用户定稿）
+      ctx.shadowColor = isDh ? '#ff2030' : '#ff4d6d';
       ctx.shadowBlur = 10;
-      ctx.font = 'bold 22px "Microsoft YaHei", sans-serif';
+      ctx.font = 'bold 24px "Microsoft YaHei", sans-serif';   // 2026-10-03 用户定稿：警报字体增大一号（22 → 24）
       ctx.textAlign = 'center';
       ctx.fillText(`Lv.${B.lv}`, 104, 342);
       ctx.shadowBlur = 0;
@@ -2707,7 +3368,7 @@
 
       ctx.save();
       ctx.translate(CANVAS_W / 2, 358);
-      ctx.font = '46px "华文行楷", "STXingkai", "Microsoft YaHei", sans-serif';
+      ctx.font = alarmFont(50);   // 全局警报大字：华文行楷（缺失回退楷体，检测见 alarmFont）；2026-10-03 用户定稿增大一号（46 → 50）
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -2730,17 +3391,24 @@
             ctx.stroke();
           }
         } else {
+          // 旧日之歌：紫光环 + 紫光刃；黑暗之手（isDh）：红光环 + 红光刃（2026-10-03 黑红化）
           ctx.globalAlpha = alpha * (1 - impact) * 0.7;
-          ctx.strokeStyle = '#c8b0ff';
+          ctx.strokeStyle = isDh ? '#ff8a7a' : '#c8b0ff';
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.ellipse(0, 0, 46 + impact * 150, 26 + impact * 60, 0, 0, Math.PI * 2);
           ctx.stroke();
           const sw = 40 + impact * 220;
           const sg = ctx.createLinearGradient(-sw / 2, 0, sw / 2, 0);
-          sg.addColorStop(0, 'rgba(180, 140, 255, 0)');
-          sg.addColorStop(0.5, 'rgba(200, 180, 255, 0.9)');
-          sg.addColorStop(1, 'rgba(180, 140, 255, 0)');
+          if (isDh) {
+            sg.addColorStop(0, 'rgba(255, 120, 100, 0)');
+            sg.addColorStop(0.5, 'rgba(255, 140, 110, 0.9)');
+            sg.addColorStop(1, 'rgba(255, 120, 100, 0)');
+          } else {
+            sg.addColorStop(0, 'rgba(180, 140, 255, 0)');
+            sg.addColorStop(0.5, 'rgba(200, 180, 255, 0.9)');
+            sg.addColorStop(1, 'rgba(180, 140, 255, 0)');
+          }
           ctx.globalAlpha = alpha * (1 - impact) * 0.9;
           ctx.fillStyle = sg;
           ctx.fillRect(-sw / 2, -1.5, sw, 3);
@@ -2781,6 +3449,13 @@
           g.addColorStop(0.35, '#f7faff'); // 白
           g.addColorStop(0.65, '#93a8cc'); // 灰带蓝
           g.addColorStop(1, '#7d8aa5');    // 灰
+        } else if (isDh) {
+          // 黑暗之手：深邃黑主体 + 暗红缘流动（flowX 相位仍随时间流动；2026-10-03 由暗紫缘改暗红缘）
+          g = ctx.createLinearGradient(-cw / 2 + flowX, -30, cw / 2 + flowX, 30);
+          g.addColorStop(0, '#3a060c');     // 暗红缘
+          g.addColorStop(0.38, '#0d0306');  // 深邃黑
+          g.addColorStop(0.66, '#0d0306');
+          g.addColorStop(1, '#3a060c');
         } else {
           g = ctx.createLinearGradient(-cw / 2 + flowX, -30, cw / 2 + flowX, 30);
           g.addColorStop(0, '#9898b4');     // 浅灰蓝
@@ -2792,17 +3467,51 @@
         ctx.fillStyle = g;
         ctx.shadowColor = isStorm
           ? `rgba(150, 172, 214, ${0.7 + Math.sin(phase) * 0.2})`
-          : `rgba(90, 40, 140, ${0.75 + Math.sin(phase) * 0.2})`;
+          : isDh
+            ? `rgba(224, 40, 40, ${0.8 + Math.sin(phase) * 0.2})`   // 黑暗之手：红辉光衬深黑字（2026-10-03 由紫辉光改红）
+            : `rgba(90, 40, 140, ${0.75 + Math.sin(phase) * 0.2})`;
         ctx.shadowBlur = 18 + (1 - eo) * 26;
         ctx.fillText(chars[i], 0, 0);
+        if (isDh) {   // 黑暗之手：红调白描边（深黑字上勾出轮廓，2026-10-03 由银蓝描边改红调白）
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = 'rgba(255, 190, 180, 0.55)';
+          ctx.lineWidth = 1.1;
+          ctx.strokeText(chars[i], 0, 0);
+        }
         ctx.restore();
+      }
+
+      // 黑暗之手：名字带内星点流动（深邃黑字上的星光横向漂移 + 闪烁；确定性伪随机，逐帧稳定）
+      if (isDh) {
+        const span = chars.length * cw + 30;
+        for (let k = 0; k < 9; k++) {
+          const sd = (k * 127.31) % 1;
+          const spd = 24 + sd * 40;
+          const x = ((state.time * spd + sd * span * 3) % span) - span / 2;
+          const y = Math.sin(k * 2.7 + state.time * (0.5 + sd * 0.7)) * 21;
+          const tw = clamp(0.45 + 0.55 * Math.sin(state.time * 5 + k * 2.1), 0.08, 1);
+          ctx.globalAlpha = alpha * tw * 0.9;
+          ctx.fillStyle = k % 3 === 0 ? '#ffdcd4' : '#e86a5a';   // 红调白/亮红星光（黑红底上可见，2026-10-03 由银蓝星光改红）
+          ctx.beginPath();
+          ctx.arc(x, y, k % 3 === 0 ? 1.5 : 1, 0, Math.PI * 2);
+          ctx.fill();
+          if (k % 3 === 0) {   // 亮星加四芒微光
+            ctx.strokeStyle = 'rgba(255, 190, 180, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x - 3.5, y); ctx.lineTo(x + 3.5, y);
+            ctx.moveTo(x, y - 3.5); ctx.lineTo(x, y + 3.5);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = alpha;
       }
 
       // 落定白闪：整名短暂泛白后回归流动渐变（暴风之眼偏蓝白）
       if (impact > 0 && impact < 1) {
         ctx.globalAlpha = alpha * (1 - impact) * 0.85;
         ctx.fillStyle = isStorm ? '#e2ecfa' : '#ffffff';
-        ctx.shadowColor = isStorm ? 'hsla(215, 55%, 55%, 1)' : 'hsla(275, 60%, 45%, 1)';
+        ctx.shadowColor = isStorm ? 'hsla(215, 55%, 55%, 1)' : isDh ? 'hsla(355, 75%, 42%, 1)' : 'hsla(275, 60%, 45%, 1)';   // 黑暗之手红辉光（2026-10-03）
         ctx.shadowBlur = 22;
         ctx.fillText(B.name, 0, 0);
       }

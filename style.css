@@ -155,6 +155,11 @@ canvas#game {
   width: fit-content;
 }
 
+/* 隐藏态（updateHUD toggle 驱动：非萧杨 / 挑战 / 测试模式）——此前缺此规则，hidden 类从未真正隐藏面板（2026-10-01 修复） */
+.stone-panel.hidden {
+  display: none;
+}
+
 .stone-panel .stone-icon {
   font-size: 13px;
   background: linear-gradient(180deg, #ff9ed2 0%, #ffffff 50%, #7cb8ff 100%);
@@ -648,10 +653,27 @@ canvas#game {
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
   font-size: 11px;
   font-weight: bold;
   color: var(--muted);
   transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+/* 右下角充能数字：叮咚鸡持有层数 / 漓连携七日澜心的持有充能份数（有充能才显示，12-ui updateHUD 填充） */
+.skill-gauge-count {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 1;
+  min-width: 12px;
+  line-height: 1;
+  font-size: 11px;
+  font-weight: bold;
+  text-align: center;
+  color: var(--skill-color, #fff);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px var(--skill-color, rgba(0, 0, 0, 0));
+  pointer-events: none;
 }
 
 /* 量表已满：呼吸辉光 + F 键高亮，提示可按 F 释放 */
@@ -664,8 +686,8 @@ canvas#game {
   text-shadow: 0 0 8px var(--skill-color);
 }
 
-/* 奖励道具槽（赞助无人机掉落）：计数表同款式——满环颜色 = 道具稀有度
-   （普通 = 白 / 稀有 = 金，12-ui updateHUD 按 state.rewardItem 写入 --skill-color），中间为道具图标 */
+/* 奖励道具槽（赞助无人机掉落）与原石抽卡 R 栏共用：计数表同款式——满环颜色 = 道具稀有度
+   （普通 = 白 / 稀有 = 金，12-ui updateHUD 按 state.rewardItem / state.gachaItem 写入 --skill-color），中间为道具图标 */
 .item-gauge {
   --skill-color: #ffffff;
   filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
@@ -1724,6 +1746,22 @@ kbd {
   font-weight: bold;
   letter-spacing: 3px;
   margin-bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* 名称行右侧的等级标签（类别+类内强度档，数据见 01-config ENEMY_GRADES；无等级条目不渲染） */
+.ency-name-grade {
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: 1px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(120, 180, 255, 0.12);
+  white-space: nowrap;
 }
 
 /* 图鉴引言：位于标题下方，颜色由 JS 内联设为与标题一致 */
@@ -1917,20 +1955,23 @@ kbd {
 
 .info-entry-btn.hidden { display: none; }
 
-/* ---------- 主菜单操作提示：左上角 ? 按钮 + 按键说明卡片 ---------- */
+/* ---------- 主菜单操作提示：左上角「教程」按钮 + 按键说明卡片 ---------- */
 .help-entry-btn {
   position: absolute;
   top: 10px;
   left: 10px;
-  width: 26px;
+  min-width: 26px;
   height: 26px;
-  border-radius: 50%;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
   border: 1.5px solid rgba(124, 231, 255, 0.55);
   background: rgba(10, 20, 38, 0.8);
   color: var(--accent);
-  font-family: Georgia, 'Times New Roman', serif;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
   z-index: 6;
@@ -1945,45 +1986,83 @@ kbd {
 
 .help-entry-btn:active { transform: translateY(0); }
 
-.help-panel {
-  position: absolute;
-  top: 44px;            /* ? 按钮正下方 */
-  left: 10px;
-  z-index: 8;           /* 高于装备面板(2)/主菜单(6)，低于图鉴(10,11) */
-  width: 262px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(124, 231, 255, 0.35);
-  background: rgba(8, 14, 28, 0.95);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+/* 游戏教程面板：复用 .loadout-panel 中央大面板壳，四象限无缝布局（左上 WASD+方向键 / 左下按键说明 / 右上攻击演示 / 右下躲避演示） */
+.help-tutorial { z-index: 8; }   /* 高于装备面板(2)，与旧 help-panel 一致 */
+
+.help-quad {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
 }
 
-.help-panel.hidden { display: none; }
+.help-quadrant {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+}
 
-.help-head {
+.help-quadrant-tl {
+  flex-direction: column;
+  text-align: center;
+}
+
+/* WASD 键位图 + 方向键（右侧并排，同尺寸）：3 列方块网格，空位占位保持对齐 */
+.help-keyrow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 14px;
 }
 
-.help-title {
-  color: var(--accent);
+.help-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 26px);
+  grid-auto-rows: 26px;
+  gap: 4px;
+  justify-content: center;
+}
+
+.help-keypad kbd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
   font-weight: bold;
-  font-size: 13px;
-  letter-spacing: 2px;
+  color: var(--accent);
+  background: rgba(124, 231, 255, 0.10);
+  border-color: rgba(124, 231, 255, 0.35);
 }
 
-.help-close {
-  background: none;
-  border: none;
+.help-keypad kbd.empty { visibility: hidden; }
+
+/* 演示截图象限：图片限高自适应 + 下方注释 */
+.help-quadrant-img {
+  flex-direction: column;
+  text-align: center;
+}
+
+.help-shot {
+  max-height: 118px;
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 180, 255, 0.22);
+  object-fit: contain;
+}
+
+.help-note {
+  margin: 0;
+  font-size: 12px;
   color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 4px;
+  line-height: 1.6;
 }
-
-.help-close:hover { color: var(--text); }
 
 .help-row {
   display: flex;

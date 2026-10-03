@@ -46,9 +46,10 @@
             <span class="score-label">SCORE</span>
             <b id="scoreText">0</b>
           </div>
-          <!-- 原石收集计数（当局；巨型水晶拾取，集满 16 颗里程碑赠予「哦哦！抽卡！」——见 07-player noteGachaStone） -->
-          <div class="stone-panel hidden" id="stonePanel" title="原石收集（当局）：集满 16 颗可获得一次「哦哦！抽卡！」">
-            <span class="stone-icon">✦</span><b id="stoneCount">0</b>
+          <!-- 原石收集进度（当局）：仅驾驶员萧杨收集——集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放（见 07-player noteGachaStone / triggerPilotSkill）；
+               已充能时捡原石不计数，释放后重新累计 -->
+          <div class="stone-panel hidden" id="stonePanel" title="原石收集（当局，萧杨专属）：集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放；已充能时不计数，释放后重新累计">
+            <span class="stone-icon">✦</span><b id="stoneCount">0/16</b>
           </div>
           <!-- 当前难度标签（战斗中显示；buildDiffCards 难度注册表驱动） -->
           <div class="diff-label hidden" id="diffLabel"></div>
@@ -65,18 +66,16 @@
         <div class="skill-gauge hidden" id="skillGauge" title="护甲技能量表：满后按 F 释放">
           <div class="skill-gauge-ring" id="skillGaugeRing"></div>
           <span class="skill-gauge-key">F</span>
+          <span class="skill-gauge-count" id="skillGaugeCount"></span>
         </div>
         <!-- 驾驶员量表（天秀忧郁王子白色量表 / 陵落 Q 冷却，均按 Q，按键标签随驾驶员切换） -->
         <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
           <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
           <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
+          <span class="skill-gauge-count" id="pilotGaugeCount"></span>
         </div>
-        <!-- 奖励道具槽（赞助无人机掉落）：计数表样式、中间道具图标；按 E 使用；已有道具时击坠赞助无人机不再获得 -->
-        <div class="skill-gauge item-gauge hidden" id="itemGauge" title="奖励道具：按 E 使用">
-          <div class="skill-gauge-ring" id="itemGaugeRing"></div>
-          <span class="skill-gauge-key" id="itemGaugeIcon">◆</span>
-          <span class="item-gauge-key">E</span>
-        </div>
+        <!-- 奖励道具槽已移除（2026-10-01）：击坠赞助无人机时道具立即生效（07-player applyRewardItem），
+             机体前方播道具图标/扩散波特效（09-draw-ships drawItemPickFx）；抽卡改萧杨 Q 技能（16 颗原石充能，stonePanel 显示进度） -->
         <!-- 大无垠之王：BOSS 战累积增伤读数（位于血条上方、量表之下，flex 列排布不与量表重叠；向上取整整数百分比） -->
         <div class="king-bonus hidden" id="kingBonus" title="大无垠之王：BOSS 战累积增伤（怒意蔓延）"></div>
         <div class="hp-row">
@@ -120,19 +119,42 @@
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
           <span class="menu-version">v0.3.8</span>
-        <!-- 操作提示：左上角 ? 按钮，点击展开 / 收起按键说明卡片 -->
-        <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">?</button>
-        <div class="help-panel hidden" id="helpPanel">
-          <div class="help-head">
-            <span class="help-title">游戏操作</span>
-            <button class="help-close" id="helpClose" aria-label="收起">✕</button>
+        <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
+        <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
+        <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留） -->
+        <div class="loadout-panel help-tutorial hidden" id="helpPanel">
+          <div class="loadout-panel-head">
+            <span class="loadout-panel-title">游戏教程</span>
+            <button class="panel-close" id="helpClose" aria-label="收起">✕</button>
           </div>
-          <div class="help-row"><span class="help-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="help-desc">移动战机（支持方向键）</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>Space</kbd>/<kbd>右Ctrl</kbd></span><span class="help-desc">高能爆弹：清除全部敌弹 + 全场伤害</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停 / 继续</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>R</kbd></span><span class="help-desc">立即重开</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>F</kbd></span><span class="help-desc">装甲技能</span></div>
-          <div class="help-row"><span class="help-keys"><kbd>Q</kbd></span><span class="help-desc">副驾驶员技能</span></div>
+          <div class="help-quad">
+            <div class="help-quadrant help-quadrant-tl">
+              <div class="help-keyrow">
+                <div class="help-keypad">
+                  <kbd class="empty"></kbd><kbd>W</kbd><kbd class="empty"></kbd>
+                  <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+                </div>
+                <div class="help-keypad help-keypad-sm">
+                  <kbd class="empty"></kbd><kbd>↑</kbd><kbd class="empty"></kbd>
+                  <kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+                </div>
+              </div>
+              <p class="help-note">上下左右移动战机<br>战机会自动攻击敌人</p>
+            </div>
+            <div class="help-quadrant help-quadrant-img">
+              <img class="help-shot" src="assets/tutorial_attack.png" alt="攻击演示">
+              <p class="help-note">移动战机攻击敌人</p>
+            </div>
+            <div class="help-quadrant help-quadrant-bl">
+              <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停游戏</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>空格</kbd></span><span class="help-desc">释放高能爆弹<br>造成全场伤害</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>F</kbd>/<kbd>Q</kbd></span><span class="help-desc">装甲/驾驶员技能</span></div>
+            </div>
+            <div class="help-quadrant help-quadrant-img">
+              <img class="help-shot" src="assets/tutorial_dodge.png" alt="躲避演示">
+              <p class="help-note">注意躲避敌机子弹<br>通常为橙色或红色</p>
+            </div>
+          </div>
         </div>
 
         <div class="menu-hero">

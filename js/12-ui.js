@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(12 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, rewardItem, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeHits, gachaFx, gachaStones, gachaStoneMilestone, gachaStoneOwed}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, REWARD_ITEMS, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, diffGrid, dagouMissiles, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, friendStorms, frostZones, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoEntryBtn, itemGauge, itemGaugeIcon, itemGaugeRing, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeCount, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
@@ -56,10 +56,11 @@
     // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
     scoreText.parentElement.style.display = state.challenge ? 'none' : '';
     scoreText.textContent = state.score;
-    // 原石收集计数（当局）：战斗中常显（挑战/测试不掉水晶，隐藏避免常驻 0 的噪音）；resetGame 归零后随首颗原石点亮
-    const showStones = !state.challenge && !state.testBoss && state.mode === 'playing';
+    // 原石收集计数（当局）：仅萧杨显示——其他驾驶员不收集原石（隐藏避免常驻 0 的噪音；挑战/测试不掉水晶同样隐藏）；
+    // resetGame 归零后随首颗原石点亮；萧杨只显示收集数（不再带 /16 上限后缀，2026-10-01）
+    const showStones = hasPilot('xiaoyang') && !state.challenge && !state.testBoss && state.mode === 'playing';
     stonePanel.classList.toggle('hidden', !showStones);
-    if (showStones) stoneCount.textContent = state.gachaStones;
+    if (showStones) stoneCount.textContent = String(state.gachaStones);
     // 右上角爆弹图标：实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
     // 真我 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd））；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
     if (state.challenge) {
@@ -95,6 +96,8 @@
     jingdunBar.classList.toggle('active', jingdunOn);
     jingdunFill.style.width = jingdunOn ? (player.crystalShield / ARMOR_SKILLS.lanxin.dur * 100) + '%' : '0%';
     // 装甲技能圆形计数表（左下角、生命值上方，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
+    // 右下角充能数字（skillGaugeCount）：漓连携七日澜心时，armorSkillGauge 跨 1 转为持有充能（最多 1+chargeBonus 份），
+    // 持有数 > 0 时在仪表右下角显示数字；单独七日澜心（无漓）恒无持有充能，数字不显示
     const skillDef = ARMOR_SKILLS[currentArmor.id];
     skillGauge.classList.toggle('hidden', !skillDef || state.mode !== 'playing');
     if (skillDef) {
@@ -102,10 +105,12 @@
       skillGaugeRing.style.background = `conic-gradient(${skillDef.color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
       skillGauge.classList.toggle('ready', frac >= 1);
       skillGauge.style.setProperty('--skill-color', skillDef.color);
+      const liC = (hasPilot('lingli') && currentArmor.id === 'lanxin') ? (state.lingliCharges || 0) : 0;
+      skillGaugeCount.textContent = liC > 0 ? String(liC) : '';
     }
     // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表 / 陵落 Q 冷却（均按 Q，满格 = 可释放）
     // / 依击杀计数条（无按键，满格自动召唤镰刀；环形填充为 #FFC0CB→白 渐变）
-    // / 叮咚鸡计数表（按 Q，展示三层总进度：持有层 ×8 + 当前层进度 / 24）
+    // / 叮咚鸡计数表（按 Q）：环形展示当前层进度，每充满一层转一整周；已充满的持有层数在右下角显示数字
     const pilotGaugeMode = (currentPilotMain.id === 'tianxiu' || currentPilotSub.id === 'tianxiu') ? 'tianxiu'
       : (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? 'lingluo'
       : (currentPilotMain.id === 'yi' || currentPilotSub.id === 'yi') ? 'yi'
@@ -121,9 +126,10 @@
         frac = clamp((state.yiCounter || 0) / PILOTS.yi.counterMax, 0, 1);
         ready = frac >= 1;
       } else if (pilotGaugeMode === 'dingdongji') {
-        frac = clamp(((state.ddjLayers || 0) * PILOTS.dingdongji.layerMax + (state.ddjGauge || 0))
-          / (PILOTS.dingdongji.layerCap * PILOTS.dingdongji.layerMax), 0, 1);
-        ready = (state.ddjLayers || 0) >= 1 && player.alive;
+        // 充满一次（一层 8 格）转一整周：环形只展示当前层进度；持有层数见右下角数字；
+        // Q 上限初始 useMax 次、击败 BOSS 可掷骰提升——次数耗尽后即使持有层 >0 也不再点亮 ready
+        frac = clamp((state.ddjGauge || 0) / PILOTS.dingdongji.layerMax, 0, 1);
+        ready = (state.ddjLayers || 0) >= 1 && (state.ddjUses || 0) < (state.ddjUseMax || PILOTS.dingdongji.useMax) && player.alive;
       } else {
         frac = clamp(1 - state.lingluoCdT / PILOTS.lingluo.cd, 0, 1);
         ready = state.lingluoCdT <= 0 && player.alive;
@@ -134,6 +140,8 @@
         : `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
       pilotGauge.classList.toggle('ready', ready);
       if (pilotGaugeKey) pilotGaugeKey.textContent = pilotGaugeMode === 'yi' ? '自动' : 'Q';   // 天秀 / 陵落 / 叮咚鸡 Q 键；依无需按键
+      // 右下角充能数字：仅叮咚鸡显示已充满的持有层数（其余模式无持有量概念）
+      if (pilotGaugeCount) pilotGaugeCount.textContent = pilotGaugeMode === 'dingdongji' && (state.ddjLayers || 0) > 0 ? String(state.ddjLayers) : '';
     }
     // 大无垠之王：BOSS 战累积增伤读数（血条上方；向上取整仅整数；未装备 / 无累积 / 非 BOSS 战阶段隐藏——
     // 显示门控额外要求 stage === 'fight'：即使状态因任何路径残留，小怪阶段也绝不显示；
@@ -144,17 +152,9 @@
     if (showKingBonus) kingBonus.textContent = '♛ 增伤 +' + Math.ceil(state.kingDmg * 100) + '%';
     // 可莉：绷绷炸弹 HUD 图标着色（红橙火花主题）
     bombIcons.classList.toggle('klee', currentPilotMain.id === 'keli' || currentPilotSub.id === 'keli');
-    // 奖励道具槽（左下角，赞助无人机掉落）：持有道具时显示——环形颜色 = 稀有度（普通 白 / 稀有 金），
-    // 中间为道具图标（REWARD_ITEMS 注册 glyph）；按 E 使用（07-player useRewardItem）
-    const it = state.rewardItem;
-    itemGauge.classList.toggle('hidden', !it || state.mode !== 'playing');
-    if (it) {
-      const rare = it.rarity === 'rare';
-      const col = rare ? '#ffd166' : '#ffffff';
-      itemGauge.style['--skill-color'] = col;   // 自定义属性直写（setProperty 在 smoke 的 DOM stub 上不可用）
-      itemGaugeRing.style.background = `conic-gradient(${col} 360deg, rgba(255,255,255,0.10) 0deg)`;
-      itemGaugeIcon.textContent = (REWARD_ITEMS[it.id] && REWARD_ITEMS[it.id].glyph) || (rare ? '✦' : '◆');
-    }
+    // （奖励道具槽 itemGauge / 原石抽卡 R 栏 gachaGauge 已移除——2026-10-01 道具槽整体取消：
+    //   击坠赞助无人机立即生效 07-player applyRewardItem，机体前方播道具图标/扩散波特效；
+    //   抽卡改萧杨 Q 技能，充能进度由 stonePanel 显示 16/16）
   }
   // ---------- 流程控制 ----------
   function resetGame(autoStart = false, opts = {}) {
@@ -166,19 +166,20 @@
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
-    state.rewardItem = null;   // 奖励道具槽（赞助无人机掉落）清空
-    // 奖励道具效果状态归位（07-player useRewardItem 置位 / updateRewardFx 推进）
+    // 奖励道具效果状态归位（道具槽已取消——击坠立即生效；07-player applyRewardItem 置位 / updateRewardFx 推进）
     state.laodaT = 0; state.laodaMul = 1;
     state.magnetBonus = 0;
     state.swordStormT = 0; state.swordStormAng = -Math.PI / 2; state.swordStormAcc = 0;
     state.frostField = null;
     state.bombCapAdd = 0; state.bengbagGot = false;
-    state.jiukeT = 0; state.jiukeHits = 0;
+    state.jiukeT = 0; state.jiukeDodgePct = 0;
+    state.itemPickFx.length = 0;
+    state.xgLooseBombs.length = 0;   // 辛国栋击毁残留的地毯轰炸落点预警（对局重开清空）
     state.gachaFx = null;
     state.xinFuryRing = null;
     state.honghongT = 0;
     player.permBarrier = 0; player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;
-    state.gachaStones = 0; state.gachaStoneMilestone = false; state.gachaStoneOwed = false;
+    state.gachaStones = 0; state.gachaReady = false;
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
@@ -222,9 +223,11 @@
     state.lingliBossShieldDone = false;
     state.yiCounter = 0;
     yiScythes.length = 0;   // 依：在途镰刀清扫随重开清空
-    // 叮咚鸡：计数表三层/当前层进度与暴走升级机会归零，在途导弹清空
+    // 叮咚鸡：计数表三层/当前层进度与暴走升级机会归零，在途导弹清空；Q 释放次数归零
     state.ddjGauge = 0;
     state.ddjLayers = 0;
+    state.ddjUses = 0;
+    state.ddjUseMax = PILOTS.dingdongji.useMax;   // Q 释放上限复位（击败 BOSS 掷骰 +1 的运行时增益归位）
     state.ddjBerserkUps = 0;
     ddjMissiles.length = 0;
     player.lingluoMaxDebt = 0;   // 陵落：生命上限债务清零（player.maxHp 已在下方按装甲复原）
@@ -260,10 +263,10 @@
     bossFlow.defeatedName = '';
     state.victoryOverlay = false;
     bossFlow.warnT = 0;
-    // 测试模式：指定 BOSS 直接挑战；按 R 重开时保留测试目标，点“开始游戏”则清除
+    // 测试模式：指定 BOSS 直接挑战；重开时保留测试目标，点“开始游戏”则清除
     state.testBoss = opts.testBoss !== undefined ? opts.testBoss
       : (opts.keepTest ? state.testBoss : null);
-    // 图鉴挑战模式：按 R 重开时保留，点“开始游戏”/返回主界面则清除
+    // 图鉴挑战模式：重开时保留，点“开始游戏”/返回主界面则清除
     state.challenge = opts.challenge !== undefined ? opts.challenge
       : (opts.keepTest ? state.challenge : null);
     const bossChallenge = state.challenge && state.challenge.kind === 'boss';
@@ -304,7 +307,7 @@
     blBombs.length = 0;
     frostZones.length = 0;   // 虚幻寒冷区域随重开清空（否则回主页面后更新停止、渲染仍在，冰蓝区域冻结残留）
     popianMissiles.length = 0;
-    wgSlashes.length = 0;   // 战争幽灵技能2斩击流随重开清空
+    wgSlashes.length = 0;   // 战争幽灵技能1/2双刃斩击流随重开清空
     spellCubes.length = 0;
     cubeHitFx.length = 0;
     playerHitFx.length = 0;   // 命中玩家特效随重开清空
@@ -317,7 +320,7 @@
 
     player.x = CANVAS_W / 2;
     // 主菜单开局（开始游戏 / 图鉴挑战 / BOSS 试炼）：机体从演示屏站位平滑飞入出战位，不再瞬移；
-    // 战斗内重开（R / 重新挑战）时主菜单已隐藏，直接落位。此刻 player.y 仍为演示屏站位（updateDemo 每帧强制）
+    // 战斗内重开（重新挑战按钮 / 再次挑战）时主菜单已隐藏，直接落位。此刻 player.y 仍为演示屏站位（updateDemo 每帧强制）
     if (autoStart && !menuScreen.classList.contains('hidden')) {
       player.enterFromY = clamp(player.y, 60, CANVAS_H);
       player.y = player.enterFromY;
@@ -330,7 +333,11 @@
     player.hp = player.maxHp;
     player.cooldown = 0;
     player.subCooldown = 0;   // 副武器冷却归零（此处统一复位）
+    state.dagouDebugRapid = false;    // 作弊键 9（大狗导弹连发）离开游戏后默认关闭，新局需重新按 9 开启（用户 2026-10-02 指定）
+    state.tianxiuDebugSpam = false;   // 作弊键 8（天秀旋风连发）同上
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
+    player.spinT = 0;   // 清除击飞自旋（黑暗之手登场阴影掠过；09-draw-ships drawPlayer 读取）
+    state.dhFledElites.length = 0;   // 黑暗之手：迅速离场精英登记清空（再登场系统未实装，登记仅作状态留存）
     player.invuln = state.pilotDashT > 0 ? state.pilotDashT : 1.0;   // 许凯狗：开局无敌覆盖整个冲刺阶段（不闪动）
     player.invulnBlink = false;   // 开局无敌不闪动：清掉上一局残留的受击闪动标记（登场/重生无敌保持机体完整可见）
     player.alive = true;
@@ -687,11 +694,11 @@
     renderResultAchievements();   // 成就：本局获得成就徽章渲染（无成就时区块自动隐藏）
     showOverlay(
       '战机陨落',
-      `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />
-       原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}</b><br />
-       关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>${state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`}<br />
+      `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />` +
+      (hasPilot('xiaoyang') ? `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}/16</b><br />` : '') +
+      `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>${state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`}<br />
        剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b></span><br /><br />
-       按 <kbd>R</kbd> 或点击下方按钮再次出击`,
+       点击下方按钮再次出击`,
       '再来一局'
     );
     gameoverHomeBtn.classList.remove('hidden');   // 失败结算页：返回主界面按钮

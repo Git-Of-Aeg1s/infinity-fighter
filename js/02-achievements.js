@@ -407,7 +407,7 @@
     // 无垠战机：无守愿者、不开作弊、无伤通关诗篇难度
     if (!achv.damageTaken && noBulwark && !achv.cheatUsed && isPoem()) unlockAchievement('infinityFighter');
     const pilotClean = (p) => p.empty || p.whiteboard;
-    // 白板驾驶员通关：胡笛客（卑鄙笛客）/ 萧杨（阴险萧杨）；温酒客已实装受伤提升效果、不再白板（九克之王仍按驾驶员通关判定）
+    // 白板驾驶员通关：胡笛客（卑鄙笛客）；温酒客已实装受伤提升效果、萧杨已实装原石效果，均不再白板（九克之王仍按驾驶员通关判定）
     if (hasPilot('wenjiuke')) unlockAchievement('wenjiukeWin');
     if (hasPilot('hudike')) unlockAchievement('hudikeWin');
     if (hasPilot('xiaoyang')) unlockAchievement('xiaoyangWin');

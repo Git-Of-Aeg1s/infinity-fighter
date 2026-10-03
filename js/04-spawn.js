@@ -1,11 +1,11 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(3 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(14 名)
+  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(14 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, PRESSURE_W, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DARKHAND, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, PRESSURE_W, PULSE_MATRIX, resolveBossHp, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -144,8 +144,9 @@
     if (type === 'tornado' && isRealme()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
     // 诗篇：脉冲矩阵血量 1000（具象基准 800）
     if (type === 'pulseMatrix' && isPoem()) e.hp = e.maxHp = 1000;
-    // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）
-    if (state.challenge && type !== 'boss') {
+    // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
+    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）
+    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss') {
       e.hp = e.maxHp = TEST_HP;
     }
     // 2类变体移动数据：入位速度 / 冲锋基准（冲锋 = charge + (关卡-1)×5）与前锋停留线（y 200~240 逐架随机；
@@ -880,15 +881,57 @@
     e.wgStay = { x: stayX, y: stayY };
     e.wgDir = dir;
     e.wgWarnT = 0;             // 入场预警计时
+    e.wgDelayT = 0;            // 入场登场延迟计时（预警全部出现完毕后停 entryDelay/真我 entryDelayRealme/诗篇 entryDelayPoem 再冲刺）
     e.wgSpd = 0;               // 当前冲刺速度（相位内积分，进入下相位清零）
     e.wgT = 0;                 // 相位通用计时（抵达演出/悬停摆动共用）
     e.wgDwellT = forever ? 1e9 : WAR_GHOST.dwell;   // 驻留时长（抵达演出结束后倒计时）
     e.wgExit = null;           // 离场方向（相位 4 锁定）
     e.wgFace = Math.atan2(dir.y, dir.x) - Math.PI / 2;   // 机体朝向（绘制约定同 faceAng：0 = 机头朝下）
-    e.wgSkill = null;          // 进行中的技能（{ kind, t, ang, locked }，见 06-enemy）
-    e.wgFirst = Math.random() < 0.5 ? 2 : 3;   // 首个技能随机 2/3，之后固定 1→2→3
+    e.wgSkill = null;          // 进行中的技能（kind1 两刃斩击 { kind, t, hit, sweepT } / kind2 双斩流 { kind, t, ang, locked } / kind3 弹幕，见 06-enemy）
+    e.wgSweepT = null;         // 技能1 扫斩同步时钟（渲染复用抵达演出扫转动画；仅扫斩期非 null，收口/离场清空）
+    e.wgNext = null;           // 下一个待释放技能编号（null 时用 wgFirst；严格轮换 1→2→3，初始技能随机 2/3）
+    e.wgFirst = Math.random() < 0.5 ? 2 : 3;   // 首个技能随机 2/3（避开与抵达演出同款的技能1 扫斩防视觉重复），之后严格 1→2→3 轮换
     e.wgGapT = 1.2;            // 驻留后到首个技能的间隔（s）
     e.wgSummoned = false;      // 半血召唤（一次性）
+    return e;
+  }
+
+  // 4F 敌人：黑暗之手麾下四精英（狂笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，2026-09-30 实装）——
+  // 共用移动骨架：顶部入场（随机水平位）指数减速到停留点（v = min(entrySpeed, k×剩余距离)，逐帧连续无 snap）
+  // → 驻留悬停小幅摆动（sin 项 t=0 偏移 0 + 幅度缓入）→ dwell 秒后加速下压离场（挑战模式传 1e9 永驻）。
+  // 技能循环（首个随机、之后固定两技 1↔2 轮换）与技能内移动（朴穿刺 / 辛横移）
+  // 状态机见 06-enemy updateEnemyMovement / updateEnemyFire 的精英分支；参数见 01-config ELITES
+  function spawnEliteMinion(type, holdTimer) {
+    const g = ELITES;
+    const tc = g[type];
+    const stayX = CANVAS_W * rand(g.stayXMargin, 1 - g.stayXMargin);
+    // 停留高度带：机型级覆盖（韩希先/夏勇固定屏高 50%——2026-10-02 用户定稿；其余用公共 14%~30% 带）
+    const stayY = CANVAS_H * rand(
+      tc.stayTopPct != null ? tc.stayTopPct : g.stayTopPct,
+      tc.stayBotPct != null ? tc.stayBotPct : g.stayBotPct,
+    );
+    const e = makeEnemy(type, stayX, -70, {});
+    // 四精英血量 = 黑暗之手当前难度血量 × 继承比（2026-10-03 用户定稿：夏勇 25%、朴/韩/辛 20%——原统一 1/4 作废。
+    // 夏勇：虚象 10000 / 具象 12000 / 真我 17500 / 诗篇 25000；其余三名：虚象 8000 / 具象 9600 / 真我 14000 / 诗篇 20000。
+    // 覆盖 makeEnemy 默认表值，黑暗之手召唤与图鉴挑战两条入场路径统一生效）
+    e.hp = e.maxHp = Math.round(resolveBossHp(DARKHAND) * (type === 'xiayong' ? 0.25 : 0.2));
+    e.elPhase = 0;             // 0=入场 1=驻留 2=离场（10+ 为技能内移动相位，见 06-enemy）
+    e.elStay = { x: stayX, y: stayY };
+    e.elSpd = 0;               // 入场/离场当前速度（相位内积分）
+    e.elT = 0;                 // 相位通用计时（摆动缓入等）
+    e.elDwellT = holdTimer != null ? holdTimer : g.dwell;
+    e.elSkill = null;          // 进行中的技能状态
+    e.elFirst = 1 + Math.floor(Math.random() * 2);   // 首个技能随机（朴/韩/辛两技 1↔2 轮换；夏勇不走此字段，用 xyStep 固定五步循环）
+    e.elNext = 0;              // 下一个技能序号（0 = 未定，用 elFirst）
+    e.elGapT = 1.1;            // 驻留后到首个技能的间隔（s）
+    e.elRemnant = null;        // 朴学峰残像 { x, y, t }（绘制 + 爆开弹幕）
+    e.xyStep = 0;              // 夏勇固定五步循环游标（[屏障, 大子弹, 回旋刃, 大子弹, 回旋刃]，见 06-enemy startEliteSkill）
+    e.xyTrackV = 0;            // 夏勇驻留水平追踪当前速度（低通状态，速度曲线铁律）
+    e.xyBarOn = false;         // 夏勇屏障开关（技能3）
+    e.xyBarHp = 0; e.xyBarMax = 0;   // 夏勇屏障吸收量当前/上限
+    e.xyBlades = null;         // 夏勇碎翼回旋刃挂载（双刃数组，见 06-enemy startEliteSkill/advanceEliteMinions）
+    e.xyOrbs = null;           // 夏勇核心膨胀能量球 ×3（数组，见 06-enemy startEliteSkill/advanceEliteMinions）
+    e.xgBombs = [];            // 辛国栋地毯轰炸落点 { x, y, t }（预警 → 爆炸）
     return e;
   }
 
@@ -919,31 +962,31 @@
     return e;
   }
 
-  // 特殊3类：脉冲矩阵 —— 三座法术矩阵长对角线顶点相连（互成 120°）+ 中央暗红核心；周期性范围脉冲
+  // 特殊3类：脉冲矩阵 —— 三座暗红流光法术矩阵菱形「骑边拼合」成等边三角形 + 中央暗红核心；周期性范围脉冲
   // （攻击逻辑见 06-enemy updateEnemyFire / updateEnemyMovement 的 pulseMatrix 分支）；
-  // 60% 侧翼入场（横移 20%~60% 屏宽后停驻、微微上下摆动）/ 40% 上方入场（下移 60%~80% 屏高后停驻）；
-  // 停驻 dwell 秒后平滑向下离场（挑战模式传 1e9 永驻）；本体自转转速与法术矩阵等同
+  // 出生位置：玩家当前竖直高度 ±20% 屏高带内（不出顶 60px、不低 80% 屏高）；
+  // 登场 120px/s、1s 内二次缓出衰减到随机 50~60px/s 巡航，持续向另一侧移动、累计走过 80% 屏宽后停驻（微摆）；
+  // 出生即计攻击间隔（入场途中走完首脉冲延迟同样释放，见 updateEnemyFire）；
+  // 登场 20s 未被击杀 → 自爆模式（全模式生效，17s/19s 颤动预警）：下一波 160px、波扩完自身死亡并分裂三座法术矩阵；
+  // 本体自转转速与法术矩阵等同
   function spawnPulseMatrix(holdTimer) {
     const cfg = PULSE_MATRIX;
     const first = isPoem() ? cfg.firstDelayPoem : cfg.firstDelay;
-    let e;
-    if (Math.random() < 0.6) {
-      // 侧翼入场：从左/右侧水平入场，朝另一侧横移 20%~60% 屏宽后停驻
-      const fromLeft = Math.random() < 0.5;
-      const startX = fromLeft ? -50 : CANVAS_W + 50;
-      const y = rand(CANVAS_H * 0.28, CANVAS_H * 0.52);
-      e = makeEnemy('pulseMatrix', startX, y, { fireTimer: first });
-      const travel = CANVAS_W * rand(0.20, 0.60);
-      e.pmStopX = clamp(startX + (fromLeft ? 1 : -1) * travel, 60, CANVAS_W - 60);
-      e.pmBaseY = y;       // 停驻后以此 Y 为基准微微上下摆动
-      e.pmBob = true;
-    } else {
-      // 上方入场：下移 60%~80% 屏高后停驻（不摆动）
-      e = makeEnemy('pulseMatrix', rand(90, CANVAS_W - 90), -50, { fireTimer: first });
-      e.pmStopY = CANVAS_H * rand(0.60, 0.80);
-    }
+    // holdTimer 形参保留兼容调用方（挑战模式传 1e9），但 2026-10-02 起自爆计时（登场 20s）全模式生效，永驻语义作废
+    // 侧翼出生：从左/右侧屏外出生、向另一侧持续移动；出现高度 = 玩家竖直位置 ±20% 屏高（clamp 防出界）
+    const fromLeft = Math.random() < 0.5;
+    const startX = fromLeft ? -50 : CANVAS_W + 50;
+    const y = clamp(player.y + CANVAS_H * rand(-cfg.spawnBandPct, cfg.spawnBandPct), 60, CANVAS_H * cfg.spawnYMaxPct);
+    const e = makeEnemy('pulseMatrix', startX, y, { fireTimer: first });
+    e.dirX = fromLeft ? 1 : -1;                        // 水平移动方向（朝另一侧）
+    e.pmCruise = rand(cfg.cruiseMin, cfg.cruiseMax);   // 本台巡航速（50~60 随机）
+    e.pmMoveT = 0;                                     // 登场减速计时（1s 内从 entrySpeed 缓出到巡航速）
+    e.pmTravel = 0;                                    // 累计水平位移（达 travelPct×屏宽后停驻）
+    e.pmBaseY = y;       // 停驻后以此 Y 为基准微微上下摆动
+    e.pmBob = true;
     e.arrived = false;
-    e.pmDwellT = holdTimer != null ? holdTimer : cfg.dwell;   // 停驻攻击时长（挑战模式 1e9 永驻）
+    e.pmAgeT = 0;   // 登场存活计时（s，updateEnemyMovement 每帧累计；≥dwell 触发自爆，全模式生效）
+    e.pmCycleIv = first;   // 首周期时长 = 首脉冲延迟（绘制层充能进度推导基准，闭合起步）
     // 本体自转：转速与法术矩阵等同（bodySpinMin~Max，方向随机）
     e.rot = Math.random() * Math.PI * 2;
     e.bodySpin = (Math.random() < 0.5 ? -1 : 1) * rand(FASHI_MATRIX.bodySpinMin, FASHI_MATRIX.bodySpinMax);
@@ -1128,9 +1171,11 @@
     return 1;
   }
 
-  // 虚幻寒冷区域敌机减速：位于「对敌人生效」的寒冷区域内时移速 ×frostMoveSlow（×0.65，与寒霜同款）；
+  // 虚幻寒冷区域敌机减速：位于「对敌人生效」的寒冷区域内时移速 ×frostMoveSlow（×0.65；
+  // 寒霜发生器已于 2026-10-01 统一增强至 -60%，两者倍率分道）；
   // BOSS 效果减半（×bossResist → ×0.825）；多区域取最强减速（最小倍率）。
-  // 奖励道具·寒霜发生器：我方力场（state.frostField，160px）内敌机移速 -35%（同上倍率，BOSS 减半）。
+  // 奖励道具·寒霜发生器：我方力场（state.frostField，160px）内敌机移速 -60%（×0.40，2026-10-01 统一增强，
+  // 不再复用 UNREAL.frostMoveSlow——虚幻寒冷区域维持 -35% 分道）；BOSS 减半（×0.70）。
   // 调用点：06-enemy updateEnemies 每帧重算 e.speedMul = speedMulBase × 本函数；05-boss bossMoveUpdate 的 mul（BOSS 移速）
   function enemyFrostZoneMoveMul(e) {
     let mul = 1;
@@ -1144,9 +1189,7 @@
     }
     const ff = state.frostField;
     if (ff && Math.hypot(e.x - ff.x, e.y - ff.y) <= ff.r) {
-      const slow = e.type === 'boss'
-        ? 1 - (1 - UNREAL.frostMoveSlow) * UNREAL.bossResist
-        : UNREAL.frostMoveSlow;
+      const slow = e.type === 'boss' ? 0.70 : 0.40;
       mul = Math.min(mul, slow);
     }
     return mul;
@@ -1323,7 +1366,7 @@
         spawnJiaoxiang();   // 绕圈巡航 + 火焰灼烧；挑战模式永驻场
         break;
       case 'pulseMatrix':
-        spawnPulseMatrix(1e9);   // 停驻周期脉冲；挑战模式永驻场
+        spawnPulseMatrix(1e9);   // 测试页召唤；2026-10-02 起登场 20s 自爆全模式生效（1e9 永驻语义已作废）
         break;
       case 'douzhi':
         spawnDouzhi();   // 横穿（余弦浮动）；飞出屏幕后由 updateChallenge 重新生成
@@ -1347,6 +1390,14 @@
       case 'warGhost':
         spawnWarGhost(true);   // 战争幽灵：风波预警极速入场 → 驻留中场技能循环（技能1/2/3）；挑战模式永驻场（不离场、不触发离场斩）
         break;
+      case 'puxuefeng':
+      case 'hanxixian':
+      case 'xiayong':
+      case 'xinguodong': {
+        const el = spawnEliteMinion(ch.type, 1e9);   // 4F 精英：减速入场 → 驻留技能循环（首个随机、之后固定轮换）；挑战模式永驻场（dwell 传 1e9 不离场）
+        el.hp = el.maxHp = 60000;   // 测试页 4F 精英血量固定 6w（2026-10-03 用户定稿；对局内黑暗之手召唤仍按 DARKHAND×25%/×20%——夏勇/其余三名）
+        break;
+      }
       case 'fashiMatrix':
         spawnFashiMatrix(rand(60, CANVAS_W - 60), -50, { holdTimer: 1e9 });   // 随机水平位置入场（测试页可观察左/右不同发射角度下的立体面）→ 目标区胡乱移动 + 持续发射发光正方体；挑战模式永驻场
         break;
@@ -1416,6 +1467,9 @@
     } else if (ch.kind === 'wave') {
       // 波次测试：场上清空后自动补刷一整波；按 = 额外刷出一整波（不清场，14-main）
       if (enemies.length === 0) spawnChallengeWave(ch);
+    } else if (ch.kind === 'swarm') {
+      // 持续刷怪测试（图鉴「数值与机制」发起）：不走单目标补刷——正常刷怪循环接管
+      //（14-main 锁 bossFlow.timer=0 / Lv20：stage 恒 'none' 持续出怪、永不进 BOSS；spawnTimer 驱动波次）
     } else if (!enemies.some(e => e.type === ch.type)) {
       spawnChallengeTarget();
     }
@@ -1439,6 +1493,6 @@
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, enemyFrostZoneMoveMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,
-    spawnChallengeWave, spawnPopianU, spawnWarGhost,
+    spawnChallengeWave, spawnPopianU, spawnWarGhost, spawnEliteMinion, spawnPulseMatrix,
     updateChallenge,
   };

@@ -5,18 +5,19 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_PIERCE_DMG_MUL, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, hasPilot, isRealme, isPoem, strikerFortressDR } from './01-config.js';
-  import { bossEntranceActive, bossFlow, clamp, dashKillFx, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, strikerFortressDR, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
-  import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeOtherDmgMul, princeStormKillGain } from './07-player.js';
+  import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
   import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
-  // 返回对敌人 e 的伤害倍率；isWing 标识该伤害是否来自僚机弹幕。
-  function enemyDamageMul(e, isWing, capVuln) {
+  // 返回对敌人 e 的伤害倍率；isWing 标识该伤害是否来自僚机弹幕；
+  // hitX/hitY = 弹体命中点坐标（可选——空间斩击等大范围伤害不传，不判部位）。
+  function enemyDamageMul(e, isWing, capVuln, hitX, hitY) {
     let mul = 1;
     // 大无垠之王：BOSS 战累积的造成伤害提升（怒意蔓延，见 07-player updatePilotStatus 累积 / 06-enemy killEnemy 清算）
     mul *= kingDmgBonusMul();
@@ -63,6 +64,12 @@
     // 坚垒护卫艇（2类黄色变体）：能量盾减伤 —— 受到的伤害 -20%（诗篇 -35%，见 01-config strikerFortressDR；
     // 主武器与僚机弹幕均生效；高能爆弹为真实伤害不经此处）
     if (e.type === 'striker' && e.skill === 'fortress') mul *= 1 - strikerFortressDR();
+    // 黑暗之手：场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时受到的所有伤害 -70%
+    //（主武器/僚机弹幕/斩击；爆弹真实伤害在 07-player useBomb 单独结算同乘；见 01-config DARKHAND.summon）
+    if (e.type === 'boss' && e.bossId === 'darkhand' && dhGuardActive()) mul *= 1 - DARKHAND.summon.guardDR;
+    // 铜皮夏勇·牛角减伤（被动常驻，2026-10-03 用户定稿）：命中点落在两翼折角（牛角）头部时 ×0.5——
+    // 主炮/僚机弹幕传弹体坐标判定；空间斩击等大范围伤害不传命中点、不判部位（见 01-config xiayongHornDmgMul）
+    mul *= xiayongHornDmgMul(e, hitX, hitY);
     return mul;
   }
 
@@ -151,6 +158,7 @@
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (!enemyOnScreen(e)) continue;   // 屏幕外敌人（尚未入场 / 已离场 / 侧翼界外）不受我方子弹伤害
+        if (b.lastHit === e) continue;   // 穿透弹防同机重复结算（不再陵落飞剑：刚穿过的机体下一帧仍重叠）
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (e.dying) continue;   // 渐隐消逝中的暴风之眼：死亡演出期间不再受击
         if (e.type === 'boss' && bossEntranceActive()) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算
@@ -166,25 +174,33 @@
           }
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
-          // 混乱将至主炮穿透：穿透后的子弹伤害减半（b.weakened 标记，渲染同步变化）
-          // 天秀忧郁王子：暴风之眼战期间其余我方伤害 -50%（友方大风暴风弹不受削减）
+          // mainPierce 穿透弱化：无衰减率弹（副武器·极夜流光激光）穿透后伤害减半（b.weakened 标记）
+          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4F（四精英）敌人伤害 +80%
           // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
           // 奖励道具·不再陵落：螺旋飞剑射出方向在水平线以下（lowArc）——对 BOSS 仅 50% 伤害
-          let dmg = b.dmg * (b.weakened ? CHAOS_PIERCE_DMG_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln) * princeOtherDmgMul(!!b.princeStorm) * rewardOutMul();
+          let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
+            * (b.mainShot && e.type !== 'boss' && enemyGrade(e.type) !== '4F' ? CHAOS_SMALL_DMG_MUL : 1)
+            * rewardOutMul();
           if (b.lowArc && e.type === 'boss') dmg *= 0.5;
           if (e.barrier > 0) {
             const abs = Math.min(e.barrier, dmg);
             e.barrier -= abs; dmg -= abs;   // 屏障优先吸收（dmg 需可变：吸收后余量继续扣血）
           }
-          e.hp -= dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1);   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
+          // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
+          // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
+          e.hp -= xiayongBarAbsorb(e, dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1));   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
-          // 混乱将至主炮弹（mainPierce）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透一次，穿透后伤害减半
+          // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，
+          // 不再陵落螺旋飞剑（mainPierce 2 + pierceDmgMul 自带衰减率）：每次穿透伤害 -20%（100% → 80% → 64%，
+          // 衰减直接乘进 b.dmg，并记 lastHit 防同机重复结算）；无 pierceDmgMul 的弹穿透后伤害减半（b.weakened）
           let pierce = false;
           if (b.pierce != null && e.type === 'escort') pierce = true;
           else if (b.pierce > 0 && (e.type === 'side' || e.type === 'prolifera')) { pierce = true; b.pierce--; }
           else if (b.mainPierce > 0 && e.type !== 'boss' && e.type !== 'capital' && e.type !== 'fashiArray') {
-            pierce = true; b.mainPierce--; b.weakened = true;
+            pierce = true; b.mainPierce--;
+            if (b.pierceDmgMul != null) { b.dmg *= b.pierceDmgMul; b.lastHit = e; }
+            else b.weakened = true;
           }
           if (!pierce) pBullets.splice(i, 1);
           if (e.hp <= 0) {
@@ -198,7 +214,39 @@
 
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
+      // 战机陨落定格（2026-10-02 用户报 bug）：失败结算（mode='gameover'）后残留敌方弹幕整体冻结——
+      // 位置 / 巨大蛋挞自旋 / 弧线 / 寿命全部停止推进，战场画面定格。根因：14-main idle/gameover 分支的
+      // updateBullets 演示弹道共用路径会把场上残留敌弹（蛋挞）继续推下屏
+      if (state.mode === 'gameover') break;
       if (b.ax) b.vx += b.ax * dt;   // 弧线弹（1/4 双曲线弹道）
+      if (b.tartSpin != null) {
+        b.tartSpin += (b.tartSpinSpd || 0) * dt;   // 巨大蛋挞（黑暗之手技能3）：持续自旋相位（渲染用，见 10-draw-world）
+        // 出生生长（2026-10-03 用户定稿）：从很小（tartFrom 缩放）easeOutCubic 平滑放大到全尺寸，
+        // 判定半径同步缩放（b.r = tartR0 × 缩放——出生瞬间几乎无威胁、碰撞公平）；渲染黑紫剪影见 10-draw-world
+        if (b.tartGrowDur) {
+          b.tartGrow = Math.min(b.tartGrow + dt, b.tartGrowDur);
+          const gp = b.tartGrow / b.tartGrowDur, eo = 1 - Math.pow(1 - gp, 3);
+          b.r = b.tartR0 * (b.tartFrom + (1 - b.tartFrom) * eo);
+        }
+      }
+      if (b.fadeIn > 0) b.fadeIn -= dt;   // 渐显剩余（技能5 暗影导弹雨：出现完全透明快速渐显，渲染端按 fadeIn0 比例取 alpha）
+      // 黑暗之手技能5 抛物导弹（真我/诗篇，2026-10-03 用户定稿）：速度剖面每帧由解析式重算（不累加、无漂移）——
+      // 垂直 = 向上初速 vy0 + 恒定向下重力 ay（先上升再下坠）；水平 = S 剖面 vx = A·t·(1-t/T)（线性变化的水平
+      // 加速度 ax = A(1-2t/T)，速度先增后减、抵达 50% 屏高时刻 T 精确归 0 并保持；T/A 由 05-boss 发射时解出）
+      if (b.dhMissile) {
+        const m = b.dhMissile;
+        m.t += dt;
+        const tt = Math.min(m.t, m.T);
+        b.vx = m.A * tt * (1 - tt / m.T);
+        b.vy = m.vy0 + m.ay * m.t;
+      }
+      // 黑暗之手技能2 涟漪环减速（2026-10-03 用户定稿）：每秒线性减速 decay（该环初速的 0~30%，环级随机、
+      // 同环所有弹一致），方向不变、衰减到 spdFloor 停（见 01-config DARKHAND.s2）
+      if (b.decay) {
+        const sp = Math.hypot(b.vx, b.vy) || 1;
+        const ns = Math.max(DARKHAND.s2.spdFloor, sp - b.decay * dt);
+        b.vx *= ns / sp; b.vy *= ns / sp;
+      }
       // 旋转弹（真我·旧日之歌技能1 旋转弧线流）：速度方向按角速度逐帧旋转——
       // 当前指向水平以上（屏幕坐标 vy<0）时角速度大幅增加、水平以下较为减小（倍率由弹体自带，缺省见下）
       if (b.angVel) {
@@ -293,9 +341,9 @@
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
       } else if (!b.shieldBlocked) {
-        // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.65（-35%）
+        // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.4（-60%，2026-10-01 统一增强）
         const ffd = state.frostField;
-        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.65 : 1;
+        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.4 : 1;
         b.x += b.vx * fm * dt; b.y += b.vy * fm * dt;
       }
       // 反弹光束（技能3）/ 技能6 暗黑子弹：触左右边界反弹，实际弹道呈"<"形折线；
@@ -344,7 +392,9 @@
       // 出界移除：折线光束（beamTrail，技能3 "<"弹）的可见轨迹自头部向后延伸 b.len——
       // 头部出界后整条"<"轨迹继续滑出屏幕，直至尾端也越过边界才消失（不再头部一出界就整条闪没）
       const trailPad = b.beamTrail ? (b.len || 0) : 0;
-      if (b.y > CANVAS_H + 20 + trailPad || b.y < -40 - trailPad || b.x < -20 || b.x > CANVAS_W + 20) {
+      // 蛋挞弹弹体完全出界才移除（默认 pad 会在弹体半截时消失）：巨大蛋挞按判定半径、登场长条蛋挞按半长+半径
+      const bigPad = b.tart ? (b.len ? b.len / 2 + b.r : b.r) : 0;
+      if (b.y > CANVAS_H + 20 + trailPad + bigPad || b.y < -40 - trailPad - bigPad || b.x < -20 - bigPad || b.x > CANVAS_W + 20 + bigPad) {
         eBullets.splice(i, 1); continue;
       }
       // 青时炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）持续 10s；对双方均无伤害
@@ -368,8 +418,9 @@
         if (hit) eBullets.splice(i, 1);
         continue;
       }
-      // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效
-      if (bulwarkActive()) {
+      // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效；
+      // 蛋挞弹（b.tart：巨大蛋挞 tartSpin / 登场长条蛋挞）豁免：白盾对其无任何影响——不截断、不吸收（2026-10-01 用户定稿，直接穿过）
+      if (bulwarkActive() && !b.tart) {
         if (b.laser) {
           // 激光：截断裁切——不 splice，继续按原逻辑生长/推进；本帧计算 clipLen（无相交置 null），渲染与命中判定按此截断
           //   pad 含弹体半径 + 盾厚一半（零厚度轴线会让擦盾弧端点的激光漏过）；

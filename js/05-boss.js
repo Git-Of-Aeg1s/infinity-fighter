@@ -2,13 +2,14 @@
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(2 名) 06-enemy(5 名) 11-draw-boss(5 名) 14-main(3 名)
+  // 依赖计数：01-config(21) 02-core(15) 04-spawn(3) 07-player(3) 08-entities(1) 02-achievements(1)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
   //
-  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, isRealme, resolveBossHp } from './01-config.js';
-  import { clamp, ctx, eBullets, enemies, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
-  import { enemyFrostZoneMoveMul, makeEnemy, spawnHarbinger } from './04-spawn.js';
-  import { bulwarkActive, beamClipAgainstShield, damagePlayer } from './07-player.js';
+  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, dhSampleSolid, hasPilot, invulnDiffMul, isPoem, isRealme, resolveBossHp } from './01-config.js';
+  import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
+  import { enemyFrostZoneMoveMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
+  import { bulwarkActive, beamClipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
 
@@ -25,7 +26,9 @@
     achvNoteBossSpawned(B.id);   // 成就：登记当前 BOSS、开战计时与无伤标记（挑战 / 测试模式内部忽略）
     // 暴风之眼：第一阶段为白色龙卷风暴（风暴之风汇聚成旋涡入场）
     if (B.id === 'storm') {
-      const hp = resolveBossHp(STORM);   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）
+      // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）；携带天秀 ×2——其余我方伤害削减机制已取消
+      //（2026-10-02 用户定稿：非风暴伤害对暴风之眼不再有任何减少，血量翻倍作平衡代偿）
+      const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1);
       enemies.push({
         type: 'boss', bossId: 'storm', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: STORM.hoverY,
@@ -61,6 +64,31 @@
         wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
         bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
         skill: null, skillCd: bossSkillIv(1.0 * (isRealme() ? STORM2_SHIP.skillCdMul : 1)),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我统一 ×1.4）
+        lastSkill: -1, skillStreak: 0, dropBerserk: false,
+      });
+      shake(6, 0.6);
+      return;
+    }
+    // 黑暗之手：四段式登场演出（2026-10-01 替换旧黑洞入场，见 updateBossDarkhand）；
+    // lurk 期间潜伏不可见（警报背后），警报结束才现身
+    if (B.id === 'darkhand') {
+      const hp = resolveBossHp(DARKHAND);   // 分难度血量表（hpByDiff）
+      enemies.push({
+        type: 'boss', bossId: 'darkhand', name: B.name, lv: B.lv,
+        x: CANVAS_W / 2, y: DARKHAND.hoverY,
+        w: DARKHAND.w, h: DARKHAND.h,
+        hp, maxHp: hp,
+        score: DARKHAND.score,
+        phase: 'lurk', phaseT: 0,   // lurk → sweep → outline → reveal → combat
+        barT: 0, hpTrail: hp,
+        scale: 0, combatReady: false,
+        moveT: 0, t: 0,
+        baseY: DARKHAND.hoverY,
+        wp: null, wpDir: 0, wpLimit: null,
+        bvx: 0, bvy: 0, wpHold: false,
+        dhSummoned: [],              // 已召唤的连携精英（两两分组组内随机排序：前两名夏勇/朴学峰随机、后两名韩希先/辛国栋随机，2026-10-03 五轮定稿）
+        shock: null,                 // 现形震荡波 { t, dur }（reveal 结束释放，纯演出）
+        skill: null, skillCd: darkhandSkillCd(),
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
       });
       shake(6, 0.6);
@@ -776,11 +804,26 @@
       life: opts.life != null ? opts.life : null,
       lifeFade: opts.lifeFade != null ? opts.lifeFade : null,   // 寿命到期后的消散期时长（消散动画用，见 08-entities）
       bossRound: opts.bossRound || false,   // BOSS 圆形弹幕：白核→主色渐变渲染（见 10-draw-world）
+      dhDark: opts.dhDark || false,   // 黑暗之手暗核弹：黑主体 + 边缘一小圈红（accent = color）渐变渲染（见 10-draw-world）
+      tart: opts.tart || false,   // 蛋挞弹：水彩蛋挞贴图渲染（tartImg 烘焙贴图，见 10-draw-world；未加载回退渐变弹）
+      tartSpin: opts.tartSpin,           // 巨大蛋挞自旋相位（黑暗之手技能3；有此字段 = 大蛋挞形态：判定半径即视觉半径、持续自旋）
+      tartSpinSpd: opts.tartSpinSpd || 0,   // 自旋角速度（rad/s，08-entities 逐帧推进相位）
+      // 巨大蛋挞出生生长（2026-10-03 用户定稿）：tartGrowDur > 0 时启用——从很小（tartFrom 缩放）easeOutCubic
+      // 平滑放大到全尺寸（08-entities 推进 tartGrow 并同步缩放 b.r = tartR0 × 缩放，碰撞公平）；渲染见 10-draw-world
+      tartGrow: opts.tartGrow || 0,
+      tartGrowDur: opts.tartGrowDur || 0,
+      tartFrom: opts.tartFrom != null ? opts.tartFrom : 1,
+      tartR0: opts.tartR0 != null ? opts.tartR0 : opts.r,
       oval: opts.oval || false,  // 长条弹呈椭圆体（风条）
       lenTarget: opts.lenTarget || 0,   // 风条生长目标长度（>0 时从 len 起步随时间生长）
       growRate: opts.growRate || 0,     // 风条生长速率（px/s）
       r: opts.r != null ? opts.r : 3.5,
       len: opts.len || 0,        // >0 为长条弹（胶囊体判定）
+      fadeIn: opts.fadeIn || 0,  // 渐显剩余时长（s，出现时完全透明按 fadeIn0 快速线性渐入；见 08-entities 推进 / 10-draw-world 渲染）
+      fadeIn0: opts.fadeIn || 0, // 渐显总时长（渲染 alpha = 1 - fadeIn/fadeIn0 的分母）
+      decay: opts.decay || 0,    // 每秒线性减速绝对值（px/s²，黑暗之手技能2 涟漪环随机 0~30% 初速/s；方向不变、到 spdFloor 停）
+      dhMissile: opts.dhMissile || null,   // 抛物导弹状态包 { T, A, vy0, ay }（技能5 真我/诗篇弹道：向上初速 + 向下重力 +
+                                           // 水平 S 剖面 ax(t)=A(1-2t/T)——水平速度先增后减、T（=抵达 50% 屏高）时归 0；见 08-entities）
       dmg: (opts.dmg != null ? opts.dmg : BOSS.bulletDmg) * bossDmgMul(),   // BOSS 弹幕伤害统一难度倍率（虚象 -40%）
       color: opts.color || BOSS_BULLET.long,
       streak: opts.streak || 0,    // 简化拖尾长度（px，沿速度方向渐隐线段；0 = 无。大子弹专用，见 10-draw-world）
@@ -1585,6 +1628,332 @@
     }
   }
 
+  // ---------- BOSS4：黑暗之手（2026-09-30 实装常态技能 / 2026-10-01 登场演出 + 连携召唤） ----------
+  // 登场（四段式，替换旧黑洞入场；参数见 01-config DARKHAND.entrance）：
+  //   lurk（警报期间潜伏不可见）→ sweep（黑色阴影沿屏幕中线从上到下飞速掠过：命中玩家 = 当前血量 80% 伤害 + 大幅击飞带旋转）→
+  //   outline（掠过出屏后停顿 outlineDelay，白主体红边轮廓才浮现）→ reveal（渐变为真色，结束时释放震荡波 + 震屏
+  //   + 蛋挞扇：向下方四个方向均匀发射四条长条蛋挞）→ combat（血条出现、正式开始）。
+  // 战斗：航点扫动移动（DARKHAND.move，战斗移速 ×combatSpdMul=0.5）+ 常态技能循环（首个技能随机，之后按 1→2→3→4→5 固定顺序严格轮换，2026-10-03 用户定稿）：
+  //   技能1 四管炮幕：持续 s1.dur，每 s1.shotIv 四门前炮（cannonXs 槽位）同时齐射各 1 发（管间角差 + 奇偶轮交替偏角，
+  //   对齐机制图鉴 t4DrawQuadCannon 演示）；
+  //   技能2 黑暗涟漪：从本体中心错相位扩散 s2.rings 道环形弹幕（环间隔 ringGap、起始角逐环偏移 ringRotDeg、
+  //   弹速逐环递增且末环显著加快）；
+  //   技能3 巨大蛋挞：向前方（玩家方向）直射一枚不停旋转的巨大蛋挞弹（判定半径 = 焦香火环 JIAOXIANG.auraR、
+  //   弹速慢、单发即结束；tartSpin 相位自旋渲染）。
+  // 连携召唤：血量 80/60/40/20% 阈值各召唤一名精英（前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿；
+  //   spawnEliteMinion 第二参 1e9 = 永驻——离场由血量窗口驱动）；
+  //   任意连携精英在场时受到的所有伤害（含爆弹）-70%（dhGuardActive，结算点 08-entities enemyDamageMul / 07-player useBomb）；
+  //   窗口切换（跨入下一阈值）时上一窗口精英仍未被击杀 → dhFleeLinkedElites 迅速离场并记录血量（下一轮小怪刷新阶段登场，细节待设计）。
+  // 子弹均为常规敌弹（2026-10-01 用户定稿；技能3 巨大蛋挞例外 = tart 贴图大弹）；伤害统一经 bossDmgMul 难度倍率
+  function updateBossDarkhand(e, dt) {
+    e.t += dt;
+    e.flameT = (e.flameT || 0) + dt;   // 尾焰 / 红饰流光相位（渲染只读；gameover 后 update 停 → 演出定格）
+    // 血条登场计时 + 残血余像（仅战斗阶段推进，同旧日之歌）
+    if (e.phase === 'combat') e.barT = (e.barT || 0) + dt;
+    if (e.hpTrail == null) e.hpTrail = e.hp;
+    e.hpTrail += (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
+    // 震荡波推进（reveal 结束时释放，combat 期间继续扩散淡出；纯演出无伤害，绘制见 11-draw-boss）
+    if (e.shock) { e.shock.t += dt; if (e.shock.t >= e.shock.dur) e.shock = null; }
+
+    const EN = DARKHAND.entrance;
+    if (e.phase === 'lurk') {
+      // 警报期间潜伏（不可见）；警报结束（stage 离开 warn——含无警报直召路径，如 BOSS 试炼/图鉴挑战/smoke）即开始掠过
+      if (bossFlow.stage !== 'warn') {
+        e.phase = 'sweep'; e.phaseT = 0;
+        e.x = CANVAS_W / 2; e.y = -e.h / 2; e.sweepHit = false;
+      }
+      return;
+    }
+    if (e.phase === 'sweep') {
+      // 黑色阴影从屏顶沿中线飞速下掠（起点在屏外，入场即全速、无可见瞬跳）；命中判定一次性
+      e.phaseT += dt;
+      e.y += EN.sweepSpd * dt;
+      if (!e.sweepHit && player.alive &&
+          Math.abs(player.x - e.x) < EN.sweepHalfW + player.w * 0.2 &&
+          Math.abs(player.y - e.y) < EN.sweepHalfH + player.h * 0.4) {   // 纵向半高固定值：撞击区域不随体型（2026-10-02）
+        e.sweepHit = true;
+        const dmg = Math.max(1, player.hp * EN.hitFrac);
+        if (state.challenge) {
+          testDamagePlayer(dmg);
+          player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 同 BOSS 接触口径：挑战模式照常给受击无敌帧
+        } else {
+          damagePlayer(dmg, 1, false, false, null, 'darkhandSweep');   // 成就死因：黑暗之手登场掠过
+        }
+        // 大幅击飞：复用 player.kbT 击退通道（横向推离中线 + 纵向砸飞，指数衰减）+ 自旋 1 整圈（easeOutCubic，终角 = 2π 无 snap）
+        player.kbT = EN.kbT;
+        player.kbVx = (player.x < e.x ? -1 : 1) * EN.kbVx;
+        player.kbVy = EN.kbVy;
+        player.spinT = EN.spinDur; player.spinDur = EN.spinDur;
+        player.spinDir = player.x < e.x ? -1 : 1;
+        spawnParticles(player.x, player.y, '#2a1040', 18, 240);
+        shake(10, 0.4);
+      }
+      if (e.y > CANVAS_H + e.h) {   // 掠过出屏 → 折返屏顶，停顿 outlineDelay 后浮现白红轮廓（出屏→入屏，无可见瞬移）
+        e.phase = 'outline'; e.phaseT = -EN.outlineDelay;   // 负相位 = 预警结束后的停顿（绘制端 pin clamp 0 不可见）
+        e.x = CANVAS_W / 2; e.y = DARKHAND.hoverY;
+      }
+      return;
+    }
+    if (e.phase === 'outline') {
+      // 白主体红边轮廓浮现（绘制见 11-draw-boss drawDarkhandBoss）
+      e.phaseT += dt;
+      if (e.phaseT >= EN.outlineT) { e.phase = 'reveal'; e.phaseT = 0; }
+      return;
+    }
+    if (e.phase === 'reveal') {
+      // 白红轮廓 → 深邃黑形态交叉渐变；结束时释放震荡波 + 四角凝聚粒子消散，进入战斗（血条出现）
+      e.phaseT += dt;
+      if (e.phaseT >= EN.revealT) {
+        e.phase = 'combat'; e.phaseT = 0; e.combatReady = true; e.barT = 0;
+        e.shock = { t: 0, dur: EN.shockDur };
+        shake(10, 0.5);
+        spawnParticles(e.x, e.y, '#e04848', 26, 300);   // 黑红化（2026-10-03，原紫 #b04ad4）
+        // 四角黑暗凝聚态瞬间化作粒子消散（2026-10-01 用户定稿；锚点与 11-draw-boss 凝聚渲染一致：
+        // 偏移 e.w×0.6 / e.h×0.75，双向 clamp 屏内——画布 480 宽，e.w×0.82 会把左右锚点推出屏外）
+        {
+          const gox = e.w * 0.6, goy = e.h * 0.75;
+          for (let k = 0; k < 4; k++) {
+            const gx = clamp(e.x + (k % 2 ? gox : -gox), 55, CANVAS_W - 55);
+            const gy = clamp(e.y + (k < 2 ? -goy : goy), 70, CANVAS_H - 120);
+            spawnParticles(gx, gy, '#160409', 10, 260);   // 黑红化（2026-10-03，原暗紫 #1a0d28）
+            spawnParticles(gx, gy, '#c22030', 8, 220);    // 黑红化（2026-10-03，原紫 #7a2bb8）
+          }
+        }
+        // 登场蛋挞扇已删（2026-10-02 用户定稿「去掉长条蛋挞发射」）
+      }
+      return;
+    }
+
+    // —— 战斗阶段（e.phaseT 此处开始逐帧递增：登场衔接「深邃黑 → 真色」0.6s 渐变依赖它，见 11-draw-boss）——
+    e.phaseT += dt;
+
+    // —— 连携召唤：80/60/40/20% 血量阈值（单帧可跨多阈值：逐窗口补召唤；跨窗口时先遣散上一窗口精英） ——
+    const sm = DARKHAND.summon;
+    const frac = e.hp / e.maxHp;
+    while (e.dhSummoned.length < sm.thresholds.length && frac <= sm.thresholds[e.dhSummoned.length] + 1e-9) {
+      dhFleeLinkedElites();   // 上一窗口精英仍在场：迅速离场并记录血量
+      // 组内随机排序（2026-10-03 五轮定稿）：前两轮在第一组（夏勇/朴学峰）、后两轮在第二组（韩希先/辛国栋）
+      // 内随机取一名尚未召唤者——组内顺序随机、组间先后固定（pairs 两两分组见 01-config DARKHAND.summon）
+      const pool = sm.pairs[Math.floor(e.dhSummoned.length / 2)].filter(t => !e.dhSummoned.includes(t));
+      const type = pool[Math.floor(Math.random() * pool.length)];
+      e.dhSummoned.push(type);
+      const m = spawnEliteMinion(type, 1e9);   // 第二参为驻留时长：1e9 永驻，离场时机由血量窗口驱动
+      m.dhLink = true;
+      shake(6, 0.3);
+      spawnParticles(m.elStay.x, m.elStay.y, '#e04848', 14, 220);   // 黑红化（2026-10-03，原紫 #b04ad4）
+    }
+
+    // —— 战斗阶段：航点扫动 + 技能循环 ——
+    // 技能5 导弹雨期间本体移速降至 s5.slowMul（2026-10-03 用户定稿）：指数逼近（速率 s5.slowK = 5/s，
+    // ≈0.6s 基本到位 / 技能结束 ≈0.6s 恢复）——「当前速度 → 新期望速度」平滑过渡，无瞬跳（速度曲线铁律）
+    const slowTarget = (e.skill && e.skill.id === 4) ? DARKHAND.s5.slowMul : 1;
+    e.dhSlowK = ((e.dhSlowK == null) ? 1 : e.dhSlowK) + (slowTarget - ((e.dhSlowK == null) ? 1 : e.dhSlowK)) * (1 - Math.exp(-DARKHAND.s5.slowK * dt));
+    // 技能4 期间常规移动暂停：本体位置由 runDarkhandSkill 的居中 smoothstep 剖面接管（2026-10-03 用户定稿）
+    if (!(e.skill && e.skill.id === 3)) bossMoveUpdate(e, DARKHAND.move, dt, DARKHAND.combatSpdMul * e.dhSlowK);   // mul = 移速倍率（0.5 = 战斗移速 -50%，2026-10-01 用户定稿；登场飞掠等演出不走此通道不受影响）。漏传/传 NaN → 速度负向递增 BOSS 被钉死左上角（2026-10-01 修复教训）
+    if (e.skill) runDarkhandSkill(e, dt);
+    else {
+      e.skillCd -= dt;
+      if (e.skillCd <= 0) startDarkhandSkill(e);
+    }
+  }
+
+  function startDarkhandSkill(e) {
+    // 首个技能随机（lastSkill -1 = 未放过），之后按 id+1 固定顺序严格轮换（2026-10-03 用户定稿：循环释放而非随机）
+    let id = (e.lastSkill == null || e.lastSkill < 0) ? Math.floor(Math.random() * 5) : (e.lastSkill + 1) % 5;
+    e.lastSkill = id;
+    e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0,
+      gi: 0, st: 'warn', pt: 0, beams: [] };   // gi/st/pt/beams：技能4 爪翼光束状态（余字段被其他技能复用/无害）
+    e.skillStreak = 0;
+  }
+
+  // 黑暗之手技能间隔（2026-10-01 用户定稿）：无连携精英在场 = 旧日之歌（BOSS.skillCd 2.2s）的 40%（≈0.88s）；
+  // 有连携精英在场（dhGuardActive）= 旧日之歌的 120%（≈2.64s）；均再经 bossSkillIv 难度倍率
+  function darkhandSkillCd() {
+    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.2 : 0.4));
+  }
+
+  function runDarkhandSkill(e, dt) {
+    const s = e.skill;
+    s.t += dt;
+    if (s.id === 0) {
+      // 技能1 四管炮幕（对齐机制图鉴 t4DrawQuadCannon 演示）：每齐射间隔四门炮同时齐射各 1 发，按难度轮数连射——
+      // 管间基准角差 cannonFanStep、整轮偏角 volleyBias 奇偶轮左右交替（cannonIdx 复用为轮次计数）；
+      // 炮口在机体前缘（cannonXs 槽位 ×本体宽），目标 = 玩家当前位置；弹色红 accent（2026-10-03 用户定稿：
+      // 黑紫暗核弹改为黑红暗核弹——黑体 + 红边，accent = '#ff4632'，与技能5 导弹同系）；
+      // 间隔/轮数按难度（2026-10-03 用户定稿）：普通 0.75s×4 轮、真我 0.65s×5 轮、诗篇 0.6s×6 轮
+      const c = DARKHAND.s1;
+      const rounds = isPoem() ? c.poemRounds : (isRealme() ? c.realmeRounds : c.rounds);
+      const iv = c.shotIv * (isPoem() ? c.poemIvMul : (isRealme() ? c.realmeIvMul : c.baseIvMul));
+      s.shotT -= dt;
+      while (s.shotT <= 0 && s.cannonIdx < rounds) {
+        s.shotT += iv;
+        if (!player.alive) break;
+        const bias = (s.cannonIdx++ % 2 ? 1 : -1) * c.volleyBias;
+        for (let i = 0; i < 4; i++) {
+          const cx = e.x + c.cannonXs[i] * e.w;
+          const cy = e.y + e.h * 0.36;   // 2026-10-03 用户定稿：射击位置自 0.42h 略微上移
+          const base = Math.atan2(player.y - cy, player.x - cx);
+          const ang = base + (i - 1.5) * c.cannonFanStep + bias;
+          pushBossBullet(cx, cy, ang, c.bulletSpeed, { r: c.bulletR, dmg: c.dmg, color: '#ff4632', dhDark: true });
+          spawnParticles(cx, cy, '#ff4632', 3, 100);
+        }
+      }
+      if (s.cannonIdx >= rounds) { e.skill = null; e.skillCd = darkhandSkillCd(); }
+    } else if (s.id === 1) {
+      // 技能2 黑暗涟漪：rings 道错相位环形弹幕，到点逐环释放（环心 = 本体中心，起始角逐环偏移，末环弹速显著增加）；
+      // 每环随机减速（2026-10-03 用户定稿）：减速度 = 该环初速 × rand(0~30%)/s，同环一致、环间不同（decay 通道见 08-entities）
+      const c = DARKHAND.s2;
+      while (s.ringsFired < c.rings && s.t >= s.ringsFired * c.ringGap) {
+        const ring = s.ringsFired++;
+        const base = ring * c.ringRotDeg * Math.PI / 180;
+        const spd = c.bulletSpeed + ring * c.ringSpeedStep;
+        const decayAbs = spd * c.speedDecayMax * Math.random();
+        for (let k = 0; k < c.perRing; k++) {
+          const ang = base + k * Math.PI * 2 / c.perRing;
+          pushBossBullet(e.x, e.y, ang, spd, { r: c.bulletR, dmg: c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
+        }
+        spawnParticles(e.x, e.y, '#ff4632', 10, 200);
+      }
+      if (s.t >= c.dur) { e.skill = null; e.skillCd = darkhandSkillCd(); }
+    } else if (s.id === 2) {
+      // 技能3 巨大蛋挞（2026-10-01）：从机体前缘中心向玩家方向直射一枚不停旋转的巨大蛋挞弹——
+      // 判定半径 = 焦香螺旋桨火环（s3.r = JIAOXIANG.auraR），弹速慢；单发即结束（tartSpin 相位由
+      // 08-entities 逐帧推进，贴图自旋渲染见 10-draw-world）；弹速按难度（2026-10-03：普通 168 / 真我 132 / 诗篇 120）；
+      // 出生生长（2026-10-03 二轮定稿）：从小（growFrom）easeOutCubic 放大到全尺寸、判定半径同步缩放，
+      // 生长期间纯黑剪影 + 暗红辉光（2026-10-03 三轮定稿：辉光紫改红，与黑红弹幕同系）
+      const c = DARKHAND.s3;
+      const spd = isPoem() ? c.poemSpeed : (isRealme() ? c.realmeSpeed : c.bulletSpeed);
+      const cy = e.y + e.h * 0.42;
+      const ang = Math.atan2(player.y - cy, player.x - e.x);
+      pushBossBullet(e.x, cy, ang, spd, { r: c.r, dmg: c.dmg, tart: true, tartSpin: 0, tartSpinSpd: c.spinSpd, color: '#ff4632', tartGrow: 0, tartGrowDur: c.growDur, tartFrom: c.growFrom, tartR0: c.r });
+      spawnParticles(e.x, cy, '#ff4632', 10, 200);
+      e.skill = null; e.skillCd = darkhandSkillCd();
+    } else if (s.id === 3) {
+      // 技能4 爪翼毁灭光束（2026-10-02 / 2026-10-03 三轮定稿）：三组依次「预警 → 发射」（机头正下 / 双爪沿爪朝向
+      // 向屏内交叉 / 双后翼朝外），见 DARKHAND.s4.groups；发射点与朝向以发射瞬间快照，光束折线延伸至出屏
+      //（真我/诗篇触左右屏缘反弹一次）；伤害/节奏同风暴编织者技能2（dmg 50 × bossDmgMul、beamDur、rise 渐入后
+      // 判定、命中一次、白盾无影响）；
+      // 居中机制（2026-10-03 用户定稿）：释放瞬间记录起点，本体以 smoothstep 剖面（初速/末速均为 0，加速度连续
+      // ——速度曲线铁律：不瞬起不瞬停）水平移向屏幕中线并停稳（moveDur 1.6s < 第二轮发射 2.4s——四轮定稿预警 1.2s），第三轮发射
+      // 时本体必居中 → 双后翼光束必然左右对称；释放期间常规移动由 updateBossDarkhand 跳过（本技能接管位置）
+      const c = DARKHAND.s4;
+      if (s.mx0 == null) { s.mx0 = e.x; s.my0 = e.y; s.mdist = CANVAS_W / 2 - e.x; s.mt = 0; }
+      if (Math.abs(s.mdist) > 0.5 && s.mt < c.moveDur) {
+        s.mt += dt;
+        const u = Math.min(s.mt / c.moveDur, 1);
+        e.x = s.mx0 + s.mdist * (u * u * (3 - 2 * u));   // smoothstep：位置剖面连续可导，两端速度为 0
+        e.y = s.my0;   // 释放期间纵向停驻（停稳语义：整体静止）
+      }
+      if (s.st === 'warn') {
+        s.pt += dt;
+        if (s.pt >= c.warnDur) {
+          for (const gm of c.groups[s.gi]) {
+            const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h;
+            s.beams.push({ segs: dhBeamSegments(sx, sy, gm.ang), t: 0, hit: false });
+            spawnParticles(sx, sy, '#ff4632', 12, 240);
+          }
+          shake(6, 0.3);
+          s.st = 'gap'; s.pt = 0;
+        }
+      } else if (s.st === 'gap') {
+        s.pt += dt;
+        if (s.pt >= c.gap) {
+          s.gi++;
+          if (s.gi >= c.groups.length) s.st = 'done';
+          else { s.st = 'warn'; s.pt = 0; }
+        }
+      }
+      for (let i = s.beams.length - 1; i >= 0; i--) {
+        const b = s.beams[i];
+        b.t += dt;
+        // 判定同风暴技能2：白盾（player.shield > 0）对其无任何影响不判伤（免疫射弹，注册表见 01-config BULWARK 注释）
+        if (!b.hit && b.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0 &&
+            strikeVis(b.t / c.beamDur, c.rise) >= 0.35) {
+          const px = player.x, py = player.y + PLAYER_CFG.hitOffsetY;
+          const R = c.r + PLAYER_CFG.hitRadius;
+          for (const sg of b.segs) {
+            if (dhSegDist(px, py, sg) < R) { b.hit = true; damagePlayer(c.dmg * bossDmgMul()); break; }
+          }
+        }
+        if (b.t >= c.beamDur) s.beams.splice(i, 1);
+      }
+      if (s.st === 'done' && !s.beams.length) {
+        e.skill = null; e.skillCd = darkhandSkillCd();
+        e.bvx = 0; e.bvy = 0;   // 清惯性：恢复常规移动后从静止平滑加速到航点速度（速度曲线铁律——不瞬跳）
+      }
+    } else if (s.id === 4) {
+      // 技能5 暗影导弹雨（2026-10-02 实装 / 2026-10-03 重构 + 二轮定稿）：机体贴图实心区内随机位置出现黑红小型导弹
+      //（dhDark 长条弹 + 红边），出现时完全透明、0.2s 快速渐显（fadeIn 通道）；弹数/时长按难度取 s5 配置；
+      // 弹道分难度：普通 = 直落加速（低初速沿方向 accel 加速至 maxSpeed）；
+      // 真我/诗篇 = 抛物导弹——riseVy 向上初速 + accel 恒定向下重力（先上升 ≈90px 再下坠），
+      // 水平走 S 剖面（ax = A(1-2t/T) 线性变化 → vx 先增后减、抵达 50% 屏高 T 时精确归 0）；
+      // 落点全屏均匀采样（二轮定稿「分布更加均匀——连不在本体上的屏幕左右两侧也有子弹落下」：tx 含本体两侧
+      // 窄屏区、边缘各留 20px，dx = tx - rx 取代旧 ±20% 屏宽位移限制）；弹体渲染始终竖直朝下不旋转（见 10-draw-world）；
+      // 释放期间本体移速 ×0.2（指数逼近平滑，见 updateBossDarkhand）
+      const c = DARKHAND.s5;
+      const parab = isRealme() || isPoem();
+      const dur = isPoem() ? c.poemDur : (isRealme() ? c.realmeDur : c.dur);
+      const n = isPoem() ? c.poemCount : (isRealme() ? c.realmeCount : c.count);
+      const iv = dur / n;
+      while (s.firedN < n && s.t >= s.firedN * iv) {
+        s.firedN++;
+        const rp = dhSampleSolid();
+        const rx = e.x + rp.x * e.w, ry = e.y + rp.y * e.h;
+        if (parab) {
+          // T = 抵达 50% 屏高时刻：解 ry + vy0·T + 0.5·ay·T² = 0.5·CANVAS_H（vy0 向上为负、ay 向下为正）
+          const vy0 = -c.riseVy, ay = c.accel;
+          const dY = CANVAS_H * 0.5 - ry;
+          const T = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * ay * Math.max(dY, 40))) / ay;
+          // 落点目标 tx 全屏均匀 [20, W-20]，dx = tx - rx（A = 6·dx/T²，总位移 = A·T²/6 = dx；tx 已在屏内无需再限幅）
+          const dx = 20 + Math.random() * (CANVAS_W - 40) - rx;
+          pushBossBullet(rx, ry, Math.PI / 2, 0, {
+            len: c.len, r: c.r, dmg: c.dmg, vy: vy0,
+            dhMissile: { T, A: 6 * dx / (T * T), vy0, ay, t: 0 },
+            dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
+          });
+        } else {
+          pushBossBullet(rx, ry, Math.PI / 2, c.speed0, {
+            len: c.len, r: c.r, dmg: c.dmg, accel: c.accel, maxSpeed: c.maxSpeed,
+            dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
+          });
+        }
+        spawnParticles(rx, ry, '#ff4632', 2, 90);
+      }
+      if (s.t >= dur + 0.35) { e.skill = null; e.skillCd = darkhandSkillCd(); }   // +0.35s 缓冲确保末弹尽数生成
+    }
+  }
+
+  // 光束折线段（技能4）：从发射点沿方向延伸至出屏底；真我/诗篇难度（reflect，2026-10-03 用户定稿自仅诗篇扩到
+  // 真我+诗篇）命中左右屏幕边缘水平反弹继续延伸——反弹次数难度化（2026-10-03 用户定稿）：真我 1 次、诗篇 2 次
+  function dhBeamSegments(sx, sy, ang) {
+    const c = DARKHAND.s4;
+    const bounceMax = isPoem() ? c.bouncePoem : isRealme() ? c.bounceRealme : 0;
+    const canReflect = c.reflect && bounceMax > 0;
+    const segs = [];
+    let x = sx, y = sy, dx = Math.cos(ang), dy = Math.sin(ang), bounced = 0;
+    for (let guard = 0; guard < 4; guard++) {   // 上限 = bounceMax+1 段（诗篇 3 段 < 4，兜底防死循环）
+      let tMin = Infinity, side = null;
+      if (dx > 1e-6) { const t = (CANVAS_W - x) / dx; if (t > 0 && t < tMin) { tMin = t; side = 'R'; } }
+      if (dx < -1e-6) { const t = (0 - x) / dx; if (t > 0 && t < tMin) { tMin = t; side = 'L'; } }
+      if (dy > 1e-6) { const t = (CANVAS_H + 30 - y) / dy; if (t > 0 && t < tMin) { tMin = t; side = 'B'; } }
+      if (!side) break;
+      const nx = x + dx * tMin, ny = y + dy * tMin;
+      segs.push({ x1: x, y1: y, x2: nx, y2: ny });
+      if (side === 'B' || !canReflect || bounced >= bounceMax) break;   // 出屏底 / 无反弹 / 次数用尽：到此为止
+      bounced++;   // 水平反射（左右屏缘）：dx 取反、dy 不变，从交点继续延伸
+      dx = -dx; x = nx; y = ny;
+    }
+    return segs;
+  }
+  // 点到线段距离（技能4 光束命中判定用）
+  function dhSegDist(px, py, sg) {
+    const vx = sg.x2 - sg.x1, vy = sg.y2 - sg.y1;
+    const L2 = vx * vx + vy * vy;
+    const t = L2 > 1e-6 ? clamp(((px - sg.x1) * vx + (py - sg.y1) * vy) / L2, 0, 1) : 0;
+    const dx = px - (sg.x1 + vx * t), dy = py - (sg.y1 + vy * t);
+    return Math.hypot(dx, dy);
+  }
+
   // 当前航点段抵达屏幕水平中线的剩余时长（s）；本段不穿中线返回 null。
   // 驻留模式（wpHold）逐步仿真：与实际运动同公式/同步长（分轴制动上限生效、无捕获换段），
   // 供真我技能6 预约时提前计算重组动画启动时机——发射恰在中心
@@ -1620,6 +1989,7 @@
     e.t += dt;
     if (e.bossId === 'storm') { updateBossStorm(e, dt); return; }   // 暴风之眼走独立状态机
     if (e.bossId === 'storm2') { updateBossStorm2(e, dt); return; }   // 风暴编织者（雷电飞舰）
+    if (e.bossId === 'darkhand') { updateBossDarkhand(e, dt); return; }   // 黑暗之手（独立状态机：黑洞入场 + 两常态技能）
 
     // 新出场流程：黑洞形成 → 机体浮现 → 部件组装 → 战斗
     const BLACKHOLE_DUR = 2.7;
