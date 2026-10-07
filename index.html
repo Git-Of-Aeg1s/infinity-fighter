@@ -36,6 +36,18 @@
     <!-- FPS 读数：悬挂于音量键正下方（灰色小字，仅供开发观察，不参与交互） -->
     <div class="fps-meter" id="fpsMeter">FPS --</div>
 
+    <!-- 手柄连接指示：FPS 读数正下方小图标（插入手柄后点亮；12-ui updateHUD 按 pad.connected 显隐，
+         pad 状态由 14-main pollGamepad 每帧轮询刷新） -->
+    <div class="pad-indicator hidden" id="padIndicator" title="手柄已连接：左摇杆移动 · LB/RB 爆弹 · X/Y 技能 · Start 暂停 · A/B 菜单确认/返回">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="6" y1="11.5" x2="10" y2="11.5" />
+        <line x1="8" y1="9.5" x2="8" y2="13.5" />
+        <circle cx="15" cy="12.5" r="0.6" fill="currentColor" stroke="none" />
+        <circle cx="17.8" cy="10" r="0.6" fill="currentColor" stroke="none" />
+        <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" />
+      </svg>
+    </div>
+
     <div class="stage">
       <canvas id="game" width="480" height="792"></canvas>
 
@@ -54,25 +66,27 @@
           <!-- 当前难度标签（战斗中显示；buildDiffCards 难度注册表驱动） -->
           <div class="diff-label hidden" id="diffLabel"></div>
         </div>
-        <div class="hud-right">
-          <!-- 高能爆弹：图标数量代表爆弹数（上限 3，BOSS 测试模式 ∞），由 updateHUD 渲染 -->
-          <div class="bomb-icons" id="bombIcons" title="高能爆弹（Space / 右Ctrl 释放）"></div>
-        </div>
+        <!-- （原右上角爆弹已移入左下角 hud-bl 首行，2026-10-04；右上角不再有 HUD 内容） -->
       </div>
 
-      <!-- 左下角：装甲技能量表（七日澜心） + 驾驶员量表（天秀忧郁王子） + 心心 + HP 条 -->
+      <!-- 左下角：爆弹（血条左侧心形图案上方） + 技能计数器（爆弹右侧让位） + 量表行下增伤读数 + 心心 + HP 条 -->
       <div class="hud-bl">
-        <!-- 护甲技能圆形计数表（七日澜心专属；按填充角度统计量表，满后按 F 触发） -->
-        <div class="skill-gauge hidden" id="skillGauge" title="护甲技能量表：满后按 F 释放">
-          <div class="skill-gauge-ring" id="skillGaugeRing"></div>
-          <span class="skill-gauge-key">F</span>
-          <span class="skill-gauge-count" id="skillGaugeCount"></span>
-        </div>
-        <!-- 驾驶员量表（天秀忧郁王子白色量表 / 陵落 Q 冷却，均按 Q，按键标签随驾驶员切换） -->
-        <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
-          <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
-          <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
-          <span class="skill-gauge-count" id="pilotGaugeCount"></span>
+        <!-- 首行：高能爆弹（左端，紧贴心形正上方） + 装甲/驾驶员技能量表（右移让位） -->
+        <div class="hud-bl-row">
+          <!-- 高能爆弹：图标数量代表爆弹数（上限见 01-config，BOSS 测试模式 ∞），由 updateHUD 渲染 -->
+          <div class="bomb-icons" id="bombIcons" title="高能爆弹（Space / 右Ctrl 释放）"></div>
+          <!-- 护甲技能圆形计数表（七日澜心专属；按填充角度统计量表，满后按 F 触发） -->
+          <div class="skill-gauge hidden" id="skillGauge" title="护甲技能量表：满后按 F 释放">
+            <div class="skill-gauge-ring" id="skillGaugeRing"></div>
+            <span class="skill-gauge-key">F</span>
+            <span class="skill-gauge-count" id="skillGaugeCount"></span>
+          </div>
+          <!-- 驾驶员量表（天秀忧郁王子白色量表 / 陵落 Q 冷却，均按 Q，按键标签随驾驶员切换） -->
+          <div class="skill-gauge pilot-gauge hidden" id="pilotGauge" title="驾驶员量表">
+            <div class="skill-gauge-ring" id="pilotGaugeRing"></div>
+            <span class="skill-gauge-key" id="pilotGaugeKey">E</span>
+            <span class="skill-gauge-count" id="pilotGaugeCount"></span>
+          </div>
         </div>
         <!-- 奖励道具槽已移除（2026-10-01）：击坠赞助无人机时道具立即生效（07-player applyRewardItem），
              机体前方播道具图标/扩散波特效（09-draw-ships drawItemPickFx）；抽卡改萧杨 Q 技能（16 颗原石充能，stonePanel 显示进度） -->
@@ -118,16 +132,27 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.3.8</span>
+          <span class="menu-version">v0.3.10</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
-        <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留） -->
+        <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；
+             面板头左上角「手柄」按钮切换 键盘 ↔ 手柄 两套按键页（12-ui initMenuPanels 绑定） -->
         <div class="loadout-panel help-tutorial hidden" id="helpPanel">
           <div class="loadout-panel-head">
+            <button class="help-pad-btn" id="helpPadBtn" title="手柄按键教程" aria-label="手柄按键教程">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="6" y1="11.5" x2="10" y2="11.5" />
+                <line x1="8" y1="9.5" x2="8" y2="13.5" />
+                <circle cx="15" cy="12.5" r="0.6" fill="currentColor" stroke="none" />
+                <circle cx="17.8" cy="10" r="0.6" fill="currentColor" stroke="none" />
+                <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" />
+              </svg>
+              <span>手柄</span>
+            </button>
             <span class="loadout-panel-title">游戏教程</span>
             <button class="panel-close" id="helpClose" aria-label="收起">✕</button>
           </div>
-          <div class="help-quad">
+          <div class="help-quad" id="helpQuadKey">
             <div class="help-quadrant help-quadrant-tl">
               <div class="help-keyrow">
                 <div class="help-keypad">
@@ -149,6 +174,36 @@
               <div class="help-row"><span class="help-keys"><kbd>P</kbd></span><span class="help-desc">暂停游戏</span></div>
               <div class="help-row"><span class="help-keys"><kbd>空格</kbd></span><span class="help-desc">释放高能爆弹<br>造成全场伤害</span></div>
               <div class="help-row"><span class="help-keys"><kbd>F</kbd>/<kbd>Q</kbd></span><span class="help-desc">装甲/驾驶员技能</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>手柄</kbd></span><span class="help-desc">左摇杆移动 · LB/RB 爆弹<br>X/Y 技能 · Start 暂停</span></div>
+            </div>
+            <div class="help-quadrant help-quadrant-img">
+              <img class="help-shot" src="assets/tutorial_dodge.png" alt="躲避演示">
+              <p class="help-note">注意躲避敌机子弹<br>通常为橙色或红色</p>
+            </div>
+          </div>
+          <!-- 手柄按键页：面板头左上角「手柄」按钮切换（默认隐藏）；四象限与键盘页同构 -->
+          <div class="help-quad help-quad-pad hidden" id="helpQuadPad">
+            <div class="help-quadrant help-quadrant-tl">
+              <div class="help-keyrow">
+                <div class="help-stick" aria-hidden="true"><span class="help-stick-cap"></span></div>
+                <div class="help-keypad">
+                  <kbd class="empty"></kbd><kbd>↑</kbd><kbd class="empty"></kbd>
+                  <kbd>←</kbd><kbd class="empty"></kbd><kbd>→</kbd>
+                  <kbd class="empty"></kbd><kbd>↓</kbd><kbd class="empty"></kbd>
+                </div>
+              </div>
+              <p class="help-note">左摇杆或十字键移动战机<br>战机会自动攻击敌人</p>
+            </div>
+            <div class="help-quadrant help-quadrant-img">
+              <img class="help-shot" src="assets/tutorial_attack.png" alt="攻击演示">
+              <p class="help-note">移动战机攻击敌人</p>
+            </div>
+            <div class="help-quadrant help-quadrant-bl">
+              <div class="help-row"><span class="help-keys"><kbd>LB</kbd>/<kbd>RB</kbd></span><span class="help-desc">释放高能爆弹<br>造成全场伤害</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>X</kbd>/<kbd>Y</kbd></span><span class="help-desc">装甲/驾驶员技能</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>Start</kbd></span><span class="help-desc">暂停 / 继续</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>A</kbd>/<kbd>B</kbd></span><span class="help-desc">菜单确认 / 返回<br>（暂停页 B = 继续）</span></div>
+              <div class="help-row"><span class="help-keys"><kbd>RT</kbd>/<kbd>LT</kbd></span><span class="help-desc">马兴犬 加速/减速</span></div>
             </div>
             <div class="help-quadrant help-quadrant-img">
               <img class="help-shot" src="assets/tutorial_dodge.png" alt="躲避演示">

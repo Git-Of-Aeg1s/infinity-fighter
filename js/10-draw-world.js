@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
-  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DEMO_BOTTOM, DEMO_TOP, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, isPoem, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config.js';
+  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DARKHAND, DEMO_BOTTOM, DEMO_TOP, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, currentDifficulty, isPoem, isRealme, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, yiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawFrostZones, drawHanshuangBody, drawHarbingerBody, drawItemPickFx, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
@@ -25,6 +25,28 @@
     return g;
   }
 
+  // 巨大蛋挞黑色剪影（2026-10-03 性能修复）：生长动画原用 ctx.filter='brightness(gp²)' 逐帧滤镜，
+  // 与黑暗之手本体滤镜叠加造成战斗段卡顿。改为一次性烘焙纯黑剪影（source-in 保留原 alpha），
+  // 生长时黑剪影打底 + 真色按 gp² 做 globalAlpha 叠加——亮度缩放与 filter 在数学上等价
+  //（黑底上叠加系数 a：输出 rgb = a×rgb，即 brightness(a)），逐帧零滤镜。未加载时返回 null 回退平涂。
+  let tartDarkImg = null, tartDarkTried = false;
+  function ensureTartDark() {
+    if (tartDarkTried) return tartDarkImg;
+    tartDarkTried = true;
+    if (!tartImg) return null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = tartImg.width; c.height = tartImg.height;
+      const g = c.getContext('2d');
+      g.drawImage(tartImg, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = '#000000';
+      g.fillRect(0, 0, c.width, c.height);
+      tartDarkImg = c;
+    } catch (err) { tartDarkImg = null; }
+    return tartDarkImg;
+  }
+
   // 诗篇占位敌人（wip）：统一白色方块占位造型（碰撞盒同尺寸，清单见 01-config WIP_PLACEHOLDER_TYPES；
   // 专属外观待逐个实装后从清单移除）
   function drawWipPlaceholderBody(e) {
@@ -44,7 +66,7 @@
     if (e.type === 'tornado') { drawTornado(e); return; }   // 龙卷专用绘制（自身处理 translate）
     // 战争幽灵：世界坐标层预警（入场/离场风波 + 技能1扇形 / 技能2双线），先于本体绘制（图层在机体之下）
     if (e.type === 'warGhost') drawWarGhostWarns(e);
-    // 4F 精英：世界坐标层预警（朴学峰穿刺线 / 夏勇坠击落点影子），先于本体绘制（图层在机体之下）
+    // 4S 精英：世界坐标层预警（朴学峰穿刺线 / 夏勇坠击落点影子），先于本体绘制（图层在机体之下）
     if (e.elPhase != null) drawEliteWarns(e);
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -103,7 +125,7 @@
     } else if (e.type === 'warGhost') {
       drawWarGhostBody(e);    // 自带填充与描边（金黄渐变流动机体 + 晶格流光 + B2 移植件（白银边框/四帆/五边形核/巨镰双刃）；抵达刃转演出/三态尾焰内含）
     } else if (e.elPhase != null) {
-      drawEliteBody(e);       // 4F 精英：素材立绘本体（自带适配缩放与回退造型；技能特效在世界层 drawEliteFx）
+      drawEliteBody(e);       // 4S 精英：素材立绘本体（自带适配缩放与回退造型；技能特效在世界层 drawEliteFx）
     } else if (e.type === 'jiaoxiang') {
       drawJiaoxiangBody(e);   // 自带填充与描边（橙火红渐变环 + 火焰光环 + 三根旋转横杠 + 白圆；见 09-draw-ships）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
@@ -259,7 +281,7 @@
       }
     }
 
-    // 座舱（体型越大座舱越大；卫护飞船为纯三角形，无核心；4F 精英为素材立绘，无座舱）
+    // 座舱（体型越大座舱越大；卫护飞船为纯三角形，无核心；4S 精英为素材立绘，无座舱）
     if (e.type !== 'escort' && e.elPhase == null) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
       ctx.beginPath();
@@ -641,7 +663,7 @@
   function drawEliteWarns(e) {
     const c = ELITES[e.type];
     const s = e.elSkill;
-    // 狂笑朴学峰·流星穿刺/残像换影预警（三连冲）：预警链首尾相接——预警①（竖直，自上而下展开）完成瞬间
+    // 狞笑朴学峰·流星穿刺/残像换影预警（三连冲）：预警链首尾相接——预警①（竖直，自上而下展开）完成瞬间
     // 冲①出发 + 预警②（横向）立刻出现；预警②展开完成 → 预警③（斜向）立刻出现；预警不再按时间消失，
     // 而是展开完成后保持显示、被本体冲刺实时擦除（冲到哪、哪段消失），对应冲刺走完（出屏）后该段整体消失。
     // 预警线（静态虚线）+ 预警区域（带状，纵向渐变收浓至前缘 + 前缘光晕亮线 + 双侧约束边线）——无闪烁
@@ -657,32 +679,34 @@
         ctx.save();
         ctx.translate(sx, sy);
         ctx.rotate(ang);
-        // 区域填充：沿冲刺方向由淡到浓的纵向渐变（威胁向前缘收束）——黑红色系（2026-10-03 用户定稿，原橘红）
+        // 区域填充：沿冲刺方向由淡到浓的纵向渐变（威胁向前缘收束）——黑红色系加深加浓（2026-10-04 用户定稿：更红更明显；
+        // 2026-10-04 二次定稿：前缘头部（最前方）再加浓一段红色渐变 + 亮线加宽提亮——头部威胁感更强）
         const grad = ctx.createLinearGradient(26, 0, 26 + len, 0);
-        grad.addColorStop(0, 'rgba(90,8,14,0.05)');
-        grad.addColorStop(0.6, 'rgba(140,16,24,0.12)');
-        grad.addColorStop(1, 'rgba(224,36,36,0.26)');
+        grad.addColorStop(0, 'rgba(120,6,12,0.10)');
+        grad.addColorStop(0.6, 'rgba(180,10,20,0.22)');
+        grad.addColorStop(0.85, 'rgba(255,36,32,0.42)');
+        grad.addColorStop(1, 'rgba(255,46,32,0.62)');
         ctx.globalAlpha = 1;
         ctx.fillStyle = grad;
         ctx.fillRect(from, -bw, 26 + len - from, bw * 2);
         // 双侧约束边线（「带」的轮廓感）
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = '#8a1420';
-        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#b01624';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(from, -bw); ctx.lineTo(26 + len, -bw);
         ctx.moveTo(from, bw); ctx.lineTo(26 + len, bw);
         ctx.stroke();
-        // 前缘亮线 + 光晕（推进沿指示）
-        ctx.globalAlpha = 0.7;
-        ctx.shadowColor = '#a01620';
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = '#ff4642';
-        ctx.fillRect(26 + len - 3, -bw, 3, bw * 2);
+        // 前缘亮线 + 光晕（推进沿指示）——加宽提亮（2026-10-04 二次定稿：头部更红）
+        ctx.globalAlpha = 0.95;
+        ctx.shadowColor = '#ff2418';
+        ctx.shadowBlur = 24;
+        ctx.fillStyle = '#ff3226';
+        ctx.fillRect(26 + len - 6, -bw, 6, bw * 2);
         ctx.shadowBlur = 0;
         // 预警线：区域中线静态虚线（恒定透明度、无流动无闪烁，终点随区域前缘不超前；虚线相位锚定整带坐标，擦除时图案不流动）
-        ctx.globalAlpha = 0.4;
-        ctx.strokeStyle = '#c22030';
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#e02838';
         ctx.lineWidth = 2;
         ctx.setLineDash([12, 10]);
         ctx.lineDashOffset = -from;
@@ -694,8 +718,9 @@
         ctx.restore();
       };
       if (e.elPhase === 10) {
-        // 预警①展开（本体静驻，无擦除）
-        drawPxWarn(Math.min(1, e.elT / c.pierceWarn), e.x, e.y, Math.PI / 2, 0);
+        // 预警①展开（本体静驻，无擦除）；展开时长按难度取 fw（与 06-enemy 推进端同一公式——首次冲刺间隔难度加成）
+        const fw = c.pierceWarn + (isPoem() ? 0 : isRealme() ? c.realmeFirstWarnAdd : currentDifficulty.id === 'form' ? c.formFirstWarnAdd : c.firstWarnAdd);
+        drawPxWarn(Math.min(1, e.elT / fw), e.x, e.y, Math.PI / 2, 0);
       } else if (e.elPhase >= 11 && e.elPhase <= 15) {
         // 预警①：冲①期间保持显示、被本体实时擦除（cut = 冲①已行距离）；冲①出屏后不再绘制
         if (e.elPhase === 11 && s.w1o) drawPxWarn(1, s.w1o.x, s.w1o.y, Math.PI / 2, s.dist);
@@ -705,7 +730,7 @@
         if (s.w3 && e.elPhase <= 15) drawPxWarn(Math.min(1, s.warn3T / c.pierceReWarn), s.w3.x, s.w3.y, s.w3.ang, e.elPhase === 15 ? s.dist : 0);
       }
     }
-    // 狂笑朴学峰·冲刺拖尾：暗红→黑渐变锥形残迹（世界层、机体之下；沿冲刺方向反向拉出，
+    // 狞笑朴学峰·冲刺拖尾：暗红→黑渐变锥形残迹（世界层、机体之下；沿冲刺方向反向拉出，
     // 长度随当前冲刺速度平滑生长/收束——elSpd 门控保证冲间间隔与出发瞬间无突现）
     if (e.type === 'puxuefeng' && s && (e.elPhase === 11 || e.elPhase === 13 || e.elPhase === 15) && e.elSpd > 40) {
       const spdK = Math.min(1, e.elSpd / c.pierceSpeed);
@@ -824,7 +849,7 @@
     const c = ELITES[e.type];
     const s = e.elSkill;
     ctx.save();
-    // 狂笑朴学峰·残像：半透明残影（朝向随冲刺；上下左右微微闪动 + 透明度忽大忽小——双频 sin 叠加
+    // 狞笑朴学峰·残像：半透明残影（朝向随冲刺；上下左右微微闪动 + 透明度忽大忽小——双频 sin 叠加
     // 确定性波动、无随机跳变，afterT=0.7s 后自爆清除）
     if (e.elRemnant) {
       const img = puxuefengImg;
@@ -856,13 +881,15 @@
         // 凝视锁定：追踪期红细线（持续跟随）→ 锁定静止期红细线保持指向（不开火、提亮示意）→
         // 激光期双层粗激光（外辉光 + 白热内芯，方向固定）；时序 0.5s / 0.5s / 0.9s 见 06-enemy advanceEliteSkill
         if (!s.fired) {
-          ctx.globalAlpha = (s.locked ? 0.85 : 0.5) + 0.25 * Math.sin(state.time * 18);
-          ctx.strokeStyle = '#c22030';   // 黑红（2026-10-03 用户定稿，原橘红 #ff5a4c）
-          ctx.lineWidth = 2.5;   // 预警线增粗（2026-10-02 用户指定，原 1.4）
+          ctx.globalAlpha = (s.locked ? 0.95 : 0.62) + 0.25 * Math.sin(state.time * 18);
+          ctx.strokeStyle = '#e83444';   // 提亮红（2026-10-04 二次定稿：预警线略微加粗提亮，原 #c22030）
+          ctx.lineWidth = 3.5;   // 预警线增粗（2026-10-02 原 1.4 → 2.5；2026-10-04 二次定稿 → 3.5）
+          ctx.shadowColor = '#ff2430'; ctx.shadowBlur = 8;   // 红色辉光提亮（2026-10-04 二次定稿）
           ctx.beginPath();
           ctx.moveTo(e.x, eyeY);
           ctx.lineTo(e.x + Math.cos(s.ang) * 1000, eyeY + Math.sin(s.ang) * 1000);
           ctx.stroke();
+          ctx.shadowBlur = 0;
         } else {
           const bp = clamp(s.t / 0.1, 0, 1);
           const fade = clamp(1 - (s.t - c.laserDur + 0.12) / 0.12, 0, 1);
@@ -1869,16 +1896,41 @@
           // 蛋挞弹（水彩贴图，01-config 烘焙 tartImg）：小蛋挞沿速度方向旋转、直径 ≈ r×3.2；
           // 巨大蛋挞（黑暗之手技能3，tartSpin 相位由 08-entities 推进）判定半径即视觉半径、持续自旋；
           // 出生生长（2026-10-03 用户定稿）：生长期间纯黑剪影 + 暗红辉光（#ff4632，2026-10-03 三轮定稿辉光
-          // 紫改红、与黑暗之手黑红弹幕同系），后半段 brightness 平方渐显真色（黑剪影保持更久、无跳变）；
-          // 未加载/烘焙失败回退常规渐变圆弹
+          // 紫改红、与黑暗之手黑红弹幕同系），后半段平方渐显真色（黑剪影保持更久、无跳变；剪影/真色均预烘焙，
+          // 逐帧零 filter——2026-10-03 性能修复）；未加载/烘焙失败回退常规渐变圆弹；
+          // 被依的镰刀斩中（2026-10-04 用户定稿）：颤动期高频抖动（抖幅线性衰减，位置冻结见 08-entities）→
+          // 碎裂迸散粒子（08-entities 一次性）→ 迅速渐隐消失
+          let shX = 0, shY = 0, tartAlpha = 1;
+          if (b.tartHitT != null) {
+            if (b.tartHitT < DARKHAND.s3.hitShudderT) {
+              const k = 1 - b.tartHitT / DARKHAND.s3.hitShudderT;
+              shX = Math.sin(b.tartHitT * 90) * 3 * k;
+              shY = Math.cos(b.tartHitT * 74) * 3 * k;
+            } else {
+              tartAlpha = clamp(1 - (b.tartHitT - DARKHAND.s3.hitShudderT) / DARKHAND.s3.hitFadeT, 0, 1);
+            }
+          }
+          ctx.translate(shX, shY);
+          ctx.globalAlpha = tartAlpha;
           ctx.rotate(b.tartSpin != null ? b.tartSpin : Math.atan2(b.vy, b.vx) + Math.PI / 2);
           const gp = b.tartGrowDur ? clamp((b.tartGrow || 0) / b.tartGrowDur, 0, 1) : 1;
-          if (gp < 1) {
-            ctx.shadowColor = '#ff4632';
-            ctx.shadowBlur = 16 * (1 - gp);
-            ctx.filter = 'brightness(' + (gp * gp).toFixed(3) + ')';
-          }
           const d = b.tartSpin != null ? b.r * 2 : b.r * 3.2;
+          if (gp < 1) {
+            // 生长期：黑剪影（带暗红辉光）打底 + 真色 gp² alpha 叠加，替代逐帧 ctx.filter
+            //（数学等价 brightness(gp²)，2026-10-03 性能修复）；剪影烘焙失败回退真色直接渐显
+            const dark = ensureTartDark();
+            if (dark) {
+              ctx.shadowColor = '#ff4632';
+              ctx.shadowBlur = 16 * (1 - gp);
+              ctx.drawImage(dark, -d / 2, -d / 2, d, d);
+              ctx.shadowBlur = 0;
+              ctx.globalAlpha = gp * gp * tartAlpha;
+              ctx.drawImage(tartImg, -d / 2, -d / 2, d, d);
+              ctx.globalAlpha = tartAlpha;
+              ctx.restore();
+              continue;
+            }
+          }
           ctx.drawImage(tartImg, -d / 2, -d / 2, d, d);
           ctx.restore();
           continue;
@@ -3078,10 +3130,10 @@
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
     drawDdjMissiles();   // 叮咚鸡：黄白导弹（前向扇形直线飞行，直击）
-    drawFrostZones();   // 虚幻：寒冷区域（冰蓝地面层 + 间歇雪花，位于预警圈/炸弹之下）
+    drawFrostZones();   // 虚幻：寒冷区域（寒霜光圈同款冰圈雾气，位于预警圈/炸弹之下）
     drawFrostField();   // 奖励道具·寒霜发生器：我方青白力场（低图层地面效果，存在感刻意压低）
     drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
-    drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹（虚幻：深蓝预警圈 + 矩形炸弹）
+    drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹（虚幻：深蓝预警圈 + 冰青圆柱弹，冲刺段朝向锁定方向）
     drawXgWarnCircles(state.xgLooseBombs);   // 辛国栋击毁残留的地毯轰炸落点预警（继续倒计时爆炸，结算见 06-enemy updateXgLooseBombs）
     drawPopianFx();       // 破片 / 破片U型：红圈预警 + 三连发不可击毁导弹
     drawWarGhostSlashes();   // 战争幽灵：技能1/2双刃斩击流（白身金芒高速斩击）

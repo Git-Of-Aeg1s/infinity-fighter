@@ -3,19 +3,19 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：（无——本文件为叶子模块，修改导出名前需确认无调用方）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{cheatArm, flash, hurt, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{cheatArm, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
-  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBurst, bombBurst, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
-  import { achvEvaluateVictory, achvNoteCheat, renderResultAchievements } from './02-achievements.js';
+  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
+  import { achvEvaluateVictory, achvNoteCheat, achvNoteDagouCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements } from './02-achievements.js';
   import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
 
 
@@ -77,7 +77,7 @@
       state.dagouDebugRapid = !state.dagouDebugRapid;
       if (state.dagouDebugRapid) {
         state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
-        achvNoteCheat();   // 成就：作弊开关（无垠 / 无垠战机排除）
+        achvNoteDagouCheatOn();   // 成就：作弊开关（记作弊 + 解锁捣蛋来袭）
       }
       console.log('[debug] 大狗 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
     }
@@ -87,7 +87,7 @@
     if (k === '8' && !swarmTest && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
       state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
       state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
-      if (state.tianxiuDebugSpam) achvNoteCheat();   // 成就：作弊开关（无垠 / 无垠战机排除）
+      if (state.tianxiuDebugSpam) achvNoteTianxiuCheatOn();   // 成就：作弊开关（记作弊 + 解锁万道风流）
       console.log('[debug] 天秀 rapid 风暴: ' + (state.tianxiuDebugSpam ? 'ON（0.4~1.4s/个）' : 'OFF'));
     }
     // 马兴犬：Shift 加速 / CapsLock 减速（同键再按恢复原速）——不再使用 Ctrl（按住 Ctrl 时按 W 会触发浏览器关闭标签页，无法拦截）
@@ -109,6 +109,10 @@
       if (swarmTest && SWARM_CHEAT_ITEMS[k] && !e.repeat) {
         applyRewardItem(SWARM_CHEAT_ITEMS[k]);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
       }
+      // 测试挑战（怪物权重单敌 / 波次 / 持续刷怪）按 7：立刻释放一次萧杨「哦哦！抽卡！」——
+      // 无视是否携带萧杨、无视充能（debugForceGacha，07-player）；SWARM_CHEAT_ITEMS 无 7，三页共用不冲突；
+      // 常规战斗（非 state.challenge）按 7 无事发生
+      if (k === '7' && state.challenge && !e.repeat) debugForceGacha();
       const lv = '12345'.indexOf(k);
       if (lv >= 0 && !swarmTest && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) debugSetWeapon(lv + 1);
       // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
@@ -136,6 +140,24 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+  // ---------- 手柄输入 ----------
+  // 战斗内动作分发：pollGamepad 每帧刷新 gamepad（02-core）后按边沿（padPressed = 本帧按下且上一帧未按下）逐一判定。
+  // 键盘动作走 keydown 事件（一次性），手柄是纯轮询——必须在此显式分发（向 keys 写 'space' 等不会被事件路径触发）。
+  // 键位映射：X=装甲技能(F) Y=驾驶员技能(Q) LB/RB=爆弹(Space/右Ctrl) Start=暂停(P) RT/LT=马兴犬加速/减速(Shift/CapsLock)
+  function padCombatTick() {
+    if (padPressed('start')) { togglePause(); return; }   // 暂停恢复当帧不再结算战斗键（同键盘语义：暂停中 F/Q/爆弹无效）
+    if (padPressed('lb') || padPressed('rb')) useBomb();
+    if (padPressed('x')) triggerArmorSkill();
+    if (padPressed('y')) triggerPilotSkill('q');
+    // 马兴犬变速：与 Shift/CapsLock 同款「同键再按恢复」（RT 加速 / LT 减速，扳机行程过半即触发）
+    if (padPressed('rt') && hasPilot('maxingquan')) {
+      state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedFast ? 1 : PILOTS.maxingquan.speedFast;
+    }
+    if (padPressed('lt') && hasPilot('maxingquan')) {
+      state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedSlow ? 1 : PILOTS.maxingquan.speedSlow;
+    }
+  }
 
   // ---------- 主循环 ----------
   let lastTime = performance.now();
@@ -178,6 +200,10 @@
       fpsMeter.textContent = 'FPS ' + Math.round(fpsEma);
     }
     try {
+      // 手柄：每帧轮询（Gamepad API 无事件推送）+ 按界面分发——战斗帧走动作键，其余帧走 12-ui 菜单焦点导航
+      pollGamepad();
+      if (state.mode === 'playing' && !state.paused) padCombatTick();
+      else padMenuTick(dt);
       if (state.mode === 'playing' && !state.paused) {
       state.time += dt;
 
@@ -250,8 +276,9 @@
         levelFlow.prevLevel = levelFlow.level;
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
         // 奖励无人机（斗志昂扬/赞助/豪华赞助）：每次关卡提升按难度概率刷新一架（每次至多一架，5/4/1 加权抽取）；
-        // 击败 BOSS 的跳变升级豁免（douzhiSkipOnce）对三种一并生效；挑战模式不刷
-        else if (!state.challenge && Math.random() < rewardDroneChance()) spawnDouzhi(pickRewardDroneType());
+        // 击败 BOSS 的跳变升级豁免（douzhiSkipOnce）对三种一并生效；挑战模式不刷；
+        // 2026-10-04 用户定稿：BOSS 试炼（testBoss）全程不刷——击败 boss 升级引发的刷新一并禁绝，试炼场只打 boss 不出杂鱼
+        else if (!state.challenge && !state.testBoss && Math.random() < rewardDroneChance()) spawnDouzhi(pickRewardDroneType());
         // 叮咚鸡：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
       } else if (levelFlow.level < levelFlow.prevLevel) {

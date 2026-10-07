@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DARKHAND, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, PRESSURE_W, PULSE_MATRIX, resolveBossHp, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ELITES, eliteHpOf, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, poemHpOf, PRESSURE_W, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -142,13 +142,6 @@
     }
     // 真我：暴风之眼技能2 召唤的大型龙卷血量 6000（具象基准 3600）
     if (type === 'tornado' && isRealme()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
-    // 诗篇：脉冲矩阵血量 1000（具象基准 800）
-    if (type === 'pulseMatrix' && isPoem()) e.hp = e.maxHp = 1000;
-    // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
-    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）
-    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss') {
-      e.hp = e.maxHp = TEST_HP;
-    }
     // 2类变体移动数据：入位速度 / 冲锋基准（冲锋 = charge + (关卡-1)×5）与前锋停留线（y 200~240 逐架随机；
     // 2*7 经 opts.holdY 传入"全波统一基准 − 出生偏移"的差异化值 → 行程相等、同时到位、阵型保持；幽暮走独立状态机不适用）
     if (type === 'striker' && variant) {
@@ -222,6 +215,16 @@
     }
     // 3/4 类普通敌人：初始技能序号随机（释放队列任意起点起始）
     if (type === 'gunship' || type === 'capital') e.pattern = (Math.random() * 4) | 0;
+    // 诗篇难度：全敌人血量按 POEM_HP 表绝对值覆盖（不经 enemyHpMul 乘区；4S 精英由黑暗之手血量派生、BOSS 走 hpByDiff.poem，不在此处理）
+    if (isPoem()) {
+      const ph = poemHpOf(type, variant ? variant.id : null, opts.behavior);
+      if (ph != null) e.hp = e.maxHp = ph;
+    }
+    // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
+    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）；置于诗篇血量之后以保证测试血量优先
+    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss') {
+      e.hp = e.maxHp = TEST_HP;
+    }
     enemies.push(e);
     return e;
   }
@@ -896,7 +899,7 @@
     return e;
   }
 
-  // 4F 敌人：黑暗之手麾下四精英（狂笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，2026-09-30 实装）——
+  // 4S 敌人：黑暗之手麾下四精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，2026-09-30 实装）——
   // 共用移动骨架：顶部入场（随机水平位）指数减速到停留点（v = min(entrySpeed, k×剩余距离)，逐帧连续无 snap）
   // → 驻留悬停小幅摆动（sin 项 t=0 偏移 0 + 幅度缓入）→ dwell 秒后加速下压离场（挑战模式传 1e9 永驻）。
   // 技能循环（首个随机、之后固定两技 1↔2 轮换）与技能内移动（朴穿刺 / 辛横移）
@@ -905,16 +908,17 @@
     const g = ELITES;
     const tc = g[type];
     const stayX = CANVAS_W * rand(g.stayXMargin, 1 - g.stayXMargin);
-    // 停留高度带：机型级覆盖（韩希先/夏勇固定屏高 50%——2026-10-02 用户定稿；其余用公共 14%~30% 带）
+    // 停留高度带：机型级覆盖（朴/韩/辛固定屏高 40%——2026-10-04 用户定稿韩/辛与朴对齐；夏勇 45%；其余用公共 14%~30% 带）
     const stayY = CANVAS_H * rand(
       tc.stayTopPct != null ? tc.stayTopPct : g.stayTopPct,
       tc.stayBotPct != null ? tc.stayBotPct : g.stayBotPct,
     );
     const e = makeEnemy(type, stayX, -70, {});
-    // 四精英血量 = 黑暗之手当前难度血量 × 继承比（2026-10-03 用户定稿：夏勇 25%、朴/韩/辛 20%——原统一 1/4 作废。
-    // 夏勇：虚象 10000 / 具象 12000 / 真我 17500 / 诗篇 25000；其余三名：虚象 8000 / 具象 9600 / 真我 14000 / 诗篇 20000。
+    // 四精英血量 = 机型级 hpByDiff 按难度取值（2026-10-04 用户定稿：四精英独立四难度血量，
+    // 取代原「黑暗之手血量 × 继承比」派生；取值入口 eliteHpOf，与图鉴展示同源。
+    // 朴 6000/9000/12000/15000 · 韩 8000/10000/15000/20000 · 夏 10000/12000/18000/25000 · 辛 8000/10000/15000/20000。
     // 覆盖 makeEnemy 默认表值，黑暗之手召唤与图鉴挑战两条入场路径统一生效）
-    e.hp = e.maxHp = Math.round(resolveBossHp(DARKHAND) * (type === 'xiayong' ? 0.25 : 0.2));
+    e.hp = e.maxHp = eliteHpOf(type);
     e.elPhase = 0;             // 0=入场 1=驻留 2=离场（10+ 为技能内移动相位，见 06-enemy）
     e.elStay = { x: stayX, y: stayY };
     e.elSpd = 0;               // 入场/离场当前速度（相位内积分）
@@ -1033,6 +1037,16 @@
     e.mistI = 1;       // 黑雾强度：入场时即为 1，到位后 ~1.5s 内逐渐消散，退场时再起（见 updateEnemies / drawFashiArrayBody）
     e.summonTimer = FASHI_ARRAY.summonFirst;      // 首次召唤倒计时（2.5s；后续每 5s，见 updateEnemyFire）
     e.summonFlash = 0; // 召唤红光闪动剩余时长
+    return e;
+  }
+
+  // 诗篇级 4B：战争矩阵（2026-10-03 占位待设计）——矩阵类敌人的诗篇级上位，机制/数值/外观待定。
+  // 占位行为：入场下降到屏幕上方 20%~30% 悬停区后永驻场（不攻击、不召唤）；专属移动/开火/绘制待实装。
+  function spawnWarMatrix() {
+    const e = makeEnemy('warMatrix', rand(120, CANVAS_W - 120), -60, {
+      hoverY: rand(CANVAS_H * 0.20, CANVAS_H * 0.30),
+      holdTimer: 1e9,   // 占位：永驻场，机制待设计
+    });
     return e;
   }
 
@@ -1394,8 +1408,8 @@
       case 'hanxixian':
       case 'xiayong':
       case 'xinguodong': {
-        const el = spawnEliteMinion(ch.type, 1e9);   // 4F 精英：减速入场 → 驻留技能循环（首个随机、之后固定轮换）；挑战模式永驻场（dwell 传 1e9 不离场）
-        el.hp = el.maxHp = 60000;   // 测试页 4F 精英血量固定 6w（2026-10-03 用户定稿；对局内黑暗之手召唤仍按 DARKHAND×25%/×20%——夏勇/其余三名）
+        const el = spawnEliteMinion(ch.type, 1e9);   // 4S 精英：减速入场 → 驻留技能循环（首个随机、之后固定轮换）；挑战模式永驻场（dwell 传 1e9 不离场）
+        el.hp = el.maxHp = 60000;   // 测试页 4S 精英血量固定 6w（2026-10-03 用户定稿；对局内黑暗之手召唤仍按 eliteHpOf 分难度表）
         break;
       }
       case 'fashiMatrix':
@@ -1406,6 +1420,9 @@
         e.holdTimer = 1e9;
         break;
       }
+      case 'warMatrix':
+        spawnWarMatrix();   // 战争矩阵（占位）：入场悬停永驻场，机制待设计
+        break;
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
         break;
@@ -1489,7 +1506,7 @@
     capitalMaxWait, SPECIAL3_POOL, special3Weight, spawnWave, WAVE_FORMATIONS, pickFormation,
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
-    spawnFashiArray, spawnCapitalSlot,
+    spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, enemyFrostZoneMoveMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,

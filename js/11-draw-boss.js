@@ -1994,22 +1994,43 @@
       // 黑暗之手血条（2026-10-03 用户定稿：测试2 D2 四连爪痕方案）——黑条上四道爪痕撕口，
       // 每道撕口精准落在连携召唤血量阈值（80/60/40/20%）上，血量白热前线划过撕口 = 该精英
       // 被召唤、撕口随之迸亮常驻（「每个爪痕召唤一个敌人」）。登场 = 黑条浮现 → 爪痕连撕 ×4
-      //（按召唤顺序自右向左）→ 红芯自左灌入。旧日之歌血条（幽紫→猩红→金橙）保持原路径不变。
+      //（按召唤顺序自右向左；2026-10-04 提速 +100% 并提前至展开期内起砍）→ 展开完成瞬间满格填充。
+      // 旧日之歌血条（幽紫→猩红→金橙）保持原路径不变。
       const bw = 360, bh = 13;
       const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
       const x0 = cx - bw / 2, x1 = cx + bw / 2;
       const easeO = (p) => 1 - Math.pow(1 - p, 3);
       const ths = [0.8, 0.6, 0.4, 0.2];                  // 连携召唤阈值（召唤顺序）
       const gashXs = ths.map((t) => x0 + bw * t);        // 撕口位置：自右向左 80 → 60 → 40 → 20%
-      const slashT = (k) => 0.20 + k * 0.26;             // 第 k 道爪痕撕下时刻（0.26s 间隔保证每道撕痕动画可感知）
-      const openT = (k) => slashT(k) + 0.16;             // 撕口裂开时刻
+      const slashT = (k) => (0.20 + k * 0.26) / 2;       // 第 k 道爪痕撕下时刻（2026-10-04 提速 +100%：起砍 0.10s 落在血条展开期内、间隔 0.13s；须与 05-boss dhSlashN 排程严格对齐）
+      const openT = (k) => slashT(k) + 0.08;             // 撕口裂开时刻
       const bt = e.barT;
       const slabA = clamp(bt / 0.12, 0, 1);              // 黑条浮现
       const flash = 1 - clamp(bt / 0.25, 0, 1);          // 登场红光爆闪（收敛：过强会罩出血条一圈红晕像 bug）
-      const floodP = easeO(clamp((bt - 1.15) / 0.35, 0, 1));   // 红芯灌入（末道撕完 1.14s 后开始）
+      const floodP = bt >= 0.30 ? 1 : 0;                 // 血量填充：展开完成瞬间满格（2026-10-04 用户定稿，不再渐入灌芯；灌入前沿亮线随之移除）
       const cutN = ths.filter((t, k) => bt >= openT(k)).length;
       const ratio = clamp(e.hp / e.maxHp, 0, 1);
       const trail = Math.max(ratio, clamp((e.hpTrail != null ? e.hpTrail : e.hp) / e.maxHp, 0, 1));
+      // —— 登场空间变换（2026-10-03 用户定稿）：先「中心 → 两边」横向展开（0.30s easeOut）；
+      // 每道爪刃砍中血条瞬间叠加大幅颤动（高频位移）+ 错切（空间扭曲感）+ 纵向冲击脉冲，0.25s 平方衰减（2026-10-04 随整体提速减半）——
+      let impact = 0, impactK = 0;
+      const IMP_DUR = 0.25;
+      for (let k = 0; k < 4; k++) {
+        const q = bt >= slashT(k) ? clamp(1 - (bt - slashT(k)) / IMP_DUR, 0, 1) : 0;
+        if (q > impact) { impact = q; impactK = k; }
+      }
+      const trem = impact * impact;
+      const expand = easeO(clamp(bt / 0.30, 0, 1));
+      const sxp = Math.max(expand, 1e-4);                          // 横向展开缩放（≈0 时禁零矩阵）
+      const jdiv = Math.max(expand, 0.5);                          // 颤动位移除数（展开早期防除出大跳）
+      const jx = Math.sin(state.time * 67 + impactK * 2.1) * 4.2 * trem;
+      const jy = Math.cos(state.time * 83 + impactK * 1.3) * 2.4 * trem;
+      const skew = Math.sin(state.time * 53 + impactK * 1.7) * 0.032 * trem;
+      const syp = 1 + 0.09 * trem;                                 // 纵向冲击脉冲
+      ctx.save();
+      ctx.translate(cx, mid);
+      ctx.transform(sxp, 0, skew, syp, jx / jdiv, jy / syp);       // 绕血条中心缩放/错切/颤动
+      ctx.translate(-cx, -mid);
       // 六边条体 - 已撕开爪痕斜带（上缘入刀、左斜 8px、宽 4px）的 evenodd 裁剪
       const clawClip = () => {
         ctx.beginPath();
@@ -2037,9 +2058,11 @@
       ctx.strokeStyle = `rgba(224, 52, 48, ${Math.min(1, 0.5 + flash * 0.3).toFixed(3)})`;
       ctx.lineWidth = 1.6;
       clawClip();
-      ctx.stroke('evenodd');
+      ctx.stroke();   // stroke() 无 fillRule 参数（仅 fill/clip 接受 'evenodd'）——旧写法每帧抛
+                      // TypeError 致 render 在血条之后整体中断（受击红晕等屏幕特效不绘制，2026-10-03 修复）
       ctx.shadowBlur = 0;
-      // 内部：白色余像 → 血量（红芯灌入门控）→ 白热前线 → 高光 → 刻度 → 黑红罩染
+      // 内部：白色余像 → 血量（红芯灌入门控）→ 白热前线 → 高光 → 黑红罩染（每 10% 刻度线已按
+      // 2026-10-03 用户定稿移除——四道爪痕撕口本身即血量标识）
       ctx.save();
       clawClip();
       ctx.clip('evenodd');
@@ -2054,12 +2077,6 @@
         hg.addColorStop(0, '#7a0d18'); hg.addColorStop(0.35, '#c01830'); hg.addColorStop(1, '#ff5a4e');
         ctx.fillStyle = hg;
         ctx.fillRect(x0, top + 1.2, fillW, bh - 2.4);
-        if (floodP < 1) {                    // 灌入前沿亮线
-          ctx.fillStyle = 'rgba(255, 217, 200, 0.9)';
-          ctx.shadowColor = '#ff4642'; ctx.shadowBlur = 8;
-          ctx.fillRect(x0 + fillW - 1.5, top + 1.2, 3, bh - 2.4);
-          ctx.shadowBlur = 0;
-        }
       }
       if (floodP >= 1 && ratio > 0.005 && ratio < 1) {   // 白热前线（血量前端）
         ctx.fillStyle = 'rgba(255, 226, 220, 0.9)';
@@ -2069,8 +2086,6 @@
       }
       ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
       ctx.fillRect(x0, top + 1.2, fillW, 2.5);
-      ctx.fillStyle = 'rgba(10, 2, 6, 0.55)';
-      for (let i = 1; i < 10; i++) ctx.fillRect(x0 + (x1 - x0) * i / 10, top + 1.2, 1, bh - 2.4);
       const tint = ctx.createLinearGradient(0, top, 0, bot);
       tint.addColorStop(0, 'rgba(224, 40, 40, 0.26)');
       tint.addColorStop(0.55, 'rgba(224, 40, 40, 0.05)');
@@ -2096,7 +2111,7 @@
       }
       // 撕裂瞬间：亮痕划过（拉长增强）+ 碎屑迸开（barT 驱动、无状态）
       for (let k = 0; k < 4; k++) {
-        const sp = clamp((bt - slashT(k)) / 0.16, 0, 1);
+        const sp = clamp((bt - slashT(k)) / 0.08, 0, 1);
         if (sp > 0 && sp < 1) {
           const gx = gashXs[k];
           ctx.save();
@@ -2118,7 +2133,7 @@
           ctx.shadowBlur = 0;
           ctx.restore();
         }
-        const tp = clamp((bt - openT(k)) / 0.4, 0, 1);
+        const tp = clamp((bt - openT(k)) / 0.2, 0, 1);
         if (tp > 0 && tp < 1) {
           const gx = gashXs[k];
           for (let j = 0; j < 4; j++) {
@@ -2133,6 +2148,31 @@
           }
         }
       }
+      // 爪刃命中瞬间的空间波动：以撕口为中心扩散的扁椭圆冲击波（红辉外环 + 白热内芯双层，
+      // 随 impact 同步衰减；与高频颤动/错切/逻辑层 shake(11) 共同构成「大幅空间波动」，2026-10-03 用户定稿）
+      for (let k = 0; k < 4; k++) {
+        const p = (bt - slashT(k)) / IMP_DUR;
+        if (p > 0 && p < 1) {
+          const gx = gashXs[k];
+          const R = 8 + easeO(p) * 50;
+          const a = 1 - p;
+          ctx.save();
+          ctx.strokeStyle = `rgba(255, 90, 74, ${(a * 0.8).toFixed(3)})`;
+          ctx.lineWidth = 1 + 3 * a;
+          ctx.shadowColor = '#ff4642'; ctx.shadowBlur = 12 * a;
+          ctx.beginPath();
+          ctx.ellipse(gx, mid, R, R * 0.6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(255, 240, 232, ${(a * 0.75).toFixed(3)})`;
+          ctx.lineWidth = 0.5 + 1.4 * a;
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.ellipse(gx, mid, R * 0.7, R * 0.42, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore();   // 结束「中心展开 + 撕裂空间变换」外层（名称文字保持屏幕坐标不参与）
       // 名称与数值（黑条浮现后 0.55s 淡入——对齐旧日之歌 0.45s 口径，勿等灌入完成）
       const txtA = clamp((e.barT - 0.55) / 0.35, 0, 1);
       if (txtA > 0.01) {
@@ -2599,7 +2639,12 @@
   // 黑暗之手红色饰条掩码（2026-10-02 用户定稿「机翼/机体红色加红白流动特效」）：惰性烘焙一次——
   // 逐像素检测素材红色（红显著高于绿蓝；灰黑装甲 r≈g≈b 不命中），软阈值按红优势给 alpha，生成白描红区掩码。
   // smoke 无头桩 naturalWidth 为 undefined → 门控跳过，不执行像素代码
-  let dhRedMask = null, dhFlowTmp = null;
+  // 性能修复（2026-10-03）：战斗段每帧在 1536×1456 全分辨率上做掩码合成（清屏 + 约 14 条渐变填充
+  // + destination-in 掩码 + 高画质缩放上屏），叠加本体每帧 ctx.filter，帧时间可达数百毫秒——
+  // 主循环 dt 钳制 0.033 导致游戏时间慢放（血条定格黑底撕痕、受击红晕常驻、蛋挞生长卡住）。
+  // 掩码源保留全分辨率（一次性 getImageData 精度），逐帧流光改在 2× 显示尺寸小画布合成（像素量约 1/5）。
+  const DH_BAKE_SCALE = 2;
+  let dhRedMask = null, dhMaskSmall = null, dhFlowTmp = null;
   function ensureDhRedMask() {
     const img = darkhandImg;
     if (dhRedMask || !img || !img.naturalWidth) return;
@@ -2615,14 +2660,21 @@
       px[i + 3] = Math.min(px[i + 3], m * 255);
     }
     c0.putImageData(d, 0, 0);
+    // 2× 显示尺寸掩码 + 同尺寸流光工作画布（逐帧合成只在小画布进行，上屏 2:1 缩放宽裕）
+    const W2 = Math.round(DARKHAND.w * DH_BAKE_SCALE), H2 = Math.round(DARKHAND.h * DH_BAKE_SCALE);
+    dhMaskSmall = document.createElement('canvas');
+    dhMaskSmall.width = W2; dhMaskSmall.height = H2;
+    const cs = dhMaskSmall.getContext('2d');
+    cs.imageSmoothingEnabled = true; cs.imageSmoothingQuality = 'high';
+    cs.drawImage(dhRedMask, 0, 0, W2, H2);
     dhFlowTmp = document.createElement('canvas');
-    dhFlowTmp.width = dhRedMask.width; dhFlowTmp.height = dhRedMask.height;
+    dhFlowTmp.width = W2; dhFlowTmp.height = H2;
   }
   // 红白流光层（每帧合成）：tmp 画斜向红白条纹（白热前锋 + 红尾，随相位向机头方向流动），
   // destination-in 用红区掩码裁剪 → 只剩红色饰条上的流光；主画布 lighter 叠加
   function paintDhRedFlow(t) {
     const c0 = dhFlowTmp.getContext('2d');
-    const W0 = dhRedMask.width, H0 = dhRedMask.height;
+    const W0 = dhFlowTmp.width, H0 = dhFlowTmp.height;   // 2× 显示尺寸小画布（2026-10-03 性能修复，原为素材全分辨率）
     c0.setTransform(1, 0, 0, 1, 0, 0);
     c0.globalCompositeOperation = 'source-over';
     c0.clearRect(0, 0, W0, H0);
@@ -2642,8 +2694,35 @@
     }
     c0.restore();
     c0.globalCompositeOperation = 'destination-in';
-    c0.drawImage(dhRedMask, 0, 0);
+    c0.drawImage(dhMaskSmall, 0, 0);
     c0.globalCompositeOperation = 'source-over';
+  }
+
+  // 本体三种形态一次性预烘焙（2026-10-03 性能修复）：real 提亮/对比/饱和、shadow 纯黑剪影、
+  // ghost 白剪影+四向红边，原先都在逐帧 drawImage 上挂 ctx.filter——对 1536×1456 源图每帧跑
+  // Skia 滤镜 + 4 倍高画质缩放是战斗段卡顿的另一元凶。烘焙到 2× 显示尺寸（750×584）后逐帧只做
+  // 普通 drawImage；ghost 的 2px 红边按烘焙倍率放大到 4px，上屏缩放后视觉等宽。
+  // smoke 无头桩 naturalWidth 缺失时三个烘焙产物均为 null，drawBody 回退原 filter 路径
+  let dhBakeReal = null, dhBakeShadow = null, dhBakeGhost = null;
+  function ensureDhBakes() {
+    const img = darkhandImg;
+    if (dhBakeReal || !img || !img.naturalWidth) return;
+    const W = Math.round(DARKHAND.w * DH_BAKE_SCALE), H = Math.round(DARKHAND.h * DH_BAKE_SCALE);
+    const bake = (filter) => {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      if (filter) g.filter = filter;
+      g.drawImage(img, 0, 0, W, H);
+      return c;
+    };
+    const edge = 2 * DH_BAKE_SCALE;   // 目标坐标 2px 红边 × 烘焙倍率
+    dhBakeReal = bake('brightness(1.06) contrast(1.15) saturate(1.08)');
+    dhBakeShadow = bake('brightness(0)');
+    dhBakeGhost = bake('brightness(0) invert(1)'
+      + ` drop-shadow(${edge}px 0 0 rgba(255,42,64,0.9)) drop-shadow(-${edge}px 0 0 rgba(255,42,64,0.9))`
+      + ` drop-shadow(0 ${edge}px 0 rgba(255,42,64,0.9)) drop-shadow(0 -${edge}px 0 rgba(255,42,64,0.9))`);
   }
   // 黑暗之手引擎尾焰（2026-10-02 用户定稿）：机尾（屏上方中央梯形装甲）朝上喷焰——
   // 黑红配色（焰根暗红 → 深红 → 近黑淡出，lighter 叠加下暗红近黑自然消隐于深色太空底）+ 亮红内芯，
@@ -2702,12 +2781,19 @@
       // real：素材近黑 → 近原色直出（2026-10-02 用户定稿：装甲压暗贴合四精英暗黑风——精英素材原色直出无提亮，
       // 原 brightness 1.6 提亮使装甲发亮偏离暗黑感；现 1.06 轻提亮保细节 + 对比拉高沉暗部。
       // 黑紫染罩已按用户指令移除——视觉似补丁，改由素材原色 + 周身暗红辉光表达暗黑气质（2026-10-03 辉光紫改红））
-      ctx.filter = mode === 'shadow' ? 'brightness(0)'
-        : mode === 'ghost' ? 'brightness(0) invert(1) drop-shadow(2px 0 0 rgba(255,42,64,0.9)) drop-shadow(-2px 0 0 rgba(255,42,64,0.9)) drop-shadow(0 2px 0 rgba(255,42,64,0.9)) drop-shadow(0 -2px 0 rgba(255,42,64,0.9))'
-        : 'brightness(1.06) contrast(1.15) saturate(1.08)';
+      ensureDhBakes();   // 惰性预烘焙（2026-10-03 性能修复：静态滤镜一次性烘焙，逐帧不挂 ctx.filter）
+      const baked = mode === 'shadow' ? dhBakeShadow : mode === 'ghost' ? dhBakeGhost : dhBakeReal;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, -e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+      if (baked) {
+        ctx.drawImage(baked, -e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+      } else {
+        // 烘焙产物未就绪（无头桩/极端时序）：回退逐帧 filter 旧路径
+        ctx.filter = mode === 'shadow' ? 'brightness(0)'
+          : mode === 'ghost' ? 'brightness(0) invert(1) drop-shadow(2px 0 0 rgba(255,42,64,0.9)) drop-shadow(-2px 0 0 rgba(255,42,64,0.9)) drop-shadow(0 2px 0 rgba(255,42,64,0.9)) drop-shadow(0 -2px 0 rgba(255,42,64,0.9))'
+          : 'brightness(1.06) contrast(1.15) saturate(1.08)';
+        ctx.drawImage(img, -e.w / 2 * scale, -e.h / 2 * scale, e.w * scale, e.h * scale);
+      }
       ctx.restore();
     };
 
@@ -2897,7 +2983,7 @@
       const c4 = DARKHAND.s4, s = e.skill;
       if (s.st === 'warn') {
         for (const gm of c4.groups[s.gi]) {
-          const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h;
+          const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);   // oy：第二轮双爪初始点上移 50px（2026-10-03，与 05-boss 发射点同口径）
           // 预警线长度 = 沿朝向延伸至出屏（2026-10-03 四轮定稿：同 dhBeamSegments 出屏口径——前两轮下达屏底、
           // 第三轮斜出侧缘，+30 出屏余量与光束折线一致），端点光斑随线尾移动
           let wl = 190;
@@ -3218,27 +3304,6 @@
     ctx.fillRect(x, y + h, w, 2);
   }
 
-  // 黑暗之手警报杠：黑红渐变流动（暗底 + 两道流动红带 + 上下红亮边；2026-10-03 用户定稿由黑紫改黑红）
-  // dir 决定红带流向、ph 相位错开 → 双杠明暗轮换（见 drawBossWarning darkhand 分支）
-  function drawWarnBarDh(x, y, w, h, dir, ph) {
-    ctx.fillStyle = 'rgba(12, 2, 5, 0.85)';
-    ctx.fillRect(x, y, w, h);
-    for (let k = 0; k < 2; k++) {
-      const span = w + 260;
-      const off = ((ph + k * 0.5) % 1) * span;
-      const gx = dir > 0 ? x + off - 130 : x + span - off - 130;
-      const g = ctx.createLinearGradient(gx, 0, gx + 260, 0);
-      g.addColorStop(0, 'rgba(140, 16, 26, 0)');
-      g.addColorStop(0.5, `rgba(200, 36, 44, ${(0.45 + 0.3 * Math.sin(ph * 6.283 + k * 3)).toFixed(3)})`);
-      g.addColorStop(1, 'rgba(140, 16, 26, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, w, h);
-    }
-    ctx.fillStyle = 'rgba(255, 96, 88, 0.85)';
-    ctx.fillRect(x, y - 2, w, 2);
-    ctx.fillRect(x, y + h, w, 2);
-  }
-
   // 黑暗之手红色竖向预警带（sweep 掠过路径预告）：场中央渐变红主体（顶部浓 → 底部淡）+ 两条竖向亮缘闪烁。
   // 样式恒定：渐变锚固定为 [0, bottomY]（警报延展段 bottomY = 生长端；sweep 段 bottomY = 屏底），
   // 剩余段与全带样式完全一致（2026-10-01 用户反馈：剩余段不得另起渐变浓度）。
@@ -3252,7 +3317,10 @@
     ctx.globalAlpha = 0.30 * (0.75 + 0.25 * Math.sin(state.time * 9));
     const g = ctx.createLinearGradient(0, 0, 0, bottomY);
     g.addColorStop(0, 'rgba(255, 30, 60, 0.85)');
-    g.addColorStop(1, 'rgba(255, 30, 60, 0.12)');
+    g.addColorStop(0.6, 'rgba(255, 30, 60, 0.28)');
+    g.addColorStop(0.85, 'rgba(255, 42, 68, 0.46)');
+    g.addColorStop(0.95, 'rgba(255, 54, 82, 0.72)');
+    g.addColorStop(1, 'rgba(255, 62, 90, 0.85)');   // 前方以渐变收红（2026-10-04 用户定稿：取消实心前缘亮线——纯渐变变红，最前端无硬边条带）
     ctx.fillStyle = g;
     ctx.fillRect(CANVAS_W / 2 - halfW, topY, halfW * 2, hgt);
     // 两条竖向亮缘（闪烁）
@@ -3293,7 +3361,7 @@
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    const isDh = bossFlow.pending === 'darkhand';   // 黑暗之手：黑红警报变体（杠/区域/字/星点，2026-10-03 用户定稿由黑紫改黑红）+ 中段红色竖向预警
+    const isDh = bossFlow.pending === 'darkhand';   // 黑暗之手：仅字体专属变体（深邃黑字/红辉光/星点流字；2026-10-04 用户定稿警报杠/区域回归与其他 BOSS 一致的红色制式，不再有黑红背景变体）+ 中段红色竖向预警
 
     // 黑暗之手：警报中段（提前 0.4s，2026-10-01 用户定稿——警报尚未结束即开始出现）场中央自上而下
     // 延展红色竖向预警带（0.85s 展开至屏底）——预告 sweep 阴影掠过路径；带以恒定 alpha 绘制（不随警报
@@ -3303,45 +3371,24 @@
       if (pw > 0) drawDhWarnStrip(0, CANVAS_H * ease(pw));
     }
 
-    // 左侧偏上横杠从左向右滑入；右侧偏下横杠从右向左滑入（均贯穿全屏）
+    // 左侧偏上横杠从左向右滑入；右侧偏下横杠从右向左滑入（均贯穿全屏）；
+    // 黑暗之手与其他 BOSS 同用标准红色警报杠（2026-10-04 用户定稿：背景配色统一，不再有黑红流动杠变体）
     const bw = CANVAS_W, bh = 16;
     const p = ease(t / slide);
-    if (isDh) {
-      // 黑暗之手：黑红流动杠，双杠相位错开成轮换
-      drawWarnBarDh(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1, state.time * 0.55);
-      drawWarnBarDh(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1, state.time * 0.55 + 0.5);
-    } else {
-      drawWarnBar(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1);
-      drawWarnBar(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1);
-    }
+    drawWarnBar(-bw - 20 + (bw + 20) * p, 296, bw, bh, 1);
+    drawWarnBar(CANVAS_W + 20 - (CANVAS_W + 20) * p, 384, bw, bh, -1);
 
-    // 两杠到位：中间红色区域淡入（半透明 + 描边）
+    // 两杠到位：中间红色区域淡入（半透明 + 描边）；黑暗之手同款式（背景统一红色制式，2026-10-04）
     if (pz > 0) {
-      if (isDh) {
-        // 黑暗之手：黑红渐变区 + 红描边（2026-10-03 用户定稿：由黑紫改黑红，与三精英配色统一；
-        // 静置无流动、暗底衬红调白字）
-        const g = ctx.createLinearGradient(56, 288, 424, 416);
-        g.addColorStop(0, 'rgba(18, 2, 6, 0.88)');
-        g.addColorStop(0.5, 'rgba(112, 16, 24, 0.6)');
-        g.addColorStop(1, 'rgba(18, 2, 6, 0.88)');
-        ctx.globalAlpha = alpha * pz;
-        ctx.fillStyle = g;
-        ctx.fillRect(56, 288, 368, 128);
-        ctx.globalAlpha = alpha * pz * 0.85;
-        ctx.strokeStyle = 'rgba(224, 36, 36, 0.9)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(56, 288, 368, 128);
-      } else {
-        ctx.save();
-        ctx.globalAlpha = alpha * pz * 0.30;
-        ctx.fillStyle = '#e01030';
-        ctx.fillRect(56, 288, 368, 128);
-        ctx.globalAlpha = alpha * pz * 0.85;
-        ctx.strokeStyle = 'rgba(255, 96, 118, 0.9)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(56, 288, 368, 128);
-        ctx.restore();
-      }
+      ctx.save();
+      ctx.globalAlpha = alpha * pz * 0.30;
+      ctx.fillStyle = '#e01030';
+      ctx.fillRect(56, 288, 368, 128);
+      ctx.globalAlpha = alpha * pz * 0.85;
+      ctx.strokeStyle = 'rgba(255, 96, 118, 0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(56, 288, 368, 128);
+      ctx.restore();
     }
 
     // 横杠左侧：Lv 徽标

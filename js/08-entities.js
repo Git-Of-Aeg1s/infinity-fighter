@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, strikerFortressDR, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
@@ -61,11 +61,8 @@
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
     if (e.type === 'hanshuang' && e.hsNoDecel) mul *= (1 - HANSHUANG.entryDR);
-    // 坚垒护卫艇（2类黄色变体）：能量盾减伤 —— 受到的伤害 -20%（诗篇 -35%，见 01-config strikerFortressDR；
-    // 主武器与僚机弹幕均生效；高能爆弹为真实伤害不经此处）
-    if (e.type === 'striker' && e.skill === 'fortress') mul *= 1 - strikerFortressDR();
-    // 黑暗之手：场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时受到的所有伤害 -70%
-    //（主武器/僚机弹幕/斩击；爆弹真实伤害在 07-player useBomb 单独结算同乘；见 01-config DARKHAND.summon）
+    // 黑暗之手：场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时受到的普通伤害 -70%
+    //（主武器/僚机弹幕/斩击；高能爆弹/绷绷炸弹为真实伤害不受此减免、连携精英亦同受爆弹伤害——2026-10-04 用户定稿；见 01-config DARKHAND.summon）
     if (e.type === 'boss' && e.bossId === 'darkhand' && dhGuardActive()) mul *= 1 - DARKHAND.summon.guardDR;
     // 铜皮夏勇·牛角减伤（被动常驻，2026-10-03 用户定稿）：命中点落在两翼折角（牛角）头部时 ×0.5——
     // 主炮/僚机弹幕传弹体坐标判定；空间斩击等大范围伤害不传命中点、不判部位（见 01-config xiayongHornDmgMul）
@@ -175,11 +172,11 @@
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // mainPierce 穿透弱化：无衰减率弹（副武器·极夜流光激光）穿透后伤害减半（b.weakened 标记）
-          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4F（四精英）敌人伤害 +80%
+          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +80%
           // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
           // 奖励道具·不再陵落：螺旋飞剑射出方向在水平线以下（lowArc）——对 BOSS 仅 50% 伤害
           let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
-            * (b.mainShot && e.type !== 'boss' && enemyGrade(e.type) !== '4F' ? CHAOS_SMALL_DMG_MUL : 1)
+            * (b.mainShot && e.type !== 'boss' && enemyGrade(e.type) !== '4S' ? CHAOS_SMALL_DMG_MUL : 1)
             * rewardOutMul();
           if (b.lowArc && e.type === 'boss') dmg *= 0.5;
           if (e.barrier > 0) {
@@ -218,6 +215,20 @@
       // 位置 / 巨大蛋挞自旋 / 弧线 / 寿命全部停止推进，战场画面定格。根因：14-main idle/gameover 分支的
       // updateBullets 演示弹道共用路径会把场上残留敌弹（蛋挞）继续推下屏
       if (state.mode === 'gameover') break;
+      // 蛋挞被依的镰刀斩中（2026-10-04 用户定稿）：颤动 hitShudderT → 碎裂（迸散粒子一次）→ 渐隐 hitFadeT → 移除；
+      // 全程冻结移动 / 自旋 / 碰撞（continue 跳过本帧全部推进；颤动抖动与渐隐 alpha 由渲染端按 tartHitT 取值）
+      if (b.tart && b.tartHitT != null) {
+        b.tartHitT += dt;
+        if (b.tartHitT < DARKHAND.s3.hitShudderT) continue;   // 颤动期：位置冻结
+        if (!b.tartShattered) {   // 碎裂瞬间：迸散蛋挞碎屑（皮 + 芯双色）
+          b.tartShattered = true;
+          spawnParticles(b.x, b.y, '#c9a15a', 10, 200);
+          spawnParticles(b.x, b.y, '#5a2d3a', 8, 240);
+        }
+        if (b.tartHitT < DARKHAND.s3.hitShudderT + DARKHAND.s3.hitFadeT) continue;   // 渐隐期
+        eBullets.splice(i, 1);
+        continue;
+      }
       if (b.ax) b.vx += b.ax * dt;   // 弧线弹（1/4 双曲线弹道）
       if (b.tartSpin != null) {
         b.tartSpin += (b.tartSpinSpd || 0) * dt;   // 巨大蛋挞（黑暗之手技能3）：持续自旋相位（渲染用，见 10-draw-world）
@@ -419,7 +430,7 @@
         continue;
       }
       // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效；
-      // 蛋挞弹（b.tart：巨大蛋挞 tartSpin / 登场长条蛋挞）豁免：白盾对其无任何影响——不截断、不吸收（2026-10-01 用户定稿，直接穿过）
+      // 蛋挞弹（b.tart：巨大蛋挞 tartSpin）豁免——白盾对其无任何影响（不截断不吸收，2026-10-04 二次定稿恢复原设定）
       if (bulwarkActive() && !b.tart) {
         if (b.laser) {
           // 激光：截断裁切——不 splice，继续按原逻辑生长/推进；本帧计算 clipLen（无相交置 null），渲染与命中判定按此截断
@@ -578,6 +589,9 @@
           hitPlayer = Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < PLAYER_CFG.hitRadius + b.r;
         }
       }
+      // 巨大蛋挞成型阶段免伤（2026-10-04 用户定稿：仅虚象/具象——生成时打 tartGrowNoHit 标志）：
+      // 生长未完成 → 命中无效（不伤害、不消失，弹继续前进成型后再正常判定）
+      if (hitPlayer && b.tartGrowNoHit && b.tartGrow < b.tartGrowDur) hitPlayer = false;
       if (hitPlayer) {
         // 伤害来源标记（驾驶员效果挂点）：暴风之眼本体弹幕 / 其召唤的大型龙卷风弹 → src 'storm'
         const src = (b.owner && (b.owner.type === 'tornado' ||
@@ -589,7 +603,8 @@
         const tookHit = damagePlayer(b.dmg * (bossOwned ? 1 : enemyDmgMul()), 1, false, false, src, achvCause);
         // 成就：饿啊——被紫电侧翼艇亡语弹击中计数（仅实际造成伤害的命中）
         if (tookHit && b.owner && b.owner.deathShot) achvZidianHit();
-        if (!b.laser) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
+        // 蛋挞弹（b.tart）穿透：击中我方战机不消失、继续前进（2026-10-04 用户定稿，与白盾豁免同口径）
+        if (!b.laser && !b.tart) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
       }
     }
   }

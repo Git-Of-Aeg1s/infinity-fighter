@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(36 名) 07-player(45 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(86 名) 13-encyclopedia(18 名) 14-main(34 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(36 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(93 名) 13-encyclopedia(18 名) 14-main(36 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -59,6 +59,7 @@
   const startBtn = document.getElementById('startBtn');
   const musicToggle = document.getElementById('musicToggle');
   const fpsMeter = document.getElementById('fpsMeter');   // 音量键下方 FPS 读数（14-main 主循环刷新，纯展示）
+  const padIndicator = document.getElementById('padIndicator');   // 手柄连接指示（FPS 读数正下方小图标；12-ui updateHUD 按 gamepad.connected 显隐）
   // 主菜单（独立页面态）：idle 全屏显示、进入战斗隐藏；卡片构建与显隐见 12-ui
   const menuScreen = document.getElementById('menuScreen');
   const menuStartBtn = document.getElementById('menuStartBtn');
@@ -303,6 +304,74 @@
   // （原 14-main 顶层变量移入：keys 是跨模块共享的输入状态，留在 14-main 会造成 07↔14 循环依赖，
   //   且 14-main 含启动期可执行代码，循环窗口内求值会引发 TDZ 运行时错误）
   const keys = Object.create(null);
+
+  // 手柄输入状态（Gamepad API）：14-main 主循环每帧 pollGamepad() 写入，07-player（摇杆移动）/ 12-ui（焦点导航 / 连接图标）读取。
+  // 顶层名取 gamepad（不取 pad）：避免与 02-achievements / 09-draw-ships / 07-player 既有函数局部变量 pad 文本碰撞
+  // （check-names 完整性检查按词匹配，局部同名变量会被误判为外部引用）。
+  // btn / prev 为按下位表（键名见 pollGamepad 内注释：a/b/x/y/lb/rb/lt/rt/start/up/down/left/right），
+  // prev 是上一帧快照——边沿判定统一走 padPressed()；无手柄 / 无 API 环境（含 smoke 无头）字段保持零值，读取方无需判空
+  const gamepad = {
+    connected: false,   // 当前帧是否有已连接手柄（每帧随轮询刷新）
+    index: -1,          // 采用的手柄在 getGamepads() 列表中的序号（多手柄取第一只在场者）
+    ax: 0, ay: 0,       // 左摇杆归一化向量：径向死区处理，模长 ≤1（模拟量，07-player 直接线性乘移速）
+    btn: Object.create(null),   // 本帧按下位表
+    prev: Object.create(null),  // 上一帧按下位表（边沿检测基线）
+  };
+  // 摇杆径向死区：多数手柄中位存在 ±0.03~0.08 残留漂移，0.18 起步可靠忽略；
+  // 出死区后 (r-死区)/(1-死区) 线性归一——推杆行程 ↔ 移速线性对应，速度曲线天然连续（无档位切换瞬跳）
+  const PAD_DEADZONE = 0.18;
+
+  // 手柄按键边沿判定：本帧按下且上一帧未按下（14-main 战斗动作 / 12-ui 菜单确认·返回共用）
+  function padPressed(name) { return !!(gamepad.btn[name] && !gamepad.prev[name]); }
+
+  // 手柄轮询：Gamepad API 无轴/按键事件推送（浏览器仅推送连接/断开事件），必须在主循环每帧主动读取。
+  // 无 navigator / 无 getGamepads（Node 无头、旧浏览器、旧版桩环境）时静默空转——对现有链路零影响
+  function pollGamepad() {
+    // 上一帧按下位表滚动为基线（swap 后清空新 btn；手柄中途拔出也保持滚动，重插瞬间不会误报 justPressed）
+    const t = gamepad.prev; gamepad.prev = gamepad.btn; gamepad.btn = t;
+    for (const k in gamepad.btn) delete gamepad.btn[k];
+    let gp = null;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+        const list = navigator.getGamepads();
+        // 优先沿用上次序号（同一手柄序号在 Chrome 稳定）；失效则在列表中重新认领第一只在场手柄
+        if (gamepad.index >= 0 && gamepad.index < list.length && list[gamepad.index] && list[gamepad.index].connected) {
+          gp = list[gamepad.index];
+        } else {
+          gamepad.index = -1;
+          for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].connected) { gp = list[i]; gamepad.index = i; break; }
+          }
+        }
+      }
+    } catch (e) { gp = null; }   // 个别环境 getGamepads 抛安全异常：视同无手柄
+    if (!gp) {
+      gamepad.connected = false;
+      gamepad.ax = 0; gamepad.ay = 0;
+      return;
+    }
+    gamepad.connected = true;
+    // 左摇杆 → 径向死区 + 外圈归一化：输出模长 ≤1 的模拟量（07-player 线性乘移速，键盘/十字键数字回退）
+    let ax = gp.axes && gp.axes.length > 0 ? +gp.axes[0] || 0 : 0;
+    let ay = gp.axes && gp.axes.length > 1 ? +gp.axes[1] || 0 : 0;
+    const r = Math.hypot(ax, ay);
+    if (r < PAD_DEADZONE) { ax = 0; ay = 0; }
+    else if (r > 1) { ax /= r; ay /= r; }   // 个别驱动满推略超 1：归一回 1，防移速超标
+    else { const k = (r - PAD_DEADZONE) / (1 - PAD_DEADZONE) / r; ax *= k; ay *= k; }
+    gamepad.ax = ax; gamepad.ay = ay;
+    // 按键表（W3C Standard Gamepad 标准布局）：0=A 1=B 2=X 3=Y 4=LB 5=RB 6=LT 7=RT 8=Back 9=Start 12~15=十字 上/下/左/右
+    // （LT/RT 为模拟扳机：部分平台 pressed 恒 false，以 value≥0.5 视作按下）
+    if (gp.buttons) {
+      const set = (i, name) => {
+        const b = gp.buttons[i];
+        if (b && (b.pressed || b.value >= 0.5)) gamepad.btn[name] = true;
+      };
+      set(0, 'a'); set(1, 'b'); set(2, 'x'); set(3, 'y');
+      set(4, 'lb'); set(5, 'rb'); set(6, 'lt'); set(7, 'rt');
+      set(9, 'start');
+      set(12, 'up'); set(13, 'down'); set(14, 'left'); set(15, 'right');
+    }
+  }
 
   // ---------- 星空 ----------
   // 星星着色：多数蓝白，少量粉(#FFC0CB)/青(#39C5BB)，与星云雾霭共同营造"青粉丝域"
@@ -632,9 +701,10 @@
     return true;
   }
 
-  // 黑暗之手连携护卫判定：场上存在任意一名黑暗之手召唤的 4F 精英（dhLink 标记，spawnEliteMinion 后打标）时返回 true——
-  // 黑暗之手受到的所有伤害（含爆弹真实伤害）×(1 - DARKHAND.summon.guardDR)。
-  // 结算挂点：08-entities enemyDamageMul（主炮/僚机弹幕/斩击）+ 07-player useBomb（爆弹真实伤害）
+  // 黑暗之手连携护卫判定：场上存在任意一名黑暗之手召唤的 4S 精英（dhLink 标记，spawnEliteMinion 后打标）时返回 true——
+  // 黑暗之手受到的普通伤害（主炮/僚机弹幕/斩击）×(1 - DARKHAND.summon.guardDR)；高能爆弹/绷绷炸弹为
+  // 真实伤害不受此减免且正常波及连携精英（2026-10-04 用户定稿）。
+  // 结算挂点：08-entities enemyDamageMul（主炮/僚机弹幕/斩击）；另见 05-boss updateBossDarkhand（dhGuardActive 用于技能间隔 ×1.2，非减免用途）
   function dhGuardActive() {
     return enemies.some(el => el && el.dhLink && el.hp > 0);
   }
@@ -657,7 +727,7 @@
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, skillGaugeCount, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,
-    musicToggle, fpsMeter, menuScreen, menuStartBtn, titleBar,
+    musicToggle, fpsMeter, padIndicator, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
     wingmanGrid, armorGrid, subGrid, pilotGridMain, pilotGridSub, bossTestRow,
     retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
@@ -667,7 +737,7 @@
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, frostZones, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
     zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, yiScythes, ddjMissiles,
-    slashFx, playerHitFx, phaseFx, keys, STAR_TINTS, initStars, updateStars, drawStars,
+    slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul,

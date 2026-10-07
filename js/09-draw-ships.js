@@ -4259,6 +4259,16 @@
       else drawBaolingWarn(b.tx, b.ty, intensity, b.g ? BAOLING_G.blastR : BAOLING.blastR);
       ctx.save();
       ctx.translate(b.x, b.y);
+      if (b.u) {
+        // 虚幻圆柱弹：筒轴对准飞行方向（冰青顶面端盖朝向锁定目标）——下坠段保持竖直（rot 0 旧观感），
+        // 进入冲刺段后 0.25s smoothstep 平滑转向（仅视觉旋转，不改变运动轨迹；2026-10-04 用户反馈）；
+        // 目标角规范到 (−π, π]，保证从竖直姿态度转最短路径（向左冲刺转 −90° 而非绕行 270°）
+        let tgt = Math.atan2(b.uy, b.ux) + Math.PI / 2;
+        if (tgt > Math.PI) tgt -= Math.PI * 2;
+        const ka = clamp((b.t - (b.dropDur || 0)) / 0.25, 0, 1);
+        const krot = ka * ka * (3 - 2 * ka);
+        ctx.rotate(tgt * krot);
+      }
       if (b.u) paintUnrealBomb(0, 0, 7, 1);
       else if (b.g) paintBaolingGBomb(0, 0, 7, 1);
       else paintBaolingBomb(0, 0, 7, 1);
@@ -4266,47 +4276,115 @@
     }
   }
 
-  // 虚幻寒冷区域：冰蓝半透明圆面（渐入渐出 + 微呼吸）+ 双圈边界 + 间歇浮现的雪花图标（旋转缓转，
-  // 透明度按各自相位正弦明灭——与 updateFrostZones 的随机冰晶粒子共同构成"间歇出现"的雪效）。
+  // 虚幻寒冷区域：样式改为与寒霜冰蓝光圈同款（2026-10-04 用户反馈）——外缘亮的冰圈渐变 + 中心白雾核 +
+  // 自中心喷发的雾团/雾粒 + 外侧虚线霜环 + 霜刺环 + 雪晶环布；渐入渐出（z.t/z.dur）与微呼吸保留。
   // 调用点：10-draw-world（drawBaolingBombs 之前，预警圈/炸弹之下的地面层）
   function drawFrostZones() {
+    const TAU = Math.PI * 2;
+    const prand = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
     for (const z of frostZones) {
       const fadeIn = clamp(z.t / 0.25, 0, 1);
       const fadeOut = clamp((z.dur - z.t) / 0.5, 0, 1);
       const base = Math.min(fadeIn, fadeOut);
-      const breath = 0.85 + Math.sin(state.time * 2 + z.seed) * 0.15;
+      const ar = z.r;   // 世界半径（寒霜光圈在机体局部坐标绘制，此处为世界坐标层直接用区域半径）
       ctx.save();
       ctx.translate(z.x, z.y);
-      // 半透明冰蓝圆面（中心深、边缘浅）
-      const g = ctx.createRadialGradient(0, 0, z.r * 0.1, 0, 0, z.r);
-      g.addColorStop(0, `rgba(120, 175, 255, ${(0.20 * base * breath).toFixed(3)})`);
-      g.addColorStop(0.7, `rgba(90, 140, 240, ${(0.12 * base * breath).toFixed(3)})`);
-      g.addColorStop(1, 'rgba(70, 110, 220, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, z.r, 0, Math.PI * 2); ctx.fill();
-      // 双圈边界（外圈实线 / 内圈虚线旋转，霜环意象）
-      ctx.strokeStyle = `rgba(150, 200, 255, ${(0.55 * base).toFixed(3)})`;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.arc(0, 0, z.r - 1, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = `rgba(190, 225, 255, ${(0.35 * base).toFixed(3)})`;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([7, 9]);
-      ctx.lineDashOffset = -state.time * 16;
-      ctx.beginPath(); ctx.arc(0, 0, z.r * 0.8, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      // 间歇浮现的雪花图标：6 朵按区域相位排布，各自正弦明灭（周期错开）+ 缓慢自转
-      for (let i = 0; i < 6; i++) {
-        const a = z.seed + i * Math.PI / 3;
-        const rr = z.r * (0.3 + (i % 3) * 0.22);
-        const fx = Math.cos(a) * rr, fy = Math.sin(a) * rr;
-        const glow = Math.sin(state.time * 1.6 + z.seed * 2 + i * 1.3);
-        if (glow <= 0.05) continue;
-        ctx.save();
-        ctx.translate(fx, fy);
-        ctx.rotate(state.time * 0.5 + z.seed + i);
-        paintSnowflake(0, 0, 4.5, base * Math.min(1, glow) * 0.9);
-        ctx.restore();
+      ctx.globalAlpha = base * (0.78 + 0.22 * Math.sin(state.time * 2.2 + z.seed));
+      // 主体光环：外缘亮、内部渐透明的径向渐变（冰圈质感，同寒霜）
+      const halo = ctx.createRadialGradient(0, 0, ar * 0.30, 0, 0, ar);
+      halo.addColorStop(0, 'rgba(143, 216, 255, 0)');
+      halo.addColorStop(0.55, 'rgba(143, 216, 255, 0.10)');
+      halo.addColorStop(0.82, 'rgba(170, 226, 255, 0.22)');
+      halo.addColorStop(0.96, 'rgba(224, 246, 255, 0.30)');
+      halo.addColorStop(1, 'rgba(143, 216, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(0, 0, ar, 0, TAU); ctx.fill();
+      // 白色雾气：中心常驻雾核（喷发源头）+ 8 个雾团自中心沿随机方位外扩（错相循环，同寒霜）
+      const coreR = ar * 0.34;
+      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+      core.addColorStop(0, 'rgba(255, 255, 255, 0.20)');
+      core.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(0, 0, coreR, 0, TAU); ctx.fill();
+      for (let k = 0; k < 8; k++) {
+        const cyc = (state.time * 0.20 + k * 0.31 + z.seed) % 1;   // 0→1 循环（各雾团错相，持续喷发）
+        const ma = k * TAU / 8 + k * 1.7 + z.seed + Math.sin(state.time * 0.55 + k * 2.1) * 0.28;
+        const mr = ar * (0.08 + 0.55 * cyc);              // 自中心向外扩散（最远至 0.63R）
+        const mrad = ar * (0.09 + 0.21 * cyc);            // 雾团随扩散逐渐变大
+        const mistA = Math.sin(cyc * Math.PI) * 0.22;     // 中段最浓、首尾淡出
+        const mx = Math.cos(ma) * mr, my = Math.sin(ma) * mr;
+        const mist = ctx.createRadialGradient(mx, my, 0, mx, my, mrad);
+        mist.addColorStop(0, `rgba(255, 255, 255, ${mistA.toFixed(3)})`);
+        mist.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = mist;
+        ctx.beginPath(); ctx.arc(mx, my, mrad, 0, TAU); ctx.fill();
       }
+      // 喷发雾粒层：10 粒确定性伪随机雾粒（方位含区域种子错相；时间驱动外扩+变大，首尾淡出循环再生，同寒霜）
+      for (let k = 0; k < 10; k++) {
+        const ang0 = prand(k * 3 + 1 + z.seed * 7) * TAU;
+        const spd = 0.34 + prand(k * 3 + 2) * 0.30;       // 外扩速度（占半径比例/秒）
+        const off = prand(k * 3 + 3) * 2.6;               // 出生错相
+        const sway = (prand(k * 7 + 4) - 0.5) * 1.1;      // 飞行途中方位缓慢摆动幅度
+        const life = 1.7 + prand(k * 7 + 5) * 1.0;        // 单次喷发存活时长（s）
+        const tt = (state.time + off) % life;
+        const pr = tt / life;
+        const fade = Math.sin(pr * Math.PI);              // 中段最浓、出生/消散淡出
+        const ma = ang0 + Math.sin(state.time * 0.7 + off * 3.1) * sway * 0.5;
+        const rr = ar * (0.05 + spd * tt);
+        const prad = ar * (0.07 + 0.13 * pr);
+        const px = Math.cos(ma) * rr, py = Math.sin(ma) * rr;
+        const puff = ctx.createRadialGradient(px, py, 0, px, py, prad);
+        puff.addColorStop(0, `rgba(255, 255, 255, ${(0.26 * fade).toFixed(3)})`);
+        puff.addColorStop(0.6, `rgba(230, 248, 255, ${(0.10 * fade).toFixed(3)})`);
+        puff.addColorStop(1, 'rgba(230, 248, 255, 0)');
+        ctx.fillStyle = puff;
+        ctx.beginPath(); ctx.arc(px, py, prad, 0, TAU); ctx.fill();
+      }
+      // 外侧虚线霜环（缓慢流转，冰面纹路感）
+      ctx.strokeStyle = 'rgba(190, 232, 255, 0.5)';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([14, 10]);
+      ctx.lineDashOffset = state.time * 9;
+      ctx.beginPath(); ctx.arc(0, 0, ar * 0.84, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      // 内圈霜刺环：18 根径向冰刺 + 端点冰珠，缓慢正转、长短交错（同寒霜）
+      ctx.save();
+      ctx.rotate(state.time * 0.25 + z.seed);
+      ctx.strokeStyle = 'rgba(205, 238, 255, 0.55)';
+      ctx.fillStyle = 'rgba(230, 248, 255, 0.8)';
+      ctx.lineWidth = 1.2;
+      for (let k = 0; k < 18; k++) {
+        const ta = k * TAU / 18;
+        const r1 = ar * (k % 3 === 0 ? 0.61 : 0.63);
+        const r2 = ar * 0.66;
+        const cx1 = Math.cos(ta) * r1, cy1 = Math.sin(ta) * r1;
+        const cx2 = Math.cos(ta) * r2, cy2 = Math.sin(ta) * r2;
+        ctx.beginPath();
+        ctx.moveTo(cx1, cy1);
+        ctx.lineTo(cx2, cy2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, 1.2, 0, TAU);   // 冰刺端点冰珠
+        ctx.fill();
+      }
+      ctx.restore();
+      // 雪晶（6 芒星 ×6，环上均布 + 整体缓慢旋转，霜花凝结感，同寒霜）
+      ctx.save();
+      ctx.rotate(state.time * 0.35 + z.seed);
+      ctx.strokeStyle = 'rgba(226, 246, 255, 0.75)';
+      ctx.lineWidth = 1.2;
+      for (let k = 0; k < 6; k++) {
+        const fa = k * TAU / 6;
+        const fx = Math.cos(fa) * ar * 0.92, fy = Math.sin(fa) * ar * 0.92;
+        for (let m = 0; m < 6; m++) {
+          const ma = m * TAU / 6;
+          ctx.beginPath();
+          ctx.moveTo(fx, fy);
+          ctx.lineTo(fx + Math.cos(ma) * 3.2, fy + Math.sin(ma) * 3.2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
       ctx.restore();
     }
   }

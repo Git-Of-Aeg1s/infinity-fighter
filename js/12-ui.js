@@ -1,12 +1,12 @@
 // 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(12 名)
+  // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(13 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, CANVAS_H, CANVAS_W, DIFFICULTIES, DOUZHI, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentDifficulty, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, pilotBombStartAdd, setArmor, setDifficulty, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, enemies, dashKillFx, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoEntryBtn, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeCount, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeCount, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, yiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
@@ -38,6 +38,8 @@
   function updateHUD() {
     // 主菜单打开时给舞台挂 menu-open 类：CSS 隐藏战斗 HUD（菜单背景透明后会透出画布）
     menuScreen.parentElement.classList.toggle('menu-open', !menuScreen.classList.contains('hidden'));
+    // 手柄连接指示（右上角 FPS 读数下方）：随每帧轮询结果显隐（gamepad 状态由 14-main pollGamepad 刷新）
+    padIndicator.classList.toggle('hidden', !gamepad.connected);
     const maxHp = player.maxHp || PLAYER_CFG.maxHp;
     const ratio = player.hp / maxHp;
     hpFill.style.width = (ratio * 100) + '%';
@@ -61,7 +63,8 @@
     const showStones = hasPilot('xiaoyang') && !state.challenge && !state.testBoss && state.mode === 'playing';
     stonePanel.classList.toggle('hidden', !showStones);
     if (showStones) stoneCount.textContent = String(state.gachaStones);
-    // 右上角爆弹图标：实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
+    // 左下角爆弹图标（2026-10-04 移入 hud-bl 首行，紧贴血条左侧心形上方；技能量表右移让位）：
+    // 实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
     // 真我 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd））；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
     if (state.challenge) {
       bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>';
@@ -522,8 +525,151 @@
       helpBtn.addEventListener('click', () => helpPanel.classList.toggle('hidden'));
       const helpClose = document.getElementById('helpClose');
       if (helpClose) helpClose.addEventListener('click', () => helpPanel.classList.add('hidden'));
+      // 「手柄」按钮（面板头左上角）：键盘 ↔ 手柄 按键页互斥切换（active 亮起标记当前为手柄页）
+      const helpPadBtn = document.getElementById('helpPadBtn');
+      const helpQuadKey = document.getElementById('helpQuadKey');
+      const helpQuadPad = document.getElementById('helpQuadPad');
+      if (helpPadBtn && helpQuadKey && helpQuadPad) {
+        helpPadBtn.addEventListener('click', () => {
+          const toPad = helpQuadPad.classList.contains('hidden');
+          helpQuadPad.classList.toggle('hidden', !toPad);
+          helpQuadKey.classList.toggle('hidden', toPad);
+          helpPadBtn.classList.toggle('active', toPad);
+        });
+      }
     }
     refreshLoadout();
+  }
+
+  // ---------- 手柄菜单导航（主菜单 / 暂停 / 失败 / 胜利结算：焦点移动 + A 确认 + B 返回） ----------
+  // 14-main 主循环在「非战斗帧」（idle / 暂停 / 结算）调用 padMenuTick(dt)；战斗帧的动作键在 14-main padCombatTick。
+  // 焦点环用内联 outline（不引入 CSS 类，避免与各界面 hover / selected 样式互相干扰）；
+  // 手柄未连接时本函数直接返回（键盘 / 鼠标用户零开销、焦点环永不出现）。
+  let padFocusEl = null;   // 当前焦点元素
+  let padNavDir = null;    // 当前按住的方向键 / 摇杆方向（长按重复用）
+  let padNavRepT = 0;      // 方向按住时长（秒）：0.35s 后每 0.15s 重复移动一拍
+
+  function padSetFocus(el) {
+    if (padFocusEl === el) return;
+    if (padFocusEl) { padFocusEl.style.outline = ''; padFocusEl.style.outlineOffset = ''; padFocusEl.style.zIndex = ''; }
+    padFocusEl = el || null;
+    if (padFocusEl) {
+      padFocusEl.style.outline = '2px solid #7ce7ff';
+      padFocusEl.style.outlineOffset = '2px';
+      padFocusEl.style.zIndex = '5';
+    }
+  }
+
+  // 收集当前界面可聚焦元素（数组顺序 = 视觉行序；空数组 = 该界面不支持导航 / 被弹窗阻断）
+  function padFocusList() {
+    // 怪物图鉴 / 数值与机制图鉴弹窗：列表结构在 13-encyclopedia 动态构建，不做卡片级导航——
+    // B 关闭防软锁（padBackAction），方向导航让位给鼠标
+    if (!encyclopedia.classList.contains('hidden') || !infoModal.classList.contains('hidden')) return [];
+    if (!overlay.classList.contains('hidden')) {
+      // 暂停 / 失败 / 胜利结算：只收集当前可见按钮（数组顺序 = 卡片内视觉自上而下）
+      return [retrialBtn, startBtn, gameoverHomeBtn, pauseRetryBtn, pauseHomeBtn]
+        .filter(b => !b.classList.contains('hidden'));
+    }
+    if (!menuScreen.classList.contains('hidden')) {
+      // 主菜单：展开的装备面板优先（面板卡片 + 关闭钮），教程面板其次，否则主界面元素
+      const openPanel = [...document.querySelectorAll('.loadout-panel')].find(p => !p.classList.contains('hidden'));
+      if (openPanel) {
+        const close = openPanel.querySelector('.panel-close');
+        return [...openPanel.querySelectorAll('button, .plane-card, .armor-card'), ...(close ? [close] : [])];
+      }
+      const helpPanel = document.getElementById('helpPanel');
+      if (helpPanel && !helpPanel.classList.contains('hidden')) {
+        // 焦点序 = 视觉序：左上「手柄」切换按钮 → 右上关闭
+        return [document.getElementById('helpPadBtn'), document.getElementById('helpClose')].filter(Boolean);
+      }
+      return [
+        document.getElementById('helpEntryBtn'),
+        ...document.querySelectorAll('[data-panel]'),
+        ...diffGrid.children,
+        menuStartBtn,
+        document.getElementById('encyEntryBtn'),
+        document.getElementById('infoEntryBtn'),
+      ].filter(Boolean);
+    }
+    return [];
+  }
+
+  // B 键「返回」：按界面层级回退一步（返回 true 表示已消费）。结算页 B 不绑定任何动作（防误触重开 / 返回）
+  function padBackAction() {
+    if (!encyclopedia.classList.contains('hidden')) { encyClose.click(); return true; }
+    if (!infoModal.classList.contains('hidden')) { infoClose.click(); return true; }
+    if (!overlay.classList.contains('hidden')) {
+      if (state.paused) togglePause();   // 暂停页 B = 继续游戏
+      return true;
+    }
+    if (!menuScreen.classList.contains('hidden')) {
+      const openPanel = [...document.querySelectorAll('.loadout-panel')].find(p => !p.classList.contains('hidden'));
+      if (openPanel) { closeAllPanels(); return true; }
+      const helpPanel = document.getElementById('helpPanel');
+      if (helpPanel && !helpPanel.classList.contains('hidden')) {
+        const c = document.getElementById('helpClose');
+        if (c) c.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 方向选点：取中心点位于指定方向、按「轴向距离 + 垂向偏移惩罚」最小的元素；
+  // 无几何候选（DOM 几何不可用 / 无同向元素）时回退列表线性 ±1（到边缘停住，不回绕防连按冲过目标）
+  function padPickFocus(list, cur, dx, dy) {
+    const r = cur.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    let best = null, bestScore = Infinity;
+    for (const el of list) {
+      if (el === cur) continue;
+      const b = el.getBoundingClientRect();
+      const ox = b.left + b.width / 2 - cx, oy = b.top + b.height / 2 - cy;
+      const along = dx !== 0 ? ox * dx : oy * dy;
+      const cross = dx !== 0 ? Math.abs(oy) : Math.abs(ox);
+      if (along <= 2) continue;   // 必须确在目标方向上（留 2px 容差，同行视为不偏）
+      const score = along + cross * 2.5;
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    if (best) return best;
+    const i = list.indexOf(cur);
+    if (i < 0) return list[0] || cur;
+    return list[i + ((dx !== 0 ? dx : dy) > 0 ? 1 : -1)] || cur;
+  }
+
+  // 主循环每帧调用（仅非战斗帧）：焦点移动（十字键 + 左摇杆推杆越 0.55 计方向）+ A 确认 + B 返回 + Start 暂停·继续
+  function padMenuTick(dt) {
+    if (!gamepad.connected) {
+      if (padFocusEl) { padSetFocus(null); padNavDir = null; padNavRepT = 0; }
+      return;
+    }
+    const list = padFocusList();
+    if (!list.length) {
+      if (padFocusEl) { padSetFocus(null); padNavDir = null; padNavRepT = 0; }
+      return;
+    }
+    if (!list.includes(padFocusEl)) padSetFocus(list[0]);   // 界面切换 / 列表内容变化：焦点落到首位
+    const dir = (gamepad.btn.left || gamepad.ax < -0.55) ? 'left'
+      : (gamepad.btn.right || gamepad.ax > 0.55) ? 'right'
+      : (gamepad.btn.up || gamepad.ay < -0.55) ? 'up'
+      : (gamepad.btn.down || gamepad.ay > 0.55) ? 'down' : null;
+    if (dir !== padNavDir) {
+      padNavDir = dir; padNavRepT = 0;   // 首拍立即移动
+      if (dir && padFocusEl) padSetFocus(padPickFocus(list, padFocusEl,
+        dir === 'left' ? -1 : dir === 'right' ? 1 : 0,
+        dir === 'up' ? -1 : dir === 'down' ? 1 : 0));
+    } else if (dir) {
+      padNavRepT += dt;
+      if (padNavRepT >= 0.35) {   // 长按重复拍：0.35s 起每 0.15s 一步（此处只管重复，首拍在上面立即执行）
+        padNavRepT -= 0.15;
+        padSetFocus(padPickFocus(list, padFocusEl,
+          dir === 'left' ? -1 : dir === 'right' ? 1 : 0,
+          dir === 'up' ? -1 : dir === 'down' ? 1 : 0));
+      }
+    }
+    if (padPressed('a') && padFocusEl) padFocusEl.click();   // A = 确认（等同点击）
+    if (padPressed('b')) padBackAction();                    // B = 返回
+    if (padPressed('start') && state.paused) togglePause();  // Start = 暂停 / 继续（与键盘 P 同语义）
   }
 
   // ---------- 选机页面 ----------
@@ -831,4 +977,5 @@
   export {
     updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
     buildSubWeaponCards, buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, endGame,
+    padMenuTick,
   };

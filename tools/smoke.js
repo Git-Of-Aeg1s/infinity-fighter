@@ -186,11 +186,17 @@ const windowStub = {
 
 const performanceStub = { now: () => NOW };
 
+// 手柄桩：smokePads 数组由手柄场景按需填充/清空（元素为 W3C Gamepad 子集：connected / axes / buttons）。
+// 游戏侧 pollGamepad 经 navigator.getGamepads() 读取——真实浏览器走真 navigator，无头桩走此 stub
+const smokePads = [];
+const navigatorStub = { getGamepads: () => smokePads };
+
 // ---------------- 装载游戏脚本 ----------------
 const shared = {
   window: windowStub,
   document: documentStub,
   performance: performanceStub,
+  navigator: navigatorStub,
   requestAnimationFrame,
   cancelAnimationFrame,
   setTimeout, clearTimeout, setInterval, clearInterval,
@@ -201,7 +207,15 @@ const shared = {
 
 if (isModules) {
   // modules 模式：挂到 globalThis 供模块内裸引用解析
-  for (const [k, v] of Object.entries(shared)) globalThis[k] = v;
+  for (const [k, v] of Object.entries(shared)) {
+    if (k === 'navigator') {
+      // Node ≥21 自带只读 navigator（getter 属性），须 defineProperty 覆盖；旧 Node 无此全局，直接赋值
+      try { Object.defineProperty(globalThis, 'navigator', { value: v, writable: true, configurable: true }); }
+      catch { globalThis.navigator = v; }
+    } else {
+      globalThis[k] = v;
+    }
+  }
 } else {
   // classic 模式：按序拼接为单作用域执行（等价于 index.html 按序加载的词法环境）
   const code = files.map(f => source[f]).join('\n');
@@ -327,6 +341,23 @@ try {
       }
       if (coreSw.levelFlow.level !== 20) {
         errors.push({ key: '持续刷怪测试等级未锁', stack: 'swarm 模式 levelFlow.level=' + coreSw.levelFlow.level + '（预期恒 20）' });
+      }
+      // 测试挑战按 7（debugForceGacha）：swarm 场默认不带萧杨，也应立刻建立抽卡演出且不动充能字段
+      //（14-main 键盘入口 → 07-player debugForceGacha；随后清演出跳过 ≈4s 状态机，不影响后续场景）
+      const pmSw = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+      if (pmSw.debugForceGacha) {
+        coreSw.player.invuln = 5;   // 防测量窗口内被击杀中断断言
+        const ready0 = coreSw.state.gachaReady, stones0 = coreSw.state.gachaStones;
+        const fired = pmSw.debugForceGacha();
+        if (!fired || !coreSw.state.gachaFx) {
+          errors.push({ key: '测试挑战按 7 未强制抽卡', stack: 'debugForceGacha=' + fired + ' gachaFx=' + !!coreSw.state.gachaFx + '（swarm 挑战内应无视驾驶员/充能门控立刻建立抽卡演出）' });
+        }
+        if (coreSw.state.gachaReady !== ready0 || coreSw.state.gachaStones !== stones0) {
+          errors.push({ key: '强制抽卡误清充能', stack: '非携带萧杨时 gachaReady/gachaStones 被改动（ready ' + ready0 + '→' + coreSw.state.gachaReady + ', stones ' + stones0 + '→' + coreSw.state.gachaStones + '）' });
+        }
+        coreSw.state.gachaFx = null;
+      } else {
+        errors.push({ key: 'debugForceGacha 未导出', stack: '07-player 缺少 debugForceGacha 导出（契约回归？）' });
       }
     }
     sample('持续刷怪测试 Lv20 出怪');
@@ -602,7 +633,7 @@ try {
   // 黑暗之手（诗篇 BOSS）跑帧：直调 spawnBoss('darkhand')——lurk 即退（无警报直召路径）→ sweep 黑影掠过（≈33 帧，体型 +25% 后路径略长）
   // → outline 停顿 0.9s + 轮廓 1.05s → reveal 0.675s，合计约 185 帧进入 combat；随后断言常态技能循环（暗核弹幕）、
   // 连携召唤（80/60/40/20% 血量阈值；前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿）、
-  // 跨阈值补召唤、窗口内未击杀 → 迅速离场并记录血量、爆弹不波及 dhLink 精英
+  // 跨阈值补召唤、窗口内未击杀 → 迅速离场并记录血量、爆弹同波及 dhLink 精英（2026-10-04 定稿）
   if (isModules) {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const bossMod = await import(pathToFileURL(join(jsDir, '05-boss.js')).href);
@@ -687,17 +718,19 @@ try {
           ok4 = e.dhSummoned.length === 4 && core.state.dhFledElites.length === 3 && activeLink() === 1;
         }
         if (!ok4) errors.push({ key: '黑暗之手连携精英未离场记录', stack: '跨末阈值后 dhSummoned=' + e.dhSummoned.length + '（应 4）/ dhFledElites=' + core.state.dhFledElites.length + '（应 3）/ 在场 active=' + activeLink() + '（应 1）' });
-        // ⑤ 自爆豁免：高能爆弹不波及连携精英（2026-10-02 用户定稿「自爆时不会炸死连携敌人」）——
-        //    精英血量压至有限值后引爆爆弹，断言精英血量分毫未动、本体血量正常扣除（guardDR 减免路径照常）
+        // ⑤ 爆弹同波及连携精英（2026-10-04 用户定稿「不再分担、均受正常伤害」）——
+        //    精英血量压至有限值后引爆爆弹，断言精英按全量爆弹伤害结算（无加成时扣 4000+10%maxHp = 5000，
+        //    驾驶员加成只会扣更多）、本体正常扣除且不吃 guardDR 减免（真实伤害全额结算路径）
         const linkE = core.enemies.find(x => x && x.dhLink && x.hp > 0 && x.elPhase !== 2);
         if (linkE) {
           linkE.hp = 10000; linkE.maxHp = 10000;
+          e.hp = Math.max(e.hp, 30000);   // 拉高本体：防真我爆弹（≥8250）把 15% 血量的本体直接击杀 → 触发清场离场干扰断言
           // 显式补弹：诗篇场景收尾把难度还原为真我（mods.bombStart=0）→ 本场景每局 0 弹开局，
           // 是否凑到爆弹全看场内随机拾取（曾致本断言闪烁假红）——断言自带弹药、与难度/拾取解耦
           core.state.bombs = Math.max(core.state.bombs, 1);
           const hp0 = e.hp;
           playerMod.useBomb(); frames(2);
-          if (linkE.hp !== 10000) errors.push({ key: '爆弹波及了连携精英', stack: 'useBomb 后 dhLink 精英 hp=' + linkE.hp + '（应保持 10000——连携精英不吃爆弹/秒杀类全屏波及）' });
+          if (linkE.hp > 5000) errors.push({ key: '爆弹未波及连携精英', stack: 'useBomb 后 dhLink 精英 hp=' + linkE.hp + '（应 ≤5000 = 10000 - (4000+10%×10000)——2026-10-04 定稿连携精英同受爆弹全额伤害）' });
           if (e.hp >= hp0) errors.push({ key: '爆弹未对黑暗之手结算', stack: 'useBomb 后本体 hp 未下降（爆弹结算循环异常？）[诊断] e.hp=' + e.hp + ' hp0=' + hp0 + ' 在场=' + (core.enemies.indexOf(e) >= 0) + ' stage=' + core.bossFlow.stage + ' bombs=' + core.state.bombs + ' alive=' + core.player.alive + ' combatReady=' + e.combatReady + ' challenge=' + core.state.challenge });
         }
         sample('黑暗之手 跑帧（登场演出 + 常态技能弹幕 + 连携召唤/离场记录）');
@@ -708,7 +741,7 @@ try {
     }
   }
 
-  // 4F 精英（四机）跑帧：直调 spawnEliteMinion——① 入场逐帧步长连续（速度曲线铁律）+ 抵达驻留；
+  // 4S 精英（四机）跑帧：直调 spawnEliteMinion——① 入场逐帧步长连续（速度曲线铁律）+ 抵达驻留；
   // ② 强制首技能（elFirst）跑技能窗口：朴 1 流星穿刺贯穿相位 / 韩 2 旋眼火螺径向弹幕 /
   //    夏 屏障首发（固定五步循环，xyStep 游标，elFirst 不参与）/ 辛 1 地毯轰炸落点排入
   if (isModules) {
@@ -738,7 +771,7 @@ try {
         core.enemies.length = 0;
         const e = spawn.spawnEliteMinion(type, 1e9);
         if (!e || e.type !== type) {
-          errors.push({ key: '4F 精英生成失败（' + type + '）', stack: 'spawnEliteMinion 未返回 ' + type + ' 实体' });
+          errors.push({ key: '4S 精英生成失败（' + type + '）', stack: 'spawnEliteMinion 未返回 ' + type + ' 实体' });
           continue;
         }
         e.elFirst = first; e.elNext = 0;
@@ -753,12 +786,12 @@ try {
           prev = { x: e.x, y: e.y };
           if (e.elPhase === 1) stay = true;
         }
-        if (!stay) errors.push({ key: '4F 精英未驻留（' + type + '）', stack: '150 帧内未进入相位 1（elPhase=' + e.elPhase + '）' });
-        if (maxStep > 12) errors.push({ key: '4F 精英入场瞬跳（' + type + '）', stack: '相邻帧最大位移 ' + maxStep.toFixed(1) + 'px（> 12px，入场 430px/s @60fps 上限余量）——速度曲线铁律' });
+        if (!stay) errors.push({ key: '4S 精英未驻留（' + type + '）', stack: '150 帧内未进入相位 1（elPhase=' + e.elPhase + '）' });
+        if (maxStep > 12) errors.push({ key: '4S 精英入场瞬跳（' + type + '）', stack: '相邻帧最大位移 ' + maxStep.toFixed(1) + 'px（> 12px，入场 430px/s @60fps 上限余量）——速度曲线铁律' });
         // ② 技能窗口（660 帧 ≈11s，覆盖两轮技能循环）：断言条件锁存（弹幕类状态瞬逝，逐帧 OR 累积）
         let seen = false;
         for (let f = 0; f < 660 && !seen; f++) { frames(1); seen = seen || cond(e); isolate(e); }
-        if (!seen) errors.push({ key: '4F 精英首技能未施放（' + type + '）', stack: '660 帧内技能断言未通过（elFirst=' + first + ' elPhase=' + e.elPhase + ' elT=' + (e.elT || 0).toFixed(2) + ' elSkill.kind=' + (e.elSkill && e.elSkill.kind) + ' alive=' + core.player.alive + ' enemies=' + core.enemies.length + '）' });
+        if (!seen) errors.push({ key: '4S 精英首技能未施放（' + type + '）', stack: '660 帧内技能断言未通过（elFirst=' + first + ' elPhase=' + e.elPhase + ' elT=' + (e.elT || 0).toFixed(2) + ' elSkill.kind=' + (e.elSkill && e.elSkill.kind) + ' alive=' + core.player.alive + ' enemies=' + core.enemies.length + '）' });
         // ③ 辛国栋补充：技能循环应持续推进（第二轮 kind2 启动后 elNext 回到 1；若相位 40 卡死则恒为 2）
         if (type === 'xinguodong') {
           for (let f = 0; f < 480 && e.elNext !== 1; f++) { frames(1); isolate(e); }
@@ -822,7 +855,7 @@ try {
         }
       }
       core.enemies.length = 0;
-      sample('4F 精英 跑帧（四机入场连续性 + 强制首技能）');
+      sample('4S 精英 跑帧（四机入场连续性 + 强制首技能）');
       key('p'); frames(5); key('p', false);
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
@@ -1020,6 +1053,143 @@ try {
       cfg.setPilotSub(cfg.PILOTS.xiaoyi);   // 还原默认副驾驶员
       reset();
       sample('原石规则 非萧杨不计数 / 16 颗充能 / Q 释放 / 萧杨无限次 / 转化概率 ×1.5 与原档计分');
+    }
+  }
+
+  // 手柄支持跑帧（modules 模式）：注入虚拟手柄（W3C Gamepad 子集桩，见顶部 smokePads）覆盖
+  // pollGamepad 轮询认领 / 径向死区 / 摇杆模拟量移动 / 十字键数字移动 / 菜单焦点导航（十字右选点 + A 确认开局）
+  // / LB 爆弹 / Start·A·B 暂停恢复 / 拔出停机回退键盘，并按速度曲线铁律校验逐帧位移上限。
+  // 断言采用阈值余量（非精确坐标），避免与随机掉落 / 拾取等并行事件互相干扰
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgGp = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const mkGp = () => ({
+      connected: true, index: 0,
+      axes: [0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+    });
+    const setGpBtn = (gp2, i, on) => { gp2.buttons[i].pressed = on; gp2.buttons[i].value = on ? 1 : 0; };
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回主界面
+    // 预置真实 DOM 的初始 hidden 态（桩元素不解析 HTML class，运行时也从不触碰图鉴/教程弹窗的类）：
+    // 保证 padFocusList 走「主菜单」分支而非误判图鉴 / 数值图鉴 / 教程面板 / 遮罩可见
+    elements.encyclopedia.classList.add('hidden');
+    elements.infoModal.classList.add('hidden');
+    elements.helpPanel.classList.add('hidden');
+    elements.overlay.classList.add('hidden');
+    elements.retrialBtn.classList.add('hidden');
+    elements.menuScreen.classList.remove('hidden');
+    const gp = mkGp();
+    smokePads.push(gp);
+    frames(3);                                    // 轮询认领手柄（pollGamepad 下一帧扫描到）
+    if (!core.gamepad.connected) {
+      errors.push({ key: '手柄未被认领', stack: '注入虚拟手柄 3 帧后 gamepad.connected 仍为 false（pollGamepad 未生效 / smoke navigator 桩未挂载？）' });
+    }
+    // ① 菜单焦点导航（stub 无几何 → padPickFocus 线性回退；主菜单列表 [教程, 难度×4, 开始, 图鉴, ⓘ]）：
+    //    十字右 ×5 → 开始游戏，A 确认开局
+    for (let i = 0; i < 5; i++) { setGpBtn(gp, 15, true); frames(2); setGpBtn(gp, 15, false); frames(2); }
+    setGpBtn(gp, 0, true); frames(2); setGpBtn(gp, 0, false);
+    frames(60);                                   // ≈1s：resetGame 开局 + 入场飞入（enterDur 0.8s，期间操控锁定）
+    if (core.state.mode !== 'playing' || core.state.paused) {
+      errors.push({ key: '手柄菜单导航未开局', stack: '十字右×5 + A 后 mode=' + core.state.mode + ' paused=' + core.state.paused + '（应经「开始游戏」进入战斗；主菜单焦点列表构成有变？）' });
+    }
+    // ② 左摇杆右推满：模拟量 1.0 线性乘移速 = PLAYER_CFG.speed，逐帧位移连续（速度曲线铁律）
+    gp.axes[0] = 1;
+    const x0 = core.player.x;
+    let maxStep = 0, prevX = core.player.x;
+    for (let f = 0; f < 30; f++) {
+      frames(1);
+      maxStep = Math.max(maxStep, Math.abs(core.player.x - prevX));
+      prevX = core.player.x;
+    }
+    const stepCap = cfgGp.PLAYER_CFG.speed / 60 + 1.5;   // 满速单帧 6.5px + 浮点/钳位余量
+    if (core.player.x - x0 < cfgGp.PLAYER_CFG.speed * 0.3) {
+      errors.push({ key: '手柄摇杆未驱动移动', stack: '右推 30 帧位移 ' + (core.player.x - x0).toFixed(1) + 'px（应 ≈' + (cfgGp.PLAYER_CFG.speed * 0.5).toFixed(0) + 'px = speed×0.5s）' });
+    }
+    if (maxStep > stepCap) {
+      errors.push({ key: '手柄移动存在瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（> ' + stepCap.toFixed(2) + ' = speed/60 + 余量）——速度曲线铁律' });
+    }
+    gp.axes[0] = 0; frames(6);
+    // ③ 死区：推杆 0.1（< 死区 0.18）应完全不移动
+    const xdz = core.player.x;
+    gp.axes[0] = 0.1; frames(20);
+    if (Math.abs(core.player.x - xdz) > 0.5) {
+      errors.push({ key: '摇杆死区失效', stack: '推杆 0.1（死区 0.18）20 帧位移 ' + Math.abs(core.player.x - xdz).toFixed(2) + 'px（应为 0）' });
+    }
+    gp.axes[0] = 0; frames(6);
+    // ④ 十字键左：数字移动（与键盘同一条归一化路径；此时玩家近右墙，向左测量避开钳位干扰）
+    const xdp = core.player.x;
+    setGpBtn(gp, 14, true); frames(20); setGpBtn(gp, 14, false); frames(2);
+    if (xdp - core.player.x < cfgGp.PLAYER_CFG.speed * 0.15) {
+      errors.push({ key: '十字键未驱动移动', stack: '十字左 20 帧位移 ' + (xdp - core.player.x).toFixed(1) + 'px（应 ≈' + (cfgGp.PLAYER_CFG.speed / 3).toFixed(0) + 'px = speed×0.33s）' });
+    }
+    // ⑤ X / Y 技能键空操作安全性（未装备装甲技能 / 驾驶员量表未满：不得抛错、不得误触其他系统）
+    setGpBtn(gp, 2, true); frames(2); setGpBtn(gp, 2, false); frames(2);
+    setGpBtn(gp, 3, true); frames(2); setGpBtn(gp, 3, false); frames(2);
+    // ⑥ LB 爆弹边沿：bombs 置 1 后按键应耗尽（不按不耗、按住不重复耗）
+    core.state.bombs = 1;
+    frames(2);
+    setGpBtn(gp, 4, true); frames(2); setGpBtn(gp, 4, false); frames(4);
+    if (core.state.bombs !== 0) {
+      errors.push({ key: '手柄 LB 爆弹未触发', stack: 'LB 按下后 bombs=' + core.state.bombs + '（应 0——边沿触发一次）' });
+    }
+    // ⑦ Start 暂停 → A（继续游戏）恢复 → Start 暂停 → B 恢复（暂停页两条确认路径）
+    setGpBtn(gp, 9, true); frames(2); setGpBtn(gp, 9, false); frames(4);
+    if (!core.state.paused) errors.push({ key: '手柄 Start 未暂停', stack: 'Start 按下后 paused=' + core.state.paused });
+    setGpBtn(gp, 0, true); frames(2); setGpBtn(gp, 0, false); frames(4);
+    if (core.state.paused) errors.push({ key: '手柄 A 未恢复暂停', stack: '暂停页焦点「继续游戏」按 A 后 paused=' + core.state.paused });
+    setGpBtn(gp, 9, true); frames(2); setGpBtn(gp, 9, false); frames(4);
+    if (!core.state.paused) errors.push({ key: '手柄 Start 二次暂停失败', stack: '第二次 Start 后 paused=' + core.state.paused });
+    setGpBtn(gp, 1, true); frames(2); setGpBtn(gp, 1, false); frames(4);
+    if (core.state.paused) errors.push({ key: '手柄 B 未恢复暂停', stack: '暂停页按 B（返回=继续）后 paused=' + core.state.paused });
+    // ⑧ 拔出手柄：输入立即停止（无残留位移、无异常）；键盘回退仍可移动
+    smokePads.length = 0; frames(6);
+    const xoff = core.player.x;
+    frames(20);
+    if (Math.abs(core.player.x - xoff) > 0.5) {
+      errors.push({ key: '拔出手柄后仍移动', stack: '拔出 20 帧位移 ' + Math.abs(core.player.x - xoff).toFixed(2) + 'px（应为 0）' });
+    }
+    const xkb = core.player.x;
+    key('a'); frames(20); key('a', false);
+    if (xkb - core.player.x < cfgGp.PLAYER_CFG.speed * 0.15) {
+      errors.push({ key: '键盘移动在手柄拔出后失效', stack: '按住 A 20 帧位移 ' + (xkb - core.player.x).toFixed(1) + 'px（应 ≈' + (cfgGp.PLAYER_CFG.speed / 3).toFixed(0) + 'px——键盘回退路径）' });
+    }
+    sample('手柄 轮询认领 / 菜单焦点导航开局 / 摇杆模拟量+死区 / 十字键 / LB 爆弹 / Start·A·B 暂停恢复 / 拔出回退键盘');
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
+  }
+
+  // 教程面板「手柄」页切换回归：打开教程 → 手柄按钮切页（键盘页隐藏 / 按钮亮起）→ 再点切回 → ✕ 收起
+  //（纯 DOM 逻辑，无手柄也覆盖；元素缺失 = index.html 改动回归）
+  {
+    const helpEntryBtnEl = documentStub.getElementById('helpEntryBtn');
+    const helpPadBtnEl = documentStub.getElementById('helpPadBtn');
+    const helpCloseEl = documentStub.getElementById('helpClose');
+    const helpQuadKeyEl = documentStub.getElementById('helpQuadKey');
+    const helpQuadPadEl = documentStub.getElementById('helpQuadPad');
+    if (helpEntryBtnEl && helpPadBtnEl && helpCloseEl && helpQuadKeyEl && helpQuadPadEl) {
+      elements.helpPanel.classList.remove('hidden');   // 打开教程面板（等同点击教程按钮后的可见态）
+      // 预置真实 DOM 的初始态（桩元素不解析 HTML class：手柄页默认 hidden、键盘页默认可见、按钮无 active）
+      helpQuadPadEl.classList.add('hidden');
+      helpQuadKeyEl.classList.remove('hidden');
+      helpPadBtnEl.classList.remove('active');
+      helpPadBtnEl.click();                            // 切到手柄页
+      if (helpQuadPadEl.classList.contains('hidden') || !helpQuadKeyEl.classList.contains('hidden') ||
+          !helpPadBtnEl.classList.contains('active')) {
+        errors.push({ key: '教程手柄页未切出', stack: '点击手柄按钮后 helpQuadPad.hidden=' + helpQuadPadEl.classList.contains('hidden') + ' helpQuadKey.hidden=' + helpQuadKeyEl.classList.contains('hidden') + ' btn.active=' + helpPadBtnEl.classList.contains('active') });
+      }
+      helpPadBtnEl.click();                            // 切回键盘页
+      if (helpQuadKeyEl.classList.contains('hidden') || !helpQuadPadEl.classList.contains('hidden') ||
+          helpPadBtnEl.classList.contains('active')) {
+        errors.push({ key: '教程键盘页未切回', stack: '再次点击手柄按钮后未还原键盘页 / active 未清除' });
+      }
+      helpCloseEl.click();                             // 收起教程面板
+      if (!elements.helpPanel.classList.contains('hidden')) {
+        errors.push({ key: '教程面板未收起', stack: 'helpClose 点击后 helpPanel 仍可见' });
+      }
+      sample('教程面板 手柄页切换（切出 / 切回 / 收起）');
+    } else {
+      errors.push({ key: '教程切换元素缺失', stack: 'helpEntryBtn/helpPadBtn/helpClose/helpQuadKey/helpQuadPad 之一未找到（index.html 教程面板改动回归？）' });
     }
   }
 

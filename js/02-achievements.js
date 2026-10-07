@@ -29,8 +29,7 @@
     unlocked: {},        // 成就 id → true（本局已获得）
     bombUsedEver: false, // 本局是否使用过爆弹（高能 / 绷绷）——齐宣王 / 「无垠」
     bombFirstInFinal: false, // 本局首次用弹是否发生在最终 BOSS 战（齐宣王）
-    cheatUsed: false,    // 本局是否使用作弊（武器等级直设 / 8 / 9 连发开关）——无垠 / 无垠战机
-    dagouCheatT: 0,      // 大狗导弹连发作弊累计时长（s；捣蛋来袭 ≥100s）
+    cheatUsed: false,    // 本局是否使用作弊（武器等级直设 0+1~5 / 8 / 9 连发开关）——无垠 / 无垠战机排除 + 作弊互斥（仅作弊成就可解锁）
     damageTaken: false,  // 本局是否受过任何伤害（无垠 / 无垠战机 / 各 BOSS 无伤成就）
     bossNoHit: {},       // bossId → 当前 BOSS 战分段是否无伤（昨日今日明日 / 风暴航船 / 赫拉之眼）
     bossStartAt: 0,      // 当前 BOSS 战分段开始时刻（state.time，登场警报起算；持久战计时）
@@ -71,9 +70,13 @@
     return !state.challenge && !state.testBoss;
   }
 
-  // 解锁成就（去重；仅正常流程生效）
+  // 作弊互斥白名单：局内开启作弊后（0+1~5 / 8 / 9 键），本局仅这些作弊成就可以解锁，其余成就全部锁定
+  const CHEAT_ONLY_ACHV = new Set(['dagouCheat100', 'wanDaoFengLiu']);
+
+  // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV）
   function unlockAchievement(id) {
     if (!achvGateOk() || achv.unlocked[id]) return;
+    if (achv.cheatUsed && !CHEAT_ONLY_ACHV.has(id)) return;   // 已作弊：非作弊成就不再获得
     achv.unlocked[id] = true;
     console.log('[成就] ' + ACHIEVEMENTS[id].name);
   }
@@ -218,18 +221,25 @@
     // 持久战：记录本段 BOSS 战时长（登场起算；暴风之眼 / 风暴编织者各算一段，取最长）
     const dur = Math.max(0, state.time - (achv.bossStartAt || 0));
     if (dur > achv.bossDurMax) achv.bossDurMax = dur;
-    // 无伤击败（各段独立判定；须整局未开启过作弊——昨日今日明日 / 风暴航船 / 赫拉之眼）
-      if (achv.bossNoHit[bossId] && !achv.cheatUsed) {
-        if (bossId === 'song') unlockAchievement('songPerfect');
-        else if (bossId === 'storm') unlockAchievement('stormPerfect');
-        else if (bossId === 'storm2') unlockAchievement('storm2Perfect');
-        else if (bossId === 'darkhand') unlockAchievement('jiukefeidi');   // 酒客飞匕（黑暗之手待更新占位）
-      }
+    // 无伤击败（各段独立判定；须整局未开启过作弊）。诗篇难度走诗篇档专属系列，与非诗篇旧档互斥——
+    // 同一次无伤击坠只解锁一档：诗篇→往昔难忆 / 风眼无澜 / 织风成诗 / 无终长歌 / 摘星者；非诗篇→昨日今日明日 / 风暴航船 / 赫拉之神 / 酒客飞匕
+    if (achv.bossNoHit[bossId] && !achv.cheatUsed) {
+      if (bossId === 'song') unlockAchievement(isPoem() ? 'wangXiNanYi' : 'songPerfect');
+      else if (bossId === 'storm') unlockAchievement(isPoem() ? 'fengYanWuLan' : 'stormPerfect');
+      else if (bossId === 'storm2') unlockAchievement(isPoem() ? 'zhiFengChengShi' : 'storm2Perfect');
+      else if (bossId === 'darkhand') unlockAchievement(isPoem() ? 'wuZhongChangGe' : 'jiukefeidi');
+      else if (bossId === 'returnstar') unlockAchievement('zhaiXingZhe');   // 摘星者（归星待实装，占位）
+    }
     if (bossId === 'song') {
       unlockAchievement('faceSong');
       achv.songDown = true;   // 萎靡不振：第一轮 BOSS 已被击败（此后掉命不再判定）
     }
-    else if (bossId === 'storm') unlockAchievement(hasPilot('tianxiu') ? 'stormWithTianxiu' : 'stormWithoutTianxiu');
+    else if (bossId === 'storm') {
+      // 忧郁 / 击坠风暴：诗篇难度无伤击坠时与诗篇档「风眼无澜」互斥（有伤击坠不受影响）
+      if (!(isPoem() && achv.bossNoHit[bossId] && !achv.cheatUsed)) {
+        unlockAchievement(hasPilot('tianxiu') ? 'stormWithTianxiu' : 'stormWithoutTianxiu');
+      }
+    }
     else if (bossId === 'storm2') unlockAchievement('defeatStorm2');
     else if (bossId === 'darkhand') {
       // 黑暗之手（待更新 BOSS，占位——实体实装后 killEnemy BOSS 分支自动上报生效）：唯我 / 光明之脚 / 内乱 / 铜皮太岁
@@ -261,17 +271,22 @@
   function achvSetKillSrc(src) { achv.killSrc = src; }
   function achvClearKillSrc() { achv.killSrc = null; }
 
-  // 作弊使用（14-main：8 / 9 连发开关开启、0+1~5 武器等级直设）——无垠 / 无垠战机排除项
+  // 作弊使用（14-main：0+1~5 武器等级直设）——无垠 / 无垠战机排除项；开启后仅作弊成就可解锁（CHEAT_ONLY_ACHV）
   function achvNoteCheat() {
     if (!achvGateOk()) return;
     achv.cheatUsed = true;
   }
 
-  // 大狗导弹连发作弊累计时长（07-player updatePlayer 连发模式下逐帧累加；捣蛋来袭 ≥100s）
-  function achvAddDagouCheat(dt) {
-    if (!achvGateOk()) return;
-    achv.dagouCheatT += dt;
-    if (achv.dagouCheatT >= 100) unlockAchievement('dagouCheat100');
+  // 大狗导弹雨连发作弊开启（14-main 9 键）——记作弊 + 解锁捣蛋来袭（开启即得，不再计时长）
+  function achvNoteDagouCheatOn() {
+    achvNoteCheat();
+    unlockAchievement('dagouCheat100');
+  }
+
+  // 天秀忧郁王子风暴连发作弊开启（14-main 8 键）——记作弊 + 解锁万道风流（开启即得）
+  function achvNoteTianxiuCheatOn() {
+    achvNoteCheat();
+    unlockAchievement('wanDaoFengLiu');
   }
 
   // 守愿者白盾挡下一发直射弹（08-entities 普通弹吸收分支；守愿加护 >100）
@@ -431,7 +446,6 @@
     achv.bombUsedEver = false;
     achv.bombFirstInFinal = false;
     achv.cheatUsed = false;
-    achv.dagouCheatT = 0;
     achv.damageTaken = false;
     achv.bossNoHit = {};
     achv.bossStartAt = 0;
@@ -502,7 +516,7 @@
         (a.holders.length ? '已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '暂无完成者') + '</div>';
     }
     if (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED) html += '<div class="achv-tip-locked">仅最终版本开放获得</div>';
-    if (a.wipBoss) html += '<div class="achv-tip-locked">对应 BOSS「黑暗之手」待更新，暂不可获得</div>';
+    if (a.wipBoss) html += '<div class="achv-tip-locked">对应 BOSS 待更新，暂不可获得</div>';
     return html;
   }
   function bindAchvTip(el, id) {
@@ -592,7 +606,7 @@
             ? (a.holders.length ? '<br />已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '<br />暂无完成者')
             : '') +
           (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '') +
-          (a.wipBoss ? '<br /><i>对应 BOSS「黑暗之手」待更新，暂不可获得</i>' : '');
+          (a.wipBoss ? '<br /><i>对应 BOSS 待更新，暂不可获得</i>' : '');
         card.append(row, body);
         infoBody.appendChild(card);
       }
@@ -601,7 +615,7 @@
 
   export {
     achv, unlockAchievement, achvNoteBossSpawned, achvNoteDamage, achvOnDeath, achvOnKill, achvOnBossKilled,
-    achvOnBombUsed, achvSetKillSrc, achvClearKillSrc, achvNoteCheat, achvAddDagouCheat, achvWingmanBlock,
+    achvOnBombUsed, achvSetKillSrc, achvClearKillSrc, achvNoteCheat, achvNoteDagouCheatOn, achvNoteTianxiuCheatOn, achvWingmanBlock,
     achvZidianHit, achvBaolingBlastBegin, achvBaolingBlastEnd, achvNotePickup, achvNoteWatchClear,
     achvNoteLingluoSkill, achvNoteArmorSkillUsed, achvNotePilotSkillUsed, achvEvaluateVictory,
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,

@@ -314,6 +314,13 @@ canvas#game {
   gap: 6px;
 }
 
+/* hud-bl 首行：高能爆弹（左端，紧贴心形正上方）+ 装甲/驾驶员技能量表（右移让位，2026-10-04） */
+.hud-bl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 @keyframes berserk-pulse {
   from { box-shadow: 0 0 4px rgba(255, 77, 109, 0.6); }
   to   { box-shadow: 0 0 12px rgba(255, 181, 69, 0.9); }
@@ -369,12 +376,8 @@ canvas#game {
 .hp-fill.warn { background: linear-gradient(90deg, var(--accent-warm), #ffd98a); }
 .hp-fill.danger { background: linear-gradient(90deg, var(--danger), #ff9aa8); }
 
-.hud-right {
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* ---------- 右上角：高能爆弹图标（数量 = 爆弹数，上限 3；青色主题） ---------- */
+/* ---------- 高能爆弹图标（数量 = 爆弹数；青色主题；2026-10-04 移入左下角 hud-bl 首行——
+   紧贴血条左侧心形图案上方，技能量表右移让位，见 .hud-bl-row） ---------- */
 .bomb-icons {
   display: flex;
   gap: 6px;
@@ -507,6 +510,26 @@ canvas#game {
   opacity: 0.9;
   text-shadow: 0 1px 2px rgba(5, 8, 18, 0.8);
 }
+
+/* ---------- 手柄连接指示 ---------- */
+/* FPS 读数正下方小手柄图标：插入手柄后点亮（12-ui updateHUD 按 pad.connected 显隐）。
+   与 .fps-meter 同参照系（game-wrap 框角、负偏移外挂），主菜单 / 战斗 / 结算均可见 */
+.pad-indicator {
+  position: absolute;
+  top: 63px;             /* FPS 读数（top 46 + 11px 字高 + 间距）正下方 */
+  right: -48px;          /* 与音量键 / FPS 读数同列对齐 */
+  z-index: 7;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  user-select: none;
+  color: #7ce7ff;
+  opacity: 0.8;
+  text-shadow: 0 1px 2px rgba(5, 8, 18, 0.8);
+}
+
+.pad-indicator.hidden { display: none; }
 
 /* ---------- Overlay ---------- */
 .overlay {
@@ -2080,6 +2103,61 @@ kbd {
   line-height: 1.4;
 }
 
+/* 教程面板「手柄」切换按钮（面板头左上角）：键盘 ↔ 手柄按键页切换，active 表示当前为手柄页 */
+.help-pad-btn {
+  margin-right: auto;    /* 面板头 flex 靠右排布：首页元素锚定左侧（标题绝对定位居中不受影响） */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  border: 1px solid rgba(124, 231, 255, 0.35);
+  background: rgba(124, 231, 255, 0.08);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.2s;
+}
+
+.help-pad-btn svg { display: block; }
+
+.help-pad-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.help-pad-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(124, 231, 255, 0.18);
+  box-shadow: 0 0 8px rgba(124, 231, 255, 0.25);
+}
+
+/* 教程四象限页（键盘页 / 手柄页二选一互斥，id=helpQuadKey / helpQuadPad，12-ui initMenuPanels 切换）：
+   隐藏规则必须挂在公共 .help-quad 上——键盘页没有 -pad 修饰类，挂在 .help-quad-pad 会让切页时键盘页无法隐藏 */
+.help-quad.hidden { display: none; }
+
+/* 左摇杆图示：圆形底座 + 可动帽（与右侧十字键 kbd 网格同排等高对齐） */
+.help-stick {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(124, 231, 255, 0.35);
+  background: rgba(124, 231, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-stick-cap {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(124, 231, 255, 0.55);
+}
+
 /* 弹窗：与怪物图鉴同款全屏遮罩结构 */
 .info-modal {
   position: absolute;
@@ -2161,12 +2239,16 @@ kbd {
 .info-body::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); }
 .info-body::-webkit-scrollbar-thumb { background: rgba(120, 180, 255, 0.25); border-radius: 4px; }
 
-/* 权重页的子类型切换 chips */
+/* 权重页的子类型切换 chips（成就页档位页签同用）——sticky 固定在 info-body 滚动区顶部，不随内容滚动 */
 .info-subtabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  padding: 2px 0 12px;      /* 间距收入背景内：滚动内容从页签背景下方穿过，不会露出 */
+  background: rgba(5, 8, 18, 0.95);   /* 与 info-modal 同色深底，遮住穿过的滚动内容 */
 }
 
 .info-chip {

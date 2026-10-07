@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, rewardItem, score, stormVortex, xgLooseBombs}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
-  import { ANVIL, ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DARKHAND, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, POPIAN_U, PULSE_MATRIX, REWARD_ITEMS, rollCrystalGiant, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPAWN_PHASE_LEVEL, SPONSOR, STORM, STORM2, STORM_WIND, UNREAL, WAVE_POEM, WAR_GHOST, WEILONG, YU4, bossDmgMul, currentArmor, diffMods, enemyDmgMul, hasPilot, isPoem, isRealme, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DARKHAND, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, POPIAN_U, PULSE_MATRIX, REWARD_ITEMS, rollCrystalGiant, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPAWN_PHASE_LEVEL, SPONSOR, STORM, STORM2, STORM_WIND, UNREAL, WAVE_POEM, WAR_GHOST, WEILONG, YU4, bossDmgMul, currentArmor, currentDifficulty, diffMods, enemyDmgMul, hasPilot, isPoem, isRealme, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
   import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
@@ -564,7 +564,7 @@
       return;
     }
     if (e.elPhase != null) {
-      // 4F 精英（狂笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，黑暗之手麾下）共用移动骨架
+      // 4F 精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，黑暗之手麾下）共用移动骨架
       //（相位见 04-spawn spawnEliteMinion）：顶部入场微速滑入驻留点 → 驻留小幅摆动+技能循环 →
       // 加速下压离场（挑战模式 1e9 永驻不离场）。
       // 速度曲线铁律：入场 v = 恒速直冲 → 匀减速至 entryEndSpd 微速维持（不彻底刹停）→ 切驻留时摆动幅度
@@ -599,6 +599,7 @@
         if (dist - step < 1.5) {
           e.x = e.elStay.x; e.y = e.elStay.y; e.elPhase = 1; e.elT = 0;
           e.elWobR0 = ELITES.wobRamp0;   // 入场切入：摆动幅度初值非 0（速度大小连续、不停顿）
+          e.elRiseY = 0;   // 诗篇辛国栋导弹齐射上移偏移清零（重入场从驻留高度重新起算）
         }
         return;
       }
@@ -617,11 +618,27 @@
             : Math.sign(ddx) * Math.min(ELITES.xiayong.trackK * Math.abs(ddx), ELITES.xiayong.trackMax);
           e.xyTrackV = (e.xyTrackV || 0) + (vWant - (e.xyTrackV || 0)) * Math.min(1, 3.5 * dt);
           e.elStay.x += e.xyTrackV * dt;
+        } else if (e.type === 'puxuefeng' || e.type === 'hanxixian' || e.type === 'xinguodong') {
+          // 朴/韩/辛驻留水平追踪（2026-10-04 用户定稿）：恒速 hTrackSpd=20px/s 向玩家水平位置低通逼近
+          //（xyTrackV 低通 ≈0.3s 过渡起步/停止，起步加速、对齐/玩家阵亡缓停——速度连续无瞬跳）
+          const tx = clamp(player.alive ? player.x : e.elStay.x,
+            CANVAS_W * ELITES.stayXMargin, CANVAS_W * (1 - ELITES.stayXMargin));
+          const ddx = tx - e.elStay.x;
+          const vWant = Math.abs(ddx) < 2 ? 0 : Math.sign(ddx) * ELITES.hTrackSpd;
+          e.xyTrackV = (e.xyTrackV || 0) + (vWant - (e.xyTrackV || 0)) * Math.min(1, 3.5 * dt);
+          e.elStay.x += e.xyTrackV * dt;
         }
         const r0 = e.elWobR0 || 0;
         const ramp = r0 + (1 - r0) * Math.min(1, e.elT / ELITES.wobRamp);
+        // 诗篇·辛国栋导弹齐射上移（2026-10-04 用户定稿，登记《诗篇难度修正.md》#31）：齐射进行中整体
+        // 上移 poemRisePct 屏高，技能收口后低通回落（poemRiseK 1.5/s ≈0.67s 时间常数，约 10% 屏高 ≈2s
+        // 平滑完成——2026-10-04 二次定稿放缓，原 3；偏移叠加在摆动 y 上，位置全程连续无瞬跳）
+        if (isPoem() && e.type === 'xinguodong') {
+          const riseTgt = (e.elSkill && e.elSkill.kind === 2) ? -CANVAS_H * c.poemRisePct : 0;
+          e.elRiseY = (e.elRiseY || 0) + (riseTgt - (e.elRiseY || 0)) * Math.min(1, c.poemRiseK * dt);
+        }
         e.x = e.elStay.x + ramp * Math.sin(e.elT * ELITES.wobFreqX) * ELITES.wobAmpX;
-        e.y = e.elStay.y + ramp * Math.sin(e.elT * ELITES.wobFreqY) * ELITES.wobAmpY;
+        e.y = e.elStay.y + ramp * Math.sin(e.elT * ELITES.wobFreqY) * ELITES.wobAmpY + (e.elRiseY || 0);
         // 驻留倒计时（挑战模式 1e9 永驻）：结束 → 离场（中断未放完的技能，取消 scheduled 尾弹）
         e.elDwellT -= dt;
         if (e.elDwellT <= 0) {
@@ -640,7 +657,11 @@
         // 朴学峰·流星穿刺 冲①预警（竖直）：本体原地静驻（不向玩家对齐），区域自上而下展开；
         // 展开完成瞬间 → 冲①出发 + 锁冲②几何 + 预警②立刻开始（warn2T 自此刻累计）
         e.elT += dt;
-        if (e.elT >= c.pierceWarn) {
+        // 首冲触发 = pierceWarn + 难度增量（2026-10-04 用户定稿）：虚象 +0.3 / 具象 +0.2 / 真我 +0.1 / 诗篇 +0
+        const fw = c.pierceWarn + (isPoem() ? 0
+          : isRealme() ? c.realmeFirstWarnAdd
+          : currentDifficulty.id === 'form' ? c.formFirstWarnAdd : c.firstWarnAdd);
+        if (e.elT >= fw) {
           const px = player.alive ? player.x : CANVAS_W / 2;
           e.elSkill.hAng = px >= CANVAS_W / 2 ? 0 : Math.PI;   // 玩家在右半屏则从左向右冲，反之对侧
           e.elSkill.w2 = {
@@ -718,8 +739,9 @@
         return;
       }
       if (e.elPhase === 40) {
-        // 辛国栋·地毯轰炸 对齐段：持续追踪玩家当前水平位置（实时 player.x，非释放瞬间快照），剩余 <14px
-        // 提前进入投弹段；目标速度 = min(slideSpeed, alignK×剩余距离)、6/s 低通逼近（无瞬跳）
+        // 辛国栋·地毯轰炸 对齐段（真我/诗篇走此段；虚象/具象扫射直接进相位 42）：持续追踪玩家当前
+        // 水平位置（实时 player.x，非释放瞬间快照），剩余 <14px 提前进入投弹段；
+        // 目标速度 = min(slideSpeed, alignK×剩余距离)、6/s 低通逼近（无瞬跳）
         e.elT += dt;
         const dx = player.x - e.x;
         const dist = Math.abs(dx) || 1;
@@ -736,31 +758,66 @@
         return;
       }
       if (e.elPhase === 42) {
-        // 辛国栋·地毯轰炸 投弹段：继续追踪玩家水平位置（同对齐段公式），dropIv 节拍连续投 bombN 发——
+        // 辛国栋·地毯轰炸 投弹段（2026-10-04 用户定稿改版）：虚象/具象 = 扫射（sweep，见下方分支）；
+        // 真我/诗篇 = 原逻辑——继续追踪玩家水平位置（同对齐段公式），dropIv 节拍连续投弹——
         // 每一发落点 = 本体正下方（e.x）× 投放瞬间玩家所在高度（玩家死亡回退释放瞬间 lockY），
         // 投弹特效 = 脱离火星（亮红 ×12 + 深红 ×8——黑红主题化，2026-10-03 用户定稿；暴鸰扔炸弹仍为金/橙原版）；
-        // 投满 bombN 发 → 通用归位（相位 41，速率取绝对值衔接）
+        // 投满弹数（真我 6 / 诗篇 7）→ 原地驻留收口
         e.elT += dt;
+        const s = e.elSkill;
+        if (s.sweep) {
+          // 虚象/具象扫射：朝锁定方向（朝玩家那一刻的水平方向）匀速横移（elSpd 6/s 低通，≈0.25s
+          // 起步过渡到 slideSpeed，速度连续），dropIv 节拍持续投弹——每发落点 = 本体当前所在位置
+          // 正下方（e.x）× 释放瞬间锁定的玩家竖直高度（s.lockY，2026-10-04 终版定稿：水平实时
+          // 随本体、竖直锁定不变——横移沿路径铺弹成带），直到本体撞边界（钳位 e.w/2）即收口
+          const vT = c.slideSpeed * s.sweepDir;
+          e.elSpd += (vT - e.elSpd) * Math.min(1, 6 * dt);
+          e.x += e.elSpd * dt;
+          if (e.x < e.w / 2) e.x = e.w / 2;
+          if (e.x > CANVAS_W - e.w / 2) e.x = CANVAS_W - e.w / 2;
+          s.dropT += dt;
+          while (s.dropT >= c.dropIv) {
+            s.dropT -= c.dropIv;
+            s.dropped++;
+            e.xgBombs.push({ x: e.x, y: s.lockY, t: 0, first: s.dropped === 1 });
+            spawnParticles(e.x, e.y + 16, '#ff4652', 12, 220);   // 脱离火星（亮红）
+            spawnParticles(e.x, e.y + 16, '#a11226', 8, 160);
+          }
+          if ((s.sweepDir < 0 && e.x <= e.w / 2 + 0.5) || (s.sweepDir > 0 && e.x >= CANVAS_W - e.w / 2 - 0.5)) {
+            // 撞边界 → 原地驻留收口（同投满路径：驻留点 x/y 均同步为当前位置，摆动从 0 缓入，位置严格
+            // 连续——elStay.y 必须一并同步：技能期间 y 冻结在离开相位 1 时的摆动偏移上（最大 ±wobAmpY
+            // ≈3% 屏高），不同步则收口重启摆动 t=0（偏移归 0）时纵向瞬跳——2026-10-04 用户反馈修复）
+            e.elStay.x = e.x;
+            e.elStay.y = e.y;
+            e.elPhase = 1; e.elT = 0; e.elSpd = 0;
+            e.elWobR0 = 0;   // 低速切入：摆动从 0 幅度缓入
+            e.elSkill = null; e.elGapT = eliteSkillGap(e);
+          }
+          return;
+        }
+        const bombN = isPoem() ? c.poemBombN : isRealme() ? c.realmeBombN : c.bombN;
         const dx = player.x - e.x;
         const dist = Math.abs(dx) || 1;
         const vT = Math.min(c.slideSpeed, c.alignK * dist) * (dx < 0 ? -1 : 1);
         e.elSpd += (vT - e.elSpd) * Math.min(1, 6 * dt);
         const step = Math.min(Math.abs(e.elSpd) * dt, dist);
         e.x += (dx < 0 ? -1 : 1) * step;
-        e.elSkill.dropT += dt;
-        while (e.elSkill.dropT >= c.dropIv && e.elSkill.dropped < c.bombN) {
-          e.elSkill.dropT -= c.dropIv;
-          e.elSkill.dropped++;
+        s.dropT += dt;
+        while (s.dropT >= c.dropIv && s.dropped < bombN) {
+          s.dropT -= c.dropIv;
+          s.dropped++;
           // first = 每轮地毯轰炸的首枚弹：绘制层画大范围收缩强调圈（预警更明显；转存残留弹保留标记，绘制共用）
-          e.xgBombs.push({ x: e.x, y: player.alive ? player.y : e.elSkill.lockY, t: 0, first: e.elSkill.dropped === 1 });
+          e.xgBombs.push({ x: e.x, y: player.alive ? player.y : s.lockY, t: 0, first: s.dropped === 1 });
           spawnParticles(e.x, e.y + 16, '#ff4652', 12, 220);   // 脱离火星（亮红）
           spawnParticles(e.x, e.y + 16, '#a11226', 8, 160);
         }
-        if (e.elSkill.dropped >= c.bombN) {
-          // 轰炸结束原地驻留（不飘回原驻留点——用户要求 2026-10-01）：驻留点移到当前位置，
-          // 摆动 ramp 从 0 缓入保持位置严格连续；收口同通用归位吸附（清技能 + 技能间隔计时，
+        if (s.dropped >= bombN) {
+          // 轰炸结束原地驻留（不飘回原驻留点——用户要求 2026-10-01）：驻留点 x/y 均同步为当前位置，
+          // 摆动 ramp 从 0 缓入保持位置严格连续（elStay.y 同步防纵向摆动偏移瞬跳——同撞边界收口，
+          // 2026-10-04 用户反馈修复）；收口同通用归位吸附（清技能 + 技能间隔计时，
           // 投弹全程追踪玩家故收尾时通常已贴近玩家正上方、速度低，直停自然）
           e.elStay.x = e.x;
+          e.elStay.y = e.y;
           e.elPhase = 1; e.elT = 0; e.elSpd = 0;
           e.elWobR0 = 0;   // 低速切入：摆动从 0 幅度缓入（旧行为）
           e.elSkill = null; e.elGapT = eliteSkillGap(e);
@@ -780,6 +837,7 @@
         if (dist - step < 1) {
           e.x = e.elStay.x; e.y = e.elStay.y;
           e.elPhase = 1; e.elT = 0; e.elSpd = 0; e.elWobR0 = 0;   // 低速切入：摆动从 0 幅度缓入
+          e.elRiseY = 0;   // 归位吸附已把 y 拉回 elStay.y，偏移同步清零（净位移 0，无瞬跳）
           e.elSkill = null; e.elGapT = eliteSkillGap(e);
         }
         return;
@@ -2487,7 +2545,8 @@
   // 韩同日取消三眼齐光后编号重排为 1=凝视锁定 / 2=旋眼火螺，辛 1=地毯轰炸 / 2=十二连发）；
   // 夏勇例外（2026-10-03 用户定稿）：固定五步循环 e.xyStep 推进 [屏障(3), 大子弹(2), 回旋刃(1), 大子弹(2),
   // 回旋刃(1)]——屏障必定首发、每两轮释放一次；每次释放结束由各收口处重置 e.elGapT = eliteSkillGap(e)
-  //（机型级 skillGap 覆盖公共值：夏勇 1.56s = 公共 1.2 × 1.3，2026-10-03 用户定稿技能间隔 +30%）
+  //（机型级 skillGap 覆盖公共值：朴/韩/辛 1.8s = 公共 1.2 × 1.5——2026-10-04 用户定稿韩/辛与朴对齐；
+  // 夏勇 1.56s = 公共 1.2 × 1.3，2026-10-03 用户定稿技能间隔 +30%）
   function eliteSkillGap(e) {
     const ec = ELITES[e.type];
     return (ec && ec.skillGap) || ELITES.skillGap;
@@ -2564,11 +2623,17 @@
         break;
       case 'xinguodong':
         if (idx === 1) {
-          // 地毯轰炸：全程追踪玩家水平位置（对齐段/投弹段同款追踪公式，见移动相位 40/42）；
-          // lockY = 释放瞬间玩家高度（仅作玩家死亡期间的投弹回退高度）
+          // 地毯轰炸（2026-10-04 用户定稿改版）：真我/诗篇 = 原逻辑，全程追踪玩家水平位置（对齐段/
+          // 投弹段同款追踪公式，见移动相位 40/42）；lockY = 释放瞬间玩家高度（虚象/具象扫射的投弹
+          // 高度 + 真我/诗篇玩家死亡期间的投弹回退高度）。虚象/具象 = 扫射：朝玩家所在水平方向
+          //（sweepDir）横移，持续往 [本体当前 x，lockY] 投弹（水平实时随本体、竖直锁定不变，
+          // 横移沿路径铺弹成带——2026-10-04 终版定稿），撞边界收口（跳过对齐段，直接进投弹相位 42）
           e.elSkill.lockY = player.alive ? player.y : CANVAS_H * c.bombBandPct;
+          e.elSkill.sweep = !(isPoem() || isRealme());
+          e.elSkill.sweepDir = player.alive ? (player.x >= e.x ? 1 : -1) : 1;
           e.elSkill.dropped = 0;
-          e.elPhase = 40; e.elT = 0; e.elSpd = 0;
+          e.elSkill.dropT = 0;   // 扫射直接进相位 42（跳过对齐段），投弹节拍计时必须在此初始化——否则 undefined+dt=NaN，while(NaN>=dropIv) 永假 → 空放 bug（2026-10-04 修复）
+          e.elPhase = e.elSkill.sweep ? 42 : 40; e.elT = 0; e.elSpd = 0;
         } else {
           // 十二连发 × 2 轮：每轮两批 × 6 发扇形轻追踪导弹（advanceEliteSkill 推进批次）；
           // 轮间隔释放瞬间随机抽取（普通 1.2~1.6s / 诗篇 1.0~1.4s，登记《诗篇难度修正.md》）
@@ -2586,8 +2651,9 @@
     if (e.type === 'puxuefeng' && s.kind === 2) {
       // 翼根连弩：多段扇形连射——段首锁定瞄准角、段内扇位固定展开（射击均匀）；段内/段间同节拍 segGap；
       // 射完 reload 装填空档后技能结束
-      // 段数/弹数/间隔按难度（2026-10-03 用户定稿）：虚象/具象 2 段×5 发/0.14s，真我 3 段×6 发/0.12s，诗篇 3 段×8 发/0.1s
-      const shots = isPoem() ? c.poemSegShots : isRealme() ? c.realmeSegShots : c.segShots;
+      // 段数/弹数/间隔按难度（2026-10-04 二次定稿）：真我 5 发/段、诗篇回调 6 发/段（poemSegShots）；
+      // 虚象/具象 2 段/0.14s，真我/诗篇 3 段（segGap 0.12s/0.1s 沿用）
+      const shots = isPoem() ? c.poemSegShots : c.segShots;
       const segGap = isPoem() ? c.poemSegGap : isRealme() ? c.realmeSegGap : c.segGap;
       const segCount = (isPoem() || isRealme()) ? c.realmeSegCount : c.segCount;
       if (s.seg < segCount) {
@@ -2618,7 +2684,10 @@
         } else if (!s.fired) {
           // 锁定静止期 0.5s：不开火（2026-10-02 用户定稿时序），holdT 后进入激光
           if (s.t >= c.holdT) { s.fired = true; s.t = 0; }
-        } else if (s.t >= c.laserDur) {
+        } else if (s.t >= (isPoem() ? c.laserDur
+          : isRealme() ? c.realmeLaserDur
+          : currentDifficulty.id === 'form' ? c.formLaserDur : c.illusionLaserDur)) {
+          // 激光持续按难度（2026-10-04 用户定稿）：0.5/0.6/0.8/0.9s（较旧值分别 -0.4/-0.3/-0.1/0）
           e.elSkill = null; e.elGapT = eliteSkillGap(e);
         } else if (player.alive) {
           const ux = Math.cos(s.ang), uy = Math.sin(s.ang);
@@ -2655,29 +2724,39 @@
       return;
     }
     if (e.type === 'xinguodong' && s.kind === 2) {
-      // 十二连发 × 2 轮：每轮两批 × 6 发扇形轻追踪导弹（批间隔 volleyGap 0.5s），轮间随机 gap2 间隔
-      //（普通 1.2~1.6s / 诗篇 1.0~1.4s，释放瞬间抽取见 fireEliteSkill）；发射瞬间按扇位偏移预压恒定转向
+      // 连发导弹（2026-10-04 用户定稿改版）：每批 volleyN 发扇形轻追踪导弹（批间隔 volleyGap 0.5s），
+      // 轮间随机 gap2 间隔（普通 1.2~1.6s / 诗篇 1.0~1.4s，释放瞬间抽取见 startEliteSkill）；
+      // 虚象/具象 = 仅 1 轮（2 批 × 4 发 = 8 发）且导弹初速/转向减小（illusionMissileSpeed/Turn，弧度更平）；
+      // 真我 = 8 发（每批 4 发 × 2 批）仍 2 轮；诗篇 = 12 发 2 轮不变（每批 6 发，登记《诗篇难度修正.md》#31，
+      // 上移演出见移动相位 1，收口后下次技能间隔 +poemVolleyGapAdd）。发射瞬间按扇位偏移预压恒定转向
       //（外侧弹向内弧线回收，不再跟踪）；missiles 数组通用推进（turn 字段分支见 updateMissiles）
       s.batchT += dt;
+      const vn = isPoem() ? c.poemVolleyN : c.volleyN;
+      const maxB = (isPoem() || isRealme()) ? 4 : c.illusionBatches;   // 批数收口：诗篇/真我 4（2 轮），虚象/具象 2（1 轮）
+      const mSpd = (isPoem() || isRealme()) ? c.missileSpeed : c.illusionMissileSpeed;
+      const mTurn = (isPoem() || isRealme()) ? c.missileTurn : c.illusionMissileTurn;
       const iv = s.firedBatches === 2 ? s.gap2 : c.volleyGap;   // 第 2 批后为轮间隔，其余为批间隔
       if (s.firedBatches === 0 || s.batchT >= iv) {
         s.batchT = 0;
         s.firedBatches++;
         const base = player.alive ? Math.atan2(player.y - e.y, player.x - e.x) : Math.PI / 2;
-        const step = c.volleySpreadDeg / (c.volleyN - 1) * Math.PI / 180;
-        for (let i = 0; i < c.volleyN; i++) {
-          const off = i - (c.volleyN - 1) / 2;
+        const step = c.volleySpreadDeg / (vn - 1) * Math.PI / 180;
+        for (let i = 0; i < vn; i++) {
+          const off = i - (vn - 1) / 2;
           const ang = base + off * step;
           missiles.push({
             x: e.x, y: e.y + e.h / 2,
-            vx: Math.cos(ang) * c.missileSpeed, vy: Math.sin(ang) * c.missileSpeed,
-            turn: off === 0 ? 0 : -Math.sign(off) * c.missileTurn,   // 预压转向：外侧弹弧线收回玩家方向
+            vx: Math.cos(ang) * mSpd, vy: Math.sin(ang) * mSpd,
+            turn: off === 0 ? 0 : -Math.sign(off) * mTurn,   // 预压转向：外侧弹弧线收回玩家方向
             r: c.missileR, dmg: c.missileDmg,
             dk: 1,   // 深色弹体标记（09-draw-ships drawMissiles 分支：辛国栋导弹弹体略微压暗——2026-10-03 用户定稿）
           });
         }
         spawnParticles(e.x, e.y + e.h / 2, '#ff4652', 8, 160);
-        if (s.firedBatches >= 4) { e.elSkill = null; e.elGapT = eliteSkillGap(e); }
+        if (s.firedBatches >= maxB) {
+          e.elSkill = null;
+          e.elGapT = eliteSkillGap(e) + (isPoem() ? c.poemVolleyGapAdd : 0);   // 诗篇齐射后下次技能间隔 +0.5s
+        }
       }
       return;
     }
@@ -2687,14 +2766,17 @@
   // 精英独立射弹与挂载推进（fire 分支全相位调用，离场瞬间除外——离场清场见移动骨架 elPhase 1→2 转换）
   function advanceEliteMinions(e, dt) {
     const c = ELITES[e.type];
-    // 狂笑朴学峰残像（流星穿刺冲③尾部，残像换影并入——2026-10-02）：afterT 后原地爆开 burstN 发
+    // 狞笑朴学峰残像（流星穿刺冲③尾部，残像换影并入——2026-10-02）：afterT 后原地爆开 burstN 发
     // 环形短弹，随即清除（流星穿刺技能由爆开收口）
     if (e.elRemnant) {
       e.elRemnant.t += dt;
       if (e.elRemnant.t >= c.afterT) {
+        // 爆开弹数按难度（2026-10-04 用户定稿）：6/7/8/9 发（虚象/具象/真我/诗篇）
+        const bN = isPoem() ? c.poemBurstN : isRealme() ? c.realmeBurstN
+          : currentDifficulty.id === 'form' ? c.formBurstN : c.burstN;
         const base = Math.random() * Math.PI * 2;
-        for (let i = 0; i < c.burstN; i++) {
-          pushEBullet(e, base + i * Math.PI * 2 / c.burstN, c.burstSpeed, ENEMY_TYPES.puxuefeng,
+        for (let i = 0; i < bN; i++) {
+          pushEBullet(e, base + i * Math.PI * 2 / bN, c.burstSpeed, ENEMY_TYPES.puxuefeng,
             { x: e.elRemnant.x, y: e.elRemnant.y, r: 5, dmg: c.burstDmg, color: '#e02424', grad: 'hr' });   // 黑红渐变（同翼根连弩弹，2026-10-03）
         }
         spawnParticles(e.elRemnant.x, e.elRemnant.y, '#ffd0c0', 14, 220);
@@ -2764,6 +2846,12 @@
           }
           b.trail.push({ x: b.x, y: b.y });
           if (b.trail.length > 12) b.trail.shift();
+          // 量子护盾消解（2026-10-04 二次定稿：白盾阻挡取消——回旋刃不再被守愿者白盾挡住，恢复原设定；
+          // 玩家量子护盾气泡仍可消解）
+          if (player.alive && player.shield > 0 &&
+              Math.hypot(b.x - player.x, b.y - player.y) < 36 + c.bladeR) {
+            spawnParticles(b.x, b.y, '#6fe3ff', 10, 200); b.done = true; continue;
+          }
           if (player.alive && b.hitT <= 0 &&
               Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < c.bladeR + PLAYER_CFG.hitRadius) {
             damagePlayer(c.bladeDmg * enemyDmgMul(), 1, false, false, null);
@@ -2798,7 +2886,8 @@
     if (e.xyOrbs && e.xyOrbs.length) {
       const s3 = e.elSkill && e.elSkill.kind === 2 ? e.elSkill : null;
       let allDone = true;
-      const ringN = isPoem() ? c.poemRingN : isRealme() ? c.realmeRingN : c.ringN;
+      const ringN = isPoem() ? c.poemRingN : isRealme() ? c.realmeRingN
+        : currentDifficulty.id === 'form' ? c.formRingN : c.ringN;
       for (const o of e.xyOrbs) {
         if (o.t < c.orbDur) {
           allDone = false;
@@ -2825,14 +2914,14 @@
         if (s3) { e.elSkill = null; e.elGapT = eliteSkillGap(e); }
       }
     }
-    // 暴怒辛国栋地毯轰炸落点：bombWarn 预警（诗篇同值，2026-10-01 取消诗篇预警减少；绘制层渲染落点圈）
-    // → 到时爆炸（半径诗篇 poemBombR / 其余 bombR，内 bombDmg）；诗篇半径取值经 isPoem()（+50%，
-    // 登记《诗篇难度修正.md》）
-    const xgBlastR = isPoem() ? c.poemBombR : c.bombR;
+    // 暴怒辛国栋地毯轰炸落点：预警/半径按难度（2026-10-04 用户定稿改版，登记《诗篇难度修正.md》#12）：
+    // 预警 虚象/具象 0.8s / 真我 1.0s / 诗篇 0.9s；半径 虚象/具象 73 / 真我 60 / 诗篇 75（绘制层渲染落点圈）
+    const xgBlastR = isPoem() ? c.poemBombR : isRealme() ? c.realmeBombR : c.bombR;
+    const xgWarnT = isPoem() ? c.poemBombWarn : isRealme() ? c.realmeBombWarn : c.bombWarn;
     for (let i = e.xgBombs.length - 1; i >= 0; i--) {
       const b = e.xgBombs[i];
       b.t += dt;
-      if (b.t >= c.bombWarn) {
+      if (b.t >= xgWarnT) {
         if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) <= xgBlastR) {
           damagePlayer(c.bombDmg * enemyDmgMul(), 1, false, false, null);
         }
@@ -2845,16 +2934,17 @@
   }
 
   // 辛国栋击毁后残留的地毯轰炸落点（killEnemy 从 e.xgBombs 转存进 state.xgLooseBombs）：
-  // 继续倒计时并爆炸——伤害 / 半径（诗篇 poemBombR）/ 演出与在场弹同款（见 advanceEliteMinions 尾段）；
+  // 继续倒计时并爆炸——伤害 / 预警 / 半径按难度（在场弹同款取值，见 advanceEliteMinions 尾段）；
   // 实体已不在场，此循环独立于精英存活每帧推进（14-main 调度）
   function updateXgLooseBombs(dt) {
     if (!state.xgLooseBombs.length) return;
     const c = ELITES.xinguodong;
-    const blastR = isPoem() ? c.poemBombR : c.bombR;
+    const blastR = isPoem() ? c.poemBombR : isRealme() ? c.realmeBombR : c.bombR;
+    const warnT = isPoem() ? c.poemBombWarn : isRealme() ? c.realmeBombWarn : c.bombWarn;
     for (let i = state.xgLooseBombs.length - 1; i >= 0; i--) {
       const b = state.xgLooseBombs[i];
       b.t += dt;
-      if (b.t >= c.bombWarn) {
+      if (b.t >= warnT) {
         if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) <= blastR) {
           damagePlayer(c.bombDmg * enemyDmgMul(), 1, false, false, null);
         }

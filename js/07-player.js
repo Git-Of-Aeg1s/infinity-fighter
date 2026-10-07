@@ -1,16 +1,16 @@
 // 07-player：玩家武器 / 僚机逻辑 / 受伤与无敌 / 拾取 / 高能爆弹 / 清弹
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(5 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(17 名)
+  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(5 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(18 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, demo, flash, hurt, lives, score, yiCounter, lingliCharges, lingliBossShieldDone, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaFx, xinFuryRing, honghongT, itemPickFx}
   //
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, DEMO_BOTTOM, DEMO_TOP, ENEMY_CLASS, HANSHUANG, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, REWARD_ITEMS, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotEntry, pilotHuiHealMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
-  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, yiScythes, ddjMissiles } from './02-core.js';
+  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, yiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
-  import { achvAddDagouCheat, achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLingliBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
+  import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLingliBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
   import { endGame } from './12-ui.js';
 
 
@@ -881,13 +881,21 @@
         const ease = p * p * (3 - 2 * p);
         player.y = player.enterFromY + (CANVAS_H - 90 - player.enterFromY) * ease;
       } else {
-        if (keys['a'] || keys['arrowleft']) dx -= 1;
-        if (keys['d'] || keys['arrowright']) dx += 1;
-        if (keys['w'] || keys['arrowup']) dy -= 1;
-        if (keys['s'] || keys['arrowdown']) dy += 1;
+        // 移动输入：手柄左摇杆模拟量优先（14-main 每帧 pollGamepad 写入 gamepad.ax/ay——已做径向死区归一，模长 ≤1），
+        // 键盘 WASD/方向键与手柄十字键为数字回退。摇杆幅值直接线性乘移速：回中时幅值连续衰减至 0，
+        // 速度曲线无档位切换（铁律）；数字键路径保持原归一化行为完全不变
+        if (gamepad.connected && (gamepad.ax !== 0 || gamepad.ay !== 0)) {
+          dx = gamepad.ax; dy = gamepad.ay;
+        } else {
+        if (keys['a'] || keys['arrowleft'] || gamepad.btn.left) dx -= 1;
+        if (keys['d'] || keys['arrowright'] || gamepad.btn.right) dx += 1;
+        if (keys['w'] || keys['arrowup'] || gamepad.btn.up) dy -= 1;
+        if (keys['s'] || keys['arrowdown'] || gamepad.btn.down) dy += 1;
+        }
       if (dx || dy) {
         const len = Math.hypot(dx, dy);
-        dx /= len; dy /= len;
+        // 摇杆模拟量（len ≤ 1）保留幅值不归一化；键盘 / 十字键数字向量（len = 1 或 √2）归一到 1（原行为）
+        if (len > 1) { dx /= len; dy /= len; }
         const pspd = PLAYER_CFG.speed * playerFrostMoveMul() * state.maxinSpeedMul * state.laodaMul;   // 寒霜光圈内移动速度 -35%；马兴犬：Shift 加速 / CapsLock 减速；牢大特饮 +40%（laodaMul 指数逼近平滑过渡）
         player.x += dx * pspd * dt;
         player.y += dy * pspd * dt;
@@ -1008,6 +1016,15 @@
         crystalBurst.y = player.y;
         // 成就「云心」：消失扩散波消弹数与存续期气泡消解数合并判定（start 时登记的 BOSS 战标记一并结算）
         achvNoteLanxinShieldEnd(clearEnemyBulletsNear(player.x, player.y, ARMOR_SKILLS.lanxin.clearR));
+        // 结晶冲击波同时消散夏勇回旋刃（2026-10-04 用户定稿；蛋挞在 eBullets 内已被上方清弹覆盖）
+        for (const en of enemies) {
+          if (!en.xyBlades) continue;
+          for (const bl of en.xyBlades) {
+            if (bl.done || Math.hypot(bl.x - player.x, bl.y - player.y) > ARMOR_SKILLS.lanxin.clearR) continue;
+            spawnParticles(bl.x, bl.y, ARMOR_SKILLS.lanxin.color, 8, 180);
+            bl.done = true;
+          }
+        }
         spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 22, 220);
         shake(4, 0.2);
       }
@@ -1549,7 +1566,6 @@
       const entrance = bossEntranceActive();
       if (!dashFrozen && !entrance) {
         state.dagouMissT -= dt;
-        if (state.dagouDebugRapid) achvAddDagouCheat(dt);   // 成就：捣蛋来袭——连发作弊累计时长
       }
       for (let i = state.dagouChains.length - 1; i >= 0; i--) {
         const c = state.dagouChains[i];
@@ -1905,7 +1921,8 @@
   //   4. 【未来】双阶段转化型 BOSS（一阶段血尽 → 动画转化 → 二阶段全新技能形态，暂未实装）：
   //      秒杀类可直接整体击杀（跳过转化动画与二阶段，锚点见 06-enemy killEnemy BOSS 分支注释）。
   //   5. 黑暗之手连携精英（dhLink）不被波及（现行实现沿用 2026-10-02 口径）——本体若被击杀，精英经
-  //      dhFleeLinkedElites 立即终止技能并迅速离场而非陪葬（埃逸波 / 爆弹同此规则，见各自结算点）。
+  //      dhFleeLinkedElites 立即终止技能并迅速离场而非陪葬（埃逸波同此规则，见其结算点；爆弹已于
+  //      2026-10-04 单独落地为「不再豁免、连携精英同受爆弹伤害」，见 useBomb 内注释）。
   //      【2026-10-03 用户改口径，待实现】精英在场应被一同砸死；黑暗之手被砸死时未登场的精英
   //      视为未被杀死（之后的血量阈值波次仍会出现）——登记见《错误与待优化.md》。
   function gachaMeteorImpact(color) {
@@ -2043,6 +2060,25 @@
     return false;
   }
 
+  // 调试作弊：无视驾驶员装备与充能门控，立刻释放一次萧杨「哦哦！抽卡！」——
+  // 仅测试挑战入口调用（14-main 战斗键 7，state.challenge 限定：怪物权重单敌 / 波次 / 持续刷怪测试）。
+  // 走与正常 Q 完全相同的演出与结算链路（startGacha 状态机 → updateGachaFx → gachaMeteorImpact）；
+  // 若恰带萧杨且已充能：按正常释放口径消耗充能（gachaReady/gachaStones 归零），否则白嫖一次、进度不动。
+  // 上一场抽卡演出未结束（state.gachaFx 在场）时忽略本次按键——防连按叠场；记 achvNoteCheat（同 debugSetWeapon 口径）
+  function debugForceGacha() {
+    if (state.mode !== 'playing' || state.paused) return false;
+    if (bossEntranceActive()) return false;   // 警报 / BOSS 登场演出期间同正常 Q 一致不可释放
+    if (!player.alive) return false;
+    if (state.gachaFx) return false;
+    if (hasPilot('xiaoyang') && state.gachaReady) {
+      state.gachaReady = false;
+      state.gachaStones = 0;
+    }
+    achvNoteCheat();
+    startGacha();
+    return true;
+  }
+
   // 漓：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
   // 与澜心护盾消失的差异：不震屏（crystalBurst 冲击波环视觉完全一致）
   function lingliBurst() {
@@ -2178,10 +2214,24 @@
           spawnParticles(p1.x, p1.y, '#ffd166', 12, 260);   // 断口迸出金色碎片
         }
       }
-      // 敌方子弹：被扫中即摧毁
+      // 敌方子弹：被扫中即摧毁（蛋挞特殊：触发颤动→碎裂→渐隐流程，08-entities 推进、不直接移除）
       for (let b = eBullets.length - 1; b >= 0; b--) {
         const eb = eBullets[b];
-        if (inSector(eb.x, eb.y)) { eBullets.splice(b, 1); spawnParticles(eb.x, eb.y, '#FFD6F2', 1, 70); }
+        if (!inSector(eb.x, eb.y)) continue;
+        if (eb.tart) {
+          if (eb.tartHitT == null) { eb.tartHitT = 0; spawnParticles(eb.x, eb.y, '#FFD6F2', 6, 130); }
+          continue;
+        }
+        eBullets.splice(b, 1); spawnParticles(eb.x, eb.y, '#FFD6F2', 1, 70);
+      }
+      // 夏勇回旋刃：刀身扫中即湮灭（2026-10-04 用户定稿：镰刀消灭回旋镖；06-enemy 推进端按 done 收口技能）
+      for (const en of enemies) {
+        if (!en.xyBlades) continue;
+        for (const bl of en.xyBlades) {
+          if (bl.done || !inSector(bl.x, bl.y)) continue;
+          spawnParticles(bl.x, bl.y, '#3a0a10', 10, 180);
+          bl.done = true;
+        }
       }
       if (sc.t >= wind + cfg.scytheDur) { yiScythes.splice(i, 1); continue; }   // 蓄力 + 斩完一圈即消散
     }
@@ -2464,9 +2514,9 @@
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e) continue;   // 连锁结算（暴鸰殉爆 / 召唤体连带删除等）可能同帧收缩数组导致索引越界——与下方补扫循环同样跳过
-      // 黑暗之手连携精英（dhLink）：不吃爆弹波及（2026-10-02 用户定稿「自爆时不会炸死连携敌人」）——
-      // 本体若被此波击杀，精英经 killEnemy → dhFleeLinkedElites 立即终止技能并迅速离场，而非陪葬被炸死
-      if (e.dhLink) continue;
+      // 黑暗之手连携精英（dhLink）：同受爆弹波及（2026-10-04 用户定稿「不再分担、均受正常伤害」，
+      // 取代 2026-10-02「自爆时不会炸死连携敌人」豁免口径）——本体若被此波击杀，幸存精英仍经
+      // killEnemy → dhFleeLinkedElites 立即终止技能并迅速离场（秒杀类金陨/殉爆的豁免仍保留，见各自结算点）
       if (state.challenge) {
         if (state.challenge.kind === 'boss') e.hp -= e.maxHp * 0.60;
         else e.hp = 0;
@@ -2481,8 +2531,8 @@
           const keli = pilotEntry('keli');
           dmg *= keli && keli.bombIgnoreDiffCut ? 1 - (1 - bbMul) / 2 : bbMul;
         }
-        // 黑暗之手：场上存在任意连携精英（dhLink）时受到的所有伤害 -70%（爆弹虽为真实伤害亦在减免范围内，2026-10-03 五轮定稿 -65% → -70%）
-        if (e.type === 'boss' && e.bossId === 'darkhand' && dhGuardActive()) dmg *= 1 - DARKHAND.summon.guardDR;
+        // 黑暗之手：连携精英 guard 减免不再作用于爆弹（2026-10-04 用户定稿：高能爆弹/绷绷炸弹为真实伤害
+        // 全额结算，取代原「含爆弹 -70%」口径；普通伤害减免仍走 08-entities enemyDamageMul）
         e.hp -= dmg;
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
@@ -2627,4 +2677,5 @@
     handlePlayerDeath, aiyiSelfDestruct, updateAiyiWaves, stormBossFightActive, pilotStormContactMul,
     princeStormKillGain, updatePilotStatus, triggerPilotSkill, updateFriendStorms, kingDmgBonusMul, chargeAllGaugesOnDashEnd,
     updateDagouMissiles, yiNoteKill, noteDdjLevelUp, applyRewardItem, pushItemPickFx, currentBombCap, noteGachaStone,
+    debugForceGacha,
   };
