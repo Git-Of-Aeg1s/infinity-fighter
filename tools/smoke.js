@@ -664,23 +664,24 @@ try {
         if (sawFan) errors.push({ key: '黑暗之手登场蛋挞扇应已删除', stack: '登场动画期间出现 tart 长条蛋挞弹（reveal 发射逻辑未删干净？）' });
         // ② 技能循环：入场后 skillCd = 旧日之歌 2.2s×40%×虚象 1.5 ≈1.3s + 技能时长 → 700 帧内应施放 ≥1 次并出弹幕
         //    （本场景此阶段场上仅黑暗之手一个敌人，eBullets 非空即其弹幕；暗核弹 / 巨大蛋挞 / 涟漪均计入）
-        // ①b 技能4 爪翼毁灭光束：强制触发，走完整「预警→发射×3 组→收口」状态机（2026-10-03 四轮定稿
-        //    预警 1.2s、组发射间隔 = warnDur：≈4.05s = 243 帧）——断言过程中光束折线段出现且非空（渲染块每帧执行、
-        //    vis 随 b.t 同窗口推进，见 11-draw-boss）、结束 e.skill 归 null
-        e.skill = { id: 3, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, gi: 0, st: 'warn', pt: 0, beams: [] };
-        let s4BeamFrames = 0, s4EmptySegs = false;
-        for (let f = 0; f < 260 && e.skill; f++) {
+        // ①b 技能4 爪翼毁灭蛋挞：强制触发，走完整「预警→发射×3 组→收口」状态机（2026-10-08 用户定稿
+        //    激光替换为超长蛋挞：预警 1.2s × 3 组 = 3.6s，末组蛋挞飞出屏收口 ≈3.6+1.7 ≈5.3s ≈315 帧，
+        //    上限 360 帧）——断言过程中蛋挞弹体出现且身体点数正常、位置有限（渲染/判伤数据源，见 05-boss
+        //    dhUpdateTart / 11-draw-boss drawDhTart）、结束 e.skill 归 null
+        e.skill = { id: 3, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, gi: 0, st: 'warn', pt: 0, tarts: [] };
+        let s4TartFrames = 0, s4BadPts = false;
+        for (let f = 0; f < 360 && e.skill; f++) {
           frames(1); isolate();
-          const sk = e.skill;   // 技能可能恰在本帧收口（≈243 帧 < 260 帧上限）——循环体内重取，防 null.beams 竞态
+          const sk = e.skill;   // 技能可能恰在本帧收口（≈315 帧 < 360 帧上限）——循环体内重取，防 null.tarts 竞态
           if (!sk) break;
-          for (const b of sk.beams) {
-            s4BeamFrames++;
-            if (!b.segs.length) s4EmptySegs = true;
+          for (const tar of sk.tarts) {
+            s4TartFrames++;
+            if (!tar.pts || tar.pts.length < 2 || tar.pts.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) s4BadPts = true;
           }
         }
-        if (!s4BeamFrames) errors.push({ key: '技能4 光束未出现', stack: '强制 id=3 技能 260 帧内 beams 恒空（warnDur→发射门控 / 组序 gi 异常？）' });
-        if (s4EmptySegs) errors.push({ key: '技能4 光束折线段为空', stack: 'beams 出现但存在 segs.length=0（dhBeamSegments 射线求交异常？）' });
-        if (e.skill) errors.push({ key: '技能4 未收口', stack: '260 帧后 e.skill 未清空（三组 warn 1.2 + 末组 beamDur 0.45 ≈4.05s 应完成收口）' });
+        if (!s4TartFrames) errors.push({ key: '技能4 蛋挞未出现', stack: '强制 id=3 技能 360 帧内 tarts 恒空（warnDur→发射门控 / 组序 gi 异常？）' });
+        if (s4BadPts) errors.push({ key: '技能4 蛋挞身体点异常', stack: 'tarts 出现但存在 pts 缺失 / 长度 <2 / 非有限坐标（dhUpdateTart 采样异常？）' });
+        if (e.skill) errors.push({ key: '技能4 未收口', stack: '360 帧后 e.skill 未清空（三组 warn 1.2 = 3.6s + 末组蛋挞露出 ≈0.7s + 飞出屏 ≈1.0s ≈5.3s 应完成收口）' });
         let sawSkill = false, sawShot = false;
         for (let f = 0; f < 700 && !(sawSkill && sawShot); f++) {
           frames(1);

@@ -976,6 +976,95 @@ canvas#game {
   box-shadow: 0 0 18px rgba(255, 213, 128, 0.35);
 }
 
+/* ── 特殊驾驶员（strong，2026-10-08 用户定稿）────────────────────────────
+   选择页卡片右上角白光角标；主页面驾驶员菱形框金边替换为 #39C5BB→#FFC0CB
+   双色渐变流动边框 + 两道白芒绕框流动（类切换见 12-ui refreshLoadout）── */
+
+/* 选择页卡片：右上角白色辉光角标（呼吸脉动），代表特殊角色 */
+.pilot-card.strong {
+  position: relative;   /* 角标 ::after 定位基准（.armor-card 无 position） */
+}
+
+.pilot-card.strong::after {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.28) 36%, transparent 68%);
+  pointer-events: none;
+  animation: strongGlowPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes strongGlowPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* 主页面驾驶员菱形框：双色渐变流动边框（双层背景 border-box/padding-box 技法——
+   渐变只露出 1.5px 边框环带，框内底色不变）；透明 border 让原生金框退位 */
+.pilot-diamond.strong-pilot {
+  border-color: transparent;
+  background:
+    linear-gradient(135deg, #39C5BB, #FFC0CB, #39C5BB, #FFC0CB, #39C5BB) border-box,
+    rgba(18, 16, 12, 0.92) padding-box;
+  background-size: 300% 300%, auto;
+  animation: pilotBorderFlow 5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(57, 197, 187, 0.22), 0 0 14px rgba(255, 192, 203, 0.18);
+}
+
+@keyframes pilotBorderFlow {
+  0%   { background-position: 0% 0%, 0 0; }
+  50%  { background-position: 100% 100%, 0 0; }
+  100% { background-position: 0% 0%, 0 0; }
+}
+
+/* 两道白芒绕边框环流动：conic-gradient 双白色扇区旋转 + mask 只保留 1.5px 边框环带
+  （其余区域透明，不遮挡渐变边框与文字）。--glintAngle 经 @property 注册可参与动画，
+   不支持的浏览器退化为静态双白芒 */
+.pilot-diamond.strong-pilot::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;   /* 覆盖边框环带（child 定位以 padding box 为基准，负值恰好补齐 border 带宽） */
+  border-radius: 6px;
+  padding: 1.5px;
+  background: conic-gradient(from var(--glintAngle, 0deg),
+    transparent 0deg 250deg,
+    rgba(255, 255, 255, 0.95) 256deg 266deg,
+    transparent 272deg 322deg,
+    rgba(255, 255, 255, 0.8) 328deg 338deg,
+    transparent 344deg 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: glintSpin 3.2s linear infinite;
+}
+
+@property --glintAngle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glintSpin {
+  to { --glintAngle: 360deg; }
+}
+
+/* 流光框的 hover / 面板展开态：保持透明边框，仅提亮双青粉辉光（金框 hover/open 态的对应版） */
+.pilot-diamond.strong-pilot:hover {
+  border-color: transparent;
+  box-shadow: 0 0 16px rgba(57, 197, 187, 0.35), 0 0 18px rgba(255, 192, 203, 0.30);
+}
+
+.pilot-diamond.strong-pilot.open {
+  border-color: transparent;
+  box-shadow: 0 0 20px rgba(57, 197, 187, 0.40), 0 0 22px rgba(255, 192, 203, 0.35);
+}
+
 /* 框处于展开状态：高亮提示当前面板来源 */
 .loadout-box.open {
   border-color: var(--accent);

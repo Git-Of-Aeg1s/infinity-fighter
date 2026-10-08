@@ -58,7 +58,7 @@
                 if (!tryBulwarkCheatDeath()) {
                   player.hp = 0;
                   player.alive = false;
-                  state.lives--;
+                  if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
                   spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
                   shake(16, 0.6);
                   achvOnDeath('crash:storm', state.lives <= 0);   // 成就：暴风陨落 / 至尊陨落等死因结算
@@ -564,7 +564,7 @@
       return;
     }
     if (e.elPhase != null) {
-      // 4F 精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，黑暗之手麾下）共用移动骨架
+      // 4S 精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋，黑暗之手麾下）共用移动骨架
       //（相位见 04-spawn spawnEliteMinion）：顶部入场微速滑入驻留点 → 驻留小幅摆动+技能循环 →
       // 加速下压离场（挑战模式 1e9 永驻不离场）。
       // 速度曲线铁律：入场 v = 恒速直冲 → 匀减速至 entryEndSpd 微速维持（不彻底刹停）→ 切驻留时摆动幅度
@@ -3492,7 +3492,7 @@
     if (player.hp <= 0) {
       player.hp = 0;
       player.alive = false;
-      state.lives--;
+      if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       shake(16, 0.6);
       achvOnDeath('burn:jiaoxiang', state.lives <= 0);   // 成就：烫烫烫等死因结算
@@ -3578,7 +3578,11 @@
           spawnParticles(player.x, player.y, '#ffcf4d', 20, 240);   // 金色粒子提示上限提升
         }
       }
-      if (e.bossId === 'darkhand') dhFleeLinkedElites();   // 黑暗之手死亡：其 20% 血量窗口随死亡结束——残余连携精英迅速离场并记录血量（下一轮登场待设计）
+      if (e.bossId === 'darkhand') {
+        dhFleeLinkedElites();   // 黑暗之手死亡：其 20% 血量窗口随死亡结束——残余连携精英迅速离场并记录血量（第三轮按 ELITE_REVIVE.levels 返场）
+        // 四精英全数击败（含被爆弹波及击杀者，无任何离场登记）→ 置位标记：第三轮 Lv25 召唤张华&张策（14-main 消费）
+        state.dhZhangPending = state.dhFledElites.length === 0;
+      }
       if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
       yiNoteKill(5, e.type);   // 依：BOSS = 5 类，击杀计数 +122（充满自动召唤镰刀）
       // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"）；
@@ -3658,7 +3662,9 @@
       // 诗篇波次制：波 N = 等级 N（第一轮 Lv1~10 / 第二轮 Lv11~20），阶段衔接为连续升级（10 → 11），永不跳变、不置豁免
       const lvCfgNext = SPAWN_PHASE_LEVEL[bossFlow.phase] || SPAWN_PHASE_LEVEL[SPAWN_PHASE_LEVEL.length - 1];
       if (!isPoem() && lvCfgNext.base > levelFlow.level) levelFlow.douzhiSkipOnce = true;
-      if (bossFlow.phase < BOSS_SEQUENCE.length && !state.testBoss && !state.challenge) {
+      // e.bossId === 'storm'：第三轮暴风之眼被击败时 phase 已越过 BOSS_SEQUENCE 末位，
+      // 仍须进入本分支直召风暴编织者（二阶段不占轮次，击败编织者才走下方胜利结算）
+      if ((bossFlow.phase < BOSS_SEQUENCE.length || e.bossId === 'storm') && !state.testBoss && !state.challenge) {
         if (e.bossId === 'storm') {
           // 暴风之眼被击败：风暴轰然消散，直接召唤二阶段飞舰「风暴编织者」
           // （跳过等清场 / 警报 / 常规刷怪，直接进入战斗）

@@ -30,7 +30,7 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 | `02-achievements` | 成就系统（注册表在 01-config） |
 | `02-core` | 画布与 DOM 引用、**共享状态 `state` / `bossFlow` / `levelFlow`**、实体数组（enemies/missiles/…）、工具函数、星空背景、**手柄共享状态 `gamepad` + `pollGamepad()` 每帧轮询** |
 | `03-audio` | BGM 切换 / BOSS 战音效 / 全局静音 |
-| `04-spawn` | 刷怪：场面压力系统、波次编队（标准名见下）、1/2/3/4 类出怪入口、特殊生成（战争幽灵/精英召唤 `spawnEliteMinion`——4F 精英永驻场、离场由血量窗口驱动；`ELITES.dwell:30` 为未被调用路径使用的默认值，图鉴挑战永驻） |
+| `04-spawn` | 刷怪：场面压力系统、波次编队（标准名见下）、1/2/3/4 类出怪入口、特殊生成（战争幽灵/精英召唤 `spawnEliteMinion`——4S 精英永驻场、离场由血量窗口驱动；`ELITES.dwell:30` 为未被调用路径使用的默认值，图鉴挑战永驻） |
 | `05-boss` | BOSS 战状态机（三场战斗四实体）：旧日之歌 + 暴风之眼/风暴编织者 + 黑暗之手（技能/演出/连携召唤精英） |
 | `06-enemy` | 敌机逐帧更新：移动/开火/出屏、御4 力场、暴鸰自爆、精英技能状态机（首个随机后固定轮换——两技 1↔2 / 三技 1→2→3；夏勇例外：固定五步循环 `[3,2,1,2,1]` 屏障→大子弹→回旋刃→大子弹→回旋刃，不走 elFirst/elNext）、击坠授奖 `grantRewardItem`、killEnemy |
 | `07-player` | 玩家：移动/暴走/受击/无敌/拾取/驾驶员技能/爆弹、道具立即生效 `applyRewardItem`、萧杨原石充能（16 颗→Q 技能）、**许凯狗冲刺结束充满全部技能计量表 `chargeAllGaugesOnDashEnd`**——新驾驶员若加技能计量表（冷却/充能/计数/层数）必须同步在该函数登记充满逻辑（体系约定见 01-config PILOTS 区头注释） |

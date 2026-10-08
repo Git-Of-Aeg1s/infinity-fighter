@@ -5,7 +5,7 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
-  import { BOSSES, BOSS_BULLET, BOSS_WARN, CANVAS_H, CANVAS_W, DARKHAND, ENERGY_ORB, STORM, STORM2, STORM2_SHIP, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, xinguodongImg, xiayongImg } from './01-config.js';
+  import { BOSSES, BOSS_BULLET, BOSS_WARN, CANVAS_H, CANVAS_W, DARKHAND, ENERGY_ORB, STORM, STORM2, STORM2_SHIP, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, tartUltraImg, xinguodongImg, xiayongImg } from './01-config.js';
   import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 
@@ -1616,10 +1616,9 @@
   // root：根部收束——起点宽度收为细点并在短距离内平滑展开至全宽，叠加核心辉光，
   //       消除起点处生硬的矩形截断（技能1 激光自电弧能量球核心发出时使用）
   // 光束配色（drawS2Beam 第 9 参可选）：{glow 外辉光 rgb / mid 热斑中层 rgb / core 内芯边缘 rgb / hot 内芯白热 rgb}；
-  // 缺省 = 风暴编织者电弧蓝白（全部既有调用零改动）；黑暗之手技能4 传黑红毁灭配色（DH_BEAM_COLORS）
+  // 缺省 = 风暴编织者电弧蓝白（全部既有调用零改动）；原黑暗之手技能4 黑红毁灭配色（DH_BEAM_COLORS）已随
+  // 2026-10-08 激光替换为超长蛋挞（drawDhTart 贴图绘制）一并删除
   const DH_STORM_BEAM = { glow: '111, 184, 255', mid: '170, 220, 255', core: '120, 190, 255', hot: '216, 236, 255' };
-  // 黑暗之手毁灭光束（2026-10-03 用户定稿三轮：紫改红）：本体纯黑（hot 近黑芯），边缘 = 明红内芯边（core）+ 外围红色光芒带（glow）
-  const DH_BEAM_COLORS = { glow: '255, 70, 50', mid: '255, 96, 72', core: '255, 128, 104', hot: '2, 0, 6' };
 
   function drawS2Beam(x, y, ang, len, halfW, alpha, root, tailCap, colors) {
     const C = colors || DH_STORM_BEAM;
@@ -2974,18 +2973,18 @@
     }
     // 技能蓄能提示环已删（2026-10-02 用户定稿「黑暗之手周围的紫色圈去掉」）
     ctx.restore();
-    // 技能4 爪翼毁灭光束（2026-10-02 / 2026-10-03 三轮定稿）：三组发射点依次「预警 → 发射」（世界坐标，机体上层）——
+    // 技能4 爪翼毁灭蛋挞（2026-10-08 用户定稿：激光替换为超长蛋挞——原爪翼毁灭光束改版）：三组发射点依次
+    // 「预警 → 发射」（世界坐标，机体上层）——
     // 预警 = 暗红虚线方向束 + 端点光斑闪动（呼吸相位用 e.skill.pt，gameover 随 update 冻结自动定格；紫改红随黑红弹幕同系；
     // 2026-10-03 五轮定稿：线宽 2→3.5 增粗 + 红辉光，闪动频率/幅度加大更醒目）；
-    // 光束本体 = 黑红配色（DH_BEAM_COLORS）逐段绘制（折线含真我/诗篇反弹段），vis 与 05-boss 判伤同式
-    //（strikeVis 形状公式 inline），出现/淡出节拍与伤害窗口严格一致
+    // 弹体 = 超长蛋挞逐段贴图（tartUltraImg 水彩烘焙图，见 drawDhTart），随 dhUpdateTart 逐节露出/平移/屏缘折返
     if (e.skill && e.skill.id === 3) {
       const c4 = DARKHAND.s4, s = e.skill;
       if (s.st === 'warn') {
         for (const gm of c4.groups[s.gi]) {
           const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);   // oy：第二轮双爪初始点上移 50px（2026-10-03，与 05-boss 发射点同口径）
-          // 预警线长度 = 沿朝向延伸至出屏（2026-10-03 四轮定稿：同 dhBeamSegments 出屏口径——前两轮下达屏底、
-          // 第三轮斜出侧缘，+30 出屏余量与光束折线一致），端点光斑随线尾移动
+          // 预警线长度 = 沿朝向延伸至出屏（同原 dhBeamSegments 出屏口径——前两轮下达屏底、
+          // 第三轮斜出侧缘，+30 出屏余量），端点光斑随线尾移动
           let wl = 190;
           {
             const ddx = Math.cos(gm.ang), ddy = Math.sin(gm.ang);
@@ -3018,14 +3017,56 @@
           ctx.restore();
         }
       }
-      for (const b of s.beams) {
-        const life = b.t / c4.beamDur, rise = c4.rise;
-        const vis = clamp(life < rise ? life / rise : 1 - (life - rise) / (1 - rise), 0, 1);
-        for (const sg of b.segs) {
-          drawS2Beam(sg.x1, sg.y1, Math.atan2(sg.y2 - sg.y1, sg.x2 - sg.x1),
-            Math.hypot(sg.x2 - sg.x1, sg.y2 - sg.y1), c4.r, vis, false, true, DH_BEAM_COLORS);
-        }
+      for (const tar of s.tarts) drawDhTart(tar);
+    }
+  }
+
+  // 技能4 超长蛋挞绘制（2026-10-08 用户定稿替换爪翼毁灭光束）：沿身体采样点（05-boss dhUpdateTart 逐帧写入）
+  // 逐段贴图——tartUltraImg（1964×200 水彩绿幕烘焙图，01-config）头→尾按「头部后方弧长」映射图源 u 区间，
+  // 每段 translate/rotate/drawImage（段间 +0.8px 重叠消缝；未露出段（锚点堆叠）长度 ≈0 不画）；
+  // 贴图未加载/烘焙失败 → 回退暖焦糖色圆帽条带（双层描边近似蛋挞配色）。
+  // 拖尾 = 尾端沿轨迹向后 trailLen 渐隐彩带（宽度自厚度 72% 收窄、透明度平方衰减；未全部露出时尾端未离
+  // 发射点 → trailPts 为空自然无拖尾）
+  function drawDhTart(tar) {
+    const c = DARKHAND.s4;
+    // 贴图有效性守卫：未加载/烘焙出 0 尺寸画布（无头测试桩）→ 回退条带渲染，避免 drawImage 收到非有限源参数
+    const img = (tartUltraImg && tartUltraImg.width > 0 && tartUltraImg.height > 0) ? tartUltraImg : null;
+    const n = tar.pts.length, seg = c.tartSeg;
+    if (tar.trailPts.length >= 2) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let j = 0; j + 1 < tar.trailPts.length; j++) {
+        const f = 1 - j / c.trailN;   // 1（贴尾端）→ 0（拖尾末梢）
+        ctx.strokeStyle = `rgba(255, 158, 64, ${(0.3 * f * f).toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, c.tartW * 0.72 * f);
+        ctx.beginPath();
+        ctx.moveTo(tar.trailPts[j].x, tar.trailPts[j].y);
+        ctx.lineTo(tar.trailPts[j + 1].x, tar.trailPts[j + 1].y);
+        ctx.stroke();
       }
+      ctx.restore();
+    }
+    for (let i = 0; i + 1 < n; i++) {
+      const p0 = tar.pts[i], p1 = tar.pts[i + 1];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.5) continue;   // 未露出段（锚定发射点的堆叠节段）：不画
+      const b0 = i * seg, b1 = Math.min((i + 1) * seg, tar.sHead);   // 段两端距头部弧长（尾端夹在露出前沿处截断）
+      if (b1 - b0 <= 1e-3) continue;
+      ctx.save();
+      ctx.translate(p0.x, p0.y);
+      ctx.rotate(Math.atan2(dy, dx));
+      if (img) {
+        ctx.drawImage(img, b0 / c.tartLen * img.width, 0, (b1 - b0) / c.tartLen * img.width, img.height,
+          -0.4, -c.tartW / 2, len + 0.8, c.tartW);
+      } else {
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#d98a2b'; ctx.lineWidth = c.tartW;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+        ctx.strokeStyle = '#f7b955'; ctx.lineWidth = c.tartW * 0.55;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 

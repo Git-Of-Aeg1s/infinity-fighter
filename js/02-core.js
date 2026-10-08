@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(36 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(93 名) 13-encyclopedia(18 名) 14-main(36 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(36 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(93 名) 13-encyclopedia(18 名) 14-main(37 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -173,7 +173,10 @@
     achvBulwarkLowBoss: null, // 成就「最后一搏」：最终壁垒不死触发瞬间的低血量(<10%) BOSS id（tryBulwarkCheatDeath 写入，02-achievements 消费）
     stormVortex: null, // 暴风之眼：涡流风旋（技能7 生成/清除：05-boss；清除：06-enemy / 11-draw-boss）
     dhFledElites: [],  // 黑暗之手：迅速离场的连携精英登记 { type, hp }（所在 20% 血量窗口结束仍未被击杀时记录；
-                       // 下一轮小怪刷新阶段登场——再登场细节待后续设计；05-boss / 06-enemy 写入，resetGame 归位）
+                       // 第三轮刷怪期按 ELITE_REVIVE.levels 固定等级返场：14-main 触发 / 04-spawn spawnRevivedElite 生成；
+                       // 05-boss / 06-enemy 写入，14-main 消费，resetGame 归位）
+    dhZhangPending: false, // 黑暗之手：四精英全数击败标记（06-enemy killEnemy 置位；14-main 于第三轮 Lv25 消费
+                           // 召唤张华&张策——实体待实装仅占位；resetGame 归位）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
     cheatArm: false,   // 武器等级作弊武装开关（按 0 置位；原先为运行时动态挂载的隐式属性）
@@ -185,7 +188,7 @@
   const bossFlow = {
     stage: 'none',     // BOSS 流程：none | wait | warn | fight
     timer: 0,          // BOSS 登场倒计时（累计战斗时长）
-    phase: 0,          // 关卡阶段索引：0=首段刷怪(50s)→旧日之歌；1=二段刷怪(40s)→暴风之眼
+    phase: 0,          // 关卡阶段索引：0=首段刷怪(50s)→旧日之歌；1=二段刷怪(50s)→黑暗之手；2=三段刷怪(50s)→暴风之眼（死后直召风暴编织者，不占阶段）
     pending: 'song',   // 即将登场的 BOSS id
     warnT: 0,          // 警报演出计时
     victoryDelay: 0,   // BOSS 击杀后延迟返回主界面
@@ -722,6 +725,18 @@
     }
   }
 
+  // 返场连携精英统一离场（第三轮刷怪期结束 → 第三轮 BOSS 警报前清场，2026-10-08 用户定稿）：
+  // 现场清理同 dhFleeLinkedElites，但不登记 dhFledElites（返场后的离场即彻底退场，不再循环返场）；
+  // 只处理带 elRevive 标记的返场精英——黑暗之手战内的窗口离场走 dhFleeLinkedElites（dhLink），互不干扰；
+  // 调用方：14-main（第三轮 phase===2，普通计时到 Lv31 / 诗篇波次耗尽时逐帧幂等触发）
+  function departRevivedElites() {
+    for (const el of enemies) {
+      if (!el || !el.elRevive || el.elPhase == null || el.elPhase === 2 || el.hp <= 0) continue;
+      el.elPhase = 2; el.elSpd = 0; el.elSkill = null; el.elRemnant = null; el.xyBlades = null; el.xyOrbs = null; el.xyBarOn = false;
+      if (el.scheduled) el.scheduled.length = 0;
+    }
+  }
+
   export {
     canvas, ctx, setCtx, DPR, hpFill, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
@@ -742,7 +757,7 @@
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
-    dhGuardActive, dhFleeLinkedElites,
+    dhGuardActive, dhFleeLinkedElites, departRevivedElites,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst, spawnBlastRing,
     shake,
   };

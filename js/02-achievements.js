@@ -21,7 +21,7 @@
 //   'chixin'     炽心火环灼烧击杀（07-player updatePlayer 灼烧循环）
 //   'bomb-keli'  可莉绷绷炸弹击杀（07-player useBomb，BOSS 击杀判定用）
 
-  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme } from './01-config.js';
+  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme, strongGearActive } from './01-config.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
 
   // ─── 本局成就进度域（resetAchievements 随局重置）───
@@ -73,10 +73,11 @@
   // 作弊互斥白名单：局内开启作弊后（0+1~5 / 8 / 9 键），本局仅这些作弊成就可以解锁，其余成就全部锁定
   const CHEAT_ONLY_ACHV = new Set(['dagouCheat100', 'wanDaoFengLiu']);
 
-  // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV）
+  // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV；挑战成就与强力装备互斥见 challenge/strongGearActive）
   function unlockAchievement(id) {
     if (!achvGateOk() || achv.unlocked[id]) return;
     if (achv.cheatUsed && !CHEAT_ONLY_ACHV.has(id)) return;   // 已作弊：非作弊成就不再获得
+    if (ACHIEVEMENTS[id] && ACHIEVEMENTS[id].challenge && strongGearActive()) return;   // 挑战成就（无伤系列等）：使用强力装备（天使璃等 strong 标记装备）期间不可获得（2026-10-08 用户定稿）
     achv.unlocked[id] = true;
     console.log('[成就] ' + ACHIEVEMENTS[id].name);
   }
@@ -425,7 +426,7 @@
     // 白板驾驶员通关：胡笛客（卑鄙笛客）；温酒客已实装受伤提升效果、萧杨已实装原石效果，均不再白板（九克之王仍按驾驶员通关判定）
     if (hasPilot('wenjiuke')) unlockAchievement('wenjiukeWin');
     if (hasPilot('hudike')) unlockAchievement('hudikeWin');
-    if (hasPilot('xiaoyang')) unlockAchievement('xiaoyangWin');
+    if (hasPilot('niudan')) unlockAchievement('niudanWin');
     // 「无垠」：无护甲效果（noEffect 护甲）、无驾驶员效果（白板/空槽）、无守愿者、不使用爆弹、不作弊、诗篇难度无伤通关
     if (ACHIEVEMENT_INFINITY_ENABLED && isPoem() && !achv.damageTaken && !achv.cheatUsed && !achv.bombUsedEver &&
         noBulwark && currentArmor.noEffect && pilotClean(currentPilotMain) && pilotClean(currentPilotSub)) {
@@ -517,6 +518,7 @@
     }
     if (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED) html += '<div class="achv-tip-locked">仅最终版本开放获得</div>';
     if (a.wipBoss) html += '<div class="achv-tip-locked">对应 BOSS 待更新，暂不可获得</div>';
+    if (a.challenge) html += '<div class="achv-tip-locked">挑战成就：使用强力装备（天使璃等）时无法获得</div>';
     return html;
   }
   function bindAchvTip(el, id) {
@@ -605,6 +607,7 @@
           (a.holders
             ? (a.holders.length ? '<br />已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '<br />暂无完成者')
             : '') +
+          (a.challenge ? '<br /><i>挑战成就：使用强力装备（天使璃等）时无法获得</i>' : '') +
           (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '') +
           (a.wipBoss ? '<br /><i>对应 BOSS 待更新，暂不可获得</i>' : '');
         card.append(row, body);

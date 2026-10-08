@@ -3,7 +3,7 @@
   console.log('[InfinityFighter] JS build: 20260925-v035-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(15 名) 02-core(9 名) 04-spawn(48 名) 05-boss(24 名) 06-enemy(78 名) 07-player(36 名) 08-entities(32 名) 09-draw-ships(29 名) 10-draw-world(21 名) 11-draw-boss(22 名) 12-ui(33 名) 13-encyclopedia(42 名) 14-main(26 名)
+  // 被依赖：02-achievements(15 名) 02-core(9 名) 04-spawn(49 名) 05-boss(24 名) 06-enemy(78 名) 07-player(36 名) 08-entities(32 名) 09-draw-ships(29 名) 10-draw-world(21 名) 11-draw-boss(23 名) 12-ui(33 名) 13-encyclopedia(42 名) 14-main(27 名)
   //
 
 
@@ -111,13 +111,13 @@
   // 第一个 BOSS：累计战斗约 60s 后登场，宽约 60% 屏宽，小幅左右巡航，仅 1 条命
   // 全局规则（适用于所有 BOSS）：技能乱序释放；若连续随机到同一技能，
   // 该技能结束后的冷却降为 20%（-80%）
-  // ---------- 关卡流程：刷怪 50s → 旧日之歌 → 击败后 2s 缓冲 + 固定首波（1类长队）+ 4s 观察期 → 刷怪 50s → 暴风之眼 → 风暴编织者 → 胜利 ----------
-  const BOSS_SEQUENCE = ['song', 'storm', 'storm2'];   // BOSS 出场顺序（正常流程按序登场；风暴编织者由暴风之眼死后直接召唤，不经警报/刷怪）
+  // ---------- 关卡流程：刷怪 50s → 旧日之歌 → 击败后 2s 缓冲 + 固定首波（1类长队）+ 4s 观察期 → 刷怪 50s → 黑暗之手 → 同上衔接 → 刷怪 50s → 暴风之眼 → 风暴编织者 → 胜利 ----------
+  const BOSS_SEQUENCE = ['song', 'darkhand', 'storm'];   // BOSS 出场顺序（正常流程按序登场；风暴编织者由暴风之眼死后直接召唤，不经警报/刷怪——仍属第三轮，不单独占位）
   // 首轮 BOSS（每局第一个登场的 BOSS）名单：其掉落的水晶对七日澜心量表有额外加成（ARMOR_SKILLS.lanxin.firstBossBonus）。
   // 后续新增"可作为首轮"的 BOSS 时，把 bossId 加入本表即可（现在只有旧日之歌）
   const FIRST_ROUND_BOSSES = ['song'];
 
-  // ---------- 【设计登记 · 尚未接入流程】5 轮 BOSS 轮次制（2026-09-29 定稿） ----------
+  // ---------- 【设计登记】5 轮 BOSS 轮次制（2026-09-29 定稿；第 1~3 轮已于 2026-10-08 按 BOSS_SEQUENCE 固定顺序接线：song / darkhand / storm→storm2，池内随机选取仍未实装） ----------
   // 目标流程：每局共 5 轮「普通敌人 + BOSS」——每轮刷怪 50s、+10 级（BOSS 依次登场于 Lv11 / 21 / 31 / 41 / 51）；
   // 每轮等清场后从该轮候选池随机抽取 1 个 BOSS（仅第 3 轮池内仅 1 个，无随机）；仅击败第五轮 BOSS 后通关。
   // 轮次绑定（待设计 BOSS 以 wip 登记，名字先行，ID 2026-09-29 定稿 / 2026-10-03 增补 5B 澄澈期许、5E 群星之音，晨星调整至 5A）：
@@ -136,14 +136,15 @@
     { round: 5, bossLv: 51, pool: ['moonlord', 'starsong'] },
   ];
 
-  const SPAWN_PHASE_TIMES = [50, 50];        // 各阶段刷怪时长（s）：两轮均为 50s（第二轮与第一轮节奏一致）
+  const SPAWN_PHASE_TIMES = [50, 50, 50];    // 各阶段刷怪时长（s）：三轮均为 50s（后续轮次与第一轮节奏一致）
   // 关卡由“非 BOSS 期间的有效刷怪时间”驱动（不再随分数增长，切断高分→怪多→更高分的正反馈）：
   // 出怪期间每 5s +1（50s 刷怪期恰好 +10 级）：第一轮 1 级起步 → 50s 后恰好 11 级（首个 BOSS 登场即 11 级）；
-  // 第二轮 11 级衔接起步 → 50s 封顶 21 级；停怪/警报/BOSS 战期间冻结，BOSS 后缓冲与首波观察期同样不计入
+  // 第二轮 11 级衔接起步 → 50s 封顶 21 级（黑暗之手登场即 21 级）；第三轮 21 级衔接起步 → 50s 封顶 31 级（暴风之眼警报登场即 31 级）；
+  // 停怪/警报/BOSS 战期间冻结，BOSS 后缓冲与首波观察期同样不计入
   const SPAWN_PHASE_LEVEL = [
     { base: 1, step: 5 },
     { base: 11, step: 5 },
-    { base: 21, step: 5 },   // 第三阶段（风暴编织者）：无刷怪期，仅保持 21 级衔接（阶段连续不回退）
+    { base: 21, step: 5 },   // 第三阶段：21 级衔接起步，50s 封顶 31 级（暴风之眼轮）；第四阶段（风暴编织者）无刷怪期，越界时取末项兜底衔接
   ];
   const BOSS = {
     name: '旧日之歌',
@@ -502,8 +503,9 @@
   xinguodongLoader.src = 'assets/xinguodong_transparent.png';
 
   // 黑暗之手弹幕贴图：素材库水彩风格蛋挞（tart_round_transparent.png 1024×1024 / tart_strip_transparent.png
-  // 长条版）——加载完成后绘制到离屏 canvas 做「绿幕抠绿」烘焙（绿色占优度 → alpha 软阈值渐变，边缘不生硬），
-  // 产出透明底 tartImg / tartStripImg 供 10-draw-world 蛋挞弹分支贴图；未加载/烘焙失败时回退常规渐变弹渲染。
+  // 长条版 / tart_ultra_long_transparent.png 1964×200 超长版）——加载完成后绘制到离屏 canvas 做「绿幕抠绿」烘焙
+  //（绿色占优度 → alpha 软阈值渐变，边缘不生硬），产出透明底 tartImg / tartStripImg / tartUltraImg
+  // 供 10-draw-world / 11-draw-boss 蛋挞弹分支贴图；未加载/烘焙失败时回退常规渐变弹渲染。
   // （仅游戏运行域内 getImageData：本作经本地服务器运行，file:// 直开会因 ES modules 先行失败，无污染风险）
   function bakeGreenTart(src, onDone) {
     const loader = new Image();
@@ -530,6 +532,8 @@
   bakeGreenTart('assets/tart_round_transparent.png', img => { tartImg = img; });
   let tartStripImg = null;
   bakeGreenTart('assets/tart_strip_transparent.png', img => { tartStripImg = img; });
+  let tartUltraImg = null;
+  bakeGreenTart('assets/tart_ultra_long_transparent.png', img => { tartUltraImg = img; });   // 超长蛋挞（1964×200，黑暗之手技能4 爪翼毁灭蛋挞，2026-10-08）
 
   // BOSS 注册表：测试模式按钮与警报演出由此生成；后续新 BOSS 在此追加
   // wip=true：待设计 BOSS（轮次绑定见 BOSS_ROUNDS）——名字与预定登场登记先行，实体/技能未实装，当前流程不会抽取
@@ -538,11 +542,11 @@
     // 黑暗之手（2026-09-30 实装）：血量表迁入 DARKHAND 配置块（经 resolveBossHp 读取）——
     // 虚象 40000 / 具象 48000 / 真我 70000 / 诗篇 100000（2026-10-03 用户定稿调整：前三档上调、诗篇不变；待同步总表「黑暗之手」列）。
     // 常态技能：四管炮幕（对齐机制图鉴 t4DrawQuadCannon 演示：四管齐射 + 左右交替小偏角）+ 黑暗涟漪 + 巨大蛋挞；
-    // 子弹为常规敌弹（2026-10-01 用户定稿改回；技能3 巨大蛋挞例外 = tartImg 贴图大弹自旋）；BOSS_ROUNDS 轮次绑定待后续批次接线
+    // 子弹为常规敌弹（2026-10-01 用户定稿改回；技能3 巨大蛋挞例外 = tartImg 贴图大弹自旋）；已按 BOSS_ROUNDS 接线为第二轮 BOSS（2026-10-08）
     darkhand: { id: 'darkhand', name: '黑暗之手', lv: 21 },
     dawnstar: { id: 'dawnstar', name: '晨星', lv: 21, wip: true },       // 第二轮候选
-    storm: { id: 'storm', name: '暴风之眼', lv: 21 },
-    storm2: { id: 'storm2', name: '风暴编织者', lv: 21 },
+    storm: { id: 'storm', name: '暴风之眼', lv: 31 },                    // 第三轮（最终轮）BOSS：警报/登场等级 31（2026-10-08 轮次重排，原 21）
+    storm2: { id: 'storm2', name: '风暴编织者', lv: 31 },                // 二阶段直召不经警报，lv 仅为登记展示（与暴风之眼同轮 31）
     returnstar: { id: 'returnstar', name: '归星', lv: 41, wip: true },   // 第四轮候选
     carol: { id: 'carol', name: '颂歌', lv: 41, wip: true },             // 第四轮候选
     moonlord: { id: 'moonlord', name: '月亮领主', lv: 51, wip: true },   // 第五轮最终 BOSS
@@ -717,7 +721,7 @@
   // 设计目标值的单一数据源；游戏逻辑经 isPoem() 门控（模式同真我 STORM_SHIP + isRealme()）——
   // 诗篇 wip 不可选期间不生效，图鉴「怪物权重 · 诗篇波次」子页读取本表做设计展示。
   const WAVE_POEM = {
-    wavesPerPhase: [10, 10],   // 每阶段波次数（= 阶段内等级数）：第一轮 Lv1~10 / 第二轮 Lv11~20，清完进 BOSS
+    wavesPerPhase: [10, 10, 10],   // 每阶段波次数（= 阶段内等级数）：第一轮 Lv1~10 / 第二轮 Lv11~20 / 第三轮 Lv21~30（Lv21~30 暂与 Lv20 同强度——常规波次设计进行中，2026-10-08 随 BOSS 轮次重排扩为三段），清完进 BOSS
     clearDelay: [1.2, 2.0],    // 上一波全部击毁/离场到下一波刷出的随机间隔（s）
     capitalWaveChance: 0.20,   // 4类随波附带概率（Lv5 起每波独立判定，走常规主力舰/法术阵列选取；4类槽位通道诗篇关闭）——待调参数，随强化参数批次定稿
     healWaveGap: 2,            // 加血套件波次节流：实际掉落后 N 波内不再掉（每 2 波限 1）
@@ -725,7 +729,7 @@
     scoreMul: 2,               // 得分倍率（波次制总刷怪量大幅减少的补偿；实装时同步落地 DIFFICULTIES.poem.mods.scoreMul）
     harbingerExtra: [          // 波次附加炮火先兆者阈值表：取 ≤当前等级的最高档；先判 two 再判 one（互斥阶梯）
       { lv: 3,  one: 0.05, two: 0 },      // Lv3 起：5% 多刷 1 台
-      { lv: 21, one: 0.10, two: 0 },      // Lv21 起：10% 多刷 1 台（当前流程 ≤Lv20 暂不触发，表就位待高等级开放）
+      { lv: 21, one: 0.10, two: 0 },      // Lv21 起：10% 多刷 1 台（2026-10-08 轮次重排后第三轮 Lv21~30 生效；强度暂与 Lv20 一致，波次设计进行中）
       { lv: 31, one: 0.10, two: 0.05 },   // Lv31 起：10% 多刷 1 台 + 5% 多刷 2 台
     ],
   };
@@ -1209,8 +1213,11 @@
       //   第二次命中（或下方未直击过、在上方 35% 线内首次命中）即爆炸：主目标 directDmg 直击 + splashDmg 溅射
       //   （合计 600）、爆点周围 blastR 内其他敌人受 splashDmg 溅射（连射链 dmgMul / 大无垠之王增伤两部分均乘算）
       lowZonePct: 0.35, directDmg: 200, splashDmg: 400,
+      // 对 BOSS 伤害修正（2026-10-08 用户定稿）：仅驾驶员召唤的波雨弹（src='dagou'）对 BOSS ×bossDmgMul（-35%）——
+      // 副武器捣蛋来袭（src='daodan'）/ 连发作弊模式（src='dagouCheat'）的导弹不受此修正（见 07-player dagouBossMul）
+      bossDmgMul: 0.65,
       brief: '召唤导弹打击',
-      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>下方 65% 区域首触不爆炸：对命中目标<br>直击 200 后穿透继续飞行；第二次命中<br>（或进入上方 35% 线内首次命中）即爆炸：<br>主目标 200 直击 + 400 溅射（合计 600）、<br>爆点周围小范围敌人受 400 溅射<br>每波发射后有 10% 概率在 0.3s 后连射一波<br>（连射波同样有概率继续连射），<br>连射波伤害一律为正常波的 60%（固定不递减）',
+      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>下方 65% 区域首触不爆炸：对命中目标<br>直击 200 后穿透继续飞行；第二次命中<br>（或进入上方 35% 线内首次命中）即爆炸：<br>主目标 200 直击 + 400 溅射（合计 600）、<br>爆点周围小范围敌人受 400 溅射<br>每波发射后有 10% 概率在 0.3s 后连射一波<br>（连射波同样有概率继续连射），<br>连射波伤害一律为正常波的 60%（固定不递减）<br><b>对 BOSS 的伤害 -35%</b><br>（副武器捣蛋来袭与作弊连发的导弹<br>不受此修正）',
     },
     xukaigou: {
       id: 'xukaigou', name: '许凯狗', glyph: '⟰', color: '#ffffff', slot: 'main',   // ⟰ 接手大狗原四重上射箭（原⇈双箭头弃用；颜色改白）
@@ -1367,6 +1374,20 @@
       brief: '无效果',
       desc: '牛蛋肥嘟嘟。<br>没有任何效果。',
     },
+
+    // ── 特殊驾驶员（strong: true = 强力角色，强力装备约定见 strongGearActive）──────────
+    // 排序约定（2026-10-08 用户定稿）：选择页 / 图鉴展示顺序 = 注册表键序，特殊驾驶员一律登记在
+    // 全部常规驾驶员之后（本表末尾）——此后新增的特殊驾驶员均放此处，勿插入常规区段。
+    // 天使璃：无限生命——三条死亡路径（damagePlayer / 暴风之眼持续接触 / 焦香灼烧）均不扣命数，
+    // 死后照常 1.6s 重生，永不失败结算；左下角恒显 1 颗心（12-ui updateHUD 特判）；
+    // 使用期间无法获得任何挑战成就（02-achievements 统一门控）；
+    // 视觉：选择页卡片右上角白光角标（CSS .pilot-card.strong）+ 主页面驾驶员菱形框青粉渐变流光
+    // 与双白芒绕框（CSS .pilot-diamond.strong-pilot，refreshLoadout 切换）
+    tianshili: {
+      id: 'tianshili', name: '天使璃', glyph: '✧', color: '#ffb7d5', slot: 'main', strong: true,   // ✧ 四芒星（天使辉光）
+      brief: '无限生命',
+      desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>强力角色</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
+    },
   };
   // ---------- 主/副驾驶员槽位 ----------
   // 每名驾驶员归属 slot（'main' 主驾驶员 / 'sub' 副驾驶员，暂定分野、可随设计调整）；
@@ -1396,6 +1417,15 @@
   function pilotHuiHealMul() {
     const x = pilotEntry('xiaoyi');
     return (x && currentArmor.id === 'hui' && currentArmor.regenHp) ? x.huiHealMul : 1;
+  }
+
+  // ---------- 强力装备标记与挑战成就门控（2026-10-08 用户定稿） ----------
+  // 约定：各装备注册表（PILOTS / ARMORS / PLANES / WINGMEN_CFG / SUB_WEAPONS……后续扩展）的条目
+  // 可带 strong: true 标记 = 强力装备——使用期间无法获得任何挑战成就（ACHIEVEMENTS[x].challenge，
+  // 02-achievements unlockAchievement 统一门控）。当前强力装备：天使璃（tianshili）。
+  function strongGearActive() {
+    return !!(currentPilotMain.strong || currentPilotSub.strong ||
+      currentArmor.strong || currentPlane.strong || currentWingman.strong || currentSubWeapon.strong);
   }
 
   // 天秀忧郁王子：友方大风暴（大型龙卷（暴风之眼召唤物）同款风暴的我方版，按 Q 释放）
@@ -2193,26 +2223,34 @@
       hitShudderT: 0.14,       // 被依的镰刀斩中后的颤动时长（s，2026-10-04 用户指定：颤动→碎裂→迅速渐隐）
       hitFadeT: 0.24,          // 颤动结束后的碎裂渐隐时长（s；期间弹体冻结——不再移动/自旋/判伤，08-entities 推进、10-draw-world 渲染）
     },
-    // 技能4 爪翼毁灭光束（2026-10-02 用户定稿 / 2026-10-03 三轮定稿）：三组依次释放——① 机头正前方预警 → 机头向正下方光束；
-    // ② 机头两侧两爪预警 → 各自沿爪朝向光束（左右已互换修正：左爪朝右下、右爪朝左下，向屏内侧交叉）；
-    // ③ 最侧边两后翼预警 → 各自沿翼朝向光束（朝外斜下）。
+    // 技能4 爪翼毁灭蛋挞（2026-10-08 用户定稿：激光替换为超长蛋挞——原 2026-10-02「爪翼毁灭光束」改版）：
+    // 三组依次释放——① 机头正前方预警 → 机头向正下方一枚；② 机头两侧两爪预警 → 各自沿爪朝向一枚（左右已互换修正：
+    // 左爪朝右下、右爪朝左下，向屏内侧交叉）；③ 最侧边两后翼预警 → 各自沿翼朝向一枚（朝外斜下）。
+    // 弹体 = 超长蛋挞（水彩贴图长条弹 tartUltraImg）：自发射点「从头开始」高速射出——头部沿朝向推进、
+    // 身体各点沿头部轨迹历史等弧长回采样（列车出洞式逐节露出），出现期尾端锚定发射点并在露出处持续迸发红色
+    // 粒子（emitIv 节奏）、全部露出后粒子停止、整条转为刚体平移；弹体带暖金拖尾（渲染见 11-draw-boss drawDhTart）。
     // 居中机制（2026-10-03 用户定稿）：释放技能瞬间本体以 smoothstep 剖面水平移向屏幕中线并停稳（moveDur 内完成、
-    // 初速/末速均为 0 不瞬起瞬停）——第三轮发射时本体必定居中，双后翼光束必然左右对称。
+    // 初速/末速均为 0 不瞬起瞬停）——第三轮发射时本体必定居中，双后翼蛋挞必然左右对称。
     // 释放期间常规移动（bossMoveUpdate）暂停、由技能内接管位置；技能收口清惯性（恢复后从静止平滑加速）。
-    // 光束伤害同风暴编织者技能2（STORM2.s2Dmg = 50 × bossDmgMul，命中一次，白盾无影响——免疫射弹），
-    // 光束持续/起效节奏同 s2BeamDur；发射点与朝向以发射瞬间机体快照（光束不随机体移动漂移）
+    // 伤害同原光束（50 × bossDmgMul，命中一次，白盾无影响——免疫射弹）；发射点与朝向以发射瞬间机体快照。
+    // 反弹（2026-10-08 用户定稿细化）：真我/诗篇命中左右屏幕边缘反弹——沿弹体逐节传递（头部撞壁折返写入轨迹
+    // 历史，后续节段抵达折点才转向，非整条瞬弹）；反弹次数难度化沿袭原光束（2026-10-03 定稿）：真我 1 次、诗篇 2 次
     s4: {
       warnDur: 1.2,            // 每组预警时长（s，2026-10-03 四轮定稿 0.9 → 1.2（+0.3s））——暗红虚线方向预警 + 端点光斑闪动（渲染见 11-draw-boss）
-      gap: -0.08,              // 上一组发射 → 下一组预警的间隔（s；负值 = 预警结束即刻衔接下一组——组发射间隔 = warnDur 1.2s，预警期与上一组光束尾段重叠）
+      gap: -0.08,              // 上一组发射 → 下一组预警的间隔（s；负值 = 预警结束即刻衔接下一组——组发射间隔 = warnDur 1.2s，预警期与上一组弹体尾段重叠）
       moveDur: 1.6,            // 释放后向屏幕中线水平移动并停稳的时长（s；< 第二轮发射 2.4s，第三轮发射 3.6s 时已居中静止）
-      beamDur: 0.45,           // 光束持续时长（s，同 STORM2.s2BeamDur）
-      rise: 0.12,              // 光束起效渐入时长（s，渲染/判定共用，同风暴 s2 口径 0.10 略缓）
-      r: 11.2,                 // 光束半宽（视觉外辉光 ×1.9 同 drawS2Beam 口径；2026-10-03 四轮定稿增粗 40%：8 → 11.2，判定 R = r + hitRadius 同步增粗）
-      dmg: 50,                 // 单束伤害（× bossDmgMul 同风暴技能2；白盾存在时不判伤）
-      reflect: true,           // 真我/诗篇难度（2026-10-03 用户定稿，原仅诗篇）：光束命中左右屏幕边缘反弹（水平反射继续延伸）
-      bounceRealme: 1,         // 真我难度反弹次数（2026-10-03 用户定稿：保持 1 次）
-      bouncePoem: 2,           // 诗篇难度反弹次数（2026-10-03 用户定稿：弹射 2 次，弹道呈「<」双折）
-      groups: [                // 发射组（共 3 组按序释放；本体比例位 x/y 相对机体中心；oy = 纵向像素偏移（上移负）；ang 光束方向 rad）
+      dmg: 50,                 // 单枚伤害（× bossDmgMul 同原光束；白盾存在时不判伤）
+      reflect: true,           // 真我/诗篇难度（沿袭原光束 2026-10-03 定稿）：蛋挞命中左右屏幕边缘反弹（逐节传递，见块注释）
+      bounceRealme: 1,         // 真我难度反弹次数（沿袭原光束：保持 1 次）
+      bouncePoem: 2,           // 诗篇难度反弹次数（沿袭原光束：弹射 2 次）
+      tartLen: 460,            // 蛋挞全长（px，≈贴图 1964×200 原生纵横比对应厚度 47；约占屏高 58%）
+      tartW: 47,               // 蛋挞厚度（px；判定半宽 = 此值之半 + 玩家 hitRadius）
+      tartSpeed: 700,          // 头部推进速度（px/s；11.7px/帧 < smoke 12px/帧阈值；全长露出 ≈0.66s）
+      tartSeg: 23,             // 身体采样点间距（px，全长 ≈20 节；屏缘折返的转向粒度）
+      trailLen: 130,           // 拖尾长度（px，尾端沿轨迹历史向后的渐隐彩带）
+      trailN: 7,               // 拖尾采样段数
+      emitIv: 0.04,            // 出现期粒子迸发间隔（s，发射点红色粒子节奏；全部露出即停）
+      groups: [                // 发射组（共 3 组按序释放；本体比例位 x/y 相对机体中心；oy = 纵向像素偏移（上移负）；ang 射出方向 rad）
         [{ x: 0, y: 0.42, ang: Math.PI / 2 }],                                   // ① 机头：正下
         [{ x: -0.27, y: 0.30, oy: -50, ang: Math.PI / 2 - 0.24 },               // ② 机头两侧双爪：沿爪朝向同时发射（2026-10-03 用户定稿：左右互换修正——左爪朝右下/右爪朝左下，向屏内侧交叉；初始点上移 50px）
          { x: 0.27, y: 0.30, oy: -50, ang: Math.PI / 2 + 0.24 }],
@@ -2268,7 +2306,7 @@
     // 场上有任意一名连携精英时，黑暗之手受到的普通伤害降低 guardDR（高能爆弹/绷绷炸弹为真实伤害不受此减免
     // 且正常波及连携精英——2026-10-04 用户定稿，结算点 08-entities enemyDamageMul）；
     // 精英所在的 20% 血量窗口结束（下一个阈值触发 / 本体死亡）仍未被击杀 → 迅速离场并记录血量
-    //（state.dhFledElites，下一轮小怪刷新阶段登场——再登场细节待后续设计，见 05-boss updateBossDarkhand）；
+    //（state.dhFledElites，第三轮刷怪期按 ELITE_REVIVE.levels 固定等级返场：14-main 触发 / 04-spawn spawnRevivedElite 生成，见 05-boss updateBossDarkhand）；
     // 本体自爆（死亡）时连携精英不被同一波秒杀类（金陨/埃逸殉爆）/ 全屏瞬发清场伤害波及（结算点跳过 dhLink，
     // 见 07-player / 06-enemy；高能爆弹/绷绷炸弹已单独落地为同受波及——2026-10-04 用户定稿）——
     // 它们立即终止当前技能并迅速离场（dhFleeLinkedElites），离场期间照常参与撞机结算（06-enemy 通用碰撞分支）
@@ -2460,7 +2498,8 @@
   };
 
   // 张华&张策（4S 隐藏精英，待设计——仅登记血量）：按难度定值（2026-10-04 用户定稿），
-  // 生成逻辑实装时经 eliteHpOf('zhangzhang') 取值，与四精英同口径
+  // 生成逻辑实装时经 eliteHpOf('zhangzhang') 取值，与四精英同口径；
+  // 召唤时机已接线：黑暗之手战四精英全数击败 → 第三轮 Lv25（ELITE_REVIVE.zhangzhangLv，14-main 占位 TODO）
   const ZHANGZHANG = {
     hpByDiff: { illusion: 8000, form: 10000, realme: 20000, poem: 40000 },
   };
@@ -2473,6 +2512,21 @@
     if (!h) return null;
     return h[currentDifficulty.id] != null ? h[currentDifficulty.id] : h.form;   // 未配置难度回退具象基准
   }
+
+  // ---------- 连携精英返场（黑暗之手战未被击败者，2026-10-08 用户定稿） ----------
+  // 黑暗之手战因血量窗口结束 / 黑暗之手死亡而迅速离场的精英（state.dhFledElites 登记 { type, hp }）
+  // 在第三轮刷怪期按固定等级返场（就算仅部分存活，各机登场等级也不变）：
+  //   夏勇 Lv22 / 朴学峰 Lv24 / 韩希先 Lv26 / 辛国栋 Lv28（用户定稿顺序，非图鉴惯用排序）；
+  // 返场时回复已损失生命值的 50%（相对离场登记血量）；四人全数击败则 Lv25 召唤张华&张策（实体待实装，
+  // 触发标记 state.dhZhangPending，14-main 消费）。返场精英：不占在场压力权重（4S 类型不在 PRESSURE_W，
+  // 张华&张策实装时同样不得加入）、不阻止诗篇波次刷新（elRevive 标记，14-main 诗篇分支排除）、
+  // 不设驻留离场（holdTimer 1e9）、不因新的 4S 登场而离场——仅第三轮刷怪期结束（普通计时到 Lv31 /
+  // 诗篇波次耗尽，即第三轮 BOSS 警报前清场）统一加速下压离场（02-core departRevivedElites）
+  const ELITE_REVIVE = {
+    healLostPct: 0.5,   // 返场回复比例：已损失生命值 × 此值
+    levels: { xiayong: 22, puxuefeng: 24, hanxixian: 26, xinguodong: 28 },   // 各精英返场等级
+    zhangzhangLv: 25,   // 四精英全数击败时张华&张策的召唤等级（实体待实装）
+  };
 
   // 铜皮夏勇·牛角减伤判定（被动常驻，2026-10-03 用户定稿）：命中点 (hx, hy) 落在两翼折角（牛角）头部
   // 区域时返回 hornRealmeMul（真我/诗篇 0.8，其余难度 1——三轮定稿仅此两档减伤），其余返回 1。适用于「弹体直击类」伤害（主炮/僚机弹幕、副武器/驾驶员
@@ -2855,6 +2909,8 @@
   //   finalOnly：仅最终版本开放获得（受 ACHIEVEMENT_INFINITY_ENABLED 门控，当前恒不可获得）
   //   wipBoss：对应 BOSS 待实装占位（黑暗之手、归星等，bossId 以各成就 desc 为准）——解锁判定已在
   //   02-achievements achvOnBossKilled 预埋（实体实装后自动生效），展示处标注「对应 BOSS 待更新」
+  //   challenge：挑战成就（2026-10-08 用户定稿）——全部无伤类成就标记为此；使用强力装备（strong: true，
+  //   如天使璃）期间无法获得（02-achievements unlockAchievement 统一门控），悬停/图鉴页展示标注
   // 「无垠」的"无驾驶员效果"= 主/副槽均为 无驾驶员 或 whiteboard 白板驾驶员（当前为胡笛客/牛蛋；温酒客已实装受伤提升效果、萧杨已实装原石效果，均不再白板）；
   // "无护甲效果" = ARMORS 注册表中带 noEffect 标记的护甲（当前仅标准护甲）。
   // 难度门槛：「无垠」与 无垠战机 = 诗篇难度通关（isPoem）；如梦似幻 = 真我难度通关（isRealme）——见 02-achievements achvEvaluateVictory。
@@ -2896,7 +2952,7 @@
     qixingBigHalve: { name: '繁星赐福', tier: 'silver', icon: '✧', desc: '装备祈星时，减半一次原伤害至少为50的攻击。' },
     maxinSlow30: { name: '鳖爬', tier: 'silver', icon: '🐢', desc: '使用马兴犬时，连续30s低速移动。' },
     hudikeWin: { name: '卑鄙笛客', tier: 'silver', icon: '笛', desc: '使用胡笛客通关。' },
-    xiaoyangWin: { name: '阴险萧杨', tier: 'silver', icon: '萧', desc: '使用萧杨通关。' },
+    niudanWin: { name: '嘟嘟牛蛋', tier: 'silver', icon: '蛋', desc: '使用牛蛋通关。' },
     weiwo: { name: '唯我', tier: 'silver', icon: '👤', wipBoss: true, desc: '使用陵落击坠黑暗之手。' },
     neiluan: { name: '内乱', tier: 'silver', icon: '🗡', wipBoss: true, desc: '装备无界飞剑或辛国栋之怒击坠黑暗之手。' },
     tongpitasui: { name: '铜皮太岁', tier: 'silver', icon: '🧱', wipBoss: true, desc: '装备铜皮夏勇并击坠黑暗之手。' },
@@ -2906,7 +2962,7 @@
     stormWithoutTianxiu: { name: '击坠风暴', tier: 'gold', icon: '🛩', desc: '不使用天秀忧郁王子的情况下，击坠暴风之眼。' },
     chixinBurnKill: { name: '烧烧烧', tier: 'gold', icon: '♨', desc: '使用炽心护甲的火环击坠至少一个寒霜或者焦香螺旋桨。' },
     defeatStorm2: { name: '风暴之终', tier: 'gold', icon: '⛈', desc: '击败风暴编织者。' },
-    songPerfect: { name: '昨日，今日，明日', tier: 'gold', icon: '⏳', desc: '非诗篇难度下，无伤击坠旧日之歌。' },
+    songPerfect: { name: '昨日，今日，明日', tier: 'gold', icon: '⏳', challenge: true, desc: '非诗篇难度下，无伤击坠旧日之歌。' },
     douzhi2: { name: '斗志非常昂扬', tier: 'gold', icon: '⏫', desc: '击坠两个及以上斗志昂扬。' },
     laserStorm2Death: { name: '极光陨落', tier: 'gold', icon: '⚡', desc: '被风暴编织者技能1的激光击坠。' },
     bossMarathon: { name: '持久战', tier: 'gold', icon: '⏱', desc: '胜利一场至少持续2分钟的BOSS战。' },
@@ -2924,42 +2980,42 @@
     wanDaoFengLiu: { name: '万道风流', tier: 'gold', icon: '🎐', desc: '开启天秀忧郁王子的风暴作弊模式。' },
     inFieldKill12: { name: '其实是打不到', tier: 'gold', icon: '⚒', desc: '击坠 12 架处于御4力场或铁砧光圈范围内的敌机。' },
     lingqiaotuwei: { name: '灵巧突围', tier: 'gold', icon: '🧭', desc: '击坠 8 个炮火先兆者。' },
-    jiukefeidi: { name: '酒客飞匕', tier: 'gold', icon: '🍶', wipBoss: true, desc: '非诗篇难度下，无伤击坠黑暗之手。' },
+    jiukefeidi: { name: '酒客飞匕', tier: 'gold', icon: '🍶', wipBoss: true, challenge: true, desc: '非诗篇难度下，无伤击坠黑暗之手。' },
     // ── 紫（诗篇）──
     // 诗篇难度专属无伤击坠系列：与真我档无伤成就互斥（诗篇无伤只解锁本系列，非诗篇无伤走旧档；有伤击坠互不影响）
-    wangXiNanYi: { name: '往昔难忆', tier: 'purple', icon: '🕰', desc: '诗篇难度下，无伤击坠旧日之歌。' },
-    wuZhongChangGe: { name: '无终长歌', tier: 'purple', icon: '🎼', desc: '诗篇难度下，无伤击坠黑暗之手。' },
-    fengYanWuLan: { name: '风眼无澜', tier: 'purple', icon: '◍', desc: '诗篇难度下，无伤击坠暴风之眼。' },
-    zhiFengChengShi: { name: '织风成诗', tier: 'purple', icon: '🧵', desc: '诗篇难度下，无伤击坠风暴编织者。' },
-    zhaiXingZhe: { name: '摘星者', tier: 'purple', icon: '✩', wipBoss: true, desc: '诗篇难度下，无伤击坠「归星」。' },
-    stormPerfect: { name: '风暴航船', tier: 'purple', icon: '⛵', desc: '非诗篇难度下，无伤击坠暴风之眼。' },
-    storm2Perfect: { name: '赫拉之神', tier: 'purple', icon: '👁', desc: '非诗篇难度下，无伤击坠风暴编织者。' },
+    wangXiNanYi: { name: '往昔难忆', tier: 'purple', icon: '🕰', challenge: true, desc: '诗篇难度下，无伤击坠旧日之歌。' },
+    wuZhongChangGe: { name: '无终长歌', tier: 'purple', icon: '🎼', challenge: true, desc: '诗篇难度下，无伤击坠黑暗之手。' },
+    fengYanWuLan: { name: '风眼无澜', tier: 'purple', icon: '◍', challenge: true, desc: '诗篇难度下，无伤击坠暴风之眼。' },
+    zhiFengChengShi: { name: '织风成诗', tier: 'purple', icon: '🧵', challenge: true, desc: '诗篇难度下，无伤击坠风暴编织者。' },
+    zhaiXingZhe: { name: '摘星者', tier: 'purple', icon: '✩', wipBoss: true, challenge: true, desc: '诗篇难度下，无伤击坠「归星」。' },
+    stormPerfect: { name: '风暴航船', tier: 'purple', icon: '⛵', challenge: true, desc: '非诗篇难度下，无伤击坠暴风之眼。' },
+    storm2Perfect: { name: '赫拉之神', tier: 'purple', icon: '👁', challenge: true, desc: '非诗篇难度下，无伤击坠风暴编织者。' },
     aiyiFinalBoss: { name: '！？爆爆？！', tier: 'purple', icon: '🎆', desc: '埃逸终极殉爆击毁最终BOSS。' },
-    watchkeeper: { name: '守望者', tier: 'purple', icon: '⚜', desc: '使用守愿者无伤通关。' },
-    rumengsihuan: { name: '如梦似幻', tier: 'purple', icon: '☁', desc: '无守愿者的情况下无伤通关真我难度。' },
+    watchkeeper: { name: '守望者', tier: 'purple', icon: '⚜', challenge: true, desc: '使用守愿者无伤通关。' },
+    rumengsihuan: { name: '如梦似幻', tier: 'purple', icon: '☁', challenge: true, desc: '无守愿者的情况下无伤通关真我难度。' },
     bulwarkLastBlow: { name: '最后一搏', tier: 'purple', icon: '⛨', desc: '装备最终壁垒时，在任意BOSS血量低于10%时，自身触发不死效果且最终击败该BOSS。' },
     dagouChain3: { name: '欧欧欧', tier: 'purple', icon: '🐕', desc: '大狗召唤的导弹两次连射3轮。' },
     kingMad80: { name: '彻底疯狂', tier: 'purple', icon: '👑', desc: '大无垠之王的增伤累计至80%。' },
     // ── 彩（长歌，最高稀有度）──
-    infinityFighter: { name: '无垠战机', tier: 'rainbow', icon: '✈', desc: '无伤、无守愿者的情况下通关诗篇难度。' },
+    infinityFighter: { name: '无垠战机', tier: 'rainbow', icon: '✈', challenge: true, desc: '无伤、无守愿者的情况下通关诗篇难度。' },
     dagouChain4: { name: '！？欧欧？！', tier: 'rainbow', icon: '🐾', desc: '大狗召唤的导弹连射4轮。' },
     goldLegend: { name: '金色传说', tier: 'rainbow', icon: '🌟', desc: '召集16颗原石并抽出金色传说。' },
     infinity: {
-      name: '「无垠」', tier: 'rainbow', icon: '♾', finalOnly: true, holders: [],
+      name: '「无垠」', tier: 'rainbow', icon: '♾', finalOnly: true, holders: [], challenge: true,
       desc: '您的技术已登峰造极。无护甲效果、无驾驶员效果、无守愿者、不使用高能爆弹的情况下以诗篇难度无伤通关。',
     },
   };
 
   export {
     CANVAS_W, CANVAS_H, PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
-    BOSS_SEQUENCE, BOSS_ROUNDS, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, BOSS, BOSS_BULLET, STORM,
+    BOSS_SEQUENCE, BOSS_ROUNDS, FIRST_ROUND_BOSSES, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, ELITE_REVIVE, BOSS, BOSS_BULLET, STORM,
     STORM_WIND, STORM2, stormEyeImg, stormEyeLoader, energyOrbSheet, ENERGY_ORB, lightningImg, lightningImgAlt, lightningImgThin, lightningLoader, lightningLoaderAlt, lightningLoaderThin, lightningLoaderBig, lightningLoaderSmall, lightningImgBig, lightningImgSmall, lightningImgRing, BOSSES, BOSS_WARN, BOSS_WARN_TOTAL,
     BOSS_SPAWN_EARLY, PLANES, currentPlane, setPlane, setWingman, STARSLAYER,
     DIFFICULTIES, currentDifficulty, setDifficulty, diffMods, resolveBossHp, isIllusion, isRealme, isPoem, isHardTier, invulnDiffMul, bossDmgMul, enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, xiayongHornDmgMul, xiayongBarAbsorb, SONG_SHIP, STORM2_SHIP, DARKHAND, BOSS_MINION_WAVE, STORM_SHIP, WAVE_POEM,
     DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, ENEMY_GRADES, enemyGrade, currentArmor, setArmor, armorMaxHp,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
-    dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, PRINCE_STORM,
+    dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, strongGearActive, PRINCE_STORM,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL, ELITES, ZHANGZHANG,
@@ -2972,7 +3028,7 @@
     CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE, DROP_KIT_YELLOW, DROP_SHIELD_RATE,
     DROP_SHIELD_BLUE, DROP_SHIELD_STACK, DROP_HP_RATE, DROP_HP_GREEN, DROP_HP_BOSS, DROP_HP_BOSS2,
     DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W, SIDE_SWIRL,
-    TEST_HP, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE, WIP_PLACEHOLDER_TYPES, POEM_HP, poemHpOf, eliteHpOf, scytheImg, tartImg, tartStripImg, darkhandImg, dhSampleSolid, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg,
+    TEST_HP, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE, WIP_PLACEHOLDER_TYPES, POEM_HP, poemHpOf, eliteHpOf, scytheImg, tartImg, tartStripImg, tartUltraImg, darkhandImg, dhSampleSolid, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg,
     BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSS_LOOT_BOTH,
     ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED,
     CRYSTAL_TIERS, CRYSTAL_GIANT_CHANCE, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, convertCrystalDrop, rollCrystalGiant,

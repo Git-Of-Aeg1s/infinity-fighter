@@ -196,7 +196,9 @@
       } else if (bossFlow.stage === 'fight') {
         target = (bossFlow.pending === 'song') ? 'battle_boss_1' : 'battle_boss_2';   // boss1 仅第一轮 BOSS 旧日之歌（2026-10-03 用户定稿口径）；其余 BOSS（暴风之眼 / 风暴编织者二阶段 / 黑暗之手 / 图鉴测试页任意 BOSS）均播 boss2——修复：此前仅 storm/darkhand 列入 boss2，storm2（测试页 + 正常流程二阶段）误播 boss1
       } else {
-        target = 'battle_normal_1';
+        // 常态非 BOSS 曲目（2026-10-08 用户定稿）：击败第二轮 BOSS（黑暗之手）后换 2 号曲（bossFlow.phase >= 2 =
+        // 第三轮起）；后续加入特殊 BGM 时在此分支扩展
+        target = bossFlow.phase >= 2 ? 'battle_normal_2' : 'battle_normal_1';
       }
     } else if (state.mode === 'gameover' && !resultDone && resultSession !== 'defeat') {
       target = 'defeat';    // 失败结算：先播失败曲（播完转主界面轮播）

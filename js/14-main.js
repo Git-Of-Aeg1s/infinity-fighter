@@ -5,10 +5,10 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
-  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { BERSERK, BOSS_MINION_WAVE, BOSS_SEQUENCE, hasPilot, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DOUZHI, ELITE_REVIVE, FASHI_ARRAY, PILOTS, PLAYER_CFG, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, currentPlane, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnWave, updateChallenge } from './04-spawn.js';
+  import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -285,8 +285,34 @@
         levelFlow.prevLevel = levelFlow.level;
       }
 
+      // ---------- 连携精英返场 / 张华&张策触发（2026-10-08 用户定稿，配置见 01-config ELITE_REVIVE） ----------
+      // 黑暗之手战未被击败的精英（state.dhFledElites 登记 { type, hp }）在第三轮刷怪期按固定等级返场
+      // （夏勇 Lv22 / 朴学峰 Lv24 / 韩希先 Lv26 / 辛国栋 Lv28——就算仅部分存活，各机登场等级也不变）；
+      // 四精英全数击败则 Lv25 召唤张华&张策（实体待实装，仅置位/消耗 state.dhZhangPending 标记）。
+      // 返场精英不占在场压力权重（4S 类型不在 PRESSURE_W）、不阻止诗篇波次刷新（elRevive 标记，下方诗篇分支排除）、
+      // 不因新的 4S 登场而离场；第三轮刷怪期结束（普通 = 计时到 Lv31 / 诗篇 = 波次耗尽，即第三轮 BOSS 警报前
+      // 清场）统一加速下压离场（departRevivedElites，幂等可逐帧触发）。仅正常流程：挑战 / BOSS 试炼不返场
+      if (!state.challenge && !state.testBoss && bossFlow.phase === 2) {
+        for (let i = state.dhFledElites.length - 1; i >= 0; i--) {
+          const rec = state.dhFledElites[i];
+          const lv = ELITE_REVIVE.levels[rec.type];
+          if (lv != null && levelFlow.level >= lv) {
+            spawnRevivedElite(rec);
+            state.dhFledElites.splice(i, 1);
+          }
+        }
+        if (state.dhZhangPending && levelFlow.level >= ELITE_REVIVE.zhangzhangLv) {
+          state.dhZhangPending = false;
+          // TODO(张华&张策)：实体实装后在此召唤——spawnRevivedElite({ type: 'zhangzhang', hp: 全血 })，
+          // 血量走 ZHANGZHANG.hpByDiff（eliteHpOf('zhangzhang')），elRevive 标记同四精英；当前仅消耗标记占位
+        }
+        const phaseTimeR = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
+        const phaseWavesR = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
+        if (isPoem() ? levelFlow.poemWaveIdx >= phaseWavesR : bossFlow.timer >= phaseTimeR) departRevivedElites();
+      }
+
       // BOSS 流程状态机：none → wait(等清场) → warn(警报演出) → fight(BOSS战) → none
-      // 关卡节奏：刷怪 50s → 旧日之歌 → 击败后 2s + 固定首波 + 4s → 再刷怪 50s → 暴风之眼 → 胜利结算
+      // 关卡节奏：刷怪 50s → 旧日之歌 → 击败后 2s + 固定首波 + 4s → 再刷怪 50s → 黑暗之手 → 同上衔接 → 再刷怪 50s → 暴风之眼 → 风暴编织者 → 胜利结算
       // 达到登场条件后不再出怪；场上清空后播放警报，演出结束 BOSS 中速进场并展开
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
@@ -294,7 +320,7 @@
       } else if (bossFlow.stage === 'none') {
         // BOSS 击败后的 2s 缓冲与首波 4s 观察期不计入关卡推进（冻结 bossTimer，等级不增长）
         if (bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) bossFlow.timer += dt;
-        // 当前阶段刷怪时间到 → 等清场后进警报；登场 BOSS 由 bossPhase 决定（旧日之歌 → 暴风之眼）
+        // 当前阶段刷怪时间到 → 等清场后进警报；登场 BOSS 由 bossPhase 决定（旧日之歌 → 黑暗之手 → 暴风之眼）
         // 诗篇波次制：本阶段波次全部刷出且场上清空 → 直接进警报（波次耗尽即刷怪期结束，不等计时）
         const phaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
         const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
@@ -381,7 +407,8 @@
             levelFlow.poemClearT = 1;
           }
         } else if (levelFlow.poemWaveIdx < phaseWaves) {
-          if (enemies.length === 0) {
+          // 返场连携精英（elRevive）不阻止波次刷新：仅统计非返场敌人（2026-10-08 用户定稿）
+          if (!enemies.some(en => !en.elRevive)) {
             levelFlow.poemClearT += dt;
             if (levelFlow.poemClearT >= levelFlow.poemClearNext) {
               spawnWave();

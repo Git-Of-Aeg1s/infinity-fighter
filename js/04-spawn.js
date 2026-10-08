@@ -1,11 +1,11 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(14 名)
+  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(15 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
-  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ELITES, eliteHpOf, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, poemHpOf, PRESSURE_W, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { ANVIL, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, CANVAS_H, CANVAS_W, DUSK, ELITES, ELITE_REVIVE, eliteHpOf, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, isPoem, isRealme, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, PLAYER_CFG, POPIAN, POPIAN_U, poemHpOf, PRESSURE_W, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STORM_SHIP, STRIKER_FORTRESS, TEST_HP, UNREAL, VARIANTS, WAVE_POEM, WAR_GHOST, WEILONG, YU4, currentArmor, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
@@ -939,6 +939,20 @@
     return e;
   }
 
+  // 连携精英返场（2026-10-08 用户定稿）：黑暗之手战离场登记（state.dhFledElites）的精英按 ELITE_REVIVE.levels
+  // 固定等级重新登场——顶部标准入场（holdTimer 1e9 永驻，同图鉴挑战口径），血量 = 登记血量 + 已损失 × healLostPct；
+  // 带 elRevive 标记：不占在场压力权重（4S 类型不在 PRESSURE_W）、不阻止诗篇波次刷新（14-main 诗篇分支排除）、
+  // 不因新的 4S 登场而离场，仅第三轮刷怪期结束统一离场（02-core departRevivedElites）。
+  // 张华&张策实装时走同通道（rec.hp 传全血 = 登记值即上限，全额入场）。14-main 于第三轮 phase===2 按等级触发
+  function spawnRevivedElite(rec) {
+    const el = spawnEliteMinion(rec.type, 1e9);
+    el.elRevive = true;
+    const max = el.maxHp;
+    const recorded = Math.min(Math.max(0, rec.hp), max);
+    el.hp = Math.max(1, Math.round(max - (max - recorded) * ELITE_REVIVE.healLostPct));   // 登记血量 + 已损失 × 50%
+    return el;
+  }
+
   // 2类突击艇替换判定：lv11 前不出现（spawnLowLv=0），lv11 起以 spawnHighLv 概率替换（权重见 PRESSURE_W.fashiMatrix）
   function rollFashiMatrix() {
     const chance = levelFlow.level < 11 ? FASHI_MATRIX.spawnLowLv : FASHI_MATRIX.spawnHighLv;
@@ -1510,6 +1524,6 @@
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, enemyFrostZoneMoveMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,
-    spawnChallengeWave, spawnPopianU, spawnWarGhost, spawnEliteMinion, spawnPulseMatrix,
+    spawnChallengeWave, spawnPopianU, spawnWarGhost, spawnEliteMinion, spawnRevivedElite, spawnPulseMatrix,
     updateChallenge,
   };

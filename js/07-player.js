@@ -176,7 +176,7 @@
   // 经 updateDagouMissiles 的 mul 通路结算）；连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
   function launchDaodanMissile(lv) {
     const dc = PILOTS.dagou;
-    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5 });
+    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5, src: 'daodan' });   // src：来源标记（副武器捣蛋来袭——不受大狗驾驶员的 BOSS 减伤修正，见 dagouBossMul）
     if (dc.chainChance && !state.dagouDebugRapid && Math.random() < dc.chainChance) {
       state.daodanChains.push({ t: dc.chainGap, lv: (lv || 0) + 1 });
     }
@@ -1282,7 +1282,7 @@
       if (tryBulwarkCheatDeath()) return true;
       player.hp = 0;
       player.alive = false;
-      state.lives--;
+      if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算；左下角恒显 1 颗心）
       state.hurt = 1;   // 掉命：红晕拉满
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.55, r: 26, seed: Math.random() * 10 });   // 掉命：更大的爆闪冲击环
@@ -2300,7 +2300,7 @@
       const x = (k + 0.5) * CANVAS_W / n;
       // 发射序：按距屏幕中线的远近两两配对（k=3/4 → 第 0 拍，2/5 → 1，1/6 → 2，0/7 → 3）
       const order = Math.abs((n - 1) / 2 - k) - 0.5;
-      dagouMissiles.push({ x, y: CANVAS_H + 24, vy: -cfg.speed, r: cfg.r, delay: order * cfg.launchGap, dmgMul });
+      dagouMissiles.push({ x, y: CANVAS_H + 24, vy: -cfg.speed, r: cfg.r, delay: order * cfg.launchGap, dmgMul, src: state.dagouDebugRapid ? 'dagouCheat' : 'dagou' });   // src：来源标记（dagou = 驾驶员召唤，对 BOSS ×bossDmgMul；dagouCheat = 连发作弊，不受修正）
     }
     // 连射（10% 概率 0.3s 后追波）：仅正常节奏的导弹雨可触发——按 9 的调试速射模式不连射（波次已密集）
     if (cfg.chainChance && !state.dagouDebugRapid && Math.random() < cfg.chainChance) {
@@ -2308,6 +2308,13 @@
     }
     if (!state.dagouDebugRapid) achvNoteDagouChain(lv);   // 成就：欧欧欧（两次连射3轮）/ ！？欧欧？！（连射4轮；lv=0 为新序列起点）——调试速射不计
     spawnParticles(CANVAS_W / 2, CANVAS_H - 8, '#9fd0ff', 14, 170);   // 底部少量水花粒子（无震屏：入场演出克制）
+  }
+
+  // 大狗驾驶员波雨弹对 BOSS 伤害修正（2026-10-08 用户定稿）：仅驾驶员召唤的导弹（src='dagou'）命中 BOSS 时
+  // ×bossDmgMul（0.65 = -35%）——副武器捣蛋来袭（src='daodan'）/ 连发作弊模式（src='dagouCheat'）不受此修正，
+  // 其余导弹（叮咚鸡 ddjMissiles 等）与本修正无关。直击与溅射统一走此函数（按受击目标逐个判定）
+  function dagouBossMul(e, m) {
+    return (m.src === 'dagou' && e.type === 'boss') ? PILOTS.dagou.bossDmgMul : 1;
   }
 
   // 大狗导弹雨推进：发射延迟归零后上行飞行；分区命中规则（低区首触直击穿透 → 第二次命中 / 高区命中爆炸，
@@ -2343,14 +2350,14 @@
           m.pierced = true;
           dashKillFx.push({ x: m.x, y: m.y, t: 0, max: 0.22, r: 12 });
           spawnParticles(m.x, m.y, '#dff3ff', 6, 150);
-          hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, m.x, m.y) * mul);   // 低区直击（夏勇屏障先吸收，技能3）
+          hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, m.x, m.y) * mul * dagouBossMul(hit, m));   // 低区直击（夏勇屏障先吸收，技能3；对 BOSS ×bossDmgMul 仅驾驶员召唤弹）
           if (hit.hp <= 0) { const j = enemies.indexOf(hit); if (j >= 0) killEnemy(j); }
           continue;
         }
         // 爆炸（低区第二次命中 / 高区命中）：主目标 200 直击 + 400 溅射（合计 600）、周围敌人 400 溅射；
         // 弹体以白光闪核迅速化开（配合冲击圈与粒子，消除瞬间消失感）
         dashKillFx.push({ x: m.x, y: m.y, t: 0, max: 0.3, r: m.r * 1.6 });
-        dagouMissileBlast(m.x, m.y, hit, mul);
+        dagouMissileBlast(m.x, m.y, hit, mul, m);
         dagouMissiles.splice(i, 1);
         continue;
       }
@@ -2361,8 +2368,9 @@
 
   // 大狗导弹爆炸：主目标（被直接击中的敌人）先受 200 直击、再随溅射受 400（合计 600）；
   // 爆点周围 blastR 内的所有敌人（含主目标）受 400 溅射伤害。
-  // 连射链 dmgMul 与大无垠之王累积增伤由调用方乘算后经 mul 传入；爆炸生成蓝色冲击圈指示波及范围
-  function dagouMissileBlast(x, y, hit, mul) {
+  // 连射链 dmgMul 与大无垠之王累积增伤由调用方乘算后经 mul 传入；m 用于按来源判定对 BOSS 减伤
+  // （dagouBossMul：仅驾驶员召唤弹对 BOSS ×bossDmgMul）；爆炸生成蓝色冲击圈指示波及范围
+  function dagouMissileBlast(x, y, hit, mul, m) {
     const cfg = PILOTS.dagou;
     spawnBlastRing(x, y, cfg.blastR);
     spawnParticles(x, y, '#dff3ff', 20, 260);
@@ -2372,11 +2380,11 @@
       if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
       if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：溅射伤害穿透
       if (Math.hypot(e.x - x, e.y - y) > cfg.blastR + Math.max(e.w, e.h) / 2) continue;
-      e.hp -= xiayongBarAbsorb(e, cfg.splashDmg * mul);   // 溅射为常规伤害：先被夏勇屏障吸收（技能3）
+      e.hp -= xiayongBarAbsorb(e, cfg.splashDmg * mul * dagouBossMul(e, m));   // 溅射为常规伤害：先被夏勇屏障吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹
       if (e.hp <= 0) killed.push(e);
     }
     if (hit && !hit.dying && hit.hp > 0) {   // 主目标直击部分（未被溅射击杀时结算，合计 200 + 400）
-      hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, x, y) * mul);   // 铜皮夏勇·牛角减伤：爆点在牛角头部时 ×0.5；屏障先吸收（技能3）
+      hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, x, y) * mul * dagouBossMul(hit, m));   // 铜皮夏勇·牛角减伤：爆点在牛角头部时 ×0.5；屏障先吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹
       if (hit.hp <= 0 && !killed.includes(hit)) killed.push(hit);
     }
     for (const t of killed) {

@@ -1650,7 +1650,8 @@
   // 连携召唤：血量 80/60/40/20% 阈值各召唤一名精英（前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿；
   //   spawnEliteMinion 第二参 1e9 = 永驻——离场由血量窗口驱动）；
   //   任意连携精英在场时受到的普通伤害 -70%（dhGuardActive，结算点 08-entities enemyDamageMul；高能爆弹/绷绷炸弹为真实伤害不受此减免——2026-10-04 用户定稿）；
-  //   窗口切换（跨入下一阈值）时上一窗口精英仍未被击杀 → dhFleeLinkedElites 迅速离场并记录血量（下一轮小怪刷新阶段登场，细节待设计）。
+  //   窗口切换（跨入下一阈值）时上一窗口精英仍未被击杀 → dhFleeLinkedElites 迅速离场并记录血量
+  //   （第三轮刷怪期按 ELITE_REVIVE.levels 固定等级返场：14-main 触发 / 04-spawn spawnRevivedElite 生成）。
   // 子弹均为常规敌弹（2026-10-01 用户定稿；技能3 巨大蛋挞例外 = tart 贴图大弹）；伤害统一经 bossDmgMul 难度倍率
   function updateBossDarkhand(e, dt) {
     e.t += dt;
@@ -1798,7 +1799,7 @@
       if (+k !== id && !e.skillUseCount[+k]) e.skillWeights[k] *= 1.5;
     }
     e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0,
-      gi: 0, st: 'warn', pt: 0, beams: [] };   // gi/st/pt/beams：技能4 爪翼光束状态（余字段被其他技能复用/无害）
+      gi: 0, st: 'warn', pt: 0, tarts: [] };   // gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞（余字段被其他技能复用/无害）
   }
 
   // 黑暗之手技能间隔（2026-10-01 用户定稿）：无连携精英在场 = 旧日之歌（BOSS.skillCd 2.2s）的 40%（≈0.88s）；
@@ -1880,13 +1881,14 @@
       // 蛋挞后摇（2026-10-04 用户定稿）：释放结束在常规间隔上额外加时——普通 +1.2s / 真我 +1.1s / 诗篇 +1.0s
       e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd) + (isPoem() ? c.cdLagPoem : (isRealme() ? c.cdLagRealme : c.cdLag));
     } else if (s.id === 3) {
-      // 技能4 爪翼毁灭光束（2026-10-02 / 2026-10-03 三轮定稿）：三组依次「预警 → 发射」（机头正下 / 双爪沿爪朝向
-      // 向屏内交叉 / 双后翼朝外），见 DARKHAND.s4.groups；发射点与朝向以发射瞬间快照，光束折线延伸至出屏
-      //（真我/诗篇触左右屏缘反弹一次）；伤害/节奏同风暴编织者技能2（dmg 50 × bossDmgMul、beamDur、rise 渐入后
-      // 判定、命中一次、白盾无影响）；
+      // 技能4 爪翼毁灭蛋挞（2026-10-08 用户定稿：激光替换为超长蛋挞——原「爪翼毁灭光束」改版）：三组依次
+      // 「预警 → 发射」（机头正下 / 双爪沿爪朝向向屏内交叉 / 双后翼朝外），见 DARKHAND.s4.groups；
+      // 发射点与朝向以发射瞬间快照；弹体 = 超长蛋挞自发射点「从头开始」高速射出（头部推进 + 身体沿轨迹历史
+      // 等弧长回采样，见 dhMakeTart/dhUpdateTart），带出现期粒子与暖金拖尾，伤害/节奏同原光束（dmg 50 ×
+      // bossDmgMul、命中一次、白盾无影响）；真我/诗篇触左右屏缘逐节反弹（头部折返写入轨迹，非整条瞬弹）；
       // 居中机制（2026-10-03 用户定稿）：释放瞬间记录起点，本体以 smoothstep 剖面（初速/末速均为 0，加速度连续
       // ——速度曲线铁律：不瞬起不瞬停）水平移向屏幕中线并停稳（moveDur 1.6s < 第二轮发射 2.4s——四轮定稿预警 1.2s），第三轮发射
-      // 时本体必居中 → 双后翼光束必然左右对称；释放期间常规移动由 updateBossDarkhand 跳过（本技能接管位置）
+      // 时本体必居中 → 双后翼蛋挞必然左右对称；释放期间常规移动由 updateBossDarkhand 跳过（本技能接管位置）
       const c = DARKHAND.s4;
       if (s.mx0 == null) { s.mx0 = e.x; s.my0 = e.y; s.mdist = CANVAS_W / 2 - e.x; s.mt = 0; }
       if (Math.abs(s.mdist) > 0.5 && s.mt < c.moveDur) {
@@ -1900,7 +1902,7 @@
         if (s.pt >= c.warnDur) {
           for (const gm of c.groups[s.gi]) {
             const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);
-            s.beams.push({ segs: dhBeamSegments(sx, sy, gm.ang), t: 0, hit: false });
+            s.tarts.push(dhMakeTart(sx, sy, gm.ang));
             spawnParticles(sx, sy, '#ff4632', 12, 240);
           }
           shake(6, 0.3);
@@ -1914,21 +1916,23 @@
           else { s.st = 'warn'; s.pt = 0; }
         }
       }
-      for (let i = s.beams.length - 1; i >= 0; i--) {
-        const b = s.beams[i];
-        b.t += dt;
-        // 判定同风暴技能2：白盾（player.shield > 0）对其无任何影响不判伤（免疫射弹，注册表见 01-config BULWARK 注释）
-        if (!b.hit && b.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0 &&
-            strikeVis(b.t / c.beamDur, c.rise) >= 0.35) {
+      for (let i = s.tarts.length - 1; i >= 0; i--) {
+        const tar = s.tarts[i];
+        dhUpdateTart(tar, dt);
+        // 判定同原光束：白盾（player.shield > 0）对其无任何影响不判伤（免疫射弹，注册表见 01-config BULWARK 注释）；
+        // 命中一次 / 枚，沿身体逐段距离判定（dhSegDist 同旧口径）
+        if (!tar.hit && tar.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0) {
           const px = player.x, py = player.y + PLAYER_CFG.hitOffsetY;
-          const R = c.r + PLAYER_CFG.hitRadius;
-          for (const sg of b.segs) {
-            if (dhSegDist(px, py, sg) < R) { b.hit = true; damagePlayer(c.dmg * bossDmgMul()); break; }
+          const R = c.tartW / 2 + PLAYER_CFG.hitRadius;
+          for (let k = 0; k + 1 < tar.pts.length; k++) {
+            if (dhSegDist(px, py, { x1: tar.pts[k].x, y1: tar.pts[k].y, x2: tar.pts[k + 1].x, y2: tar.pts[k + 1].y }) < R) {
+              tar.hit = true; damagePlayer(c.dmg * bossDmgMul()); break;
+            }
           }
         }
-        if (b.t >= c.beamDur) s.beams.splice(i, 1);
+        if (tar.gone) s.tarts.splice(i, 1);
       }
-      if (s.st === 'done' && !s.beams.length) {
+      if (s.st === 'done' && !s.tarts.length) {
         e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd);
         e.bvx = 0; e.bvy = 0;   // 清惯性：恢复常规移动后从静止平滑加速到航点速度（速度曲线铁律——不瞬跳）
       }
@@ -1975,27 +1979,100 @@
     }
   }
 
-  // 光束折线段（技能4）：从发射点沿方向延伸至出屏底；真我/诗篇难度（reflect，2026-10-03 用户定稿自仅诗篇扩到
-  // 真我+诗篇）命中左右屏幕边缘水平反弹继续延伸——反弹次数难度化（2026-10-03 用户定稿）：真我 1 次、诗篇 2 次
-  function dhBeamSegments(sx, sy, ang) {
+  // 超长蛋挞（技能4，2026-10-08 用户定稿替换爪翼毁灭光束）：自发射点「从头开始」高速射出的超长贴图长条弹——
+  // 头部沿朝向推进，身体各点沿头部轨迹历史按等弧长（tartSeg）回采样（列车出洞式）：出现期未露出的节段锚定在
+  // 发射点、全部露出（sHead ≥ 全长）后整条转刚体平移；头部反弹折返点写入轨迹历史 → 弹体逐节转向
+  //（哪节到壁哪节弹，非整条瞬弹——2026-10-08 用户定稿）。出现期在发射点按 emitIv 持续迸发红色粒子
+  //（「出现的位置产生粒子效果」），全部露出后停止。真我/诗篇（reflect）命中左右屏幕边缘反弹
+  //（子步精确到壁面时刻再折返——位置逐帧连续无回钳 snap；次数难度化：真我 1 / 诗篇 2）；出屏底不反弹
+  // 照常飞出，反弹次数用尽后直线飞出屏；整体出屏（含拖尾余量）后由技能循环回收（tar.gone）。
+  function dhMakeTart(sx, sy, ang) {
     const c = DARKHAND.s4;
     const bounceMax = isPoem() ? c.bouncePoem : isRealme() ? c.bounceRealme : 0;
-    const canReflect = c.reflect && bounceMax > 0;
-    const segs = [];
-    let x = sx, y = sy, dx = Math.cos(ang), dy = Math.sin(ang), bounced = 0;
-    for (let guard = 0; guard < 4; guard++) {   // 上限 = bounceMax+1 段（诗篇 3 段 < 4，兜底防死循环）
-      let tMin = Infinity, side = null;
-      if (dx > 1e-6) { const t = (CANVAS_W - x) / dx; if (t > 0 && t < tMin) { tMin = t; side = 'R'; } }
-      if (dx < -1e-6) { const t = (0 - x) / dx; if (t > 0 && t < tMin) { tMin = t; side = 'L'; } }
-      if (dy > 1e-6) { const t = (CANVAS_H + 30 - y) / dy; if (t > 0 && t < tMin) { tMin = t; side = 'B'; } }
-      if (!side) break;
-      const nx = x + dx * tMin, ny = y + dy * tMin;
-      segs.push({ x1: x, y1: y, x2: nx, y2: ny });
-      if (side === 'B' || !canReflect || bounced >= bounceMax) break;   // 出屏底 / 无反弹 / 次数用尽：到此为止
-      bounced++;   // 水平反射（左右屏缘）：dx 取反、dy 不变，从交点继续延伸
-      dx = -dx; x = nx; y = ny;
+    return {
+      t: 0, hit: false, gone: false,
+      ax: sx, ay: sy,                          // 出现锚点（发射瞬间快照，同原光束口径）
+      hx: sx, hy: sy,                          // 头部位置
+      vx: Math.cos(ang), vy: Math.sin(ang),    // 头部速度方向（单位向量，速率 = c.tartSpeed）
+      sHead: 0,                                // 头部累计弧长（= 已露出长度）
+      path: [{ x: sx, y: sy, s: 0 }],          // 头部轨迹历史（s = 自锚点累计弧长；含反弹折点）
+      pts: Array.from({ length: Math.round(c.tartLen / c.tartSeg) + 1 }, () => ({ x: sx, y: sy })),   // 身体采样点（[0]=头，间距 tartSeg）
+      trailPts: [],                            // 拖尾采样点（尾端沿轨迹向后 trailN 段，渲染用，见 11-draw-boss drawDhTart）
+      nBounce: 0, bounceMax: c.reflect ? bounceMax : 0,
+      out: false, emitT: 0,
+    };
+  }
+
+  function dhUpdateTart(tar, dt) {
+    const c = DARKHAND.s4;
+    tar.t += dt;
+    const halfW = c.tartW / 2;
+    // 头部子步推进：未用尽反弹次数时先精确走到壁面时刻再折返剩余时长（无瞬跳）；用尽后直线飞出屏
+    let px = tar.hx, py = tar.hy, remain = dt;
+    for (let guard = 0; guard < 4 && remain > 1e-6; guard++) {
+      let tWall = Infinity;
+      if (tar.nBounce < tar.bounceMax) {
+        if (tar.vx > 1e-6) tWall = Math.min(tWall, (CANVAS_W - halfW - tar.hx) / (tar.vx * c.tartSpeed));
+        if (tar.vx < -1e-6) tWall = Math.min(tWall, (halfW - tar.hx) / (tar.vx * c.tartSpeed));
+      }
+      const step = Math.min(remain, Math.max(tWall, 0));
+      tar.hx += tar.vx * c.tartSpeed * step;
+      tar.hy += tar.vy * c.tartSpeed * step;
+      remain -= step;
+      tar.sHead += Math.hypot(tar.hx - px, tar.hy - py);
+      px = tar.hx; py = tar.hy;
+      tar.path.push({ x: tar.hx, y: tar.hy, s: tar.sHead });
+      if (step >= tWall && tar.nBounce < tar.bounceMax) { tar.vx = -tar.vx; tar.nBounce++; continue; }   // 触壁水平反射
+      break;   // 本帧剩余时长一步走完（未触壁 / 反弹已用尽）
     }
-    return segs;
+    // 轨迹修剪：保留 弹长 + 拖尾 + 余量 的近期窗口即可（身体/拖尾采样不会再回看更早弧长）
+    const keepFrom = tar.sHead - (c.tartLen + c.trailLen + 40);
+    let cut = 0;
+    while (cut + 1 < tar.path.length && tar.path[cut + 1].s < keepFrom) cut++;
+    if (cut > 0) tar.path.splice(0, cut);
+    // 身体采样：点 i 位于头部后方 i*tartSeg 弧长处（该弧长未走过 → 锚定发射点）；沿轨迹历史自头向尾单趟回走
+    const n = tar.pts.length;
+    let k = tar.path.length - 1;
+    for (let i = 0; i < n; i++) {
+      const target = tar.sHead - i * c.tartSeg;
+      const p = tar.pts[i];
+      if (target <= 0) { p.x = tar.ax; p.y = tar.ay; continue; }   // 未露出：锚定发射点
+      while (k > 1 && tar.path[k - 1].s > target) k--;
+      const a = tar.path[k - 1], b = tar.path[k];
+      const u = clamp((target - a.s) / Math.max(b.s - a.s, 1e-6), 0, 1);
+      p.x = a.x + (b.x - a.x) * u;
+      p.y = a.y + (b.y - a.y) * u;
+    }
+    // 全部露出判定 + 出现期粒子（发射点迸发；全部露出后不再产生——2026-10-08 用户定稿）
+    tar.out = tar.sHead >= (n - 1) * c.tartSeg;
+    if (!tar.out) {
+      tar.emitT += dt;
+      while (tar.emitT >= c.emitIv) {
+        tar.emitT -= c.emitIv;
+        spawnParticles(tar.ax, tar.ay, '#ff4632', 1, 120);
+      }
+    }
+    // 拖尾采样：自尾端沿轨迹向后 trailLen 取 trailN+1 点（未全部露出时尾端未离锚 → 采样越界自然为空 = 无拖尾）
+    tar.trailPts.length = 0;
+    {
+      const tailBehind = Math.min((n - 1) * c.tartSeg, tar.sHead);
+      let k2 = tar.path.length - 1;
+      for (let j = 0; j <= c.trailN; j++) {
+        const target = tar.sHead - tailBehind - j * (c.trailLen / c.trailN);
+        if (target <= 0) break;
+        while (k2 > 1 && tar.path[k2 - 1].s > target) k2--;
+        const a = tar.path[k2 - 1], b = tar.path[k2];
+        const u = clamp((target - a.s) / Math.max(b.s - a.s, 1e-6), 0, 1);
+        tar.trailPts.push({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+      }
+    }
+    // 回收：全部节段出屏（含拖尾余量；路径纵向恒向下（vy > 0），尾端出屏 trailLen+ 余量后拖尾必然同步出屏）
+    const m = c.trailLen + 16;
+    let outside = true;
+    for (const p of tar.pts) {
+      if (p.x > -m && p.x < CANVAS_W + m && p.y > -m && p.y < CANVAS_H + m) { outside = false; break; }
+    }
+    if (outside) tar.gone = true;
   }
   // 点到线段距离（技能4 光束命中判定用）
   function dhSegDist(px, py, sg) {

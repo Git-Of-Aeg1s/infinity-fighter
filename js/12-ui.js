@@ -78,7 +78,9 @@
         bombIcons.dataset.filled = String(n);
       }
     }
-    livesText.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
+    // 左下角心显示（2026-10-08 用户定稿）：显示备用命数——初始 2 命 → 1 颗，死亡一次后消失（最后一条命），再死即终局；
+    // 天使璃（无限生命，strong 强力角色）恒显 1 颗
+    livesText.textContent = '♥'.repeat(hasPilot('tianshili') ? 1 : Math.max(0, state.lives - 1));
     // HUD 当前难度标签：战斗中显示（图鉴挑战 / BOSS 测试不显示，避免与积分器同隐不同现造成混乱）
     diffLabel.textContent = '难度 · ' + currentDifficulty.name;
     diffLabel.classList.toggle('hidden', state.mode !== 'playing' || !!state.challenge || !!state.testBoss);
@@ -340,7 +342,8 @@
     state.tianxiuDebugSpam = false;   // 作弊键 8（天秀旋风连发）同上
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
     player.spinT = 0;   // 清除击飞自旋（黑暗之手登场阴影掠过；09-draw-ships drawPlayer 读取）
-    state.dhFledElites.length = 0;   // 黑暗之手：迅速离场精英登记清空（再登场系统未实装，登记仅作状态留存）
+    state.dhFledElites.length = 0;   // 黑暗之手：迅速离场精英登记清空（第三轮按 ELITE_REVIVE.levels 返场）
+    state.dhZhangPending = false;    // 黑暗之手：四精英全数击败标记归位（第三轮 Lv25 张华&张策召唤触发）
     player.invuln = state.pilotDashT > 0 ? state.pilotDashT : 1.0;   // 许凯狗：开局无敌覆盖整个冲刺阶段（不闪动）
     player.invulnBlink = false;   // 开局无敌不闪动：清掉上一局残留的受击闪动标记（登场/重生无敌保持机体完整可见）
     player.alive = true;
@@ -450,9 +453,13 @@
     const pilotSubVal = document.getElementById('loadoutPilotSubVal');
     if (pilotVal) pilotVal.textContent = currentPilotMain.empty ? '无' : (currentPilotMain.short || currentPilotMain.name);
     if (pilotSubVal) pilotSubVal.textContent = currentPilotSub.empty ? '' : (currentPilotSub.short || currentPilotSub.name);
-    if (pilotDiamond) pilotDiamond.title =
-      '主驾驶员：' + (currentPilotMain.empty ? '无' : currentPilotMain.name) +
-      '／副驾驶员：' + (currentPilotSub.empty ? '无' : currentPilotSub.name);
+    if (pilotDiamond) {
+      pilotDiamond.title =
+        '主驾驶员：' + (currentPilotMain.empty ? '无' : currentPilotMain.name) +
+        '／副驾驶员：' + (currentPilotSub.empty ? '无' : currentPilotSub.name);
+      // 特殊驾驶员（strong）装备中（主/副任一槽）：菱形框金边替换为青粉渐变流光 + 双白芒（style.css .pilot-diamond.strong-pilot）
+      pilotDiamond.classList.toggle('strong-pilot', !!(currentPilotMain.strong || currentPilotSub.strong));
+    }
     // 装甲名正下方的半透明图标（绝对定位，不挤动文字）：随当前装甲同步图案与颜色
     const armorGlyph = document.getElementById('loadoutArmorGlyph');
     if (armorGlyph) {
@@ -935,7 +942,7 @@
       const p = PILOTS[id];
       if (p.empty || p.slot !== slot) continue;   // 各槽位只列出归属该槽位的驾驶员（none 不再作为选项展示）
       const card = document.createElement('div');
-      card.className = 'armor-card pilot-card' + (p.id === equipped.id ? ' selected' : '');
+      card.className = 'armor-card pilot-card' + (p.id === equipped.id ? ' selected' : '') + (p.strong ? ' strong' : '');   // strong = 特殊驾驶员：卡片右上角白光角标（style.css .pilot-card.strong）
       card.dataset.pilot = p.id;
       if (!p.empty) {
         const glyph = document.createElement('div');
