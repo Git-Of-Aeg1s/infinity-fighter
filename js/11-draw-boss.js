@@ -5,7 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
-  import { BOSSES, BOSS_BULLET, BOSS_WARN, CANVAS_H, CANVAS_W, DARKHAND, ENERGY_ORB, STORM, STORM2, STORM2_SHIP, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, tartUltraImg, xinguodongImg, xiayongImg } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, ENERGY_ORB, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, tartUltraImg, xinguodongImg, xiayongImg } from './01-config-core.js';
+  import { BOSSES, BOSS_BULLET, BOSS_WARN, DARKHAND, STORM, STORM2, STORM2_SHIP } from './01-config.js';
   import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 

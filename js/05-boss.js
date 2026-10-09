@@ -6,7 +6,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
   //
-  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, dhSampleSolid, hasPilot, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, dhSampleSolid } from './01-config-core.js';
+  import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, BULWARK, DARKHAND, JIAOXIANG, PLAYER_CFG, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND, bossDmgMul, diffMods, hasPilot, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';

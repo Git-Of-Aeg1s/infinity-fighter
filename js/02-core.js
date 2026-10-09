@@ -5,7 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
-  import { CANVAS_H, CANVAS_W, DOUZHI, PILOTS, PLAYER_CFG, STAR_COUNT, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, STAR_COUNT } from './01-config-core.js';
+  import { DOUZHI, PILOTS, PLAYER_CFG, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
 
 
   // ---------- DOM ----------

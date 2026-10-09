@@ -5,7 +5,8 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, currentArmor, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { CANVAS_H, CANVAS_W } from './01-config-core.js';
+  import { ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, currentArmor, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';

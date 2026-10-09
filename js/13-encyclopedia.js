@@ -3,7 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：12-ui(1 名) 14-main(2 名)
   //
-  import { ARMORS, BERSERK, BOSS, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, DIFFICULTIES, DOUZHI, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, REWARD_DRONES, REWARD_ITEMS, STARSLAYER, STORM, STORM2, SUB_WEAPONS, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, diffMods, eliteHpOf, enemyGrade, hanxixianImg, isPoem, poemHpOf, puxuefengImg, resolveBossHp, rewardDroneChance, setDifficulty, xiayongImg, xinguodongImg } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, hanxixianImg, puxuefengImg, xiayongImg, xinguodongImg } from './01-config-core.js';
+  import { ARMORS, BERSERK, BOSS, BULWARK, DARKHAND, DIFFICULTIES, DOUZHI, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, PILOTS, PLANES, PLAYER_CFG, POPIAN, REWARD_DRONES, REWARD_ITEMS, STARSLAYER, STORM, STORM2, SUB_WEAPONS, VARIANTS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentDifficulty, currentPlane, diffMods, eliteHpOf, enemyGrade, isPoem, poemHpOf, resolveBossHp, rewardDroneChance, setDifficulty } from './01-config.js';
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';

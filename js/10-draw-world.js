@@ -3,7 +3,8 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：13-encyclopedia(2 名) 14-main(1 名)
   //
-  import { ANVIL, CANVAS_H, CANVAS_W, CAPITAL_PALETTE, DARKHAND, DEMO_BOTTOM, DEMO_TOP, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, currentDifficulty, isPoem, isRealme, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config.js';
+  import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config-core.js';
+  import { ANVIL, CAPITAL_PALETTE, DARKHAND, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, PILOTS, PRINCE_STORM, WIP_PLACEHOLDER_TYPES, currentArmor, currentDifficulty, isPoem, isRealme } from './01-config.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawFrostZones, drawHanshuangBody, drawHarbingerBody, drawItemPickFx, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
