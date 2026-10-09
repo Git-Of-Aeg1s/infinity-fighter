@@ -6,7 +6,7 @@
   import { CANVAS_H, CANVAS_W, DEMO_TOP } from './01-config-core.js';
   import { BULWARK, PILOTS, STARSLAYER, currentArmor, currentPlane, currentWingman } from './01-config-loadout.js';
   import { ANVIL, BAOLING, BAOLING_G, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, PULSE_MATRIX, SPONSOR, UNREAL, WAR_GHOST, YU4 } from './01-config-enemies.js';
-  import { CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS } from './01-config.js';
+  import { CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS } from './01-config-spawn.js';
   import { armorGlyphFx, blBombs, bossFlow, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, frostZones, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wgSlashes, wingmen } from './02-core.js';
 
 

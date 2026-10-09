@@ -10,7 +10,7 @@
   import { ENEMY_CLASS, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { diffMods, invulnDiffMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
-  import { REWARD_ITEMS } from './01-config.js';
+  import { REWARD_ITEMS } from './01-config-spawn.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
