@@ -98,8 +98,19 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 node tools/sync-contract.js  # 头部「被依赖」契约行自动重写（改 import/导出后先跑它）
 node tools/check-names.js    # 顶层命名 / import-export 契约静态检查（必过）
 node tools/check-syntax.js   # 语法静态检查（改 js 收工三连之一）
-node tools/smoke.js          # 无头跑帧冒烟测试（必过；改移动/碰撞逻辑后建议加场景）
+node tools/smoke.js          # 无头跑帧冒烟测试（必过；全量 ≈14,400 帧）
+node tools/smoke.js --scene=a,b  # 只跑指定场景；--list 列出全部场景（SCENES 注册表）
 ```
+
+**改动文件 → smoke 场景速查**（`node tools/smoke.js --list` 看全表；共享层改动跑全量不省）：
+
+| 改动文件 | 建议场景 |
+|---|---|
+| 05-boss / 11-draw-boss | darkhand |
+| 07-player / 08-entities | core-flow / pilots / sub-weapons / gacha |
+| 04-spawn / 06-enemy | poem / popian-u / war-ghost / pulse-matrix / elites / hover-bob / swarm |
+| 12-ui / 13-encyclopedia | encyclopedia / wave-test / help-pad |
+| 02-core / 01x 配置域 / 14-main | **全量** |
 
 改移动逻辑额外要求：跑帧观察速度/位置曲线，确认无瞬跳再收工。
 

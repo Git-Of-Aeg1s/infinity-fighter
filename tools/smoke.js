@@ -2,15 +2,17 @@
 /**
  * smoke —— 无头冒烟测试：在不打开浏览器的情况下加载全部游戏脚本并跑帧验证。
  *
- * 两种模式（自动探测：js/01-config.js 含 import 语句即 modules 模式）：
- *   classic  按序拼接 14 个脚本（与 index.html 加载顺序一致），以 new Function 单作用域执行
- *   modules  按序动态 import 14 个模块（top-level 代码随 import 执行）
+ * 两种模式（自动探测：index.html 含 type="module" 即 modules 模式）：
+ *   classic  按序拼接全部脚本（与 index.html 加载顺序一致），以 new Function 单作用域执行
+ *   modules  按序动态 import 全部模块（top-level 代码随 import 执行）
  *
- * 场景：主界面空闲 → 点击「开始游戏」→ 方向键移动 / 空弹 / 暂停恢复 / 重开 / 二次开局，
- * 共约 700 帧（≈11.6s 游戏时间），覆盖出怪、开火、命中、掉落、HUD 更新等主路径。
+ * 场景：18 个具名场景（SCENES 注册表），覆盖主路径战斗 / 驾驶员 / 副武器 / 图鉴 /
+ * 挑战测试 / 精英与 BOSS 状态机 / 原石 / 手柄 / 教程，合计约 14,400 帧（≈240s 游戏时间）。
  *
  * 判定：任何未捕获异常、主循环帧内异常（14-main 的 catch 会 console.error）都记为 FAIL。
- * 用法：node tools/smoke.js    （npm run smoke）
+ * 用法：node tools/smoke.js              全量跑（默认）
+ *       node tools/smoke.js --scene=a,b  只跑指定场景（改哪个域跑哪组，见 SCENES 表 files 字段）
+ *       node tools/smoke.js --list       列出场景清单
  * 退出码：0 = 通过；1 = 失败
  */
 import { readFileSync } from 'node:fs';
@@ -251,12 +253,8 @@ function sample(label) {
   console.log(`  [frame ${Math.round(NOW / 16.667)}] ${label}`);
 }
 
-try {
-  if (isModules) {
-    for (const f of files) await import(pathToFileURL(join(jsDir, f)).href);
-  }
 
-  console.log(`smoke: ${isModules ? 'modules' : 'classic'} 模式，${files.length} 个脚本装载完成`);
+async function sceneCoreFlow() {
   frames(30);                                   // 主界面空闲
   sample('主界面空闲 30 帧');
 
@@ -277,7 +275,9 @@ try {
   elements.startBtn.click();                    // 再来一局
   frames(120);
   sample('二次开局 120 帧');
+}
 
+async function scenePilots() {
   // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
   // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 陵落 Q 技能），
   // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 Q → 暂停返回主界面
@@ -293,7 +293,9 @@ try {
     elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
     sample('驾驶员 ' + pid + ' 主路径');
   }
+}
 
+async function sceneSubWeapons() {
   // 副武器系统：逐个选中副武器跑主路径（主菜单演示发射 → 开局战斗 → 重开），
   // 覆盖 buildSubWeaponCards 卡片选中 / fireSubWeapon 各 kind / updateXinRings / updateFeijianWaves /
   // updateDagouMissiles（捣蛋）与 resetGame 副武器初始冷却（捣蛋 / 辛国栋）
@@ -310,7 +312,9 @@ try {
     sample('副武器 ' + sid + ' 主路径');
   }
   if (!subCards.length) errors.push({ key: '副武器卡片缺失', stack: 'subGrid 无卡片（buildSubWeaponCards 未执行？）' });
+}
 
+async function sceneEncyclopedia() {
   // 怪物图鉴：打开即构建列表 + 全部条目缩略图（drawEncyPreview → 嵌套 withPreviewCtx）
   // 入口按钮现为主菜单静态元素（index.html 内 id=encyEntryBtn），由 getElementById 获取
   const encyBtn = documentStub.getElementById('encyEntryBtn');
@@ -321,9 +325,12 @@ try {
   elements.infoEntryBtn.click();
   frames(10);
   sample('打开数值与机制图鉴');
+}
 
+async function sceneWaveTest() {
   // 波次测试按钮：权重表 →「波次」子页 → 行内「▶ 试波」→ 波次挑战开局
   //（updateChallenge 整波驱动 / 场上清空自动补刷 / = 额外追加一整波——14-main 键盘入口）
+  elements.infoEntryBtn.click(); frames(10);   // 前置：打开权重表（openInfoModal 幂等重建，全量/单跑皆可）
   const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent === '波次');
   if (waveChip) {
     waveChip.click();
@@ -336,7 +343,9 @@ try {
       sample('波次测试挑战（试波 + = 补波）');
     } else errors.push({ key: '试波按钮缺失', stack: '波次权重表未找到 wave-test 按钮（infoFormationRows / buildWeightTable 改动回归？）' });
   } else errors.push({ key: '波次子页缺失', stack: '权重表未找到「波次」子页 chip（renderInfoWeights 改动回归？）' });
+}
 
+async function sceneSwarm() {
   // 持续刷怪测试（Lv20 无限刷怪）回归：
   // （2026-09-30 事故：正常刷怪通道 !state.challenge 门控把 swarm 一并跳过 → 开局空场一只怪都没有）
   // 覆盖：图鉴按钮进入 swarm 挑战 / 14-main 正常通道放行 + 锁 Lv20 / 04-spawn swarm 分支不误补刷
@@ -372,7 +381,9 @@ try {
     }
     sample('持续刷怪测试 Lv20 出怪');
   } else errors.push({ key: '刷怪测试按钮缺失', stack: '权重页未找到「持续刷怪测试」按钮（renderInfoWeights 改动回归？）' });
+}
 
+async function scenePoem() {
   // 诗篇波次制（wip 实测）：modules 模式下直接 setDifficulty 到 poem（绕过主菜单 wip 选择限制）→ 开局跑帧——
   // 覆盖 14-main 波次制分支（清场驱动 / clearDelay / 波 N = 等级 N / BOSS 触发改波次计数）、
   // 04-spawn 附加先兆者与加血节流递减、08-entities 35% 回复、06-enemy 波次节流（无 BOSS 阶段不触发脚本化置满）
@@ -402,7 +413,9 @@ try {
       cfg.setDifficulty(cfg.DIFFICULTIES.realme);   // 还原默认难度，避免影响后续场景
     }
   }
+}
 
+async function scenePopianU() {
   // 破片U型（诗篇新敌）跑帧：modules 模式直调 spawnPopianU（强制停留点在玩家侧上方、避开主武器弹道）——
   // 覆盖移动/开火状态机 U型分支：① 入场即计时（不等锁停，atkT 1.8~2s）② 途中旋转瞄准玩家
   // ③ 延迟到期后红圈预警 → 三连发出弹（U型伤害路径 spawnPopianMissile dmgF/dmgW）
@@ -456,7 +469,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function sceneWarGhost() {
   // 战争幽灵（诗篇新敌）跑帧：modules 模式直调 spawnWarGhost——覆盖状态机全相位：
   // ① 入场风波 1s → 极速冲刺（逐帧步长 ≤ 巡航速上限，速度曲线铁律）→ 抵达演出 → 驻留
   // ② 技能序列（强制首技能 2 → 之后固定 1→2→3）：技能2/技能1 均出双刃斩击流 wgSlashes → 技能3 排入 scheduled 出弹幕
@@ -574,7 +589,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function scenePulseMatrix() {
   // 脉冲矩阵自爆跑帧：直调 spawnPulseMatrix(1e9)——覆盖登场 20s 自爆全链路（2026-10-02）：
   // ① pmAgeT 逐帧累计（登场起算、全模式生效——1e9 永驻不再豁免）→ 20s 置 pmSelfDestruct
   // ② 自爆模式下一波半径 = selfDestructR 160（pmWaveR）
@@ -639,7 +656,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function sceneDarkhand() {
   // 黑暗之手（诗篇 BOSS）跑帧：直调 spawnBoss('darkhand')——lurk 即退（无警报直召路径）→ sweep 黑影掠过（≈33 帧，体型 +25% 后路径略长）
   // → outline 停顿 0.9s + 轮廓 1.05s → reveal 0.675s，合计约 185 帧进入 combat；随后断言常态技能循环（暗核弹幕）、
   // 连携召唤（80/60/40/20% 血量阈值；前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿）、
@@ -751,7 +770,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function sceneElites() {
   // 4S 精英（四机）跑帧：直调 spawnEliteMinion——① 入场逐帧步长连续（速度曲线铁律）+ 抵达驻留；
   // ② 强制首技能（elFirst）跑技能窗口：朴 1 流星穿刺贯穿相位 / 韩 2 旋眼火螺径向弹幕 /
   //    夏 屏障首发（固定五步循环，xyStep 游标，elFirst 不参与）/ 辛 1 地毯轰炸落点排入
@@ -871,7 +892,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function sceneSweepKill() {
   // 统一伤害规则 · 秒杀类禁亡语召唤：state.sweepKill 置位期间击杀增生侧翼艇 / 法术阵列，
   // 不得分裂卫护飞船 / 爆发法术矩阵（金色陨石秒杀通道的门控回归；规则锚点见 07-player gachaMeteorImpact）
   if (isModules) {
@@ -902,7 +925,9 @@ try {
       sample('统一规则 秒杀禁亡语召唤（增生 / 法术阵列）');
     }
   }
+}
 
+async function sceneHoverBob() {
   // 御4 / 铁砧：到位悬停后除左右巡航外，应有小幅上下浮动（2026-09-29 用户反馈新增）——
   // 直调 spawnYu4 / spawnAnvil（长 holdTimer，不走自然刷怪），跟踪到位后纵向轨迹：
   // ① 到位瞬间纵向偏移 = 0（与悬停锚点严格连续）
@@ -983,7 +1008,9 @@ try {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
     }
   }
+}
 
+async function sceneGacha() {
   // 原石规则回归（2026-10-01 改版）：原石为萧杨专属技能充能——仅萧杨收集原石
   //（noteGachaStone 门控 hasPilot('xiaoyang')），每 16 颗充满一次「哦哦！抽卡！」（gachaReady）；
   // 已充满时继续捡不计数；按 Q（triggerPilotSkill）释放后清零重新累计——萧杨可无限次；
@@ -1066,7 +1093,9 @@ try {
       sample('原石规则 非萧杨不计数 / 16 颗充能 / Q 释放 / 萧杨无限次 / 转化概率 ×1.5 与原档计分');
     }
   }
+}
 
+async function sceneGamepad() {
   // 手柄支持跑帧（modules 模式）：注入虚拟手柄（W3C Gamepad 子集桩，见顶部 smokePads）覆盖
   // pollGamepad 轮询认领 / 径向死区 / 摇杆模拟量移动 / 十字键数字移动 / 菜单焦点导航（十字右选点 + A 确认开局）
   // / LB 爆弹 / Start·A·B 暂停恢复 / 拔出停机回退键盘，并按速度曲线铁律校验逐帧位移上限。
@@ -1169,7 +1198,9 @@ try {
     key('p'); frames(5); key('p', false);
     elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
   }
+}
 
+async function sceneHelpPad() {
   // 教程面板「手柄」页切换回归：打开教程 → 手柄按钮切页（键盘页隐藏 / 按钮亮起）→ 再点切回 → ✕ 收起
   //（纯 DOM 逻辑，无手柄也覆盖；元素缺失 = index.html 改动回归）
   {
@@ -1203,11 +1234,74 @@ try {
       errors.push({ key: '教程切换元素缺失', stack: 'helpEntryBtn/helpPadBtn/helpClose/helpQuadKey/helpQuadPad 之一未找到（index.html 教程面板改动回归？）' });
     }
   }
+}
 
+async function sceneFinale() {
   elements.musicToggle.click();                 // 静音开关
   frames(10);
+}
+
+// ---------------- SCENES 注册表（批次 2a 场景化）----------------
+// 速查：改动文件 → 建议场景（02-core / 01x 配置域 / 14-main 改动跑全量，共享层不省）
+const SCENES = [
+  { name: 'core-flow', desc: '主界面空闲 / 开局战斗 / 移动爆弹 / 暂停恢复重开 / 二次开局', files: '14-main 07-player 08-entities 02-core', run: sceneCoreFlow },
+  { name: 'pilots', desc: '13 名驾驶员卡片选中主路径 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
+  { name: 'sub-weapons', desc: '全部副武器卡片主路径（演示发射 / 战斗 / 重开冷却）', files: '07-player 12-ui', run: sceneSubWeapons },
+  { name: 'encyclopedia', desc: '怪物图鉴预览渲染 + 数值与机制图鉴 DOM 构建', files: '12-ui 13-encyclopedia', run: sceneEncyclopedia },
+  { name: 'wave-test', desc: '权重表「波次」子页试波挑战 + = 追加补波', files: '12-ui 13-encyclopedia 04-spawn 14-main', run: sceneWaveTest },
+  { name: 'swarm', desc: '持续刷怪测试 Lv20 锁级 + 按 7 强制抽卡', files: '04-spawn 14-main 07-player', run: sceneSwarm },
+  { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
+  { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
+  { name: 'war-ghost', desc: '战争幽灵全相位（入场 / 技能 2→3→1 / 半血召唤 / 离场）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneWarGhost },
+  { name: 'pulse-matrix', desc: '脉冲矩阵 20s 自爆链路 + 分裂三法术矩阵', files: '04-spawn 06-enemy', run: scenePulseMatrix },
+  { name: 'darkhand', desc: '黑暗之手（登场 / 技能循环 / 蛋挞技能4 / 连携召唤离场 / 爆弹波及）', files: '05-boss 07-player 01-config-boss', run: sceneDarkhand },
+  { name: 'elites', desc: '4S 精英四机入场连续性 + 强制首技能窗口', files: '04-spawn 06-enemy 01-config-difficulty', run: sceneElites },
+  { name: 'sweep-kill', desc: '秒杀类禁亡语召唤（增生 / 法术阵列）', files: '06-enemy 04-spawn', run: sceneSweepKill },
+  { name: 'hover-bob', desc: '御4 / 铁砧到位悬停纵向微摆（连续性 + 公式复核）', files: '04-spawn 06-enemy', run: sceneHoverBob },
+  { name: 'gacha', desc: '原石规则（非萧杨不计数 / 16 颗充能 / Q 释放 / 转化概率）', files: '07-player 01-config-loadout', run: sceneGacha },
+  { name: 'gamepad', desc: '手柄全链路（认领 / 菜单导航 / 摇杆死区 / 爆弹暂停 / 拔出回退）', files: '02-core 14-main 07-player 12-ui', run: sceneGamepad },
+  { name: 'help-pad', desc: '教程面板手柄页切换（切出 / 切回 / 收起）', files: '12-ui', run: sceneHelpPad },
+  { name: 'finale', desc: '静音开关收尾', files: '03-audio', run: sceneFinale },
+];
+
+// CLI：node tools/smoke.js（全量） | --scene=a,b（只跑指定场景） | --list（列场景）
+function parseSceneArgs() {
+  if (process.argv.includes('--list')) {
+    console.log('smoke 场景清单（--scene=名1,名2 只跑子集）：');
+    for (const s of SCENES) console.log(`  ${s.name.padEnd(14)} ${s.desc}  [${s.files}]`);
+    process.exit(0);
+  }
+  const arg = process.argv.find(a => a.startsWith('--scene='));
+  if (!arg) return null;
+  const only = arg.slice(8).split(',').map(s => s.trim()).filter(Boolean);
+  const unknown = only.filter(n => !SCENES.some(s => s.name === n));
+  if (!only.length || unknown.length) {
+    console.error(`未知/空场景选择: ${(unknown.length ? unknown : ['(空)']).join(',')}（--list 查看全部）`);
+    process.exit(1);
+  }
+  return only;
+}
+
+async function runScenes(only) {
+  const list = only ? SCENES.filter(s => only.includes(s.name)) : SCENES;
+  for (const sc of list) {
+    console.log(`▶ 场景 ${sc.name} —— ${sc.desc}`);
+    try { await sc.run(); }
+    catch (err) { errors.push({ key: `场景 ${sc.name} 异常`, stack: (err && err.stack) || String(err) }); }
+  }
+}
+
+// ---------------- 装载与驱动 ----------------
+const sceneOnly = parseSceneArgs();   // --list 在此即退出；--scene 校验在装载前完成
+try {
+  if (isModules) {
+    for (const f of files) await import(pathToFileURL(join(jsDir, f)).href);
+  }
+
+  console.log(`smoke: ${isModules ? 'modules' : 'classic'} 模式，${files.length} 个脚本装载完成`);
+  await runScenes(sceneOnly);
 } catch (err) {
-  errors.push({ key: '场景驱动异常', stack: '场景驱动阶段抛出异常：' + (err && err.stack || err) });
+  errors.push({ key: '场景装载/驱动异常', stack: '场景装载/驱动阶段抛出异常：' + (err && err.stack || err) });
 }
 
 // ---------------- 结果 ----------------
