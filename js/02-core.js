@@ -100,6 +100,18 @@
   // 新增状态属性先归域、再在本文件声明；任何文件不得另立顶层 let 充当全局状态。
   // 属性可被多个文件读写（对象属性赋值在 ES modules 下同样合法），但每个属性应有单一「逻辑所有者」，
   // 所有者与写方汇总见各文件头部契约注释。
+  //
+  // 【state 归域总览】（《并行开发改造设计.md》批次 3：新增字段必须在行尾标注归属域与主要读写方；
+  //  跨域读写需在《并行任务认领.md》声明。分区如下——声明顺序为历史累加，不与本分区一一对应）：
+  //   · 流程与全局：mode / paused / time / score / lives / victoryOverlay / demo
+  //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatArm
+  //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* / wenjiukeVuln /
+  //     dagou* / daodanChains / meiCounter / ddj* / gachaStones / gachaReady
+  //   · 奖励道具效果：laoda* / magnetBonus / swordStorm* / frostField / bombCapAdd / bengbagGot / jiuke* / itemPickFx / honghongT
+  //   · 技能演出与特效：gachaFx / xinFuryRing / aiyiWaves / aiyiWaveSeq
+  //   · 秒杀与亡语门控：aiyiSelfDestruct / sweepKill / aiyiFinalDeath / selfDestructVictory
+  //   · BOSS/精英联动：xgLooseBombs / stormVortex / dhFledElites / dhZhangPending / achvBulwarkLowBoss
+  //   · 测试/挑战/调试：testBoss / challenge
   const state = {
     mode: 'idle',      // idle | playing | gameover
     paused: false,
