@@ -4,7 +4,8 @@
   // 被依赖：10-draw-world(38 名) 12-ui(3 名) 13-encyclopedia(4 名)
   //
   import { CANVAS_H, CANVAS_W, DEMO_TOP } from './01-config-core.js';
-  import { ANVIL, BAOLING, BAOLING_G, BULWARK, CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, POPIAN, PULSE_MATRIX, SPONSOR, STARSLAYER, UNREAL, WAR_GHOST, YU4, currentArmor, currentPlane, currentWingman } from './01-config.js';
+  import { BULWARK, PILOTS, STARSLAYER, currentArmor, currentPlane, currentWingman } from './01-config-loadout.js';
+  import { ANVIL, BAOLING, BAOLING_G, CRYSTAL_COLORS, CRYSTAL_GIANT_COLORS, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, PULSE_MATRIX, SPONSOR, UNREAL, WAR_GHOST, YU4 } from './01-config.js';
   import { armorGlyphFx, blBombs, bossFlow, clamp, ctx, cubeHitFx, dagouMissiles, douzhiFx, enemies, frostZones, missileWarns, missiles, player, playerHitFx, popianMissiles, slashFx, spellCubes, state, wgSlashes, wingmen } from './02-core.js';
 
 

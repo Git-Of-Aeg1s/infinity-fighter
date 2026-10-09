@@ -6,7 +6,8 @@
   //   state.{shakeMag, shakeTime, shakeDur}
   //
   import { CANVAS_H, CANVAS_W, STAR_COUNT } from './01-config-core.js';
-  import { DOUZHI, PILOTS, PLAYER_CFG, currentArmor, diffMods, invulnDiffMul } from './01-config.js';
+  import { PILOTS, PLAYER_CFG, currentArmor } from './01-config-loadout.js';
+  import { DOUZHI, diffMods, invulnDiffMul } from './01-config.js';
 
 
   // ---------- DOM ----------

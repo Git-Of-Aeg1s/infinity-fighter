@@ -21,7 +21,8 @@
 //   'chixin'     炽心火环灼烧击杀（07-player updatePlayer 灼烧循环）
 //   'bomb-keli'  可莉绷绷炸弹击杀（07-player useBomb，BOSS 击杀判定用）
 
-  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme, specialGearActive } from './01-config.js';
+  import { ARMOR_SKILLS, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, specialGearActive } from './01-config-loadout.js';
+  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ENEMY_CLASS, FIRST_ROUND_BOSSES, isPoem, isRealme } from './01-config.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
 
   // ─── 本局成就进度域（resetAchievements 随局重置）───

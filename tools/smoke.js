@@ -25,6 +25,13 @@ const files = [...readFileSync(join(root, 'index.html'), 'utf8').matchAll(
 if (!files.length) throw new Error('smoke: index.html 中未找到 module script 列表');   // 加载序唯一权威 = index.html（01x 拆分后字典序 ≠ 期望序，《并行开发改造设计.md》§5.2）
 const source = Object.fromEntries(files.map(f => [f, readFileSync(join(jsDir, f), 'utf8')]));
 const isModules = /type="module"/.test(readFileSync(join(root, 'index.html'), 'utf8'));
+// 01x 配置域群动态装载（场景用 cfg.X 取配置名；01-config 已按域拆分——《并行开发改造设计.md》批次 1c，
+// 文件清单以 index.html 中 01-config* 为准按加载序合并，后续新增域文件自动纳入）
+async function importConfig() {
+  const cfgFiles = files.filter(f => /^01-config/.test(f));
+  const mods = await Promise.all(cfgFiles.map(f => import(pathToFileURL(join(jsDir, f)).href)));
+  return Object.assign({}, ...mods);
+}
 // index.html 中静态存在的元素 id（getElementById 的真实性依据）
 const htmlIds = new Set([...readFileSync(join(root, 'index.html'), 'utf8').matchAll(/id="([^"]+)"/g)].map(m => m[1]));
 
@@ -370,7 +377,7 @@ try {
   // 覆盖 14-main 波次制分支（清场驱动 / clearDelay / 波 N = 等级 N / BOSS 触发改波次计数）、
   // 04-spawn 附加先兆者与加血节流递减、08-entities 35% 回复、06-enemy 波次节流（无 BOSS 阶段不触发脚本化置满）
   if (isModules) {
-    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfg = await importConfig();
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     if (cfg.DIFFICULTIES && cfg.DIFFICULTIES.poem && cfg.setDifficulty) {
       cfg.setDifficulty(cfg.DIFFICULTIES.poem);
@@ -458,7 +465,7 @@ try {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
-    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfg = await importConfig();
     if (spawn.spawnWarGhost && core.enemies && core.player) {
       key('p'); frames(5); key('p', false);
       elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
@@ -576,7 +583,7 @@ try {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
-    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfg = await importConfig();
     if (spawn.spawnPulseMatrix && core.enemies && core.player) {
       key('p'); frames(5); key('p', false);
       elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
@@ -752,7 +759,7 @@ try {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
-    const cfg4f = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfg4f = await importConfig();
     // 本场景沿诗篇场景收尾还原的难度跑（真我）：屏障数值按难度取期望（普通 2000 / 真我 2500 / 诗篇 3000）
     const barExpect = cfg4f.isPoem ? (cfg4f.isPoem() ? 3000 : cfg4f.isRealme() ? 2500 : 2000) : 2000;
     if (spawn.spawnEliteMinion && core.enemies && core.player) {
@@ -983,7 +990,7 @@ try {
   // 非萧杨捡原石完全不计数（不再有"获得道具"环节，道具槽已取消）。
   if (isModules) {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
-    const cfg = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfg = await importConfig();
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
     if (playerMod.noteGachaStone && playerMod.triggerPilotSkill && cfg.setPilotSub && cfg.PILOTS && cfg.rollCrystalGiant && cfg.currentPilotMain && core.state) {
       const st = core.state;
@@ -1066,7 +1073,7 @@ try {
   // 断言采用阈值余量（非精确坐标），避免与随机掉落 / 拾取等并行事件互相干扰
   if (isModules) {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
-    const cfgGp = await import(pathToFileURL(join(jsDir, '01-config.js')).href);
+    const cfgGp = await importConfig();
     const mkGp = () => ({
       connected: true, index: 0,
       axes: [0, 0],
