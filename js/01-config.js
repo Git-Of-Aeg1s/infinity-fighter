@@ -3,7 +3,7 @@
 
   console.log('[InfinityFighter] JS build: 20260925-v035-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-// 被依赖：02-achievements(16 名) 02-core(6 名) 04-spawn(47 名) 05-boss(24 名) 06-enemy(80 名) 07-player(33 名) 08-entities(34 名) 09-draw-ships(25 名) 10-draw-world(13 名) 11-draw-boss(7 名) 12-ui(31 名) 13-encyclopedia(38 名) 14-main(25 名)
+  // 被依赖：02-achievements(16 名) 02-core(6 名) 04-spawn(47 名) 05-boss(24 名) 06-enemy(80 名) 07-player(33 名) 08-entities(34 名) 09-draw-ships(25 名) 10-draw-world(13 名) 11-draw-boss(7 名) 12-ui(31 名) 13-encyclopedia(38 名) 14-main(25 名)
 
   import { CANVAS_H, xiayongImg, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
 
