@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-loadout(1 名) 01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(9 名) 05-boss(7 名) 06-enemy(10 名) 07-player(4 名) 08-entities(7 名) 10-draw-world(3 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(9 名) 05-boss(7 名) 06-enemy(11 名) 07-player(4 名) 08-entities(7 名) 10-draw-world(3 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg } from './01-config-core.js';
@@ -151,6 +151,19 @@
   };
   // 难度写入入口：与 setPlane/setWingman 同约定——顶层 let 的写操作必须经由 setter
   function setDifficulty(d) { currentDifficulty = d; }
+
+  // ---------- 加血套件等级窗口节流（2026-10-10 用户定稿，全难度） ----------
+  // 虚象/具象/真我/诗篇下每 lv2/3/4/4 最多掉落 1 个加血套件（普通敌人掉落）：某级实际掉落后，
+  // 窗口内后续等级不再掉落。不跨 BOSS 轮——清场/警报/BOSS 战（bossFlow.stage !== 'none'）期间的
+  // 掉落与 BOSS 脚本化加血豁免（不判定也不登记），跨轮自然失效；判定与登记点在 06-enemy rollItemDrops
+  //（state.hpKitLastLv / hpKitLastPhase 归域声明于 02-core）。真我 8s 节流（hpKitGap）与诗篇
+  // 波次节流（WAVE_POEM.healWaveGap）叠加生效、互不替代。登记处：《诗篇难度修正.md》表 #34
+  const HP_KIT_LV_WINDOW = { illusion: 2, form: 3, realme: 4, poem: 4 };
+  // 当前难度加血窗口（未配置的难度/挑战分支回退 Infinity = 不限制）
+  function hpKitLvWindow() {
+    const w = HP_KIT_LV_WINDOW[currentDifficulty.id];
+    return w != null ? w : Infinity;
+  }
   // 当前难度修正表：未实装难度（mods 为 null）回退具象基准，保证框架先行、行为不变。
   // 后续接入点示例：makeEnemy 血量 × diffMods().enemyHpMul、BOSS 技能参数经 diffMods().bossSkillMods 查表。
   function diffMods() { return currentDifficulty.mods || DIFFICULTIES.form.mods; }
@@ -202,8 +215,9 @@
     baoling: 1200, baolingG: 1400, unreal: 1200, jiaoxiang: 2800,
     douzhi: 400, sponsor: 400, sponsorDeluxe: 400,
     fashiA1: 360, popian: 500, popianU: 500, fashiMatrix: 360,
-    fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 2400,
+    fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 4000,
     warMatrix: 10000,
+    tornado: 4800,   // 大型龙卷（暴风之眼技能2 召唤物）：基准 3600 不覆写其余难度，诗篇 4800（2026-10-10 用户定稿）
   };
   // 诗篇血量取值入口：key 优先 变体 → 行为 → 类型
   function poemHpOf(type, variantId, behavior) {
@@ -262,5 +276,6 @@
     isPoem, isHardTier, invulnDiffMul, bossDmgMul,
     enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, POEM_HP,
     poemHpOf, eliteHpOf, xiayongHornDmgMul, xiayongBarAbsorb,
+    hpKitLvWindow,
     TEST_HP,
   };

@@ -3,8 +3,7 @@
   // 被依赖：05-boss(1 名) 06-enemy(10 名) 07-player(21 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(5 名)
 //
 // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-// 被依赖：05-boss / 06-enemy / 07-player / 08-entities / 12-ui / 13-encyclopedia / 14-main
-// 依赖：01-config（ACHIEVEMENTS 注册表与装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
+// 依赖：01x 配置域（ACHIEVEMENTS 注册表 + 装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
 // 共享状态：成就进度收敛于本模块 achv 域（不经 state / bossFlow / levelFlow），随局重置经 resetAchievements
 //   （12-ui resetGame 在 state.testBoss / state.challenge 置位之后调用——门控以这两项为准）
 //   例外：state.achvBulwarkLowBoss（最后一搏）由 02-core tryBulwarkCheatDeath 写入——02-core 不得反向 import 本模块，

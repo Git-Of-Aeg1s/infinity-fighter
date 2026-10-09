@@ -124,11 +124,12 @@
         if (d < bossD) { bossD = d; boss = e; }
       }
       const offs = cfg.count >= 4 ? [-16, 16, -32, 32] : [-16, 16];   // 暴走新增 2 条自 ±32 发射（相邻间隔翻倍）
-      const v0 = f.speed * 0.5;   // 出膛初速 = 基准速一半（0.1s 内加速至满速，见 accel / maxSpeed）
+      const spdMul = player.weapon >= 5 ? BERSERK.subSpdMul : 1;   // 暴走全局修正：弹速 +50%（出膛初速 / 满速 / 加速度同步放大，加速时长不变）
+      const v0 = f.speed * 0.5 * spdMul;   // 出膛初速 = 基准速一半（0.1s 内加速至满速，见 accel / maxSpeed）
       const base = { r: f.r, dmg: cfg.dmg, len: f.growLen0, len0: f.growLen0, lenFull: f.len, growT: 0, growDur: f.growDur,
                      sub: true, laserBolt: true, capVuln: f.capVuln, mainPierce: 1,
                      berserk: player.weapon >= 5,
-                     accel: f.accel, maxSpeed: f.speed * 1.84 };   // 满速 = 原 2.16 上限再 -15%（08-entities accel 推进）；
+                     accel: f.accel * spdMul, maxSpeed: f.speed * 1.84 * spdMul };   // 满速 = 原 2.16 上限再 -15%（08-entities accel 推进）；
                                                                    // len 自初始光束长 40 以二次缓动生长至 lenFull（见 08-entities）
       for (const ox of offs) {
         let tgt = boss;   // BOSS 战：两点共享同一 BOSS 目标
@@ -168,7 +169,7 @@
         const d = Math.hypot(tx, ty) || 1;
         dx = tx / d; dy = ty / d;
       }
-      xinRings.push({ x: player.x, y: player.y - 12, dx, dy, spd: f.speed, r: cfg.r, dps: cfg.dps, tick: f.tick, tickT: 0, t: 0 });
+      xinRings.push({ x: player.x, y: player.y - 12, dx, dy, spd: f.speed, r: cfg.r, dps: cfg.dps * (player.weapon >= 5 ? BERSERK.subDmgMul : 1), tick: f.tick, tickT: 0, t: 0 });   // 暴走全局修正：灼烧伤害 +50%（射速 / 弹速 / 半径不变，生成瞬间定格）
     } else {
       return false;
     }
@@ -181,7 +182,7 @@
   // 经 updateDagouMissiles 的 mul 通路结算）；连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
   function launchDaodanMissile(lv) {
     const dc = PILOTS.dagou;
-    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed, r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5, src: 'daodan' });   // src：来源标记（副武器捣蛋来袭——不受大狗驾驶员的 BOSS 减伤修正，见 dagouBossMul）
+    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed * (player.weapon >= 5 ? BERSERK.subSpdMul : 1), r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5, src: 'daodan' });   // src：来源标记（副武器捣蛋来袭——不受大狗驾驶员的 BOSS 减伤修正，见 dagouBossMul）；暴走全局修正：弹速 +50%（仅玩家捣蛋，不影响大狗导弹雨）
     if (dc.chainChance && !state.dagouDebugRapid && Math.random() < dc.chainChance) {
       state.daodanChains.push({ t: dc.chainGap, lv: (lv || 0) + 1 });
     }
@@ -205,7 +206,7 @@
         player.subCooldown = 0;   // 保持就绪，解除锁定后立即开火（与主炮同策略）
         return;
       }
-      if (fireSubWeapon()) player.subCooldown = cfg.interval;   // 间隔自本次触发瞬间（如飞剑生成入列）起算——后续动画时长不影响攻击节奏
+      if (fireSubWeapon()) player.subCooldown = cfg.interval / (player.weapon >= 5 && currentSubWeapon.fire.kind !== 'xinring' ? BERSERK.subRateMul : 1);   // 间隔自本次触发瞬间（如飞剑生成入列）起算——后续动画时长不影响攻击节奏；暴走全局修正：射速 +50%（辛国栋之怒除外——其走伤害 +50%、射速不变）
       else player.subCooldown = 0.3;   // 本次未开火（如辛国栋之怒无目标）：稍后重试
     }
   }
@@ -233,7 +234,7 @@
           s.fired = true;
           const pierce = (w.pierceChance > 0 && Math.random() < w.pierceChance) ? 1 : 0;
           pBullets.push({
-            x: s.ax, y: w.y, vx: 0, vy: -w.f.speed * (w.berserk ? 1.4 : 1), r: w.f.r, dmg: w.dmg, len: w.f.len,
+            x: s.ax, y: w.y, vx: 0, vy: -w.f.speed * (w.berserk ? 1.4 * BERSERK.subSpdMul : 1), r: w.f.r, dmg: w.dmg, len: w.f.len,   // 暴走弹速：Lv5 行内 ×1.4 × 暴走全局 +50%（×2.1）
             sword: true, sub: true, mainPierce: pierce, berserk: w.berserk,
             ...(w.homingTurn ? { homing: true, turnRate: w.homingTurn } : {}),
           });
@@ -374,7 +375,7 @@
     const dmgMul = solo ? 1 + STARSLAYER.soloBonus : 1;
     const killed = [];
     for (const { e, isMain } of targets) {
-      let dmg = lvl.dmg * dmgMul * enemyDamageMul(e, false) * rewardOutMul();   // 暴风之眼战其余伤害削减已取消（2026-10-02 用户定稿：非风暴伤害不再削减，暴风之眼血量 ×2 代偿）
+      let dmg = lvl.dmg * (berserk ? BERSERK.subDmgMul : 1) * dmgMul * enemyDamageMul(e, false) * rewardOutMul();   // 暴走全局修正：斩击伤害 +50%（连斩节奏不变）；暴风之眼战其余伤害削减已取消（2026-10-02 用户定稿：非风暴伤害不再削减，暴风之眼血量 ×2 代偿）
       if (e.type === 'boss') dmg *= 1 + STARSLAYER.bossBonus;   // 对 BOSS 伤害 +20%
       e.hp -= xiayongBarAbsorb(e, dmg);   // 空间斩击为常规直击伤害：先被夏勇屏障吸收（技能3，2026-10-03 二轮定稿）
       // 斩击击碎虚化护盾：护盾碎裂消散、立即恢复可伤（斩击本就无视虚化；特效与镰刀共用 breakPhaseShield）
@@ -552,7 +553,7 @@
           const lv = wpn.levels[player.weapon] || wpn.levels[1];
           // 本轮定格：等级配置 + 暴走标记取启动瞬间值，轮内不再读实时火力（每轮子弹完全一致）
           w.burst = { kind: 'fan', angles: buildFanAngles(wpn, player.weapon), idx: 0, gap: 0, lv, bz: player.weapon === 5 && !!wpn.berserk };
-          w.cooldown = lv.interval;
+          w.cooldown = lv.interval / (player.weapon === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%（僚机与副武器统一）
         }
         continue;
       }
@@ -574,7 +575,7 @@
         const lv = WINGMAN_LEVELS[player.weapon] || WINGMAN_LEVELS[1];
         // 本轮定格：暴走标记 + 等级取启动瞬间值（连续两轮齐射一致；轮中途暴走开启/结束下一轮才生效）
         w.burst = { volleys: lv.volleys, spread: lv.spread, idx: 0, gap: 0, berserk: player.weapon === 5, level: player.weapon };
-        w.cooldown = lv.interval;
+        w.cooldown = lv.interval / (player.weapon === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%（僚机与副武器统一）
       }
     }
   }
@@ -604,7 +605,7 @@
     const up = -Math.PI / 2;
     const ang = up + w.side * (thetaDeg * Math.PI / 180);   // side 定向：右僚机朝 +x、左僚机朝 -x
     const gradT = wpn.spreadMax > 0 ? thetaDeg / wpn.spreadMax : 0;   // 0=最前方 → 1=最低（最外侧）
-    const speed = wpn.bulletSpeed * (lv.speedMul || 1) * (bz ? 1 : 1 + (wpn.speedGrad || 0) * (1 - gradT));
+    const speed = wpn.bulletSpeed * (lv.speedMul || 1) * (bz ? BERSERK.subSpdMul : 1 + (wpn.speedGrad || 0) * (1 - gradT));   // 暴走：全局弹速 +50%（速度梯度暴走不生效，见 01-config）
     pBullets.push({
       x: w.x, y: w.y - 8,
       sx: w.x, sy: w.y - 8,   // 出舱点：尾焰随离舱距离渐入（避免新射出的弹把尾焰扫在僚机盾面/本体上）
@@ -801,7 +802,7 @@
     const up = -Math.PI / 2;   // 竖直向上
     const lvMul = (currentWingman.dmgMulByLevel && currentWingman.dmgMulByLevel[level]) || 1;   // 僚机专属等级伤害倍率（群星允诺以 Lv4×1.4 为基准构成 80% 等比 DPS 链）
     const dmg = WINGMAN.bulletDmg * (berserk ? 2 : 1) * lvMul;   // 暴走双倍伤害（所有僚机）
-    const speed = WINGMAN.bulletSpeed * (berserk ? 1.15 : 1);
+    const speed = WINGMAN.bulletSpeed * (berserk ? 1.15 * BERSERK.subSpdMul : 1);   // 暴走弹速：Lv5 行内 +15% × 暴走全局 +50%
     for (let i = 0; i < n; i++) {
       const ang = up + (i - (n - 1) / 2) * spread;   // 对称展开（n 为奇数时含竖直一发）
       pBullets.push({
@@ -1588,10 +1589,11 @@
       }
     }
     // 依：击杀计数条（左下角可见）——满 counterMax 自动召唤镰刀清扫（无需按键）；
-    // BOSS 战期间每秒 +3（警报 / 登场动画与胜利结算窗口不计）；冲刺期间冻结
+    // BOSS 战期间每秒 +3（警报 / 登场动画与胜利结算窗口不计；2026-10-10 用户反馈：警报 / 登场动画
+    // 期间计数表不得走字——由原 50% 流速改为完全冻结，与大无垠之王累积同规则）；冲刺期间冻结
     if (hasPilot('mei') && !state.challenge) {
-      if (!dashFrozen && bossFlow.stage === 'fight' && !bossFlow.victoryDelay) {
-        state.meiCounter = Math.min(PILOTS.mei.counterMax, state.meiCounter + PILOTS.mei.bossTickGain * entranceDt(dt));
+      if (!dashFrozen && bossFlow.stage === 'fight' && !bossFlow.victoryDelay && !bossEntranceActive()) {
+        state.meiCounter = Math.min(PILOTS.mei.counterMax, state.meiCounter + PILOTS.mei.bossTickGain * dt);
       }
       if (!dashFrozen && state.meiCounter >= PILOTS.mei.counterMax) {
         state.meiCounter = 0;
@@ -1616,11 +1618,12 @@
       }
     }
     if (!hasPilot('tianxiu')) return;
-    if (!dashFrozen && bossFlow.stage === 'fight' && player.alive) {
-      // 暴风之眼战：每秒充能 10%~16% 随机（逐帧按随机速率折算）；其他 BOSS 战固定 +2%/s；
-      // BOSS 登场动画期间（combatReady 前）按 50% 流速充能
+    // 暴风之眼战：每秒充能 10%~16% 随机（逐帧按随机速率折算）；其他 BOSS 战固定 +2%/s；
+    // 警报 / BOSS 登场动画期间完全冻结（2026-10-10 用户反馈：计数表不得走字——原「combatReady 前
+    // 按 50% 流速充能」废止，与依计数 / 大无垠之王累积同规则）
+    if (!dashFrozen && bossFlow.stage === 'fight' && player.alive && !bossEntranceActive()) {
       const rate = stormBossFightActive() ? rand(PILOTS.tianxiu.stormChargeMin, PILOTS.tianxiu.stormChargeMax) : PILOTS.tianxiu.bossCharge;
-      state.princeGauge = Math.min(1, state.princeGauge + rate * entranceDt(dt));
+      state.princeGauge = Math.min(1, state.princeGauge + rate * dt);
     }
     const delta = state.score - state.princeScoreBase - state.princeCrystalGain;
     state.princeScoreBase = state.score;
@@ -1681,8 +1684,8 @@
       case 'laodaDrink':   // 牢大特饮：移速目标 ×1.40，15s（乘数指数逼近 ≈0.5s 平滑过渡——速度曲线铁律）
         state.laodaT = 15;
         break;
-      case 'magnetShroom': // 磁力菇：水晶拾取半径 +40（一整局、可叠加；08-entities 水晶吸附读取）
-        state.magnetBonus += 40;
+      case 'magnetShroom': // 磁力菇：水晶拾取半径 +50（一整局、可叠加；08-entities 水晶吸附读取）
+        state.magnetBonus += 50;
         break;
       case 'noLingluo':    // 不再陵落：9s 螺旋飞剑风暴（32 发/s，起始朝上每发 +25°，每圈自带 25° 偏移）
         state.swordStormT = 9;
@@ -2071,7 +2074,8 @@
   }
 
   // 依：击杀计数结算（06-enemy killEnemy 调用）——cls 1~5（5 类 = BOSS）；
-  // BOSS 战期间计数 ×3，击败黑暗之手四精英改为 ×4（替换 ×3）；挑战 / 测试模式不计
+  // BOSS 战期间计数 ×2，击败黑暗之手四精英改为 ×3（替换 ×2）（2026-10-10 用户定稿，原 ×3/×4+额外30 废止）；
+  // 挑战 / 测试模式不计
   function meiNoteKill(cls, type) {
     if (state.challenge || !hasPilot('mei')) return;
     const cfg = PILOTS.mei;

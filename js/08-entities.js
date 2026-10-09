@@ -362,9 +362,10 @@
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
       } else if (!b.shieldBlocked) {
-        // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.4（-60%，2026-10-01 统一增强）
+        // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.7（弹速 -30%，2026-10-10 用户定稿由 -60% 下调；
+        // 力场内敌机射速/移速仍维持 -60%，见 02-core enemyFieldFireMul / 04-spawn enemyFrostZoneMoveMul 同口径分支）
         const ffd = state.frostField;
-        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.4 : 1;
+        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.7 : 1;
         b.x += b.vx * fm * dt; b.y += b.vy * fm * dt;
       }
       // 反弹光束（技能3）/ 技能6 暗黑子弹：触左右边界反弹，实际弹道呈"<"形折线；
@@ -731,7 +732,7 @@
   // ---------- 水晶 ----------
   function updateCrystals(dt) {
     // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 132 → 198）；
-    // 奖励道具·磁力菇：叠加固定加成 +40px/个（state.magnetBonus，一整局可叠加）
+    // 奖励道具·磁力菇：叠加固定加成 +50px/个（state.magnetBonus，一整局可叠加）
     const magR = PLAYER_CFG.magnetRadius * (state.crystalMagnetMul || 1) + (state.magnetBonus || 0);
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];

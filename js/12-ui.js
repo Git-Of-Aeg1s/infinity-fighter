@@ -9,7 +9,7 @@
   import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
@@ -206,6 +206,8 @@
     state.orangeBombUsed = false;
     state.hpKitLastT = -99;   // 真我加血节流计时归位（开局不受冷却限制）
     state.hpKitBanked = 0;    // 真我加血节流预触发计数清零
+    state.hpKitLastLv = -999; // 加血套件等级窗口节流归位（未登记状态）
+    state.hpKitLastPhase = -1;// 加血套件等级窗口节流：boss 轮归属清空
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
     state.armorSkillGauge = 0;    // 装甲技能量表（七日澜心）重开归零
     // 驾驶员运行态重置：许凯狗冲刺置位判定在下方（testBoss / challenge 置位之后——见 resetGame 尾部）
@@ -309,6 +311,7 @@
     missiles.length = 0;
     blBombs.length = 0;
     frostZones.length = 0;   // 虚幻寒冷区域随重开清空（否则回主页面后更新停止、渲染仍在，冰蓝区域冻结残留）
+    pmWaves.length = 0;      // 脉冲矩阵震荡波孤儿波随重开清空（同上：更新停止后波环/暗红雾会冻结残留）
     popianMissiles.length = 0;
     wgSlashes.length = 0;   // 战争幽灵技能1/2双刃斩击流随重开清空
     spellCubes.length = 0;

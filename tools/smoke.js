@@ -600,6 +600,7 @@ async function scenePulseMatrix() {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
     const cfg = await importConfig();
     if (spawn.spawnPulseMatrix && core.enemies && core.player) {
       key('p'); frames(5); key('p', false);
@@ -622,6 +623,11 @@ async function scenePulseMatrix() {
           frames(1);
           // 断言采样先于隔离
           if (e.pmSelfDestruct) sawSD = true;
+          // 确定性驱动（2026-10-10）：自爆置位后立刻把下一次释放提前——单跑与全量的开火节拍受
+          // 前序场景遗留状态影响曾导致「19.7s 的 132 波跨过 20s 阈值完成 → 直接在其上引爆、160 波永不出现」
+          // 的时序脆弱断言（HEAD 基线单跑可复现）。置位且当前无扩散波时把 fireTimer 压到 0.02，
+          // 保证自爆波（160）必然释放并被采样
+          if (e.pmSelfDestruct && !(e.pmWaveT > 0)) e.fireTimer = Math.min(e.fireTimer, 0.02);
           if (e.pmSelfDestruct && (e.pmWaveR || 0) === cfg.PULSE_MATRIX.selfDestructR) sawWaveR160 = true;
           if (!core.enemies.includes(e)) {   // 本帧本体死亡（自爆移除）——本帧不隔离，采样分裂产物
             boom = true;
@@ -649,6 +655,42 @@ async function scenePulseMatrix() {
             });
           }
           if (maxSplitStep > 12) errors.push({ key: '自爆分裂法术矩阵存在瞬移', stack: '相邻帧最大位移 ' + maxSplitStep.toFixed(1) + 'px（> 12px，burst 峰值 ~4px/帧 + 漫游限速余量）' });
+        }
+        // 孤儿波回归（2026-10-10 用户定稿）：本体在波扩散期被击坠 → 波脱离本体继续扩散至自然消失、
+        // 仍可命中玩家（hitDone 置位）；孤儿波存于 core.pmWaves——不经 eBullets，不可被消弹效果消除。
+        // 场景顺序：干净重开 → 生成矩阵 → fireTimer 置 0.02 强制 2 帧内释放普通波 → 玩家钉在波心 5px 处
+        // → 击坠本体 → 断言孤儿化 / 命中结算 / 波+烟雾计时结束后自然移除
+        {
+          elements.pauseHomeBtn.click(); frames(10);
+          elements.startBtn.click(); frames(90);   // 等待玩家开场入场动画结束（入场脚本逐帧接管 player.x/y——过早传送会被覆盖）
+          const e2 = spawn.spawnPulseMatrix(1e9);
+          if (!e2 || e2.type !== 'pulseMatrix') {
+            errors.push({ key: '脉冲矩阵（孤儿波）生成失败', stack: 'spawnPulseMatrix 未返回 pulseMatrix 实体' });
+          } else {
+            for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e2) core.enemies.splice(i, 1);
+            if (core.pmWaves) core.pmWaves.length = 0;
+            e2.x = cfg.CANVAS_W * 0.4; e2.y = cfg.CANVAS_H * 0.4;   // 置于屏内：updateEnemyFire 对屏外敌人不开火（未入场不开火门控）
+            e2.fireTimer = 0.02;          // 2 帧内触发一次普通震荡波（半径 132，非自爆）
+            frames(2);
+            const waveStarted = (e2.pmWaveT || 0) > 0;
+            if (!waveStarted) errors.push({ key: '孤儿波场景未触发震荡波', stack: 'fireTimer=0.02 后 2 帧 pmWaveT 仍未置位' });
+            core.player.x = e2.x; core.player.y = e2.y + 5;   // 波起始半径 18 > 5px：波前首帧推进即命中
+            e2.hp = 0;
+            enemyMod.killEnemy(core.enemies.indexOf(e2));     // 波扩散中击坠本体（孤儿化触发点）
+            frames(1);
+            if (!core.pmWaves || core.pmWaves.length !== 1) {
+              errors.push({ key: '震荡波未孤儿化', stack: '击坠后 core.pmWaves.length=' + (core.pmWaves ? core.pmWaves.length : 'undefined') + '（应 =1）' });
+            } else {
+              const orphan = core.pmWaves[0];
+              if (waveStarted && !orphan.hitDone) {
+                frames(2);
+                if (!orphan.hitDone) errors.push({ key: '孤儿波未结算命中', stack: '玩家位于波心 5px 内，波前扫过应置 hitDone=true' });
+              }
+              for (let f = 0; f < 180 && core.pmWaves.length; f++) frames(1);   // 波 0.45s + 烟雾 ~1s，3s 余量
+              if (core.pmWaves.length) errors.push({ key: '孤儿波未自然消散', stack: '180 帧后 pmWaves 仍残留 ' + core.pmWaves.length + ' 条（应随波+烟雾计时结束移除）' });
+            }
+            sample('脉冲矩阵 击坠孤儿波（波不随死亡消失 / 波前命中 / 自然消散）');
+          }
         }
         sample('脉冲矩阵 自爆跑帧（登场 20s 计时 / 160px 自爆波 / 死亡分裂三法术矩阵）');
       }
@@ -1253,7 +1295,7 @@ const SCENES = [
   { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
   { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
   { name: 'war-ghost', desc: '战争幽灵全相位（入场 / 技能 2→3→1 / 半血召唤 / 离场）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneWarGhost },
-  { name: 'pulse-matrix', desc: '脉冲矩阵 20s 自爆链路 + 分裂三法术矩阵', files: '04-spawn 06-enemy', run: scenePulseMatrix },
+  { name: 'pulse-matrix', desc: '脉冲矩阵 20s 自爆链路 + 分裂三法术矩阵 + 击坠孤儿波（波不随死亡消失）', files: '04-spawn 06-enemy', run: scenePulseMatrix },
   { name: 'darkhand', desc: '黑暗之手（登场 / 技能循环 / 蛋挞技能4 / 连携召唤离场 / 爆弹波及）', files: '05-boss 07-player 01-config-boss', run: sceneDarkhand },
   { name: 'elites', desc: '4S 精英四机入场连续性 + 强制首技能窗口', files: '04-spawn 06-enemy 01-config-difficulty', run: sceneElites },
   { name: 'sweep-kill', desc: '秒杀类禁亡语召唤（增生 / 法术阵列）', files: '06-enemy 04-spawn', run: sceneSweepKill },

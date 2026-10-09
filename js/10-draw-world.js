@@ -8,12 +8,12 @@
   import { ANVIL, CAPITAL_PALETTE, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, WIP_PLACEHOLDER_TYPES } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { currentDifficulty, isPoem, isRealme } from './01-config-difficulty.js';
-  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
+  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, pmWaves, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
   import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
   import { getCrystal3DSprite } from './09c-draw-crystal.js';
-  import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
+  import { drawBoss, drawBossBars, drawBossWarning, drawDarkhandTarts, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 
 
@@ -1455,25 +1455,6 @@
     ctx.closePath();
   }
 
-  // 敌方长条弹体路径（2026-10-09 用户反馈：弯角幅度增大偏椭圆 + 长边中段外弓——整体更接近椭圆的胶囊形）：
-  // 端帽圆弧（调用方传 rad ≈ 0.88×半宽，接近半圆端）+ 上下长边二次曲线中段外弓（幅度 0.22×半宽，端点处归零衔接端帽）。
-  // 仅敌方长条弹使用（普通长条 / 黑暗之手暗核导弹）；玩家主炮弹仍用 bulletPath 直边圆角，不受影响
-  function eLongBulletPath(x, y, w, ph, rad) {
-    const rh = ph / 2;
-    const r = Math.min(rad, w / 2, rh);
-    const cy = y + rh;
-    const x0 = x + r, x1 = x + w - r;                          // 两端帽圆心
-    const bow = rh * 0.22, k = bow * 2;                        // 外弓幅度（二次曲线控制点 = 2× 中点弓高）
-    const mid = (x0 + x1) / 2;
-    ctx.beginPath();
-    ctx.moveTo(x0, cy - rh);
-    ctx.quadraticCurveTo(mid, cy - rh - k, x1, cy - rh);       // 上长边：中段外弓
-    ctx.arc(x1, cy, r, -Math.PI / 2, Math.PI / 2);             // 头端帽（近半圆）
-    ctx.quadraticCurveTo(mid, cy + rh + k, x0, cy + rh);       // 下长边：中段外弓
-    ctx.arc(x0, cy, r, Math.PI / 2, Math.PI * 1.5);            // 尾端帽
-    ctx.closePath();
-  }
-
   function drawBullets() {
     for (const b of pBullets) {
       // 副武器·无界飞剑（飞行弹体）：与待发射悬浮剑同画法（paintFeijianSword，含护手 / 剑柄 / 拖尾），
@@ -1690,7 +1671,10 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    for (const b of eBullets) drawOneEBullet(b);
+    // 巨大蛋挞（b.tart，黑暗之手技能3）置顶（2026-10-10 用户反馈：图层低于其他敌方子弹）：
+    // 主循环跳过蛋挞、最后重画——蛋挞始终绘制在全部常规敌弹之上（不再受数组 push 顺序影响遮挡）
+    for (const b of eBullets) if (!b.tart) drawOneEBullet(b);
+    for (const b of eBullets) if (b.tart) drawOneEBullet(b);
     ctx.globalAlpha = 1;   // 清除消散期子弹的渐隐透明度
     ctx.shadowBlur = 0;
   }
@@ -1700,11 +1684,11 @@
   // fadeT 消散透明度在函数内自管（原循环开头逻辑）；bolt 闪频 / 风条波动等读 state.time 的动效照常生效
   // 长条弹头端增红映射（2026-10-09 用户反馈「最头部更加红」）：家族色 → 更红变体；未登记色原样使用
   const LONG_HEAD_RED = { '#ff4d2e': '#ff2512', '#ff7a45': '#ff4b1c', '#8a1018': '#a80f16' };
-  // 弧线弹出生色漂移（2026-10-09 用户定稿）：出生黑紫（取旧日之歌紫弹系 #c9a0ff 同色相压暗 → #3f1464），
-  // 随存活时间 1.5s 线性漂移至弧线绿 #a5ffd6
+  // 弧线弹出生色漂移（2026-10-09 用户定稿；2026-10-10 用户反馈变色太慢、生命末尾才完全变色 → 漂移期 1.5s → 0.6s）：
+  // 出生黑紫（取旧日之歌紫弹系 #c9a0ff 同色相压暗 → #3f1464），随存活时间 0.6s 线性漂移至弧线绿 #a5ffd6
   const ARC_TINT_FROM = [63, 20, 100];
   const ARC_TINT_TO = [165, 255, 214];
-  const ARC_TINT_T = 1.5;
+  const ARC_TINT_T = 0.6;
   function arcTintColor(age) {
     const t = clamp(age / ARC_TINT_T, 0, 1);
     const c = ARC_TINT_FROM.map((v, i) => Math.round(v + (ARC_TINT_TO[i] - v) * t));
@@ -1904,12 +1888,12 @@
           ctx.fillStyle = g;
           ctx.shadowColor = b.color;
           ctx.shadowBlur = 8;
-          eLongBulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.88);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
           ctx.fill();
           ctx.shadowBlur = 0;
           ctx.strokeStyle = b.color;         // 红细描边收口
           ctx.lineWidth = 1;
-          eLongBulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.88);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
           ctx.stroke();
         } else if (b.oval) {
           paintWindStreakBody(b);
@@ -1924,11 +1908,11 @@
           ctx.fillStyle = g;
           ctx.shadowColor = b.color;
           ctx.shadowBlur = 9;
-          eLongBulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.88);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
           ctx.fill();
           // 包围状增红（2026-10-09 用户反馈：前半段侧边也更红——红色包住头部而非仅沿长度渐变）：
           // 以头端为圆心的径向红光，clip 在弹体路径内——头部整体裹红、向尾部平滑衰减（无接缝）
-          eLongBulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.88);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
           ctx.save();
           ctx.clip();
           const wrap = ctx.createRadialGradient(b.len / 2, 0, b.r * 0.2, b.len / 2, 0, b.len * 0.65);
@@ -1940,7 +1924,7 @@
           ctx.shadowBlur = 0;
           ctx.strokeStyle = 'rgba(255, 185, 165, 0.92)';   // 描边：带红光的白（2026-10-09 统一变红一些）
           ctx.lineWidth = 1;
-          eLongBulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.88);
+          bulletPath(-b.len / 2, -b.r, b.len, b.r * 2, b.r * 0.65);
           ctx.stroke();
         }
         ctx.restore();
@@ -3209,6 +3193,7 @@
     drawCrystals();
     drawPowerups();
     drawPlayerFireRing();   // 炽心：自身火环（低图层——位于实体与子弹之下，不遮挡任何单位）
+    for (const o of pmWaves) drawPmOrphanWave(o);   // 脉冲矩阵震荡波孤儿波（本体被击坠后残留，低图层：活体敌机之下）
     for (const e of enemies) {
       if (e.type === 'boss') drawBoss(e);
       else drawEnemy(e);
@@ -3224,6 +3209,7 @@
     drawXinFuryRing();    // 奖励道具·辛国栋大怒：固定位置扩散火环（子弹之下）
     drawFeijianWaves();   // 副武器·无界飞剑：待发射飞剑（凝聚下沉 → 分裂悬浮）
     drawBullets();
+    drawDarkhandTarts();   // 黑暗之手技能4 超长蛋挞弹体：置于全部子弹之上（2026-10-10 用户反馈图层低于其他敌弹，见 11-draw-boss）
     drawMissiles();
     drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
     drawDdjMissiles();   // 叮咚鸡：黄白导弹（前向扇形直线飞行，直击）

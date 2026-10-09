@@ -3,15 +3,15 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 07-player(4 名) 08-entities(1 名) 14-main(11 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, rewardItem, score, stormVortex, xgLooseBombs}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
+  //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastLv, hpKitLastPhase, hpKitLastT, lives, orangeBombUsed, rewardItem, score, stormVortex, xgLooseBombs}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, PILOTS, PLAYER_CFG, currentArmor, hasPilot } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, PILOTS, PLAYER_CFG, currentArmor, hasPilot, starsSeriesCount } from './01-config-loadout.js';
   import { ANVIL, BAOLING, BAOLING_G, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, UNREAL, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
   import { BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
-  import { WAVE_POEM, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, isPoem, isRealme, invulnDiffMul, isHardTier } from './01-config-difficulty.js';
-  import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
-  import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
+  import { WAVE_POEM, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier } from './01-config-difficulty.js';
+  import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
+  import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
@@ -23,6 +23,7 @@
 
 
   function updateEnemies(dt) {
+    updateOrphanPmWaves(dt);   // 脉冲矩阵震荡波孤儿波推进（本体被击坠后残留的波，与本体在世时同款扩散/命中逻辑）
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       // 渐隐消逝中的暴风之眼（死亡演出）：不再攻击 / 碰撞 / 结算，仅推进淡出计时，播完移除
@@ -1458,8 +1459,8 @@
       if (e.leaving) return;   // 已离场：停止充能
       // 虚象：攻击间隔 +25% —— 充能序列整体时间膨胀（红相充满更慢 → 召唤导弹更稀疏）
       e.chargeT += dt / (diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1);
-      // 首波红相 1.5s、后续波红相 2s；充满即召唤（chargeWave 整波保持不变，避免召唤后动画参数跳变）
-      const cd = (e.chargeWave || 0) === 0 ? HARBINGER.chargeFirst : HARBINGER.charge;
+      // 首波红相 1.5~2.5s（逐机随机 e.chargeFirstDur）、后续波红相 2s；充满即召唤（chargeWave 整波保持不变，避免召唤后动画参数跳变）
+      const cd = (e.chargeWave || 0) === 0 ? (e.chargeFirstDur || HARBINGER.chargeFirstMin) : HARBINGER.charge;
       if (!e.firedThisCycle && e.chargeT >= cd && e.missilesGuided < HARBINGER.maxMissiles) {
         e.firedThisCycle = true;
         e.missilesGuided++;
@@ -1596,7 +1597,10 @@
       // + 粒子爆散 + 分裂三座法术矩阵（自爆模式进入后本体的最后一击，2026-10-02）
       if (e.pmWaveT > 0) {
         e.pmWaveT -= dt;
-        if (e.pmWaveT <= 0 && e.pmSelfDestruct && !e.pmBoomDone) {
+        // 爆炸归属（2026-10-10 修复）：仅【自爆波】（pmWaveSD——释放于自爆模式内的那一波）扩散完毕触发爆散死亡。
+        // 此前条件为 pmSelfDestruct（模式置位即可）：20s 阈值前最后一发的普通波若跨阈值完成会冒充自爆波
+        // 引爆本体（160 自爆波永不释放——smoke pulse-matrix 场景 HEAD 基线单跑可复现）
+        if (e.pmWaveT <= 0 && e.pmWaveSD && !e.pmBoomDone) {
           e.pmBoomDone = true;
           // 自爆大量粒子：三层（暗红主爆 + 深红碎片 + 亮粉高光），合计 124 粒
           spawnParticles(e.x, e.y, '#ff5a6e', 60, 380);
@@ -1648,6 +1652,7 @@
         e.pmScaleT = PULSE_MATRIX.scaleBumpDur;
         e.pmWaveT = PULSE_MATRIX.pulseWaveDur;
         e.pmWaveR = e.pmSelfDestruct ? PULSE_MATRIX.selfDestructR : PULSE_MATRIX.pulseR;   // 自爆波半径 160 / 普通波 132
+        e.pmWaveSD = !!e.pmSelfDestruct;   // 本波是否自爆波（爆炸归属判定，见上方自爆结算段注释）
         e.pmSmokeT = PULSE_MATRIX.smokeDur;   // 释放后短命暗红烟雾（比冲击波略长）
         e.pmWaveHitDone = false;   // 新震波重置命中标记（波前扫到玩家时置 true，见上方判定）
       }
@@ -3389,7 +3394,12 @@
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
     shieldRate *= dropMul;
     // 加血套件：普通敌人走互斥链（按敌机类别 1类 0.5% / 2类 1% / 3类 2% / 4类 6%；绿标记固定值不吃类别表——
-      //   增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%，2026-10-08 用户定稿，不再吃类型削减/判定等级减免乘区）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
+    //   增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%，2026-10-08 用户定稿，不再吃类型削减/判定等级减免乘区；
+    //   4S 精英固定 10%——2026-10-10 用户定稿，取代类别表 4类 6%）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
+    // 等级窗口节流（2026-10-10 用户定稿，HP_KIT_LV_WINDOW）：虚象/具象/真我/诗篇每 lv2/3/4/4 最多掉落 1 个加血套件——
+    //   上次【普通敌人实际掉落】后，窗口内等级不再掉落；仅刷怪期（stage==='none'）判定与登记——
+    //   BOSS 轮（清场/警报/BOSS 战）期间掉落与 BOSS 脚本化加血豁免（不判定也不登记）→ 窗口天然不跨 BOSS 轮；
+    //   图鉴挑战 / BOSS 试炼（等级锁定、窗口语义退化）同样豁免。真我必掉释放（hpKitRelease）同受窗口约束
     // 真我特殊机制（mods.hpKitGap）：任意两次加血套件之间至少间隔 8s——
     //   冷却期内掉落判定照常进行，但加血环节概率变为 50%（hpKitBankChance）且敌人不掉落（改为"预触发"计数）；
     //   冷却结束后若预触发 ≥1，击杀的第一个敌人必定掉落一个加血套件（随后计数清零）。
@@ -3400,8 +3410,15 @@
     const hpKitWaveBlocked = (levelFlow.hpKitWaveCd || 0) > 0;
     const hpKitGap = dMods.hpKitGap != null ? dMods.hpKitGap : Infinity;
     const hpKitInCd = state.time - state.hpKitLastT < hpKitGap;
-    const hpKitRelease = !isBoss && hpKitGap !== Infinity && !hpKitInCd && state.hpKitBanked >= 1;
-    const hpRate = isBoss ? 0 : tags.includes('green')
+    const hpLvW = hpKitLvWindow();
+    const hpLvExempt = isBoss || bossFlow.stage !== 'none' || state.challenge || state.testBoss;
+    const hpLvBlocked = !hpLvExempt && hpLvW !== Infinity
+      && bossFlow.phase === state.hpKitLastPhase
+      && levelFlow.level < state.hpKitLastLv + hpLvW;
+    const hpKitRelease = !isBoss && hpKitGap !== Infinity && !hpKitInCd && state.hpKitBanked >= 1 && !hpLvBlocked;
+    const hpRate = isBoss ? 0 : ELITES[e.type] || e.type === 'zhangzhang'
+        ? DROP_HP_ELITE   // 4S 精英：10%（黑暗之手四连携精英 + 张华&张策，2026-10-10 用户定稿）
+        : tags.includes('green')
         ? (e.type === 'gunship' ? DROP_HP_CYAN : e.type === 'anvil' ? DROP_HP_GREEN : DROP_HP_PROLIFERA)   // 绿标记固定值：青时炮艇 8% / 铁砧 10% / 增生侧翼艇 4%
         : (DROP_HP_BY_CLASS[ENEMY_CLASS[e.type]] || 0);
     let hpDropped = false;
@@ -3410,6 +3427,7 @@
       spawnPowerup(x, y, 'hp', 12);
       state.hpKitBanked = 0;
       state.hpKitLastT = state.time;
+      if (!hpLvExempt) { state.hpKitLastLv = levelFlow.level; state.hpKitLastPhase = bossFlow.phase; }   // 等级窗口登记（BOSS 轮内释放不登记——不跨轮）
       hpDropped = true;
     }
     const pr = Math.random();
@@ -3423,10 +3441,11 @@
       } else if (hpKitGap !== Infinity && hpKitInCd) {
         // 真我冷却期内：加血环节概率变为 50%，命中改为"预触发"（敌人不掉落）
         if (Math.random() < dMods.hpKitBankChance) state.hpKitBanked++;
-      } else if (!hpKitWaveBlocked && pr < kitRate + shieldRate + hpRate) {
+      } else if (!hpKitWaveBlocked && !hpLvBlocked && pr < kitRate + shieldRate + hpRate) {
         spawnPowerup(x, y, 'hp', 12);
         if (hpKitGap !== Infinity) state.hpKitLastT = state.time;
         if (hpKitWaveGap !== Infinity) levelFlow.hpKitWaveCd = hpKitWaveGap;
+        if (!hpLvExempt) { state.hpKitLastLv = levelFlow.level; state.hpKitLastPhase = bossFlow.phase; }   // 等级窗口登记（BOSS 轮掉落不登记——不跨轮）
       }
     }
     if (isBoss) {
@@ -3527,6 +3546,30 @@
     return false;
   }
 
+  // 脉冲矩阵震荡波孤儿波推进（2026-10-10 用户定稿）：本体被击坠后残留的波继续扩散至自然结束，
+  // 扩散/命中判定与本体在世时完全同款（波前半径 18 → waveR 二次缓出，扫到玩家即结算，每波至多一次，
+  // 伤害走常规 damagePlayer：护盾 / 无敌帧 / 难度修正照常）；波与暗红烟雾计时均结束后移除。
+  // 孤儿波不经 eBullets——不可被群星守望套装效果等任何消弹效果消除
+  function updateOrphanPmWaves(dt) {
+    for (let i = pmWaves.length - 1; i >= 0; i--) {
+      const w = pmWaves[i];
+      if (w.waveT > 0) {
+        w.waveT -= dt;
+        // 波前命中判定：与本体在世时同款 ease 曲线（06-enemy pulseMatrix 分支同源）
+        if (!w.hitDone && player.alive) {
+          const wp = 1 - w.waveT / PULSE_MATRIX.pulseWaveDur;
+          const wr = 18 + (1 - Math.pow(1 - wp, 2)) * (w.waveR - 18);
+          if (wr >= Math.hypot(player.x - w.x, player.y - w.y)) {
+            w.hitDone = true;
+            damagePlayer(PULSE_MATRIX.pulseDmg * enemyDmgMul(), 1, false, false, null);
+          }
+        }
+      }
+      if (w.smokeT > 0) w.smokeT -= dt;
+      if (w.waveT <= 0 && w.smokeT <= 0) pmWaves.splice(i, 1);
+    }
+  }
+
   function killEnemy(index) {
     const e = enemies[index];
     // 测试模式（图鉴挑战）：敌方不再无敌 —— 照常走完整击杀流程，仅屏蔽得分与水晶/道具掉落（见下方 testMode 门控）
@@ -3535,6 +3578,20 @@
     // 其它暴鸰的殉爆波及会再次调用 killEnemy——不拦截会造成两只暴鸰互相重入引爆（无限递归、海量爆炸卡死）
     if (e._deathSettled) return;
     e._deathSettled = true;
+    // 脉冲矩阵震荡波孤儿化（2026-10-10 用户定稿）：本体被击坠时若波仍在扩散，波脱离本体继续扩散至
+    // 自然结束且仍可造成伤害（每波至多命中一次，逻辑见 updateOrphanPmWaves）；孤儿波存于 02-core pmWaves
+    //（不经 eBullets——不可被群星守望套装效果 / 爆弹波等任何消弹效果消除）。
+    // 注意：若本体处于自爆模式，击坠已截断其「波扩完爆散 + 分裂三矩阵」链路——孤儿波只扩散与伤害，到时自然消散
+    if (e.type === 'pulseMatrix' && (e.pmWaveT || 0) > 0) {
+      pmWaves.push({
+        x: e.x, y: e.y,
+        waveT: e.pmWaveT,
+        waveR: e.pmWaveR || PULSE_MATRIX.pulseR,
+        smokeT: e.pmSmokeT || 0,
+        seed: e.wobble || 0,          // 烟尘方位种子（与本体同款，视觉连续）
+        hitDone: !!e.pmWaveHitDone,   // 本体在世时已命中的波不再重复结算
+      });
+    }
     // 黑暗之手连携精英击坠登记（2026-10-08 用户定稿）：任意连携精英（dhLink 窗口召唤 / elRevive 返场）
     // 被击坠 → 本体永久登记其「额外技能」；若为当前血量窗口的精英 → 本段减伤撤销 + 反向增伤 +100%
     //（高能爆弹/绷绷炸弹不吃，登记逻辑见 02-core dhOnLinkedEliteKilled）
@@ -3615,7 +3672,7 @@
         state.dhZhangPending = state.dhFledElites.length === 0;
       }
       if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
-      meiNoteKill(5, e.type);   // 依：BOSS = 5 类，击杀计数 +122（充满自动召唤镰刀）
+      meiNoteKill(5, e.type);   // 依：BOSS = 5 类，2026-10-10 用户定稿不再加计数（killGain[5] = 0，meiNoteKill 内 early-return）
       // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"）；
       // 成就「！？爆爆？！」：最终自爆（最后一条命）炸死最终 BOSS 风暴编织者
       if (state.aiyiSelfDestruct && hasPilot('aiyi')) {
@@ -3627,12 +3684,13 @@
       shake(22, 1.0);
       clearEnemyBullets(); clearMissiles();   // BOSS 死亡：立刻清除全场所有弹幕
       // BOSS 死亡：大量水晶撒落（测试模式不掉落）
-      // 水晶：旧日之歌 600 / 风暴编织者 900（两者分数均为 0，击杀奖励全部走水晶）；暴风之眼本体不掉水晶、击杀得分 9000
+      // 水晶（2026-10-10 按怪物属性总表同步）：旧日之歌 300 / 风暴编织者 400 / 黑暗之手 350；暴风之眼本体不掉水晶、击杀得分 9000
+      //（各 BOSS 击杀得分：旧日之歌 3000 / 暴风之眼 9000 / 风暴编织者 5000 / 黑暗之手 4000，见 01-config-boss score 字段）
       // 不再强制吸收（原 absorbDelay 到期后无视距离全数吸走）：与普通掉落一致由磁吸 / 追逐拾取；
       // 与普通掉落同速（150~200）垂直下坠、无横向速度（不乱飞）——原 ×0.6 慢速留场修正于 2026-09-27 移除（正常速度），
       // 未收集水晶由胜利结算前 0.8s 的统一收集兜底（见 08-entities collectAllCrystals / 14-main victoryDelay 窗口）
       if (!testMode && e.bossId !== 'storm') {
-        const nCry = e.bossId === 'storm2' ? 900 : 600;
+        const nCry = e.bossId === 'song' ? 300 : e.bossId === 'storm2' ? 400 : 350;
         // 首轮 BOSS（FIRST_ROUND_BOSSES）掉落的水晶打标：拾取时对七日澜心量表按 firstBossBonus 额外加成
         const firstBossCry = FIRST_ROUND_BOSSES.includes(e.bossId);
         // 水晶分档换算（三档 + 巨型）：BOSS 大量掉落同样走档位体系
@@ -3825,6 +3883,15 @@
       if (bossFight) achvNoteWatchClear(clearEnemyBulletsByOwner(e));
       else achvNoteWatchClear(clearNearestEnemyBullet(player.x, player.y));   // 成就：群星不灭——按实际消除数计数
     }
+    // 群星系列套装额外效果（2026-10-10 用户定稿）：装备至少 3 件群星系列装备（群星之杀 / 群星守望 /
+    // 群星允诺，计数见 01-config-loadout starsSeriesCount）时，暴走（火力 Lv5）状态击坠敌机 →
+    // 无概率立刻清除该敌机残留在场的所有弹幕（常规战斗与 BOSS 战均生效）。
+    // 覆盖面 = eBullets 内该敌机全部射弹（含法术大师 A1/A2 的 laser 激光）；
+    // 铁砧导弹 / 暴鸰·虚幻炸弹等范围伤害体不经 eBullets、寒冷区域在 frostZones——均天然不受影响；
+    // 脉冲矩阵震荡波为独立孤儿波（pmWaves），同样不可被消除（见本函数顶部孤儿化段）
+    if (!testMode && player.weapon >= 5 && starsSeriesCount() >= 3) {
+      achvNoteWatchClear(clearEnemyBulletsByOwner(e));
+    }
     // 七日澜心：BOSS 战期间击杀敌人直接给量表充能 1%~3%（随机；不依赖水晶拾取，量表满后按 F 释放）
     if (!testMode && bossFight && ARMOR_SKILLS[currentArmor.id]) {
       state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + rand(0.01, 0.03));
@@ -3933,13 +4000,17 @@
       // 1类 60% 掉 1~3（紫电/大型龙卷不掉）；2类常规 70% 掉 4~5 + 10% 掉 6；幽暮 80% 掉 6~10；斗志昂扬必掉 6
       // A1 60% 掉 4~5 + 20% 掉 6~8；破片 80% 掉 5~7；矩阵 80% 掉 4~6；炮艇 80% 掉 9~11；先兆者 80% 掉 9~12
       // 威龙 80% 掉 16~22；寒霜/御4/铁砧 90% 掉 6~10；暴鸰 80% 掉 6~8；焦香/脉冲矩阵 90% 掉 12~14；A2 80% 掉 9~12
-      // 4类（主力舰三变体 / 法术阵列）必掉：5% 掉 40~48、其余 24~35
+      // 4类（主力舰三变体 / 法术阵列 / 四精英）80% 掉 40~48、其余 20% 掉 24~35（2026-10-10 按怪物属性总表同步，原 5% 40~48 / 95% 24~35）
+      // 战争幽灵 80% 掉 54~64、其余 20% 掉 30~35（2026-10-10 按总表补分支——原先误走 1类通用兜底）
       // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍（2~6）
       const isDusk = e.type === 'striker' && e.skill === 'dusk';
       const r = Math.random();
       let cCount = 0;
-      if (e.type === 'capital' || e.type === 'fashiArray') {
-        cCount = r < 0.05 ? 40 + Math.floor(Math.random() * 9) : 24 + Math.floor(Math.random() * 12);
+      if (e.type === 'capital' || e.type === 'fashiArray' ||
+          e.type === 'puxuefeng' || e.type === 'hanxixian' || e.type === 'xiayong' || e.type === 'xinguodong') {
+        cCount = r < 0.20 ? 24 + Math.floor(Math.random() * 12) : 40 + Math.floor(Math.random() * 9);
+      } else if (e.type === 'warGhost') {
+        cCount = r < 0.20 ? 30 + Math.floor(Math.random() * 6) : 54 + Math.floor(Math.random() * 11);
       } else if (e.type === 'weilong') {
         cCount = r < 0.80 ? 16 + Math.floor(Math.random() * 7) : 0;
       } else if (e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'anvil') {

@@ -1,7 +1,7 @@
 // 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(6 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(7 名) 13-encyclopedia(1 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
@@ -3093,7 +3093,9 @@
     // 2026-10-08 用户定稿：预警线不再整条同时出现——自发射点沿朝向逐段生长延伸至出屏（warnGrow 内 easeOutCubic
     // 减速伸长，位置连续无瞬跳），每段生成时带「从大收缩到正常」警示特效（warnShrink 内段宽 3.2× → 1× 收缩），
     // 端点光斑随线头推进、伸满后驻留终点继续脉动；
-    // 弹体 = 超长蛋挞逐段贴图（tartUltraImg 水彩烘焙图，见 drawDhTart），随 dhUpdateTart 逐节露出/平移/屏缘折返
+    // 弹体 = 超长蛋挞逐段贴图（tartUltraImg 水彩烘焙图，见 drawDhTart），随 dhUpdateTart 逐节露出/平移/屏缘折返；
+    // 弹体绘制已移出机体层（2026-10-10 用户反馈长条蛋挞图层低于其他敌方子弹）→ drawDarkhandTarts()
+    // 在 10-draw-world render() 的 drawBullets 之后调用，蛋挞始终置于全部敌弹之上（预警线仍留在本层）
     if (e.skill && e.skill.id === 3) {
       const c4 = DARKHAND.s4, s = e.skill;
       if (s.st === 'warn') {
@@ -3147,7 +3149,16 @@
           ctx.restore();
         }
       }
-      for (const tar of s.tarts) drawDhTart(tar);
+    }
+  }
+
+  // 技能4 超长蛋挞顶层绘制入口（2026-10-10 用户反馈：长条蛋挞原先在 BOSS 机体层绘制，被后画的敌方子弹
+  // 整体盖住 → 弹体移至本函数，由 10-draw-world render() 在 drawBullets 之后调用，置于全部子弹之上；
+  // 预警线仍在 drawDarkhandBoss 机体层）。遍历场上黑暗之手（skill.id === 3 = 技能4）逐条绘制
+  function drawDarkhandTarts() {
+    for (const e of enemies) {
+      if (e.bossId !== 'darkhand' || !e.skill || e.skill.id !== 3) continue;
+      for (const tar of e.skill.tarts) drawDhTart(tar);
     }
   }
 
@@ -3741,5 +3752,5 @@
 
   export {
     drawZoneMarks, drawStormVortex, drawStormBoss, drawStormBar, drawTornado, drawBoss,
-    drawWarnBar, drawBossWarning, drawBossBars,
+    drawWarnBar, drawBossWarning, drawBossBars, drawDarkhandTarts,
   };

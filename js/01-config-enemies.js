@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(31 名) 05-boss(1 名) 06-enemy(32 名) 07-player(2 名) 08-entities(12 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(31 名) 05-boss(2 名) 06-enemy(32 名) 07-player(2 名) 08-entities(12 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -147,7 +147,7 @@
     // 特殊3类：焦香螺旋桨（火焰灼烧无人机）—— 橙火红渐变环 + 黑色核心 + 白色圆 + 三根异速旋转白色横杠；
     // 无碰撞伤害、不攻击：登场后移动到场地 40% 以下位置绕大圈巡航；火焰光环持续灼烧我方战机（近本体翻倍）
     jiaoxiang: {
-      w: 67, h: 54, hp: 1200, score: 600, color: '#ff7a18', drawScale: 1.36,   // 本体缩小 20%（w/h/drawScale 同步；原比 3 类炮艇大 10%）
+      w: 67, h: 54, hp: 1200, score: 500, color: '#ff7a18', drawScale: 1.36,   // 本体缩小 20%（w/h/drawScale 同步；原比 3 类炮艇大 10%）；分数 500（2026-10-10 按怪物属性总表同步，原 600）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 0,   // 无碰撞伤害
       fireInterval: [1e9, 1e9],   // 不攻击：间隔天文数字，永不落入通用开火逻辑
     },
@@ -256,7 +256,7 @@
     // 6 个长轴端点两两重合于三角形顶点）+ 中央暗红核心；五档充能张合（纯视觉：闭合→全开露核心按攻击周期循环）；
     // 周期性范围脉冲（伤害 30、半径同焦香火焰光环；释放前 0.6s 红圈收缩预警，参数见 PULSE_MATRIX）
     pulseMatrix: {
-      w: 90, h: 90, hp: 800, score: 600, color: '#ff4d5e', drawScale: 1,   // 碰撞盒 ≈ 骑边拼合体外接方（外轮廓半径 44 = 三角形顶点距中心，外接 88 酌收）；诗篇血量 2400（POEM_HP.pulseMatrix，makeEnemy 按难度覆盖）；分数/水晶与焦香螺旋桨等同
+      w: 90, h: 90, hp: 2400, score: 600, color: '#ff4d5e', drawScale: 1,   // 碰撞盒 ≈ 骑边拼合体外接方（外轮廓半径 44 = 三角形顶点距中心，外接 88 酌收）；血量 2400（2026-10-10 用户定稿，原 800）；诗篇血量 4000（POEM_HP.pulseMatrix，makeEnemy 按难度覆盖）；分数/水晶与焦香螺旋桨等同
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
       fireInterval: [2.2, 2.2],   // 常规脉冲间隔（诗篇 1.9，见 PULSE_MATRIX；首次 2.1s 由出生参数指定）
     },
@@ -270,22 +270,22 @@
     // 挑战召唤走 04-spawn spawnEliteMinion）：技能由专属状态机驱动（参数见 ELITES，逻辑见 06-enemy）。
     // 血量 1200 为实装占位值，待《怪物属性总表.xlsx》校准（本机无表，先按占位实装）
     puxuefeng: {        // 狞笑朴学峰（原名 狂笑朴学峰）：极速截击——流星穿刺 / 翼根连弩（两技 1↔2 交替）
-      w: 110, h: 84, hp: 1200, score: 650, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红（2026-10-02）
+      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红（2026-10-02）；分数 1000（2026-10-10 按怪物属性总表同步，原 650）——朴学峰
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
     hanxixian: {        // 猩红韩希先（原名 韩希先）：三眼炮座——凝视锁定 / 旋眼火螺（两技循环）
-      w: 110, h: 84, hp: 1200, score: 650, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红
+      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——韩希先
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
     xiayong: {          // 铜皮夏勇（原名 夏勇）：重装壁垒——屏障 / 碎翼回旋刃 / 核心膨胀（暗壁 2026-10-03 移除；屏障同日新增）
-      w: 110, h: 84, hp: 1200, score: 650, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红
+      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——夏勇
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
     xinguodong: {       // 暴怒辛国栋（原名 辛国栋）：轰炸平台——地毯轰炸 / 十二连发
-      w: 110, h: 84, hp: 1200, score: 650, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红
+      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——辛国栋
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
@@ -305,17 +305,18 @@
   const HARBINGER = {
     descend: 180,        // 进场/离场下降速度（提升 50%）
     wingDR: 0.25,        // 对僚机弹幕减伤 25%（装甲针对僚机火力）
-    // 首波充能：1.5s 变红（充满即召唤首发）+ 3s 灰黑覆盖（无静止保持段）
-    chargeFirst: 1.5,    // 首波：红色从中心扩展至通体红的时长
-    coverFirst: 3,       // 首波：灰黑从中心覆盖红色的时长（chargeFirst+coverFirst = 4.5s）
+    // 首波充能：1.5~2.5s 变红（逐机随机，充满即召唤首发）+ 3s 灰黑覆盖（无静止保持段）
+    chargeFirstMin: 1.5, // 首波：红色扩展时长下限（2026-10-10 用户定稿：首攻 1.5~2.5s 逐机随机；实值存 e.chargeFirstDur）
+    chargeFirstMax: 2.5, // 首波：红色扩展时长上限（诗篇 BOSS 双召唤强制 1.5s / 2.5s 各一）
+    coverFirst: 3,       // 首波：灰黑从中心覆盖红色的时长（与后续波复位同义，无静止保持段）
     // 后续每波充能：2s 变红（充满即召唤）+ 1s 复位（灰黑覆盖红）+ 1.5s 保持全灰黑
     charge: 2,           // 后续波：红色扩展时长
     reset: 1,            // 后续波：灰黑复位（覆盖红）时长
     grayHold: 1.5,       // 后续波：保持全灰黑静止时长（charge+reset+grayHold = 4.5s）
     cycle: 4.5,          // 每波固定时长（首波与后续波均为 4.5s）
-    maxMissiles: 5,      // 入场即充能：首发在 1.5s，后续每波红相 2s 召唤，共 1+4=5 发（末发约 20s 后离场）
+    maxMissiles: 5,      // 入场即充能：首发 1.5~2.5s，后续每波红相 2s 召唤，共 1+4=5 发（末发约 20s 后离场）
     hold: 30,            // 就位停留兑底上限（实际由充能序列驱动离场：第 5 发召唤后置 holdTimer=0）
-    warnTime: 3,         // 导弹垂直预警线时长
+    warnTime: 2,         // 导弹垂直预警线时长（2026-10-10 用户定稿：3s→2s 统一调整）
     missileSpeed: 1400,  // 导弹从上方下落速度（高速）
     missileR: 12,        // 导弹半径（宽于常规子弹）
     missileDmgMin: 60,   // 导弹伤害下限：实际伤害 = max(此值, 当前血量 80%)（低血保底，不再直接秒杀）

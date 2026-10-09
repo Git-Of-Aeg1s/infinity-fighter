@@ -31,6 +31,10 @@ const deps = {};   // 源模块名 -> { 导入方模块名: 名字数 }
 for (const f of files) {
   const mod = f.replace(/\.js$/, '');
   const src = readFileSync(join(jsDir, f), 'utf8');
+  // 格式兜底：import 若未命中规范形态（两空格缩进 + 花括号 + 单引号 + 分号），IMPORT_RE 会静默漏算被依赖名单——在此显式告警
+  const looseCnt = [...src.matchAll(/^\s*import[\s{'"*]/gm)].length;
+  const strictCnt = [...src.matchAll(IMPORT_RE)].length;
+  if (looseCnt > strictCnt) console.warn(`sync-contract 警告: ${f} 存在未命中规范形态的 import（缩进/引号/分号），被依赖计数可能漏算`);
   for (const m of src.matchAll(IMPORT_RE)) {
     const srcMod = m[2].replace(/^\.\//, '').replace(/\.js$/, '');
     if (!modOrder.hasOwnProperty(srcMod)) continue;   // 跨目录/外部导入不在契约范围

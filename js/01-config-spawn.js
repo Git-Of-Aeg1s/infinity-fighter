@@ -1,7 +1,7 @@
 // 01-config-spawn：刷怪分段 / 压力权重 / 掉落率 / 奖励道具池 / 水晶体系（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(23 名) 07-player(1 名) 08-entities(2 名) 09c-draw-crystal(2 名) 13-encyclopedia(3 名) 14-main(10 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(24 名) 07-player(1 名) 08-entities(2 名) 09c-draw-crystal(2 名) 13-encyclopedia(3 名) 14-main(10 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { hasPilot } from './01-config-loadout.js';
@@ -148,11 +148,11 @@
     laodaDrink:   { id: 'laodaDrink',   rarity: 'normal', name: '牢大特饮', glyph: '🥤',
                     desc: '移速 +40%，持续 15s。饮用与结束均有加速过渡（非瞬间变速）。' },
     magnetShroom: { id: 'magnetShroom', rarity: 'normal', name: '磁力菇', glyph: '🍄',
-                    desc: '水晶拾取半径 +40，持续一整局，可叠加。' },
+                    desc: '水晶拾取半径 +50，持续一整局，可叠加。' },
     noLingluo:    { id: 'noLingluo',    rarity: 'normal', name: '不再陵落', glyph: '🗡',
                     desc: '持续 9s：以 32 发/s 向周身螺旋射出无界飞剑（起始朝上、每发顺时针偏转 25°，每圈自带 25° 偏移）；飞剑可穿透 2 个敌人，每次穿透伤害 -20%（100% → 80% → 64%，对 BOSS / 4类主力舰·法术阵列不穿透）；射出方向在水平线以下的飞剑对 BOSS 只造成 50% 伤害。' },
     frostGen:     { id: 'frostGen',     rarity: 'normal', name: '寒霜发生器', glyph: '❄',
-                    desc: '周身 160px 寒霜力场（青白色半透明）：力场内敌机射速/移速与敌方子弹弹速 -60%，持续 12s；到期后力场朝正上方以 80px/s 发射离场。力场内焦香螺旋桨的火环失效，其机体在力场内每 0.1s 受 30 点灼烧（每次递增 1，离场重置）。' },
+                    desc: '周身 160px 寒霜力场（青白色半透明）：力场内敌机射速/移速 -60%、敌方子弹弹速 -30%，持续 12s；到期后力场朝正上方以 80px/s 发射离场。力场内焦香螺旋桨的火环失效，其机体在力场内每 0.1s 受 30 点灼烧（每次递增 1，离场重置）。' },
     xinguodongFury: { id: 'xinguodongFury', rarity: 'normal', name: '辛国栋大怒', glyph: '🔥',
                     desc: '以使用瞬间自身位置为中心生成一个不移动的辛国栋同款火环，半径持续扩大，6s 后几乎布满全屏并对全体敌人造成一次灼烧伤害，随后再持续 4s 渐隐消失。火环对辛国栋造成 5 倍伤害。' },
     honghongBomb: { id: 'honghongBomb', rarity: 'normal', name: '轰轰炸弹', glyph: '💣',
@@ -180,6 +180,7 @@
   const DROP_HP_PROLIFERA = 0.04;  // 增生侧翼艇（淡青绿）加血掉率（固定值，不随类别表；2026-10-08 用户定稿 10%→4%）
   const DROP_HP_CYAN = 0.08;       // 青时炮艇（3类 cyan 变体，绿色标记）加血掉率（固定值；2026-10-08 用户定稿）
   const DROP_HP_GREEN = 0.10;      // 铁砧（治疗无人机，灰+绿标记）加血掉率（固定值，维持 10%）
+  const DROP_HP_ELITE = 0.10;      // 4S 精英（黑暗之手四连携精英 + 张华&张策）加血掉率（固定值；2026-10-10 用户定稿，取代类别表 4类 6%）
   const DROP_HP_BOSS = 0.40;       // BOSS 加血：40% 掉 1 个
   const DROP_HP_BOSS2 = 0.10;      // BOSS 加血：另有 10% 一次掉 2 个
   const DROP_BOMB_ORANGE = 0.005;  // 橙色敌人爆弹掉率（整场战斗最多触发一次，不影响 4类 5% 与 BOSS 20%）
@@ -194,5 +195,5 @@
     REWARD_ITEMS, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE,
     DROP_KIT_YELLOW, DROP_SHIELD_RATE, DROP_SHIELD_BLUE, DROP_SHIELD_STACK,
     DROP_HP_BY_CLASS, DROP_HP_PROLIFERA, DROP_HP_CYAN, DROP_HP_GREEN,
-    DROP_HP_BOSS, DROP_HP_BOSS2, DROP_BOMB_ORANGE, DROP_KIT_BERSERK,
+    DROP_HP_ELITE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_BOMB_ORANGE, DROP_KIT_BERSERK,
   };

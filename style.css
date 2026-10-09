@@ -946,7 +946,11 @@ canvas#game {
   background: rgba(18, 16, 12, 0.92);
   box-shadow: 0 0 12px rgba(255, 213, 128, 0.12);
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  /* border-color 不参与 transition：特殊驾驶员切换（.special-pilot 类增删）时，特殊态的边框是
+     背景渐变层（border-box 层）画的、随 background 瞬间整体替换，若 border-color 仍做 0.15s 渐变，
+     特殊→普通方向会出现「透明边框渐入金色」的 0.15s 无色空窗（2026-10-10 用户反馈：切换瞬间
+     边框闪一下没颜色）。悬停 / 展开的金边提亮改为瞬时切换（1.5px 细边上无感知） */
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 /* 反向旋转的文字层：铺满菱形方框，字体复用装备框的 loadout-label / loadout-value */
@@ -1057,11 +1061,24 @@ canvas#game {
   to { --glintAngle: 360deg; }
 }
 
-/* 流光框的 hover / 面板展开态：不叠任何光效——流动渐变边框即全部视觉（2026-10-08 用户反馈：只要框变色） */
-.pilot-diamond.special-pilot:hover,
-.pilot-diamond.special-pilot.open {
+/* 流光框的 hover 态：不叠任何光效——流动渐变边框即全部视觉（2026-10-08 用户反馈：只要框变色）；
+   未选中（常态 / hover）一律无光效（2026-10-10 用户反馈） */
+.pilot-diamond.special-pilot:hover {
   border-color: transparent;
   box-shadow: none;
+}
+
+/* 流光框选中（面板展开 .open）态：外围青粉渐变流动光效（2026-10-10 用户反馈）——
+   与边框同款 #39C5BB/#FFC0CB 双色，色相按边框流动同周期（5s ease-in-out）往复渐变；
+   光效范围与金色 open 态完全一致（0 0 18px / 0.35 alpha）；面板收起即随 .open 移除而消失 */
+.pilot-diamond.special-pilot.open {
+  border-color: transparent;
+  animation: pilotGlowFlow 5s ease-in-out infinite;
+}
+
+@keyframes pilotGlowFlow {
+  0%, 100% { box-shadow: 0 0 18px rgba(57, 197, 187, 0.35); }
+  50%      { box-shadow: 0 0 18px rgba(255, 192, 203, 0.35); }
 }
 
 /* 框处于展开状态：高亮提示当前面板来源 */

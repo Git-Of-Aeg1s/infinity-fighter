@@ -15,6 +15,7 @@
   // ---------- BGM ----------
   // 主界面：main_theme / main_theme_2 随机轮播（一首自然播完 → 随机切另一首，不与刚播完的重复）
   // 常规战斗：battle_normal_1；BOSS 战（含警报演出）：旧日之歌 battle_boss_1 / 暴风之眼 battle_boss_2（警报切入静默时战斗曲 0.5s 淡出）
+  // 击败 BOSS 后的曲切（2026-10-10 用户定稿）：旧战斗曲 1s 淡出 → 淡出完毕再起播新曲，新曲 0.5s 淡入（见 bgmPending 编排）
   // 结算曲：胜利 victory / 失败 defeat（单次播放；结算页弹出时才起播；未播完就返回主界面 / 再来一局 → 音量迅速淡出）
   const BGM_TRACKS = {
     main_theme:      './assets/audio/main_theme.mp4',
@@ -50,6 +51,12 @@
   // 新的结算展示上升沿 / 展示结束（下降沿）时清空，同一次展示内换成另一首结算曲仍允许（失败曲先响→胜利页弹出）。
   let resultSession = null;
   let bgmFade = null;         // 曲目淡出中：{ key, audio, t0, from, dur }（结算曲快速淡出 / 战斗曲转警报淡出共用）
+  // 击败 BOSS 曲切编排（2026-10-10 用户定稿）：旧战斗曲 BOSS_WIN_FADE 淡出 → 淡出完毕再起播新曲并 BOSS_WIN_FADEIN 淡入。
+  // bgmPending = { to, from, fromAudio, t0 }（淡出阶段，bgmCurrent 维持旧曲）；bgmFadeIn = { key, audio, t0 }（新曲淡入阶段）
+  const BOSS_WIN_FADE = 1.0;    // 旧战斗曲淡出时长（s）
+  const BOSS_WIN_FADEIN = 0.5;  // 新曲淡入时长（s）
+  let bgmPending = null;
+  let bgmFadeIn = null;
   let prevResultShown = false;   // 上一帧是否处于结算展示（胜利页 / 失败页）：上升沿重置 resultDone，避免上一局遗留导致本局结算曲不播
 
   function trackVol(key) { return BGM_VOLUME * (BGM_GAIN[key] || 1); }
@@ -111,6 +118,50 @@
   // 主界面轮播目标：已是轮播曲则维持（避免每帧重置），否则随机取一首（except = 刚播完的 key，可为 null）
   function menuTarget(except) {
     return (bgmCurrent && MENU_TRACKS.includes(bgmCurrent)) ? bgmCurrent : pickMenuTrack(except);
+  }
+
+  // ---------- 击败 BOSS 曲切编排（2026-10-10 用户定稿） ----------
+  // 启动：旧战斗曲进入 1s 线性淡出（bgmCurrent 暂维持旧曲，防止 updateBGM 常规逻辑干扰编排）
+  function startBGMWinSwitch(to, from) {
+    const fa = bgmAudios[from];
+    if (!fa || fa.paused) { switchTrack(to); return; }   // 旧曲未在播（未解锁等）：退化为常规硬切
+    bgmPending = { to, from, fromAudio: fa, t0: performance.now() };
+    bgmRestart = null;                                    // 暴风之眼重播编排让位（最终击败即切曲）
+    if (bgmFade && bgmFade.key === from) bgmFade = null;  // 同曲淡出交由本编排接管
+  }
+
+  // 淡出推进：到点暂停归零旧曲 → bgmCurrent 切新曲并起播（遵循解锁 / 暂停 / 静音门槛）→ 新曲从 0 音量淡入
+  function stepBGMWinSwitch() {
+    const p = bgmPending, fa = p.fromAudio;
+    // 旧曲被暂停（中途暂停 / 静音）/ 静音开关：放弃编排恢复音量，交回常规逻辑接管
+    if (fa.paused || audioMuted) { fa.volume = trackVol(p.from); bgmPending = null; return; }
+    const k = (performance.now() - p.t0) / (BOSS_WIN_FADE * 1000);
+    if (k < 1) {
+      fa.volume = trackVol(p.from) * (1 - k);   // 线性淡出
+      return;
+    }
+    fa.pause(); fa.currentTime = 0; fa.volume = trackVol(p.from);
+    bgmCurrent = p.to;
+    if (RESULT_TRACKS.includes(p.to)) { resultDone = false; resultSession = p.to; }
+    const ta = bgmAudios[p.to];
+    if (ta && bgmUnlocked && !state.paused && !audioMuted) {
+      ta.volume = 0;
+      ta.play().catch(() => {});
+      bgmFadeIn = { key: p.to, audio: ta, t0: performance.now() };
+    }
+    bgmPending = null;
+  }
+
+  // 新曲淡入推进：0.5s 线性升至目标音量；中断（暂停 / 静音 / 被切走）→ 恢复满音量清除（恢复播放后音量正确）
+  function stepBGMFadeIn() {
+    if (!bgmFadeIn) return;
+    const a = bgmFadeIn.audio;
+    if (a.paused || bgmCurrent !== bgmFadeIn.key || audioMuted || state.paused) {
+      a.volume = trackVol(bgmFadeIn.key); bgmFadeIn = null; return;
+    }
+    const k = (performance.now() - bgmFadeIn.t0) / (BOSS_WIN_FADEIN * 1000);
+    if (k >= 1) { a.volume = trackVol(bgmFadeIn.key); bgmFadeIn = null; }
+    else a.volume = trackVol(bgmFadeIn.key) * k;
   }
 
   // 切换当前曲目（立即起播，遵循解锁 / 暂停 / 静音）；被切走的结算曲快速淡出，战斗曲切向静默（警报演出）0.5s 淡出
@@ -182,6 +233,7 @@
   function updateBGM() {
     stepBGMFade();
     stepBGMRestart();
+    stepBGMFadeIn();
     // 结算展示上升沿：新一局结算开始 → 允许结算曲重新起播（清掉上一局自然播完遗留的 resultDone，
     // 否则上一局结算曲播完后 resultDone 恒为 true，下一局胜利页会直接跳主界面轮播、胜利曲不响）
     const resultShown = state.victoryOverlay || state.mode === 'gameover';
@@ -217,7 +269,33 @@
       target = menuTarget(bgmCurrent);
     }
     if (performance.now() < bgmHoldUntil) target = null;   // 起播抑制窗口内强制静默
-    if (bgmCurrent !== target) switchTrack(target);
+    if (bgmPending) {
+      // 击败 BOSS 曲切编排中：挂起常规切换（bgmCurrent 仍是旧曲）。目标曲被改判（重开 / 新切换请求）
+      // → 放弃编排交回常规逻辑；否则推进淡出，并让暂停/静音照常作用于旧曲（冻结淡出，恢复后继续）
+      if (target !== bgmPending.to) {
+        const fa = bgmPending.fromAudio;
+        if (!fa.paused) { fa.pause(); fa.currentTime = 0; }
+        fa.volume = trackVol(bgmPending.from);
+        bgmPending = null;
+      } else {
+        stepBGMWinSwitch();
+        if (bgmPending) {
+          const fa = bgmPending.fromAudio;
+          if (state.paused || audioMuted) { if (!fa.paused) fa.pause(); }
+          else if (fa.paused && bgmUnlocked) fa.play().catch(() => {});
+          return;
+        }
+      }
+    }
+    if (bgmCurrent !== target) {
+      // 击败 BOSS 后的曲切（2026-10-10 用户定稿）：旧战斗曲 1s 淡出 → 淡出完毕再起播新曲、新曲 0.5s 淡入。
+      // 命中条件：旧曲为战斗曲（battle_*），新曲为 victory 结算曲或下一轮常态战斗曲（黑暗之手击败换 battle_normal_2）；
+      // 其余切换（主界面轮播 / 警报静默 / 进 BOSS 战 / 失败曲）维持原逻辑
+      if (bgmCurrent && bgmCurrent.startsWith('battle_') && target &&
+          (target === 'victory' || target.startsWith('battle_normal_'))) {
+        startBGMWinSwitch(target, bgmCurrent);
+      } else switchTrack(target);
+    }
     if (!bgmCurrent) {
       // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停 / 静音
       if (state.paused || audioMuted) {

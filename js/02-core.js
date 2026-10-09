@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(37 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(94 名) 13-encyclopedia(18 名) 14-main(37 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(95 名) 13-encyclopedia(18 名) 14-main(37 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -128,6 +128,8 @@
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
     hpKitLastT: -99,       // 真我加血节流：上次实际掉落加血套件的时刻（-99 = 开局不受冷却限制；resetGame 归位）
     hpKitBanked: 0,        // 真我加血节流：冷却期内"预触发"计数（50%/杀；冷却结束后第一个敌人必掉一个并清零）
+    hpKitLastLv: -999,     // 加血套件等级窗口节流（2026-10-10）：上次普通敌人实际掉落加血套件的关卡等级（-999 = 未登记；06-enemy rollItemDrops 读写，resetGame 归位）
+    hpKitLastPhase: -1,    // 加血套件等级窗口节流：上次掉落时的 bossFlow.phase（窗口不跨 BOSS 轮——换轮即失效；06-enemy rollItemDrops 读写，resetGame 归位）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     pilotDashT: 0,         // 许凯狗：开场高能冲刺剩余时长（s；resetGame 置位，14-main 递减与调度）
@@ -284,6 +286,7 @@
   /** @type {Array} */ const missiles = [];       // 预警结束后从上方下落的导弹
   /** @type {Array} */ const blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
   /** @type {Array} */ const frostZones = [];    // 虚幻寒冷区域（炸弹爆炸 / 殉爆留下：半径内减速，{x,y,r,t,dur,affectsPlayer,affectsEnemies,seed}）
+  /** @type {Array} */ const pmWaves = [];       // 脉冲矩阵震荡波孤儿波（本体被击坠后残留：{x,y,waveT,waveR,smokeT,seed,hitDone}——06-enemy 写入与推进 / 10-draw-world 绘制 / 12-ui resetGame 清空；不经 eBullets，不可被消弹效果消除）
   /** @type {Array} */ const popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
   /** @type {Array} */ const wgSlashes = [];       // 战争幽灵技能1/2双刃斩击流（直线飞行、每道命中一次）
   /** @type {Array} */ const spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
@@ -549,7 +552,8 @@
   // BOSS 登场虚化窗口：警报期间（bossFlow.stage === 'warn'）或任一 BOSS 尚未完全登场
   // （combatReady=false：旧日之歌部件组装 / 暴风之眼风聚成形 / 风暴编织者三段入场）为 true。
   // 期间所有 BOSS 视为虚化——我方射弹 / 斩击 / 灼烧 / 友方大风暴等伤害全部穿透不结算
-  // （残留的大狗导弹与场上子弹照常飞过）；时限类计数器经 entranceDt 按 50% 流速推进
+  // （残留的大狗导弹与场上子弹照常飞过）；充能类计数表（依击杀计数 / 天秀白色量表 / 大无垠之王
+  // 增伤累积）完全冻结不走字（2026-10-10 用户反馈），冷却 / 倒计时类经 entranceDt 按 50% 流速推进
   // （斗志昂扬增益例外：完全冻结，见 06-enemy updateDouzhiFx）、
   // 大狗导弹雨挂起不在动画期间发射（07-player updatePilotStatus）
   function bossEntranceActive() {
@@ -557,9 +561,10 @@
     return enemies.some(e => e.type === 'boss' && !e.combatReady);
   }
 
-  // 警报 / BOSS 登场动画期间的时间步长：时限类计数器（冷却 / 量表充能等）
-  // 仅按 50% 速率推进——登场演出不再全额消耗技能冷却（调用点：07-player updatePilotStatus / updatePlayer；
-  // 斗志昂扬增益倒计时为此处唯一例外——完全冻结不走本函数，见 06-enemy updateDouzhiFx）
+  // 警报 / BOSS 登场动画期间的时间步长：冷却 / 倒计时类计数器（陵落 Q 冷却 / 血债回收 / 天枢计时 /
+  // 哈基米尾存续 / 马兴犬成就计时等）仅按 50% 速率推进——登场演出不再全额消耗技能冷却；
+  // 充能类计数表不经过本函数（依 / 天秀 / 大无垠之王：警报与登场动画期间完全冻结，调用点自行门控；
+  // 斗志昂扬增益倒计时也完全冻结不走本函数，见 06-enemy updateDouzhiFx）
   function entranceDt(dt) {
     return bossEntranceActive() ? dt * 0.5 : dt;
   }
@@ -799,7 +804,7 @@
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
-    missileWarns, missiles, blBombs, frostZones, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
+    missileWarns, missiles, blBombs, frostZones, pmWaves, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
     zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, meiScythes, ddjMissiles,
     slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,

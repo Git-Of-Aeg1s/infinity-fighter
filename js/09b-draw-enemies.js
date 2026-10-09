@@ -1,7 +1,7 @@
 // 09b-draw-enemies.js：敌机形体 / 弹幕标记 / 法术方块 / 战争幽灵斩击绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(28 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(29 名) 13-encyclopedia(1 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, player, popianMissiles, slashFx, spellCubes, state, wgSlashes } from './02-core.js';
@@ -169,9 +169,9 @@
       ctx.rect(-22, -2.6, 13, 5.2);
       ctx.rect(9, -2.6, 13, 5.2);
     };
-    // 首波：1.5s 变红 + 3s 灰黑覆盖；后续波：2s 变红 + 1s 复位(灰黑覆盖红) + 1.5s 保持全灰黑。两波均 4.5s
+    // 首波：1.5~2.5s 变红（e.chargeFirstDur 逐机随机，预览回退下限）+ 3s 灰黑覆盖；后续波：2s 变红 + 1s 复位(灰黑覆盖红) + 1.5s 保持全灰黑。两波均 4.5s
     const first = (e.chargeWave || 0) === 0;
-    const chargeDur = first ? HARBINGER.chargeFirst : HARBINGER.charge;
+    const chargeDur = first ? (e.chargeFirstDur || HARBINGER.chargeFirstMin) : HARBINGER.charge;
     const coverDur = first ? HARBINGER.coverFirst : HARBINGER.reset;
     const t = (e.chargeT || 0) % HARBINGER.cycle;   // 入场即充能：视觉不再等待就位（预览对象无 chargeT 时回退 0）
     const coverR = R + 8;
@@ -972,6 +972,95 @@
   // 脉冲预警：释放前 0.6s 微微红圈收缩（半径由 pulseR 收缩到 0，按 fireTimer 剩余值推导）；
   // 释放瞬间：自身略微放大（正弦鼓包动效，pmScaleT）+ 暗红冲击波扩散（pmWaveT，双波纹增强）
   //   + 短命暗红烟雾残留（pmSmokeT）——计时器见 06-enemy updateEnemyFire
+  // 脉冲矩阵震荡波（主波 + 次级波纹）与暗红雾气绘制——本体在世（drawPulseMatrixBody）与
+  // 被击坠残留的孤儿波（drawPmOrphanWave，10-draw-world 调用）共用；调用方需已 translate 到波心。
+  // wv: { waveT, waveR, smokeT, seed }（seed = 机体 wobble，烟尘方位种子）
+  function drawPmWaveFx(wv) {
+    // 暗红冲击波（2026-10-02 增强）：主波更粗带辉光 + 半径滞后的次级波纹，波动层次更汹涌
+    // （扩散目标半径 waveR：普通波 132 / 自爆波 160，未释放过时兜底 pulseR）
+    if ((wv.waveT || 0) > 0) {
+      const waveR = wv.waveR || PULSE_MATRIX.pulseR;
+      const wp = 1 - wv.waveT / PULSE_MATRIX.pulseWaveDur;
+      const ease = 1 - Math.pow(1 - wp, 2);
+      const rr = 18 + ease * (waveR - 18);
+      ctx.save();
+      ctx.shadowColor = '#ff2038';
+      ctx.shadowBlur = 14;
+      ctx.globalAlpha = (1 - wp) * 0.9;
+      ctx.strokeStyle = '#a01828';
+      ctx.lineWidth = 18 * (1 - wp) + 6;   // 主波：显著增宽的波前
+      ctx.beginPath();
+      ctx.arc(0, 0, rr, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = (1 - wp) * 0.45;   // 次级波纹：半径略滞后、更细更淡
+      ctx.lineWidth = 5 * (1 - wp) + 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(4, rr - 22), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // 暗红雾气（2026-10-02）：震荡波扫过之处留下短命暗红雾——
+    //   ① 区域雾：雾区半径跟随震荡波扩散（波到哪雾铺到哪），波扩完后整体渐隐消散；
+    //   ② 波前浓雾环：贴着当前波半径的环形浓雾，随波推进；③ 数团烟尘自波圈内漂散上浮（不规则感）
+    if ((wv.smokeT || 0) > 0) {
+      const sp = 1 - wv.smokeT / PULSE_MATRIX.smokeDur;   // 0→1 消散进度
+      const elapsed = PULSE_MATRIX.smokeDur - wv.smokeT;
+      // 雾区半径 = 震荡波扩散曲线在 elapsed 时刻的半径（与冲击波同 ease），波扩完后固定在脉冲半径
+      const wprog = Math.min(1, elapsed / PULSE_MATRIX.pulseWaveDur);
+      const wr = 18 + (1 - Math.pow(1 - wprog, 2)) * ((wv.waveR || PULSE_MATRIX.pulseR) - 18);
+      // ① 区域雾（震荡过的地方整体蒙一层，随消散进度渐隐）
+      const fogA = 0.26 * (1 - sp);
+      if (fogA > 0.01) {
+        const fog = ctx.createRadialGradient(0, 0, wr * 0.2, 0, 0, wr);
+        fog.addColorStop(0, `rgba(112, 22, 34, ${fogA * 0.45})`);
+        fog.addColorStop(0.7, `rgba(112, 22, 34, ${fogA})`);
+        fog.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        ctx.fillStyle = fog;
+        ctx.beginPath();
+        ctx.arc(0, 0, wr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // ② 波前浓雾环（波扩散期间贴波推进；波扩完后随余雾渐隐）
+      const ringA = 0.34 * Math.min(1 - sp, 1 - wprog * 0.6);
+      if (ringA > 0.01) {
+        const ring = ctx.createRadialGradient(0, 0, Math.max(0, wr - 20), 0, 0, wr + 12);
+        ring.addColorStop(0, 'rgba(112, 22, 34, 0)');
+        ring.addColorStop(0.6, `rgba(130, 26, 40, ${ringA})`);
+        ring.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        ctx.fillStyle = ring;
+        ctx.beginPath();
+        ctx.arc(0, 0, wr + 12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // ③ 漂散烟尘：方位由机体种子 + 低频 sin 摆动决定（逐帧确定性无抖动）
+      const seed = (wv.seed || 0) * 10;
+      for (let i = 0; i < 6; i++) {
+        const a = seed + i * 1.047 + Math.sin(state.time * 0.9 + i * 2.3) * 0.35;
+        const dist = wr * (0.45 + (i % 3) * 0.18);
+        const sx = Math.cos(a) * dist;
+        const sy = Math.sin(a) * dist - sp * 14;
+        const sr = 8 + (i % 3) * 3 + sp * 16;
+        const g2 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        g2.addColorStop(0, `rgba(112, 22, 34, ${0.34 * (1 - sp)})`);
+        g2.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 脉冲矩阵震荡波孤儿波绘制（本体被击坠后残留的波，2026-10-10 用户定稿）：
+  // 10-draw-world 对 02-core pmWaves 逐条调用——视觉与本体在世时完全同款（drawPmWaveFx）
+  function drawPmOrphanWave(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    drawPmWaveFx(o);
+    ctx.restore();
+  }
+
   function drawPulseMatrixBody(e) {
     const R = 44;   // 等边三角形外接半径 = 顶点距中心（外轮廓半径；外 B 尖略短于 R）
     const CHARGE = [0.45, 0.42, 0.39, 0.36, 0.33];   // 五档充能 ratio（短半轴/长半轴；测试3 页 P2 系列：闭合→全开）
@@ -1025,80 +1114,8 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // 暗红冲击波（2026-10-02 增强）：主波更粗带辉光 + 半径滞后的次级波纹，波动层次更汹涌
-    // （扩散目标半径 e.pmWaveR：普通波 132 / 自爆波 160，未释放过时兜底 pulseR）
-    if ((e.pmWaveT || 0) > 0) {
-      const waveR = e.pmWaveR || PULSE_MATRIX.pulseR;
-      const wp = 1 - e.pmWaveT / PULSE_MATRIX.pulseWaveDur;
-      const ease = 1 - Math.pow(1 - wp, 2);
-      const rr = 18 + ease * (waveR - 18);
-      ctx.save();
-      ctx.shadowColor = '#ff2038';
-      ctx.shadowBlur = 14;
-      ctx.globalAlpha = (1 - wp) * 0.9;
-      ctx.strokeStyle = '#a01828';
-      ctx.lineWidth = 18 * (1 - wp) + 6;   // 主波：显著增宽的波前
-      ctx.beginPath();
-      ctx.arc(0, 0, rr, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = (1 - wp) * 0.45;   // 次级波纹：半径略滞后、更细更淡
-      ctx.lineWidth = 5 * (1 - wp) + 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, Math.max(4, rr - 22), 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-    // 暗红雾气（2026-10-02）：震荡波扫过之处留下短命暗红雾——
-    //   ① 区域雾：雾区半径跟随震荡波扩散（波到哪雾铺到哪），波扩完后整体渐隐消散；
-    //   ② 波前浓雾环：贴着当前波半径的环形浓雾，随波推进；③ 数团烟尘自波圈内漂散上浮（不规则感）
-    if ((e.pmSmokeT || 0) > 0) {
-      const sp = 1 - e.pmSmokeT / PULSE_MATRIX.smokeDur;   // 0→1 消散进度
-      const elapsed = PULSE_MATRIX.smokeDur - e.pmSmokeT;
-      // 雾区半径 = 震荡波扩散曲线在 elapsed 时刻的半径（与冲击波同 ease），波扩完后固定在脉冲半径
-      const wprog = Math.min(1, elapsed / PULSE_MATRIX.pulseWaveDur);
-      const wr = 18 + (1 - Math.pow(1 - wprog, 2)) * ((e.pmWaveR || PULSE_MATRIX.pulseR) - 18);
-      // ① 区域雾（震荡过的地方整体蒙一层，随消散进度渐隐）
-      const fogA = 0.26 * (1 - sp);
-      if (fogA > 0.01) {
-        const fog = ctx.createRadialGradient(0, 0, wr * 0.2, 0, 0, wr);
-        fog.addColorStop(0, `rgba(112, 22, 34, ${fogA * 0.45})`);
-        fog.addColorStop(0.7, `rgba(112, 22, 34, ${fogA})`);
-        fog.addColorStop(1, 'rgba(112, 22, 34, 0)');
-        ctx.fillStyle = fog;
-        ctx.beginPath();
-        ctx.arc(0, 0, wr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // ② 波前浓雾环（波扩散期间贴波推进；波扩完后随余雾渐隐）
-      const ringA = 0.34 * Math.min(1 - sp, 1 - wprog * 0.6);
-      if (ringA > 0.01) {
-        const ring = ctx.createRadialGradient(0, 0, Math.max(0, wr - 20), 0, 0, wr + 12);
-        ring.addColorStop(0, 'rgba(112, 22, 34, 0)');
-        ring.addColorStop(0.6, `rgba(130, 26, 40, ${ringA})`);
-        ring.addColorStop(1, 'rgba(112, 22, 34, 0)');
-        ctx.fillStyle = ring;
-        ctx.beginPath();
-        ctx.arc(0, 0, wr + 12, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // ③ 漂散烟尘：方位由机体种子 + 低频 sin 摆动决定（逐帧确定性无抖动）
-      const seed = (e.wobble || 0) * 10;
-      for (let i = 0; i < 6; i++) {
-        const a = seed + i * 1.047 + Math.sin(state.time * 0.9 + i * 2.3) * 0.35;
-        const dist = wr * (0.45 + (i % 3) * 0.18);
-        const sx = Math.cos(a) * dist;
-        const sy = Math.sin(a) * dist - sp * 14;
-        const sr = 8 + (i % 3) * 3 + sp * 16;
-        const g2 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-        g2.addColorStop(0, `rgba(112, 22, 34, ${0.34 * (1 - sp)})`);
-        g2.addColorStop(1, 'rgba(112, 22, 34, 0)');
-        ctx.fillStyle = g2;
-        ctx.beginPath();
-        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    // 暗红冲击波 + 暗红雾气：与孤儿波共用绘制（drawPmWaveFx——10-draw-world 对被击坠残留波调用同款）
+    drawPmWaveFx({ waveT: e.pmWaveT, waveR: e.pmWaveR, smokeT: e.pmSmokeT, seed: e.wobble });
     // 三座菱形骑边拼合 + 本体自转：每座菱形四顶点 = 长轴两端 A（= 三角形顶点，两两重合）
     // + 外 B 尖（朝外）+ 内 B 尖（朝中心）；填充沿内 B → 外 B 渐变（暗红回调版：内红中玫外浅粉红）
     ctx.rotate(e.rot || 0);
@@ -2503,11 +2520,11 @@
       ctx.save();
       ctx.translate(b.x, b.y);
       if (b.u) {
-        // 虚幻圆柱弹：筒轴对准飞行方向（冰青顶面端盖朝向锁定目标）——下坠段保持竖直（rot 0 旧观感），
-        // 进入冲刺段后 0.25s smoothstep 平滑转向（仅视觉旋转，不改变运动轨迹；2026-10-04 用户反馈）；
-        // 目标角规范到 (−π, π]，保证从竖直姿态度转最短路径（向左冲刺转 −90° 而非绕行 270°）
-        let tgt = Math.atan2(b.uy, b.ux) + Math.PI / 2;
-        if (tgt > Math.PI) tgt -= Math.PI * 2;
+        // 虚幻圆柱弹：弹体头部（底缘收形暗带端，即最靠下的一端）朝向锁定目标（2026-10-04 用户反馈纠正：
+        // 是底端而非冰青顶面朝前）——下坠段保持竖直（rot 0，底端本来朝下），进入冲刺段后 0.25s smoothstep
+        // 平滑转向；仅视觉旋转，不改变运动轨迹。目标角规范到 (−π, π]，保证转最短路径
+        let tgt = Math.atan2(b.uy, b.ux) - Math.PI / 2;
+        if (tgt < -Math.PI) tgt += Math.PI * 2;
         const ka = clamp((b.t - (b.dropDur || 0)) / 0.25, 0, 1);
         const krot = ka * ka * (3 - 2 * ka);
         ctx.rotate(tgt * krot);
@@ -4441,7 +4458,7 @@
   export {
     bladePath, drawSlashFx, drawHarbingerBody, drawHanshuangBody,
     drawAnvilBody, drawPopianBody, drawPopianUBody, drawFashiMatrixBody,
-    drawFashiArrayBody, drawPulseMatrixBody, drawJiaoxiangBody, drawFashiA1Body,
+    drawFashiArrayBody, drawPulseMatrixBody, drawPmOrphanWave, drawJiaoxiangBody, drawFashiA1Body,
     drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody,
     paintSkull, paintSnowflake, paintBaolingBomb, paintUnrealBomb,
     drawBaolingBody, drawBaolingGBody, drawUnrealBody, drawBaolingWarn,

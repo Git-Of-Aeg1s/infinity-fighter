@@ -130,7 +130,7 @@
       escortTimer: 0,    // 仅 capital：周期召唤护航
       leaving: false,        // 停留结束后停止攻击、以进场速度前开走
       chargeT: 0,            // 仅 harbinger：红/灰充能循环计时
-      chargeWave: 0,         // 仅 harbinger：充能波序号（0=首波 1.5s红+3s灰；≥1=后续波 2s红+1s复位+1.5s灰）
+      chargeWave: 0,         // 仅 harbinger：充能波序号（0=首波 1.5~2.5s红（e.chargeFirstDur）+3s灰；≥1=后续波 2s红+1s复位+1.5s灰）
       firedThisCycle: false, // 仅 harbinger：本轮是否已召唤导弹
       missilesGuided: 0,     // 仅 harbinger：已导引导弹数（上限 5）
     };
@@ -1031,14 +1031,17 @@
     return makeEnemy('unreal', x != null ? x : rand(110, CANVAS_W - 110), -60, {});
   }
   
-  // 特殊3类：炮火先兆者（后排炮兵）—— 缓慢就位于更高处，充能召唤导弹，约 18s（最多 4 发）后以进场速度前开走
+  // 特殊3类：炮火先兆者（后排炮兵）—— 缓慢就位于更高处，充能召唤导弹，最多 5 发（末发召唤后）以进场速度前开走；
+  // 首波红相时长逐机随机 1.5~2.5s（opts.chargeFirstDur 可强制指定——诗篇 BOSS 双召唤 1.5s / 2.5s 各一）
   function spawnHarbinger(x, opts) {
     const o = opts || {};
-    makeEnemy('harbinger', x != null ? x : rand(120, CANVAS_W - 120), -50, {
+    const e = makeEnemy('harbinger', x != null ? x : rand(120, CANVAS_W - 120), -50, {
       hoverY: o.hoverY != null ? o.hoverY : rand(75, 110),
       holdTimer: HARBINGER.hold,
       staticX: o.staticX || false,
     });
+    e.chargeFirstDur = o.chargeFirstDur != null ? o.chargeFirstDur : rand(HARBINGER.chargeFirstMin, HARBINGER.chargeFirstMax);
+    return e;
   }
 
   // 特殊4类：法术阵列 —— 血红三菱法师母机：匀速下降（整体速度 = 先兆者基准 ×0.65），下降到屏幕上方 20%~30% 后

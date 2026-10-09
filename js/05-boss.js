@@ -8,7 +8,7 @@
   //
   import { CANVAS_H, CANVAS_W, dhSampleSolid } from './01-config-core.js';
   import { BULWARK, PLAYER_CFG, hasPilot } from './01-config-loadout.js';
-  import { JIAOXIANG } from './01-config-enemies.js';
+  import { HARBINGER, JIAOXIANG } from './01-config-enemies.js';
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
@@ -814,7 +814,7 @@
       life: opts.life != null ? opts.life : null,
       lifeFade: opts.lifeFade != null ? opts.lifeFade : null,   // 寿命到期后的消散期时长（消散动画用，见 08-entities）
       bossRound: opts.bossRound || false,   // BOSS 圆形弹幕：白核→主色渐变渲染（见 10-draw-world）
-      arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 1.5s（2026-10-09 用户定稿，见 10-draw-world arcTintColor）
+      arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 0.6s（2026-10-10 用户反馈 1.5s 太慢改快，见 10-draw-world arcTintColor）
       dhDark: opts.dhDark || false,   // 黑暗之手暗核弹：黑主体 + 边缘一小圈红（accent = color）渐变渲染（见 10-draw-world）
       tart: opts.tart || false,   // 蛋挞弹：水彩蛋挞贴图渲染（tartImg 烘焙贴图，见 10-draw-world；未加载回退渐变弹）
       tartSpin: opts.tartSpin,           // 巨大蛋挞自旋相位（黑暗之手技能3；有此字段 = 大蛋挞形态：判定半径即视觉半径、持续自旋）
@@ -2252,16 +2252,29 @@
     // 真我连携：与主技能并行的技能1（由 startBossSkill 概率挂载）
     if (e.link) runBossSkill(e, e.link, dt);
 
-    // 血量首次低于 70%：在屏幕最左侧召唤一个炮火先兆者（staticX 固定靠边、不巡航，避免被 BOSS 机体挡住）
+    // 血量首次低于 70%：召唤炮火先兆者（staticX 固定靠边、不巡航，避免被 BOSS 机体挡住）——
+    // 诗篇：左右同时各一位，首攻时间强制 1.5s / 2.5s 各一（随机分配左右）；非诗篇仅最左侧一位
     if (!e.summonHarbL && e.hp <= e.maxHp * 0.70) {
       e.summonHarbL = true;
-      spawnHarbinger(40, { staticX: true });
+      if (isPoem()) {
+        const leftFirst = Math.random() < 0.5;
+        spawnHarbinger(40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMin : HARBINGER.chargeFirstMax });
+        spawnHarbinger(CANVAS_W - 40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMax : HARBINGER.chargeFirstMin });
+      } else {
+        spawnHarbinger(40, { staticX: true });
+      }
     }
-    // 血量首次低于 40%：在屏幕最右侧再召唤一位（镜像 70% 召唤；入场下降约 1s 就位后，
-    // 行动逻辑与 70% 召唤的那台一致——staticX 自生成即生效，下降段无横向移动）
+    // 血量首次低于 40%：再召唤一位（镜像 70% 召唤；入场下降约 1s 就位后，行动逻辑与 70% 召唤的那台一致）——
+    // 诗篇：左右同时各一位，首攻时间强制 1.5s / 2.5s 各一（随机分配左右）；非诗篇仅最右侧一位
     if (!e.summonHarbR && e.hp <= e.maxHp * 0.40) {
       e.summonHarbR = true;
-      spawnHarbinger(CANVAS_W - 40, { staticX: true });
+      if (isPoem()) {
+        const leftFirst = Math.random() < 0.5;
+        spawnHarbinger(40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMin : HARBINGER.chargeFirstMax });
+        spawnHarbinger(CANVAS_W - 40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMax : HARBINGER.chargeFirstMin });
+      } else {
+        spawnHarbinger(CANVAS_W - 40, { staticX: true });
+      }
     }
 
     // 血量 70%：掉落一个暴走道具（一次性）

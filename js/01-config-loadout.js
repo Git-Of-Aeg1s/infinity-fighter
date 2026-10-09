@@ -1,11 +1,10 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(5 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(26 名) 13-encyclopedia(13 名) 14-main(5 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(26 名) 13-encyclopedia(13 名) 14-main(5 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
-  import { bossDmgMul } from './01-config-difficulty.js';
 
 
 
@@ -28,9 +27,9 @@
   };
 
   // 火力 5 级：直射窄弹道，射线数递增；Lv4 为 5 射线 + 半拍后于中间补射 2 发（视觉错开，不增宽）
-  // Lv5 即暴走：限时 6s，攻速同 Lv4、弹速大幅提升，十射线（5 个位置各双发）、伤害 ×2.4
+  // Lv5 即暴走：限时 4s（2026-10-10 用户定稿），攻速/弹速 +50%（interval 0.08 / 弹速 ×2.4），十射线（5 个位置各双发）、伤害 ×2.4
   // dmgMul：每发子弹伤害倍率（乘 PLAYER_CFG.bulletDamage）。按各档目标 DPS 反推配平——
-  //   攻击间隔 / 弹幕构成保持节奏不变，靠“单发更重”补足 DPS：主炮 DPS ≈ Lv1 420 / Lv2 560 / Lv3 720 / Lv4 960 / Lv5 2400。
+  //   攻击间隔 / 弹幕构成保持节奏不变，靠“单发更重”补足 DPS：主炮 DPS ≈ Lv1 420 / Lv2 560 / Lv3 720 / Lv4 960 / Lv5 3000（2026-10-10 射速 +50% 由 2400 上调）。
   //   （2026-10-02 用户定稿：主炮取消穿透，DPS 上调 + 小怪特化增伤补偿，见 CHAOS_SMALL_DMG_MUL）
   const WEAPON_LEVELS = [
     null,
@@ -38,9 +37,14 @@
     { name: 'Lv2', interval: 0.19, dmgMul: 2.2167 },   // 4 射线；单发 ≈26.60
     { name: 'Lv3', interval: 0.14, dmgMul: 1.68 },     // 5 射线，射速正常；单发 20.16
     { name: 'Lv4', interval: 0.12, dmgMul: 1.3714 },   // 5 射线 + 半拍补射 2 发；单发 ≈16.46
-    { name: 'Lv5', interval: 0.12 },                   // 暴走：限时 6s，攻速同 Lv4，弹速提升，伤害走 BERSERK.dmgMul
+    { name: 'Lv5', interval: 0.12 },                   // 暴走：限时 4s，实际射速走 BERSERK.interval（0.08），弹速提升，伤害走 BERSERK.dmgMul
   ];
-  const BERSERK = { interval: 0.12, dmgMul: 2.4, rMul: 1.4, duration: 6, spdMul: 1.6 };
+  // 2026-10-10 用户定稿：时长 6s→4s；射速 +50%（interval 0.12→0.08）；弹速 +50%（spdMul 1.6→2.4）；
+  // 可与斗志昂扬叠加（昂扬 ×2 攻速/弹速照常作用：主炮冷却 tick 见 07-player，在飞弹速见 08-entities）
+  // subRateMul / subSpdMul：暴走全局修正（2026-10-10 用户定稿）——僚机与副武器在各自 Lv5 配置之上
+  //   射速 +50%（interval ÷subRateMul）、弹速 +50%（×subSpdMul）；
+  // subDmgMul：辛国栋之怒 / 群星之杀（斩击）改走伤害 +50%，射速与弹速不再增加
+  const BERSERK = { interval: 0.08, dmgMul: 2.4, rMul: 1.4, duration: 4, spdMul: 2.4, subRateMul: 1.5, subSpdMul: 1.5, subDmgMul: 1.5 };
   const SHIELD_DURATION = 6;   // 量子护盾持续时间
 
   // 战机注册表：后续新机在此追加，选机页自动生成卡片
@@ -63,6 +67,7 @@
     starslayer: {
       id: 'starslayer',
       name: '群星之杀',
+      starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
       desc: '空间斩击，高额爆发',
       startWeapon: 1,
       bulletColor: '#eaf2ff',   // 淡白锁定光束 / 斩击主色
@@ -98,12 +103,12 @@
   //   第一排：群星守望（默认，无脑最适合新人）/ 铜皮夏勇 / 祈星 / 洄
   //   第二排：七日澜心 / 最终壁垒 / 天枢圣卫 / 澄月；第三排：炽心
   const ARMORS = {
-    watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff',
+    watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
       default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化）
       clearChance: { 1: 0.05, 2: 0.08, 3: 0.15, 4: 0.50 },
       clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
       brief: '击毁敌机时概率消除弹幕',
-      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）' },
+      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件：<br>群星之杀 / 群星守望 / 群星允诺）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
     tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
       maxHpAdd: 30, brief: '夏勇皮糙肉厚战机血量提升',
       desc: '血量提高 30<br>（100 → 130）' },
@@ -148,6 +153,14 @@
   // 装甲效果读取（键缺省安全回退；战斗逻辑经这些函数取值，不直接读 currentArmor 字段）
   function armorMaxHp() { return PLAYER_CFG.maxHp + (currentArmor.maxHpAdd || 0); }
 
+  // 群星系列套装计数（2026-10-10 用户定稿）：当前装备中带 starsSeries 标记的件数——
+  // 现役三件 = 机体群星之杀 / 装甲群星守望 / 僚机群星允诺；计数 ≥3（即全套齐备）时
+  // 群星守望获得「暴走击坠清弹」额外效果（触发点见 06-enemy killEnemy）
+  function starsSeriesCount() {
+    return [currentPlane, currentArmor, currentPilotMain, currentPilotSub, currentWingman, currentSubWeapon]
+      .filter(x => x && x.starsSeries).length;
+  }
+
   // 装甲技能（量表型，按 F 触发；后续新技能在此注册，逻辑见 07-player triggerArmorSkill）：
   //   label 计量表提示 / color 量表与护盾颜色 / dur 技能持续（s）/ clearR 结束消弹半径（px）
   //   gaugeCrystalScore 填满量表所需的水晶分数——量表按收集到的水晶【得分】等比填充：
@@ -185,7 +198,7 @@
       2: { interval: 1.20, dmg: 540, slashR: 50 },               // 540/1.20 = 450（判定：115 × 35）
       3: { interval: 1.10, dmg: 660, slashR: 54, halfLen: 123, halfW: 37 },   // 660/1.10 = 600（判定显式给定）
       4: { interval: 1.00, dmg: 880, slashR: 58, halfLen: 130, halfW: 39 },   // 880/1.00 = 880（判定显式给定）
-      5: { interval: 0.90, dmg: 660, slashR: 64, slashes: 3, halfLen: 144, halfW: 43 },   // 3×660/0.90 = 2200（判定显式给定）
+      5: { interval: 0.90, dmg: 660, slashR: 64, slashes: 3, halfLen: 144, halfW: 43 },   // 3×660/0.90 = 2200（判定显式给定）；暴走全局：伤害+50%（990/击）→ 3300，连斩节奏不变
     },
   };
 
@@ -198,11 +211,12 @@
     },
     stars: {
       id: 'stars', name: '群星允诺',
+      starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
       desc: '多发散射，火力覆盖',
       barTail: '#ffbf47', barMid: '#ffd9a0', barHead: '#8a6bff',   // 尾橙黄 → 头蓝紫
       flame: '#9b7bff',
       // dmgMulByLevel：群星允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
-      //   双僚机合计 DPS = Lv1 140 / Lv2 170 / Lv3 200 / Lv4 230 / Lv5 550。
+      //   双僚机合计 DPS = Lv1 140 / Lv2 170 / Lv3 200 / Lv4 230 / Lv5 550（Lv5 另有暴走全局射速 +50% 修正 → 实际 825）。
       dmgMulByLevel: { 1: 2.6542, 2: 2.0683, 3: 1.75, 4: 1.3964, 5: 1.0313 },
       offsetX: 46, offsetY: 16,    // 后侧站位（沿用通用参数值）
       weapon: { kind: 'volley' },  // 对称双 volley 模型（走 WINGMAN_LEVELS + dmgMulByLevel）
@@ -215,7 +229,7 @@
       offsetX: 48, offsetY: -14,   // 前侧站位（外移加大横向距离，本体+盾整体往右上移动；微微下移 -20 → -14）
       // 防御辅助型：前方连体白盾消解非导弹直射弹（详见 BULWARK 与挡弹系统）
       // 武器：一侧扇形错序发射（最前方先发）——0°（竖直向上）→90°（水平）均布，另有一发 105°（水平朝下 15°）压轴
-      //   双僚机合计 DPS = Lv1 160 / Lv2 200 / Lv3 240 / Lv4 300 / Lv5 444（弹幕扩容后单发伤害按比例重配平，DPS 不变）
+      //   双僚机合计 DPS = Lv1 160 / Lv2 200 / Lv3 240 / Lv4 300 / Lv5 444（弹幕扩容后单发伤害按比例重配平，DPS 不变；Lv5 另有暴走全局射速 +50% 修正 → 实际 666）
       weapon: {
         kind: 'fan',
         spreadMax: 105,          // 相对竖直向上、朝外侧的最大夹角（度）：最外侧一发为 90°+15°=105°（水平朝下 15°）
@@ -234,7 +248,7 @@
           2: { count: 7, interval: 0.84, dmg: 24.0, speedMul: 1.17, flameMul: 0.5 },      // 0~90° 均布 6 发（相邻夹角 90/5=18°）+ 105° 压轴
           3: { count: 8, interval: 0.72, dmg: 21.6, speedMul: 1.17, flameMul: 0.65 },     // 0~90° 均布 7 发（相邻夹角 90/6=15°）+ 105° 压轴
           4: { count: 10, interval: 0.60, dmg: 18.0, speedMul: 1.17, flameMul: 0.8 },     // 0~90° 均布 9 发（相邻夹角 90/8=11.25°）+ 105° 压轴
-          5: { count: 10, interval: 0.60, dmg: 26.667, speedMul: 2.5, flame: true, flameMul: 1 },   // 暴走：与 Lv4 同为 10 发（不再 +1 发）、弹速×2.5、尾焰最强(1.0)、间隔同 Lv4
+          5: { count: 10, interval: 0.60, dmg: 26.667, speedMul: 2.5, flame: true, flameMul: 1 },   // 暴走：与 Lv4 同为 10 发（不再 +1 发）、弹速×2.5、尾焰最强(1.0)、间隔同 Lv4；全局：射速+50%（实际 0.40）、弹速再+50%
         },
       },
     },
@@ -269,7 +283,7 @@
           2: { count: 2, interval: 1.0, dmg: 75 },
           3: { count: 2, interval: 0.86, dmg: 77.4 },
           4: { count: 2, interval: 0.71, dmg: 78.1 },
-          5: { count: 4, interval: 0.5, dmg: 55 },   // 暴走：4 条激光（2 常规 ±16 + 2 外移 ±32）
+          5: { count: 4, interval: 0.5, dmg: 55 },   // 暴走：4 条激光（2 常规 ±16 + 2 外移 ±32）；全局：射速+50%（实际 0.33）、弹速+50% → DPS 660
         },
       },
     },
@@ -284,7 +298,7 @@
           2: { interval: 3.0, dps: 200 },
           3: { interval: 2.7, dps: 220 },
           4: { interval: 2.5, dps: 240 },
-          5: { interval: 1.3, dps: 460 },
+          5: { interval: 1.3, dps: 460 },   // 暴走全局：射速+50%（实际 0.87）、弹速+50% → DPS 690
         },
       },
     },
@@ -306,7 +320,7 @@
           2: { count: 7, interval: 2.1, dmg: 63 },
           3: { count: 8, interval: 1.9, dmg: 57 },
           4: { count: 9, interval: 1.7, dmg: 52.9 },
-          5: { count: 9, interval: 1.2, dmg: 74.7, pierceChance: 0.5 },   // 暴走：射速/伤害大增 + 50% 穿透一次
+          5: { count: 9, interval: 1.2, dmg: 74.7, pierceChance: 0.5 },   // 暴走：射速/伤害大增 + 50% 穿透一次；全局：射速+50%（实际 0.8）、弹速×1.4×1.5=×2.1 → DPS 840
         },
       },
     },
@@ -323,7 +337,7 @@
           2: { interval: 3.5, dps: 220, r: 55 },
           3: { interval: 3.25, dps: 240, r: 60 },
           4: { interval: 3.0, dps: 260, r: 64 },
-          5: { interval: 2.25, dps: 520, r: 80 },   // 暴走：大幅强化
+          5: { interval: 2.25, dps: 520, r: 80 },   // 暴走：大幅强化；全局：灼烧伤害+50%（实际 780），射速 / 弹速 / 半径不变
         },
       },
     },
@@ -469,8 +483,9 @@
     },
     mei: {
       id: 'mei', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 meiGlyphSvg：#FFC0CB → 白）
-      // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS）；
-      // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×3）；
+      // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS，
+      // 2026-10-10 用户定稿：击杀 BOSS 不再加计数）；
+      // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×2）；
       // elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
       // 镰刀清扫（充满自动召唤，无需按键）：刀柄贴身绕转、刀刃扫至外圈——
       // scytheGripR 刀柄轨迹半径（刀柄绕机体公转的贴身距离，起扫时刀柄位于 scytheStart 方位 = 正左）/
@@ -484,15 +499,15 @@
       // （见 10-draw-world drawMeiScythes 锚点注释）：杆轴水平朝外、握把贴机体、刃尖达 scytheR 外圈，
       // 尺寸由锚点决定；素材 1199×1754 竖构图）/
       // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）——每个敌人被刀刃扫过时受击一次
-      counterMax: 122, killGain: { 1: 1, 2: 3, 3: 8, 4: 20, 5: 122 },
-      bossKillMul: 3, eliteKillMul: 4, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],
+      counterMax: 122, killGain: { 1: 1, 2: 3, 3: 6, 4: 18, 5: 0 },   // 3/4 类 6/18、5 类 BOSS 归零（2026-10-10 用户定稿）
+      bossKillMul: 2, eliteKillMul: 3, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],   // BOSS 战击杀 ×2 / 四精英 ×3（2026-10-10 用户定稿，原 ×3/×4+30 废止）
       bossTickGain: 3,
       scytheR: 250, scytheGripR: 34, scytheDur: 0.55, scytheWidth: 220, scytheStart: Math.PI,
       scytheTilt: 0.75,
       scytheWind: 0.3, scytheWindAng: 0.35,
       scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
       brief: '击杀积攒计数，满时召唤镰刀斩击一圈',
-      desc: '缎带与镰刀的看板娘。左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4/5</b> 类敌人<br>分别增加 <b>1/3/8/20/122</b> 点；<br>BOSS 战期间击杀计数 <b>×3</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×4</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
+      desc: '缎带与镰刀的看板娘。左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
       id: 'dingdongji', name: '叮咚鸡', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
@@ -530,7 +545,7 @@
     // 与双白芒绕框（CSS .pilot-diamond.special-pilot，refreshLoadout 切换）
     tianshiLovely: {
       id: 'tianshiLovely', name: '天使璃', glyph: '✧', color: '#ffb7d5', slot: 'main', special: true,   // ✧ 四芒星（天使辉光）
-      brief: '无限生命',
+      brief: '无限重生',
       desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
   };
@@ -619,7 +634,7 @@
     2: { volleys: [3, 2], spread: 10, interval: 0.62, flameMul: 0.5 },    // Lv2：3+2 发
     3: { volleys: [3, 3], spread: 10, interval: 0.52, flameMul: 0.65 },   // Lv3：3+3 发
     4: { volleys: [3, 4], spread: 10, interval: 0.40, flameMul: 0.8 },    // Lv4：3+4 发（第二轮 4 发、6°）、恢复正常射速
-    5: { volleys: [5, 5], spread: 8, interval: 0.34, flameMul: 1 },       // 暴走：5+5 发、发光，伤害走 ×2；尾焰最强(1.0)
+    5: { volleys: [5, 5], spread: 8, interval: 0.34, flameMul: 1 },       // 暴走：5+5 发、发光，伤害走 ×2；尾焰最强(1.0)；全局：射速+50%（实际 0.23）
   };
 
   // 僚机单轮弹幕夹角(度)按“该轮发数”取值：2发20° / 3发10° / 4发6° / 5发8°（发数越多相邻夹角越小、弹幕更聚拢）
@@ -633,7 +648,7 @@
   export {
     PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     PLANES, currentPlane, setPlane, setWingman,
-    ARMORS, currentArmor, setArmor, armorMaxHp,
+    ARMORS, currentArmor, setArmor, armorMaxHp, starsSeriesCount,
     ARMOR_SKILLS, STARSLAYER, WINGMEN_CFG, currentWingman,
     WINGMAN, SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain,
