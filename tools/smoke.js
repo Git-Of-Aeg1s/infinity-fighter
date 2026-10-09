@@ -13,13 +13,16 @@
  * 用法：node tools/smoke.js    （npm run smoke）
  * 退出码：0 = 通过；1 = 失败
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const jsDir = join(root, 'js');
-const files = readdirSync(jsDir).filter(f => /^\d{2}-.*\.js$/.test(f)).sort();
+const files = [...readFileSync(join(root, 'index.html'), 'utf8').matchAll(
+  /<script\b[^>]*type="module"[^>]*src="[^"]*?js\/([^"\/]+\.js)"[^>]*>\s*<\/script>/g
+)].map(m => m[1]);
+if (!files.length) throw new Error('smoke: index.html 中未找到 module script 列表');   // 加载序唯一权威 = index.html（01x 拆分后字典序 ≠ 期望序，《并行开发改造设计.md》§5.2）
 const source = Object.fromEntries(files.map(f => [f, readFileSync(join(jsDir, f), 'utf8')]));
 const isModules = /type="module"/.test(readFileSync(join(root, 'index.html'), 'utf8'));
 // index.html 中静态存在的元素 id（getElementById 的真实性依据）

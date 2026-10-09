@@ -23,7 +23,7 @@
  * 用法：node tools/check-names.js    （npm run check）
  * 退出码：0 = 通过；1 = 存在问题
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,9 +40,12 @@ const EXPORT_INLINE_RE = /^ {2}export\s*\{([^}]*)\}\s*;/;
 const EXPORT_END_RE = /^ {2}\};$/;
 
 function listScriptFiles() {
-  return readdirSync(jsDir)
-    .filter(f => /^\d{2}-.*\.js$/.test(f))
-    .sort();
+  // 模块清单与加载序的唯一权威 = index.html 的 <script type="module" src="./js/NN-*.js"> 列表
+  //（01-config 拆分为 01x 域群后，文件名字典序 ≠ 期望加载序——《并行开发改造设计.md》§5.2）
+  const html = readFileSync(join(root, 'index.html'), 'utf8');
+  const out = [...html.matchAll(/<script\b[^>]*type="module"[^>]*src="[^"]*?js\/([^"\/]+\.js)"[^>]*>\s*<\/script>/g)].map(m => m[1]);
+  if (!out.length) throw new Error('check-names: index.html 中未找到 module script 列表');
+  return out;
 }
 
 // 字符/模板感知的注释与字符串内容剥离（模板字面量保留：${} 内有真实引用）
