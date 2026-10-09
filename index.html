@@ -378,6 +378,8 @@
   <!-- 游戏脚本：ES modules，显式 import/export 声明依赖；按序号加载保持执行顺序（01 常量 → 14 启动入口），
        跨模块可变绑定（ctx / currentPlane / currentWingman）的写操作必须经由所有者模块暴露的 setter -->
   <script type="module" src="./js/01-config-core.js"></script>
+  <script type="module" src="./js/01-config-loadout.js"></script>
+  <script type="module" src="./js/01-config-enemies.js"></script>
   <script type="module" src="./js/01-config.js"></script>
   <script type="module" src="./js/02-achievements.js"></script>
   <script type="module" src="./js/02-core.js"></script>
