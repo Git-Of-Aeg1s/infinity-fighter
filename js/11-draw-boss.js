@@ -6,7 +6,7 @@
   //   state.{stormVortex}
   //
   import { CANVAS_H, CANVAS_W, ENERGY_ORB, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, tartUltraImg, xinguodongImg, xiayongImg } from './01-config-core.js';
-  import { BOSSES, BOSS_BULLET, BOSS_WARN, DARKHAND, STORM, STORM2, STORM2_SHIP } from './01-config.js';
+  import { BOSSES, BOSS_BULLET, BOSS_WARN, DARKHAND, STORM, STORM2, STORM2_SHIP } from './01-config-boss.js';
   import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 

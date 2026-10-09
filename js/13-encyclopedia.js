@@ -6,7 +6,8 @@
   import { CANVAS_H, CANVAS_W, hanxixianImg, puxuefengImg, xiayongImg, xinguodongImg } from './01-config-core.js';
   import { ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, STARSLAYER, SUB_WEAPONS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentPlane } from './01-config-loadout.js';
   import { DOUZHI, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, POPIAN, VARIANTS, enemyGrade } from './01-config-enemies.js';
-  import { BOSS, DARKHAND, DIFFICULTIES, REWARD_DRONES, REWARD_ITEMS, STORM, STORM2, currentDifficulty, diffMods, eliteHpOf, isPoem, poemHpOf, resolveBossHp, rewardDroneChance, setDifficulty } from './01-config.js';
+  import { BOSS, DARKHAND, STORM, STORM2 } from './01-config-boss.js';
+  import { DIFFICULTIES, REWARD_DRONES, REWARD_ITEMS, currentDifficulty, diffMods, eliteHpOf, isPoem, poemHpOf, resolveBossHp, rewardDroneChance, setDifficulty } from './01-config.js';
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';

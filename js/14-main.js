@@ -8,7 +8,8 @@
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane } from './01-config-loadout.js';
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
-  import { BOSS_MINION_WAVE, BOSS_SEQUENCE, isPoem, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
+  import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
+  import { isPoem, ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, WAVE_POEM, currentDifficulty, diffMods, pickRewardDroneType, rewardDroneChance } from './01-config.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge } from './04-spawn.js';
