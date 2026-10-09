@@ -1,7 +1,7 @@
 // 01-config-core：画布 / 演示屏坐标 / 星空 / 全部图片素材、加载器与贴图处理（配置域群叶子）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09-draw-ships(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
+  // 被依赖：01-config-loadout(6 名) 01-config-enemies(1 名) 01-config-difficulty(1 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09-draw-ships(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
 
