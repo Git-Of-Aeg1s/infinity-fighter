@@ -14,7 +14,7 @@
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { paintShip, paintWingman, paintWingmanBulwark } from './09-draw-ships.js';
+  import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
   import { openEncyclopedia } from './13-encyclopedia.js';
 
 

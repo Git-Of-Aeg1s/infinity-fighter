@@ -1,7 +1,7 @@
 // 01-config-spawn：刷怪分段 / 压力权重 / 掉落率 / 奖励道具池 / 水晶体系（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(23 名) 07-player(1 名) 08-entities(2 名) 09-draw-ships(2 名) 13-encyclopedia(3 名) 14-main(10 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(23 名) 07-player(1 名) 08-entities(2 名) 09c-draw-crystal(2 名) 13-encyclopedia(3 名) 14-main(10 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { hasPilot } from './01-config-loadout.js';

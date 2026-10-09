@@ -10,7 +10,9 @@
   import { currentDifficulty, isPoem, isRealme } from './01-config-difficulty.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
   import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDagouMissiles, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawFrostZones, drawHanshuangBody, drawHarbingerBody, drawItemPickFx, drawJiaoxiangBody, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawStarslayerBeam, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawWingmen, drawYu4Body, getCrystal3DSprite } from './09-draw-ships.js';
+  import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
+  import { getCrystal3DSprite } from './09c-draw-crystal.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
 

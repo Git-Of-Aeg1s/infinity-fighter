@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(37 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(94 名) 13-encyclopedia(18 名) 14-main(37 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(37 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(94 名) 13-encyclopedia(18 名) 14-main(37 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //

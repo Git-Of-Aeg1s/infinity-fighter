@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(1 名) 02-core(1 名) 04-spawn(31 名) 05-boss(1 名) 06-enemy(32 名) 07-player(2 名) 08-entities(12 名) 09-draw-ships(17 名) 10-draw-world(6 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(31 名) 05-boss(1 名) 06-enemy(32 名) 07-player(2 名) 08-entities(12 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';

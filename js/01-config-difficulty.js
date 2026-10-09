@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-loadout(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(9 名) 05-boss(7 名) 06-enemy(10 名) 07-player(4 名) 08-entities(7 名) 10-draw-world(3 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-loadout(1 名) 01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(9 名) 05-boss(7 名) 06-enemy(10 名) 07-player(4 名) 08-entities(7 名) 10-draw-world(3 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg } from './01-config-core.js';

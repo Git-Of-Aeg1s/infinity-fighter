@@ -12,7 +12,8 @@
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, overlay, setCtx, state } from './02-core.js';
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
-  import { paintShip, paintWingman, paintWingmanBulwark, paintWarGhostCandidate } from './09-draw-ships.js';
+  import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
+  import { paintWarGhostCandidate } from './09b-draw-enemies.js';
   import { drawEnemy, drawOneEBullet } from './10-draw-world.js';
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';

@@ -1,11 +1,11 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(5 名) 07-player(25 名) 08-entities(8 名) 09-draw-ships(6 名) 10-draw-world(3 名) 12-ui(26 名) 13-encyclopedia(13 名) 14-main(5 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(5 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(26 名) 13-encyclopedia(13 名) 14-main(5 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
-  import { bossDmgMul } from './01-config.js';
+  import { bossDmgMul } from './01-config-difficulty.js';
 
 
 
