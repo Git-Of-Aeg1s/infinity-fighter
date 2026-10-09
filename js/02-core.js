@@ -8,7 +8,7 @@
   import { CANVAS_H, CANVAS_W, STAR_COUNT } from './01-config-core.js';
   import { PILOTS, PLAYER_CFG, currentArmor } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
-  import { diffMods, invulnDiffMul } from './01-config.js';
+  import { diffMods, invulnDiffMul } from './01-config-difficulty.js';
 
 
   // ---------- DOM ----------

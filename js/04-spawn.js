@@ -9,7 +9,8 @@
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
   import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_FORTRESS, UNREAL, VARIANTS, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
-  import { ELITE_REVIVE, eliteHpOf, isPoem, isRealme, poemHpOf, PRESSURE_W, TEST_HP, WAVE_POEM, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config.js';
+  import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config-difficulty.js';
+  import { ELITE_REVIVE, PRESSURE_W } from './01-config.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';

@@ -24,7 +24,8 @@
   import { ARMOR_SKILLS, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, specialGearActive } from './01-config-loadout.js';
   import { ENEMY_CLASS } from './01-config-enemies.js';
   import { FIRST_ROUND_BOSSES } from './01-config-boss.js';
-  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, isPoem, isRealme } from './01-config.js';
+  import { isPoem, isRealme } from './01-config-difficulty.js';
+  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED } from './01-config.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
 
   // ─── 本局成就进度域（resetAchievements 随局重置）───

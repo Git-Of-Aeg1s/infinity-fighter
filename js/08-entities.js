@@ -9,7 +9,8 @@
   import { ARMOR_SKILLS, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
   import { BAOLING, BAOLING_G, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, UNREAL, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
-  import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL, WAVE_POEM, diffMods, enemyDmgMul, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { WAVE_POEM, diffMods, enemyDmgMul, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';

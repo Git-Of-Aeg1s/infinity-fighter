@@ -9,7 +9,8 @@
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
   import { ENEMY_CLASS, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
-  import { REWARD_ITEMS, diffMods, invulnDiffMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { diffMods, invulnDiffMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { REWARD_ITEMS } from './01-config.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
