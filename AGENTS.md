@@ -25,8 +25,9 @@
 ## 验证命令（本机 npm 被执行策略拦截，用 node 直跑）
 
 ```
-node tools/check-names.js   # 顶层命名 / import-export 契约静态检查（必过）
-node tools/smoke.js         # 无头跑帧冒烟测试（必过；改动移动/碰撞逻辑后建议加场景）
+node tools/check-names.js     # 顶层命名 / import-export 契约静态检查（必过）
+node tools/sync-contract.js   # 头部「被依赖」契约行自动重写（改 import/导出后先跑它，再跑 check-names 复验）
+node tools/smoke.js           # 无头跑帧冒烟测试（必过；改动移动/碰撞逻辑后建议加场景）
 ```
 
 ## ⚠️ 铁律：先认领后动手（并行任务看板）
@@ -35,15 +36,15 @@ node tools/smoke.js         # 无头跑帧冒烟测试（必过；改动移动/�
 
 ## 数值单一来源
 
-- **怪物数值基准**：桌面《怪物属性总表.xlsx》（本窗口维护）——表内数值 = 当前代码权威值；改代码前先读表，改表后同步代码。**本机确切路径：`D:\Personal\Desktop\怪物属性总表.xlsx`**（2026-10-04 用户确认）。⚠️ 本机桌面被重定向到 `D:\Personal\Desktop`，**不在** `C:\Users\Administrator\Desktop`——按默认用户目录找不到 ≠ 本机无表，勿再误判。**该表只存在于两台工作机中的某一台**：若确认两台工作机桌面上都没有，才按用户口述数值实装并注明待同步，**禁止全盘搜索找表**
+- **怪物数值基准**：桌面《怪物属性总表.xlsx》（本窗口维护）——表内数值 = 当前代码权威值；改代码前先读表，改表后同步代码。**改怪物/精英数值认准 `js/01-config-enemies.js`，BOSS 数值认准 `js/01-config-boss.js`，难度修正认准 `js/01-config-difficulty.js`**。**本机确切路径：`D:\Personal\Desktop\怪物属性总表.xlsx`**（2026-10-04 用户确认）。⚠️ 本机桌面被重定向到 `D:\Personal\Desktop`，**不在** `C:\Users\Administrator\Desktop`——按默认用户目录找不到 ≠ 本机无表，勿再误判。**该表只存在于两台工作机中的某一台**：若确认两台工作机桌面上都没有，才按用户口述数值实装并注明待同步，**禁止全盘搜索找表**
 - **⚠️ 写表铁律：禁止硬编码列号。** 每次写表前必须先读第 2 行表头，建立「单位名 → 列号」映射再写入（历史事故：列号错位一格，A1/破片/矩阵的改动全部写进了相邻列，斗志昂扬被污染，且谎报已同步）
 - **诗篇难度**：所有诗篇特殊修正必须登记《诗篇难度修正.md》（仓库根目录），实装时按该文档落地 `DIFFICULTIES.poem.mods`
 - 玩法机制描述以 `13-encyclopedia.js` 图鉴文案与 README 为准，改机制时同步
 
 ## 模块契约
 
-- `js/` 为 ES modules，文件头含契约注释；**改函数签名/新增顶层名必须同步契约注释**（check-names 强制校验）
-- 模块按序号加载（01-config → 14-main），01-config 是叶子模块（只出不进）
+- `js/` 为 ES modules，文件头含契约注释；**改函数签名/新增顶层名后跑 `node tools/sync-contract.js` 自动重写头部「被依赖」行，再跑 check-names 复验**（check-names 强制校验 import/export 与代码一致性）
+- 模块按 index.html 的 `<script type="module">` 列表顺序加载（工具以该列表为加载序唯一权威）；**配置域群 01-config-{core,loadout,enemies,boss,difficulty,spawn,achievements} 内部单向依赖（按此序），对外只出不进**
 - 共享状态（state/bossFlow/levelFlow）新增属性先在 02-core 归域声明
 - 编队标准名称以 `13-encyclopedia.js` 波次表为准（1类小队 / 22 / 1类长队 / 232232 / 双侧斜扫 / 2*7 / 紫自爆流 / 232111 / 32223），勿再使用旧称（V字俯冲/对角奇袭/双炮艇压阵等）
 - **音频解锁纪律**（2026-10-09 用户定稿：未解锁时一律不响）：浏览器禁止无用户手势自动播放，`03-audio.js` 所有有声媒体（BGM/警报/未来新音效）统一受 `bgmUnlocked` 解锁闩把守（首次 keydown/pointerdown/touchstart 解锁；手柄/AI 操控不产生这三类事件故不解锁）。**新增任何音效必须接入该闩，禁止裸调 `play()`**——历史 bug：警报未接闩，不点击页面（AI/手柄操控）时警报独响、BGM 不响，门槛不一致

@@ -1,7 +1,7 @@
 // 07-player：玩家武器 / 僚机逻辑 / 受伤与无敌 / 拾取 / 高能爆弹 / 清弹
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(5 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(18 名)
+  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(12 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(18 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaFx, xinFuryRing, honghongT, itemPickFx}
   //

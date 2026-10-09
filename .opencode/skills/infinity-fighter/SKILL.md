@@ -19,16 +19,22 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 4. **动手改任何 `js/`、`index.html`、`tools/` 前，先在《并行任务认领.md》登记认领**（先登记者优先，收工三连全绿后注销）
 5. 要改哪个 `js/` 模块，先读该文件**头部模块契约注释**（被依赖名单 + 导出名清单）
 6. `错误与待优化.md` —— 开工前扫一遍已知问题/待优化清单，避免踩坑、避免重复登记
-7. `tools/check-names.js` / `tools/smoke.js` / `tools/check-syntax.js` 开头注释——了解校验覆盖范围（改 js 收工跑三连）
+7. `tools/sync-contract.js` / `tools/check-names.js` / `tools/smoke.js` / `tools/check-syntax.js` 开头注释——了解校验覆盖范围（改 js 收工先 sync-contract 再三连）
 
 ## 3. 架构地图
 
-模块按序号加载，**01-config 是叶子模块（只出不进）**。每个文件头部有契约注释：导出名清单 + 「被依赖：XX(N 名)」；`check-names.js` 静态强制校验 import/export 与清单一致。
+模块按 index.html 的 `<script type="module">` 列表顺序加载（工具以该列表为加载序唯一权威），**配置域群 01-config-{core,loadout,enemies,boss,difficulty,spawn,achievements} 内部单向依赖（按此序）、对外只出不进**。每个文件头部有契约注释：「被依赖：XX(N 名)」名单（`sync-contract.js` 自动重写）；`check-names.js` 静态强制校验 import/export 与代码一致性。
 
 | 模块 | 职责 |
 |------|------|
-| `01-config` | 全局配置注册表：难度 `DIFFICULTIES`（虚象/具象/真我/诗篇）、战机/僚机/装甲/驾驶员/副武器、BOSS/敌人注册表、怪物等级表 `ENEMY_GRADES`/`enemyGrade()`、奖励道具池 `REWARD_ITEMS`、刷怪压力权重、`diffMods()` 难度修正取值 |
-| `02-achievements` | 成就系统（注册表在 01-config） |
+| `01-config-core` | 配置域群叶子：画布尺寸 / 演示屏坐标 / 星空 / 全部图片素材、加载器与贴图处理 |
+| `01-config-loadout` | 玩家装备四件套（战机/装甲/驾驶员/僚机注册表与当前选择）+ 武器等级/暴走/爆弹参数 |
+| `01-config-enemies` | 敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系 / 怪物等级表） |
+| `01-config-boss` | BOSS 注册表与序列（旧日之歌 / 暴风之眼 / 风暴编织者 / 黑暗之手） |
+| `01-config-difficulty` | 难度系统 `DIFFICULTIES`（虚象/具象/真我/诗篇）+ 诗篇血量表 `POEM_HP` + `diffMods()`/血量取值入口 |
+| `01-config-spawn` | 刷怪分段 / 场面压力权重 / 掉落率 / 奖励道具池 `REWARD_ITEMS` / 水晶体系 |
+| `01-config-achievements` | 成就注册表与档位 |
+| `02-achievements` | 成就系统（注册表在 01-config-achievements） |
 | `02-core` | 画布与 DOM 引用、**共享状态 `state` / `bossFlow` / `levelFlow`**、实体数组（enemies/missiles/…）、工具函数、星空背景、**手柄共享状态 `gamepad` + `pollGamepad()` 每帧轮询** |
 | `03-audio` | BGM 切换 / BOSS 警报音效 / 全局静音；**音频解锁闩 `bgmUnlocked`**（首次 keydown/pointerdown/touchstart 解锁）——本模块所有有声媒体起播/续播前必须检查，**新增音效禁止裸 `play()`**（未解锁一律不响，2026-10-09 用户定稿，详见 AGENTS.md 模块契约） |
 | `04-spawn` | 刷怪：场面压力系统、波次编队（标准名见下）、1/2/3/4 类出怪入口、特殊生成（战争幽灵/精英召唤 `spawnEliteMinion`——4S 精英永驻场、离场由血量窗口驱动；`ELITES.dwell:30` 为未被调用路径使用的默认值，图鉴挑战永驻） |
@@ -89,9 +95,10 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 本机 npm 被执行策略拦截，**用 node 直跑**：
 
 ```
-node tools/check-names.js   # 顶层命名 / import-export 契约静态检查（必过）
-node tools/check-syntax.js  # 语法静态检查（改 js 收工三连之一）
-node tools/smoke.js         # 无头跑帧冒烟测试（必过；改移动/碰撞逻辑后建议加场景）
+node tools/sync-contract.js  # 头部「被依赖」契约行自动重写（改 import/导出后先跑它）
+node tools/check-names.js    # 顶层命名 / import-export 契约静态检查（必过）
+node tools/check-syntax.js   # 语法静态检查（改 js 收工三连之一）
+node tools/smoke.js          # 无头跑帧冒烟测试（必过；改移动/碰撞逻辑后建议加场景）
 ```
 
 改移动逻辑额外要求：跑帧观察速度/位置曲线，确认无瞬跳再收工。

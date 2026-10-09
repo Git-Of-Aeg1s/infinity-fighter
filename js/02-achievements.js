@@ -1,4 +1,6 @@
 // 02-achievements：成就系统（注册表 ACHIEVEMENTS 见 01-config；本局进度 / 解锁判定 / 结算徽章展示 / 数值图鉴「成就」页）
+
+  // 被依赖：05-boss(1 名) 06-enemy(10 名) 07-player(21 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(5 名)
 //
 // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
 // 被依赖：05-boss / 06-enemy / 07-player / 08-entities / 12-ui / 13-encyclopedia / 14-main

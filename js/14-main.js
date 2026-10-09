@@ -1,7 +1,7 @@
 // 14-main：输入绑定 / 主循环调度 / 事件绑定 / 启动入口（必须最后加载）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：（无——本文件为叶子模块，修改导出名前需确认无调用方）
+  // 被依赖：（暂无）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{cheatArm, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
