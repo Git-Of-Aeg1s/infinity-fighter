@@ -1599,22 +1599,24 @@
     // 逐帧在机体当前位置绘制（跟核心移动，不会留在原地）；图层位于核心白点之下、不盖住核心
     drawArmorGlyphFx(x, y);
 
-    // 天枢圣卫：圣守窗口存续期间——⬡ 六边环绕图标包裹战机视觉核心（呼吸脉动，不旋转，图层在核心白点之下）；
-    // 颜色为微微淡一点的白色（ARMORS.tianshu.hexWhite）；触发时图标直接消失（无闪现动画）、过期未触发则原位渐隐
+    // 天枢圣卫：圣守窗口存续期间——白色六边形环绕机体（注册表 ⬡ 图标的轮廓放大版，不旋转，
+    // 透明度/尺寸轻微呼吸；图层在核心白点之下）；颜色为纯白（ARMORS.tianshu.hexWhite）；
+    // 触发消耗时六边形直接消失（核心处另留 ⬡ 扩散演出）、过期未触发则原位渐隐（见 updatePlayer spawnArmorGlyphFx fade）
     if (currentArmor.id === 'tianshu' && player.tianshuArmedT > 0) {
       const hexWhite = currentArmor.hexWhite || currentArmor.color;
-      const pul = 0.6 + Math.sin(state.time * 5) * 0.2;
+      const pul = 0.55 + Math.sin(state.time * 5) * 0.2;                     // 透明度呼吸
+      const breathe = 1 + Math.sin(state.time * 4) * 0.025;                  // 尺寸微呼吸（不旋转）
       ctx.save();
       ctx.translate(x, y + (currentPlane.coreY || 0));
       ctx.globalAlpha = pul;
       ctx.strokeStyle = hexWhite;
       ctx.shadowColor = hexWhite;
-      ctx.shadowBlur = 5;
-      ctx.lineWidth = 1;
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let k = 0; k < 6; k++) {
         const ang = k * Math.PI / 3 - Math.PI / 6;
-        const px = Math.cos(ang) * 6.5, py = Math.sin(ang) * 6.5;
+        const px = Math.cos(ang) * 48 * breathe, py = Math.sin(ang) * 48 * breathe;
         k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
       }
       ctx.closePath();
@@ -1690,16 +1692,16 @@
     }
 
     // 最终壁垒免死演出：淡金色（#ffb545 系）较粗菱形环绕机体，白黄渐变沿菱形往复流动；
-    // 免死无敌不闪动机体，本菱形即无敌指示——结束时 0.3s 内迅速淡去
+    // 免死无敌不闪动机体，本菱形即无敌指示——无敌期间稳定显示（不提前淡出），
+    // 无敌结束后进入 0.35s 收尾：微微扩大（scale 1→1.15）渐隐（07-player updatePlayer 置 bulwarkEndT）
     if (player.bulwarkFxT > 0) {
-      const a = clamp(player.bulwarkFxT / 0.3, 0, 1);
       const ph = clamp(0.5 + 0.5 * Math.sin(state.time * 2.2), 0, 1);   // 白色高光位置往复滑动（流动感）
       const grad = ctx.createLinearGradient(x, y - 46, x, y + 46);
       grad.addColorStop(0, '#ffb545');
       grad.addColorStop(ph, '#ffffff');
       grad.addColorStop(1, '#ffd98a');
       ctx.save();
-      ctx.globalAlpha = a * (0.85 + Math.sin(state.time * 5) * 0.1);
+      ctx.globalAlpha = 0.85 + Math.sin(state.time * 5) * 0.1;
       ctx.strokeStyle = grad;
       ctx.shadowColor = '#ffb545';
       ctx.shadowBlur = 14;
@@ -1710,6 +1712,30 @@
       ctx.lineTo(x + 32 * breathe, y);
       ctx.lineTo(x, y + 46 * breathe);
       ctx.lineTo(x - 32 * breathe, y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    } else if (player.bulwarkEndT > 0) {
+      // 收尾演出：菱形微微扩大渐隐（0.35s，scale 1→1.15、alpha 1→0；时长与 07-player 置位处一致）
+      const p = 1 - player.bulwarkEndT / 0.35;              // 0→1
+      const sc = 1 + p * 0.15;                              // 微微扩大 15%
+      const a = player.bulwarkEndT / 0.35;                  // 渐隐
+      const ph = clamp(0.5 + 0.5 * Math.sin(state.time * 2.2), 0, 1);
+      const grad = ctx.createLinearGradient(x, y - 46 * sc, x, y + 46 * sc);
+      grad.addColorStop(0, '#ffb545');
+      grad.addColorStop(ph, '#ffffff');
+      grad.addColorStop(1, '#ffd98a');
+      ctx.save();
+      ctx.globalAlpha = a * 0.9;
+      ctx.strokeStyle = grad;
+      ctx.shadowColor = '#ffb545';
+      ctx.shadowBlur = 14 * a;
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 46 * sc);
+      ctx.lineTo(x + 32 * sc, y);
+      ctx.lineTo(x, y + 46 * sc);
+      ctx.lineTo(x - 32 * sc, y);
       ctx.closePath();
       ctx.stroke();
       ctx.restore();

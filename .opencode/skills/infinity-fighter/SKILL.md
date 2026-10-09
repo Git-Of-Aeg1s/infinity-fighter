@@ -29,7 +29,7 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 | `01-config` | 全局配置注册表：难度 `DIFFICULTIES`（虚象/具象/真我/诗篇）、战机/僚机/装甲/驾驶员/副武器、BOSS/敌人注册表、怪物等级表 `ENEMY_GRADES`/`enemyGrade()`、奖励道具池 `REWARD_ITEMS`、刷怪压力权重、`diffMods()` 难度修正取值 |
 | `02-achievements` | 成就系统（注册表在 01-config） |
 | `02-core` | 画布与 DOM 引用、**共享状态 `state` / `bossFlow` / `levelFlow`**、实体数组（enemies/missiles/…）、工具函数、星空背景、**手柄共享状态 `gamepad` + `pollGamepad()` 每帧轮询** |
-| `03-audio` | BGM 切换 / BOSS 战音效 / 全局静音 |
+| `03-audio` | BGM 切换 / BOSS 警报音效 / 全局静音；**音频解锁闩 `bgmUnlocked`**（首次 keydown/pointerdown/touchstart 解锁）——本模块所有有声媒体起播/续播前必须检查，**新增音效禁止裸 `play()`**（未解锁一律不响，2026-10-09 用户定稿，详见 AGENTS.md 模块契约） |
 | `04-spawn` | 刷怪：场面压力系统、波次编队（标准名见下）、1/2/3/4 类出怪入口、特殊生成（战争幽灵/精英召唤 `spawnEliteMinion`——4S 精英永驻场、离场由血量窗口驱动；`ELITES.dwell:30` 为未被调用路径使用的默认值，图鉴挑战永驻） |
 | `05-boss` | BOSS 战状态机（三场战斗四实体）：旧日之歌 + 暴风之眼/风暴编织者 + 黑暗之手（技能/演出/连携召唤精英） |
 | `06-enemy` | 敌机逐帧更新：移动/开火/出屏、御4 力场、暴鸰自爆、精英技能状态机（首个随机后固定轮换——两技 1↔2 / 三技 1→2→3；夏勇例外：固定五步循环 `[3,2,1,2,1]` 屏障→大子弹→回旋刃→大子弹→回旋刃，不走 elFirst/elNext）、击坠授奖 `grantRewardItem`、killEnemy |

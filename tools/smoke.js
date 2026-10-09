@@ -271,7 +271,7 @@ try {
   // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
   // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 陵落 Q 技能），
   // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 Q → 暂停返回主界面
-  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'lingluo', 'hajimi', 'dagou', 'lingli', 'hudike', 'xiaoyang']) {
+  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'lingluo', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang']) {
     const allCards = [...elements.pilotGridMain.children, ...elements.pilotGridSub.children];
     const card = allCards.find(c => c.dataset && c.dataset.pilot === pid);
     if (!card) { errors.push({ key: '驾驶员卡片缺失', stack: 'pilotGrid 中未找到卡片 ' + pid }); continue; }
@@ -665,9 +665,9 @@ try {
         // ② 技能循环：入场后 skillCd = 旧日之歌 2.2s×40%×虚象 1.5 ≈1.3s + 技能时长 → 700 帧内应施放 ≥1 次并出弹幕
         //    （本场景此阶段场上仅黑暗之手一个敌人，eBullets 非空即其弹幕；暗核弹 / 巨大蛋挞 / 涟漪均计入）
         // ①b 技能4 爪翼毁灭蛋挞：强制触发，走完整「预警→发射×3 组→收口」状态机（2026-10-08 用户定稿
-        //    激光替换为超长蛋挞：预警 1.2s × 3 组 = 3.6s，末组蛋挞飞出屏收口 ≈3.6+1.7 ≈5.3s ≈315 帧，
-        //    上限 360 帧）——断言过程中蛋挞弹体出现且身体点数正常、位置有限（渲染/判伤数据源，见 05-boss
-        //    dhUpdateTart / 11-draw-boss drawDhTart）、结束 e.skill 归 null
+        //    激光替换为超长蛋挞：预警 1.2s × 3 组 = 3.6s，弹速 1050（同日 +50% 定稿）→ 末组蛋挞飞出屏
+        //    收口 ≈3.6+1.1 ≈4.7s ≈283 帧，上限 360 帧）——断言过程中蛋挞弹体出现且身体点数正常、位置有限
+        //    （渲染/判伤数据源，见 05-boss dhUpdateTart / 11-draw-boss drawDhTart）、结束 e.skill 归 null
         e.skill = { id: 3, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, gi: 0, st: 'warn', pt: 0, tarts: [] };
         let s4TartFrames = 0, s4BadPts = false;
         for (let f = 0; f < 360 && e.skill; f++) {
@@ -681,7 +681,7 @@ try {
         }
         if (!s4TartFrames) errors.push({ key: '技能4 蛋挞未出现', stack: '强制 id=3 技能 360 帧内 tarts 恒空（warnDur→发射门控 / 组序 gi 异常？）' });
         if (s4BadPts) errors.push({ key: '技能4 蛋挞身体点异常', stack: 'tarts 出现但存在 pts 缺失 / 长度 <2 / 非有限坐标（dhUpdateTart 采样异常？）' });
-        if (e.skill) errors.push({ key: '技能4 未收口', stack: '360 帧后 e.skill 未清空（三组 warn 1.2 = 3.6s + 末组蛋挞露出 ≈0.7s + 飞出屏 ≈1.0s ≈5.3s 应完成收口）' });
+        if (e.skill) errors.push({ key: '技能4 未收口', stack: '360 帧后 e.skill 未清空（三组 warn 1.2 = 3.6s + 末组蛋挞露出 ≈0.44s + 飞出屏 ≈0.66s ≈4.7s（弹速 1050）应完成收口）' });
         let sawSkill = false, sawShot = false;
         for (let f = 0; f < 700 && !(sawSkill && sawShot); f++) {
           frames(1);

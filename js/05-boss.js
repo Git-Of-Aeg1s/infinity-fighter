@@ -1,7 +1,7 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(5 名) 11-draw-boss(5 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(6 名) 11-draw-boss(5 名) 14-main(3 名)
   // 依赖计数：01-config(21) 02-core(15) 04-spawn(3) 07-player(3) 08-entities(1) 02-achievements(1)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
@@ -87,6 +87,9 @@
         wp: null, wpDir: 0, wpLimit: null,
         bvx: 0, bvy: 0, wpHold: false,
         dhSummoned: [],              // 已召唤的连携精英（两两分组组内随机排序：前两名夏勇/朴学峰随机、后两名韩希先/辛国栋随机，2026-10-03 五轮定稿）
+        dhCurrent: null,             // 当前血量窗口的连携精英（2026-10-08 用户定稿：本段内被击坠 → 减伤撤销 + 反向增伤 +100%，见 dhOnLinkedEliteKilled）
+        dhAmp: false,                // 本段击坠增伤激活标记（至本段结束/下一窗口召唤止；高能爆弹/绷绷炸弹不吃，08-entities enemyDamageMul 消费）
+        dhBonusSkills: {},           // 已登记的「额外技能」表（键 = 精英 type，2026-10-08 用户定稿：任意连携精英被击坠即永久登记，整场战斗生效——技能本体待设计实装）
         shock: null,                 // 现形震荡波 { t, dur }（reveal 结束释放，纯演出）
         skill: null, skillCd: darkhandSkillCd(),
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
@@ -807,6 +810,7 @@
       life: opts.life != null ? opts.life : null,
       lifeFade: opts.lifeFade != null ? opts.lifeFade : null,   // 寿命到期后的消散期时长（消散动画用，见 08-entities）
       bossRound: opts.bossRound || false,   // BOSS 圆形弹幕：白核→主色渐变渲染（见 10-draw-world）
+      arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 1.5s（2026-10-09 用户定稿，见 10-draw-world arcTintColor）
       dhDark: opts.dhDark || false,   // 黑暗之手暗核弹：黑主体 + 边缘一小圈红（accent = color）渐变渲染（见 10-draw-world）
       tart: opts.tart || false,   // 蛋挞弹：水彩蛋挞贴图渲染（tartImg 烘焙贴图，见 10-draw-world；未加载回退渐变弹）
       tartSpin: opts.tartSpin,           // 巨大蛋挞自旋相位（黑暗之手技能3；有此字段 = 大蛋挞形态：判定半径即视觉半径、持续自旋）
@@ -862,6 +866,19 @@
       if (r < pBoth) { spawnPowerup(e.x, e.y, 'kit', 12); spawnPowerup(e.x, e.y, 'shield', 13); }
       else if (r < pBoth + pKit) spawnPowerup(e.x, e.y, 'kit', 12);
       else if (r < pBoth + pKit + pShield) spawnPowerup(e.x, e.y, 'shield', 13);
+    }
+  }
+
+  // 炼金璃（2026-10-09 用户定稿重做）：BOSS 血量首次到达 70% 时额外掉落一个结晶护盾道具
+  //（每台 BOSS 一次——e.lovelyShieldMark 只置位一次，血量回升不重复判定；测试模式不掉落，
+  // 与 updateBossLootMarks 同口径；调用点同在 06-enemy 的 boss 通用分支，所有 BOSS 通用）
+  function updateLovelyShieldMark(e) {
+    if (state.challenge) return;
+    if (!hasPilot('lianjinLovely')) return;
+    if (e.lovelyShieldMark) return;
+    if (Math.max(0, e.hp) / e.maxHp <= 0.7) {
+      e.lovelyShieldMark = true;
+      spawnPowerup(e.x, e.y, 'crystalShield', 13);
     }
   }
 
@@ -1650,6 +1667,9 @@
   // 连携召唤：血量 80/60/40/20% 阈值各召唤一名精英（前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿；
   //   spawnEliteMinion 第二参 1e9 = 永驻——离场由血量窗口驱动）；
   //   任意连携精英在场时受到的普通伤害 -70%（dhGuardActive，结算点 08-entities enemyDamageMul；高能爆弹/绷绷炸弹为真实伤害不受此减免——2026-10-04 用户定稿）；
+  //   本段击坠增伤（2026-10-08 用户定稿）：当前窗口精英在本段血量内（召唤阈值 → 再降 20%）被击坠 → 减伤撤销、
+  //   普通伤害 +100%（dhAmp/guardAmp，至下一窗口召唤止）+ 本体永久登记其「额外技能」（dhBonusSkills，技能本体待设计）；
+  //   未击杀而离场不触发；此前窗口精英被击坠只登记技能不加伤（登记统一走 02-core dhOnLinkedEliteKilled，06-enemy killEnemy 调用）；
   //   窗口切换（跨入下一阈值）时上一窗口精英仍未被击杀 → dhFleeLinkedElites 迅速离场并记录血量
   //   （第三轮刷怪期按 ELITE_REVIVE.levels 固定等级返场：14-main 触发 / 04-spawn spawnRevivedElite 生成）。
   // 子弹均为常规敌弹（2026-10-01 用户定稿；技能3 巨大蛋挞例外 = tart 贴图大弹）；伤害统一经 bossDmgMul 难度倍率
@@ -1759,6 +1779,8 @@
       const pool = sm.pairs[Math.floor(e.dhSummoned.length / 2)].filter(t => !e.dhSummoned.includes(t));
       const type = pool[Math.floor(Math.random() * pool.length)];
       e.dhSummoned.push(type);
+      e.dhCurrent = type;   // 当前血量窗口精英（2026-10-08 用户定稿：本段内被击坠 → 减伤撤销 + 反向增伤，登记见 02-core dhOnLinkedEliteKilled）
+      e.dhAmp = false;      // 新窗口开始：上一段的击坠增伤失效（本段血量 = 触发召唤阈值 → 再降 20%）
       const m = spawnEliteMinion(type, 1e9);   // 第二参为驻留时长：1e9 永驻，离场时机由血量窗口驱动
       m.dhLink = true;
       shake(6, 0.3);
@@ -1903,7 +1925,9 @@
           for (const gm of c.groups[s.gi]) {
             const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);
             s.tarts.push(dhMakeTart(sx, sy, gm.ang));
-            spawnParticles(sx, sy, '#ff4632', 12, 240);
+            // 发射点大爆发（2026-10-08 用户定稿「大幅增加——空间喷发召唤而出」）：红主调高速爆发 + 暖金底层慢速弥散双层
+            spawnParticles(sx, sy, '#ff4632', 30, 320);
+            spawnParticles(sx, sy, '#ffbf47', 16, 190);
           }
           shake(6, 0.3);
           s.st = 'gap'; s.pt = 0;
@@ -2043,13 +2067,14 @@
       p.x = a.x + (b.x - a.x) * u;
       p.y = a.y + (b.y - a.y) * u;
     }
-    // 全部露出判定 + 出现期粒子（发射点迸发；全部露出后不再产生——2026-10-08 用户定稿）
+    // 全部露出判定 + 出现期粒子（发射点喷发——2026-10-08 用户定稿大幅加密：emitIv 0.012s × 每拍 2 粒 ≈167/s，
+    // 营造「从空间喷发召唤而出」的涌现感；全部露出后不再产生）
     tar.out = tar.sHead >= (n - 1) * c.tartSeg;
     if (!tar.out) {
       tar.emitT += dt;
       while (tar.emitT >= c.emitIv) {
         tar.emitT -= c.emitIv;
-        spawnParticles(tar.ax, tar.ay, '#ff4632', 1, 120);
+        spawnParticles(tar.ax, tar.ay, '#ff4632', 2, 170);
       }
     }
     // 拖尾采样：自尾端沿轨迹向后 trailLen 取 trailN+1 点（未全部露出时尾端未离锚 → 采样越界自然为空 = 无拖尾）
@@ -2384,8 +2409,8 @@
       s.curveT = C.emitGap;
       for (const st of s.streams) {
         pushBossBullet(st.tube === 0 ? lx : rx, by, st.ang0, C.speed * sm,
-          { r: 4, dmg: C.arcDmg, color: BOSS_BULLET.arc, angVel: st.spin, spinUp: C.spinUpMul, spinDown: C.spinDownMul,
-            life: s.linked ? C.linkedLife : C.life, lifeFade: C.fadeTime });   // 连携释放：寿命降至 3.2s
+          { r: 4, dmg: C.arcDmg, color: BOSS_BULLET.arc, arcTint: true, angVel: st.spin, spinUp: C.spinUpMul, spinDown: C.spinDownMul,
+            life: s.linked ? C.linkedLife : C.life, lifeFade: C.fadeTime });   // 连携释放：寿命降至 3.2s；arcTint 出生深紫随时间漂移至弧线绿（10-draw-world）
       }
     }
   }
@@ -2527,13 +2552,13 @@
           if (cross) {
             // 50%血以下：两炮管同时双向发射（每管向内/向外各一条），左右完全对称
             for (const bx of [lx, rx]) {
-              pushBossBullet(bx, by, Math.PI / 2 + arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: -115, color: BOSS_BULLET.arc });
-              pushBossBullet(bx, by, Math.PI / 2 - arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: 115, color: BOSS_BULLET.arc });
+              pushBossBullet(bx, by, Math.PI / 2 + arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: -115, color: BOSS_BULLET.arc, arcTint: true });
+              pushBossBullet(bx, by, Math.PI / 2 - arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: 115, color: BOSS_BULLET.arc, arcTint: true });
             }
           } else {
             // 血量≥50%：左右管各发一条，向外对称弯曲（左管向左、右管向右）
-            pushBossBullet(lx, by, Math.PI / 2 + arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: -115, color: BOSS_BULLET.arc });
-            pushBossBullet(rx, by, Math.PI / 2 - arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: 115, color: BOSS_BULLET.arc });
+            pushBossBullet(lx, by, Math.PI / 2 + arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: -115, color: BOSS_BULLET.arc, arcTint: true });
+            pushBossBullet(rx, by, Math.PI / 2 - arcAng, 230 * sm, { r: 4, dmg: BOSS.arcDmg, ax: 115, color: BOSS_BULLET.arc, arcTint: true });
           }
         }
       }
@@ -2692,6 +2717,6 @@
   export {
     spawnBoss, spawnStormGhost, updateBossStorm, stormSkill5Pts, stormSkill5Mul, pushWaveMarks, startStormSkill,
     runStormSkill, strikeVis, knockbackPlayer, updateZoneMarks, stormWavePoint, stormWaveBand,
-    pushBossBullet, updateBoss, startBossSkill, runBossSkill, updateBossLootMarks,
+    pushBossBullet, updateBoss, startBossSkill, runBossSkill, updateBossLootMarks, updateLovelyShieldMark,
     updateBossStorm2, startStorm2Skill, runStorm2Skill, storm2Nozzle, storm2BallPos, spawnStorm2Ring, pickStorm2Aims, S2_STRIKE_R,
   };

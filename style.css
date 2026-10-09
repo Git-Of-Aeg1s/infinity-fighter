@@ -683,7 +683,7 @@ canvas#game {
   transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
-/* 右下角充能数字：叮咚鸡持有层数 / 漓连携七日澜心的持有充能份数（有充能才显示，12-ui updateHUD 填充） */
+/* 右下角充能数字：叮咚鸡持有层数（有充能才显示，12-ui updateHUD 填充） */
 .skill-gauge-count {
   position: absolute;
   right: -4px;
@@ -976,66 +976,69 @@ canvas#game {
   box-shadow: 0 0 18px rgba(255, 213, 128, 0.35);
 }
 
-/* ── 特殊驾驶员（strong，2026-10-08 用户定稿）────────────────────────────
-   选择页卡片右上角白光角标；主页面驾驶员菱形框金边替换为 #39C5BB→#FFC0CB
-   双色渐变流动边框 + 两道白芒绕框流动（类切换见 12-ui refreshLoadout）── */
+/* ── 特殊驾驶员（special，2026-10-08 用户定稿）────────────────────────────
+   选择页卡片右上角青粉渐变三角角标（严格裁在边框内）；主页面驾驶员菱形框金边替换为
+   #39C5BB→#FFC0CB 双色渐变流动边框 + 两道白芒绕框流动（类切换见 12-ui refreshLoadout）── */
 
-/* 选择页卡片：右上角白色辉光角标（呼吸脉动），代表特殊角色 */
-.pilot-card.strong {
+/* 选择页卡片：右上角青粉渐变三角角标（静态常亮、不脉动），代表特殊角色；
+   overflow hidden + top/right: 0——三角完全收在卡片内、不超出边框（2026-10-08 用户定稿） */
+.pilot-card.special {
   position: relative;   /* 角标 ::after 定位基准（.armor-card 无 position） */
+  overflow: hidden;     /* 三角裁剪在卡片圆角边框内（至 1px 边框内缘），绝不外溢 */
 }
 
-.pilot-card.strong::after {
+.pilot-card.special::after {
   content: '';
   position: absolute;
-  top: -20px;
-  right: -20px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.28) 36%, transparent 68%);
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, #39C5BB 0%, #FFC0CB 100%);   /* 青（顶边起）→ 粉（沿斜边向右下） */
+  clip-path: polygon(100% 0, 0 0, 100% 100%);   /* 右上角直角三角：两直角边贴卡片顶边/右边，斜边自左上向右下 */
   pointer-events: none;
-  animation: strongGlowPulse 2.4s ease-in-out infinite;
 }
 
-@keyframes strongGlowPulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-/* 主页面驾驶员菱形框：双色渐变流动边框（双层背景 border-box/padding-box 技法——
-   渐变只露出 1.5px 边框环带，框内底色不变）；透明 border 让原生金框退位 */
-.pilot-diamond.strong-pilot {
+/* 主页面驾驶员菱形框：原金框（1.5px）替换为 #39C5BB→#FFC0CB 双色渐变流动边框——
+   双层背景技法：同色垫层在前（上层，盖住本体），渐变在后（下层，只从边框环带露出）。
+   ⚠️ background 简写中裸颜色只能写在最后一层——垫层必须用同色 linear-gradient 图像而非
+   裸 color，否则整条声明非法被整条丢弃（2026-10-08 事故：声明失效 → 金框消失只剩光效） */
+.pilot-diamond.special-pilot {
   border-color: transparent;
   background:
-    linear-gradient(135deg, #39C5BB, #FFC0CB, #39C5BB, #FFC0CB, #39C5BB) border-box,
-    rgba(18, 16, 12, 0.92) padding-box;
-  background-size: 300% 300%, auto;
+    linear-gradient(rgba(18, 16, 12, 0.92), rgba(18, 16, 12, 0.92)) padding-box,
+    linear-gradient(135deg, #39C5BB, #FFC0CB, #39C5BB, #FFC0CB, #39C5BB) border-box;
+  background-size: auto, 300% 300%;
   animation: pilotBorderFlow 5s ease-in-out infinite;
-  box-shadow: 0 0 12px rgba(57, 197, 187, 0.22), 0 0 14px rgba(255, 192, 203, 0.18);
+  box-shadow: none;   /* 不继承基础金框的淡金光晕——特殊框视觉只留流动渐变边框 */
 }
 
 @keyframes pilotBorderFlow {
-  0%   { background-position: 0% 0%, 0 0; }
-  50%  { background-position: 100% 100%, 0 0; }
-  100% { background-position: 0% 0%, 0 0; }
+  0%   { background-position: 0 0, 0% 0%; }
+  50%  { background-position: 0 0, 100% 100%; }
+  100% { background-position: 0 0, 0% 0%; }
 }
 
-/* 两道白芒绕边框环流动：conic-gradient 双白色扇区旋转 + mask 只保留 1.5px 边框环带
-  （其余区域透明，不遮挡渐变边框与文字）。--glintAngle 经 @property 注册可参与动画，
-   不支持的浏览器退化为静态双白芒 */
-.pilot-diamond.strong-pilot::after {
+/* 两道白芒绕边框环流动：conic-gradient 双白色光斑**对跖均分**（中心相差 180°，2026-10-08 用户定稿）
+   + mask 只保留 1.5px 边框环带（其余区域透明，不遮挡渐变边框与文字）。
+   每道白芒 = 8° 白芯 + 两侧 4° 软边（对跖均分：中心 4° 与 184°，严格相差 180°）；--glintAngle 经 @property 注册可参与动画，
+    不支持的浏览器退化为静态双白芒 */
+.pilot-diamond.special-pilot::after {
   content: '';
   position: absolute;
   inset: -1.5px;   /* 覆盖边框环带（child 定位以 padding box 为基准，负值恰好补齐 border 带宽） */
   border-radius: 6px;
   padding: 1.5px;
   background: conic-gradient(from var(--glintAngle, 0deg),
-    transparent 0deg 250deg,
-    rgba(255, 255, 255, 0.95) 256deg 266deg,
-    transparent 272deg 322deg,
-    rgba(255, 255, 255, 0.8) 328deg 338deg,
-    transparent 344deg 360deg);
+    rgba(255, 255, 255, 0.95) 0deg,
+    rgba(255, 255, 255, 0.95) 8deg,
+    rgba(255, 255, 255, 0) 12deg,
+    rgba(255, 255, 255, 0) 176deg,
+    rgba(255, 255, 255, 0.95) 180deg,
+    rgba(255, 255, 255, 0.95) 188deg,
+    rgba(255, 255, 255, 0) 192deg,
+    rgba(255, 255, 255, 0) 356deg,
+    rgba(255, 255, 255, 0.95) 360deg);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -1054,15 +1057,11 @@ canvas#game {
   to { --glintAngle: 360deg; }
 }
 
-/* 流光框的 hover / 面板展开态：保持透明边框，仅提亮双青粉辉光（金框 hover/open 态的对应版） */
-.pilot-diamond.strong-pilot:hover {
+/* 流光框的 hover / 面板展开态：不叠任何光效——流动渐变边框即全部视觉（2026-10-08 用户反馈：只要框变色） */
+.pilot-diamond.special-pilot:hover,
+.pilot-diamond.special-pilot.open {
   border-color: transparent;
-  box-shadow: 0 0 16px rgba(57, 197, 187, 0.35), 0 0 18px rgba(255, 192, 203, 0.30);
-}
-
-.pilot-diamond.strong-pilot.open {
-  border-color: transparent;
-  box-shadow: 0 0 20px rgba(57, 197, 187, 0.40), 0 0 22px rgba(255, 192, 203, 0.35);
+  box-shadow: none;
 }
 
 /* 框处于展开状态：高亮提示当前面板来源 */

@@ -3,14 +3,14 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(5 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(18 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, score, yiCounter, lingliCharges, lingliBossShieldDone, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaFx, xinFuryRing, honghongT, itemPickFx}
+  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaFx, xinFuryRing, honghongT, itemPickFx}
   //
-  import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, DEMO_BOTTOM, DEMO_TOP, ENEMY_CLASS, HANSHUANG, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, REWARD_ITEMS, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotEntry, pilotHuiHealMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
-  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, yiScythes, ddjMissiles } from './02-core.js';
+  import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, CANVAS_H, CANVAS_W, DARKHAND, DEMO_BOTTOM, DEMO_TOP, ENEMY_CLASS, HANSHUANG, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, REWARD_ITEMS, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, diffMods, hasPilot, invulnDiffMul, pilotBombDmgMul, pilotEntry, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
   import { berserkBurst, bombBurst, enemyDamageMul, shieldBurst } from './08-entities.js';
-  import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLingliBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
+  import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLovelyBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
   import { endGame } from './12-ui.js';
 
 
@@ -440,7 +440,7 @@
       return;
     }
 
-    player.slashCd -= dt * playerFrostSlowMul() * hasteMul() * bulwarkFireRateMul();   // 壁垒免死无敌期间斩击充能同样 ×0.5
+    player.slashCd -= dt * playerFrostSlowMul() * hasteMul();
     if (player.slashCd > 0) return;
     // 锁定中 / 无目标：保持就绪，解锁 / 出现目标后立即斩击
     if (playerFireLocked() || !player.slashTarget) { player.slashCd = 0; return; }
@@ -937,7 +937,7 @@
       // 群星之杀：不发射普通子弹，改为锁定光束 + 周期性空间斩击
       updateStarslayer(dt);
     } else {
-      player.cooldown -= dt * playerFrostSlowMul() * hasteMul() * bulwarkFireRateMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍；壁垒免死无敌期间 ×0.5
+      player.cooldown -= dt * playerFrostSlowMul() * hasteMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍
       if (player.cooldown <= 0) {
         if (!playerFireLocked()) {
           player.cooldown = berserk ? BERSERK.interval : WEAPON_LEVELS[player.weapon].interval;
@@ -956,19 +956,24 @@
     updateRewardFx(dt);       // 奖励道具效果推进（牢大/飞剑风暴/寒霜力场/酒客/抽卡演出）
 
     if (player.invuln > 0) player.invuln -= dt;
-    // 最终壁垒免死菱形演出：与无敌时长同步衰减；菱形开始消散（剩 0.3s，与绘制的淡出窗口一致）时
-    // 才清除周围 250px 内敌弹并扩散金环（触发瞬间不清弹——演出后置到消散时刻）
+    // 最终壁垒免死菱形演出：与无敌时长同步衰减；无敌结束瞬间（fxT 归零处）清除周围 120px 内敌弹、
+    // 扩散金环，并进入 0.35s 收尾演出（菱形微微扩大渐隐，绘制见 09-draw-ships drawPlayer）；
+    // 收尾时长 0.35s 与 09-draw-ships 收尾段保持一致
     if (player.bulwarkFxT > 0) {
       const prevFx = player.bulwarkFxT;
       player.bulwarkFxT -= dt;
-      if (prevFx > 0.3 && player.bulwarkFxT <= 0.3) {
+      if (prevFx > 0 && player.bulwarkFxT <= 0) {
         bulwarkBurst.active = true;
         bulwarkBurst.t = 0;
         bulwarkBurst.x = player.x;
         bulwarkBurst.y = player.y;
-        clearEnemyBulletsNear(player.x, player.y, 250);
+        clearEnemyBulletsNear(player.x, player.y, 120);
+        player.bulwarkEndT = 0.35;   // 收尾演出：微微扩大渐隐
       }
       if (player.bulwarkFxT < 0) player.bulwarkFxT = 0;
+    } else if (player.bulwarkEndT > 0) {
+      player.bulwarkEndT -= dt;
+      if (player.bulwarkEndT < 0) player.bulwarkEndT = 0;
     }
     if (player.hitFxT > 0) player.hitFxT -= dt;   // 受击闪白计时衰减
     if (player.berserkBanner > 0) player.berserkBanner -= dt;
@@ -1051,14 +1056,14 @@
         achvClearKillSrc();
       }
     }
-    // 洄：每 2 秒恢复 1 生命（不超过当前装甲最大生命）；小艺连携：治疗效果 ×1.35（pilotHuiHealMul）
+    // 洄：每 2 秒恢复 1 生命（不超过当前装甲最大生命）
     // 成就「时流回溯」：按实际结算量（受上限裁剪）累计
     if (currentArmor.id === 'hui') {
       player.regenT = (player.regenT || 0) + dt;
       if (player.regenT >= currentArmor.regenInterval) {
         player.regenT = 0;
         if (player.alive) {
-          const heal = Math.min(currentArmor.regenHp * pilotHuiHealMul(), player.maxHp - player.hp);
+          const heal = Math.min(currentArmor.regenHp, player.maxHp - player.hp);
           if (heal > 0) {
             player.hp += heal;
             achvNoteHuiHeal(heal);
@@ -1101,11 +1106,6 @@
     return !enemies.some(e => e.type === 'boss' && e.combatReady);
   }
 
-  // 最终壁垒免死无敌期间：自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘；倍率走注册表 invulnFireRateMul）
-  function bulwarkFireRateMul() {
-    return (player.bulwarkFxT > 0 && currentArmor.invulnFireRateMul) ? currentArmor.invulnFireRateMul : 1;
-  }
-
   function respawnPlayer() {
     player.alive = true;
     player.maxHp = armorMaxHp();      // 重生复原生命上限（陵落上限债务随死亡清偿）
@@ -1122,6 +1122,7 @@
     player.shieldMax = 0;         // 护盾读条分母复位
     player.bulwarkUsed = false;   // 最终壁垒：每条命一次，重生重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
+    player.bulwarkEndT = 0;       // 最终壁垒：菱形收尾演出计时归零
     player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;   // 屏障随重生清空
     player.permBarrier = 0;       // 永久屏障随重生清空（一命一得）
     player.tianshuArmedT = 0; player.tianshuCycleT = 0;   // 天枢圣卫：圣守周期随重生重置
@@ -1205,7 +1206,7 @@
       player.tianshuArmedT = 0;   // 一次性消耗：窗口关闭（常驻环绕图标随之消失）
       player.tianshuCycleT = 0;   // 触发后等无敌结束再重新计时（updatePlayer 以 invuln<=0 门控）
       player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;
-      // （触发时的 ⬡ 图标闪现动画已删去——常驻环绕图标直接消失即为触发反馈；粒子与微震屏保留）
+      spawnArmorGlyphFx('⬡', currentArmor.hexWhite, 0.8, 'pulse', true);   // 核心处白色六边图案扩散渐隐（技能生效反馈，与窗口开启演出同构）
       spawnParticles(player.x, player.y, currentArmor.color, 14, 190);
       shake(3, 0.15);
       return true;   // 镜像哈基米闪避：有受击反馈、无血量结算、不计入受击掉级计数
@@ -1282,7 +1283,7 @@
       if (tryBulwarkCheatDeath()) return true;
       player.hp = 0;
       player.alive = false;
-      if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算；左下角恒显 1 颗心）
+      if (!hasPilot('tianshiLovely')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算；左下角恒显 1 颗心）
       state.hurt = 1;   // 掉命：红晕拉满
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.55, r: 26, seed: Math.random() * 10 });   // 掉命：更大的爆闪冲击环
@@ -1364,10 +1365,13 @@
         // 无视虚化（phase > 0 的虚化护盾敌人照常结算）；BOSS 死亡召唤体（_sdImmune，如暴风之眼
         // 死后召唤的风暴编织者）完全免伤（2026-10-03 用户定稿：源 BOSS 被炸死后召唤的二阶段一丁点
         // 伤害都不吃——「一次殉爆最多带走一个 BOSS」，与金陨同口径）；波全部扫完后豁免解除
-        // （见下方收尾），后续殉爆照常结算（单独在场即正常）；黑暗之手连携精英（dhLink）不受波伤害
-        // （2026-10-02 口径，2026-10-03 改口径「应波及精英」已登记错误与待优化.md #6 待实现——
-        // 本体若被波及致死，精英转为终止技能 + 迅速离场而非陪葬）
-        if (!enemyOnScreen(e) || e.dying || e._sdImmune || e.dhLink) continue;
+        // （见下方收尾），后续殉爆照常结算（单独在场即正常）。
+        // 黑暗之手连携精英（dhLink）正常受波结算（2026-10-03 用户改口径，2026-10-08 落地——取代
+        // 2026-10-02「不受波伤害」豁免，登记见《错误与待优化.md》#6）：在场精英与全场敌人一同被砸死
+        //（本体被秒杀类击杀时不转离场，未召唤精英归属见 06-enemy killEnemy 黑暗之手分支）；已处离场
+        // 相位（elPhase 2，窗口切换触发的迅速离场、已登记第三轮返场）者视为脱离战场，不被本波追杀
+        if (!enemyOnScreen(e) || e.dying || e._sdImmune) continue;
+        if (e.dhLink && e.elPhase === 2) continue;
         if (e._sdWaveId === w.id) continue;   // 本道波已结算过该敌人
         if (Math.hypot(e.x - w.x, e.y - w.y) - Math.max(e.w, e.h) / 2 > w.r) continue;   // 波前未及
         e._sdWaveId = w.id;
@@ -1442,36 +1446,22 @@
   // 收集水晶时填充当前装甲的技能量表（amount = 本颗水晶的分数；七日澜心填满需 gaugeCrystalScore 分）
   // firstBoss = 水晶是否来自首轮 BOSS（FIRST_ROUND_BOSSES）：对量表收益按 def.firstBossBonus 额外加成（+400% → ×5）
   // 结晶护盾持续期间（player.crystalShield > 0）量表停止累计（水晶得分与吸收入场照常）
-  // 漓连携（携带七日澜心）：量表语义变为「下一次充能」进度——已持有第 1 个充能时，
-  // 第 2 次充能所需水晶分数 ×1.5（secondCostMul）；充能已满（达 1+chargeBonus 次）则不再累计
   function armorSkillGain(amount, firstBoss = false) {
     const def = ARMOR_SKILLS[currentArmor.id];
     if (!def) return;
     if (player.crystalShield > 0) return;
     if (firstBoss && def.firstBossBonus) amount *= def.firstBossBonus;
-    if (hasPilot('lingli') && currentArmor.id === 'lanxin') {
-      if ((state.lingliCharges || 0) >= 1 + (PILOTS.lingli.chargeBonus || 0)) return;   // 充能已持有满：不再累计
-      const costMul = (state.lingliCharges || 0) >= 1 ? PILOTS.lingli.secondCostMul : 1;
-      state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / (def.gaugeCrystalScore * costMul));
-      return;
-    }
     state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / def.gaugeCrystalScore);
   }
 
-  // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：水晶护盾环绕 3s）
-  // 漓连携（携带七日澜心）：改为消耗「持有的充能」（充能完毕时已自动结算，见 updatePilotStatus），量表本身不满
+  // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：水晶护盾环绕 6s）
   // 返回 true = 触发成功（14-main 的 F 键入口调用）
   function triggerArmorSkill() {
     if (state.mode !== 'playing' || state.paused) return false;
     const def = ARMOR_SKILLS[currentArmor.id];
     if (!def) return false;
-    if (currentArmor.id === 'lanxin' && hasPilot('lingli')) {
-      if ((state.lingliCharges || 0) <= 0) return false;
-      state.lingliCharges--;
-    } else {
-      if ((state.armorSkillGauge || 0) < 1) return false;
-      state.armorSkillGauge = 0;
-    }
+    if ((state.armorSkillGauge || 0) < 1) return false;
+    state.armorSkillGauge = 0;
     achvNoteArmorSkillUsed();   // 成就：忘了——装甲技能已使用
     if (currentArmor.id === 'lanxin') {
       player.crystalShield = def.dur;
@@ -1531,7 +1521,7 @@
   //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；闪避 / 攻速增益倒计时
   function updatePilotStatus(dt) {
     // 许凯狗冲刺：所有驾驶员计时表 / 量表冻结（大狗导弹雨不计时、陵落冷却不走、
-    // 天秀量表不充能、漓计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
+    // 天秀量表不充能、炼金璃计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
     const dashFrozen = state.pilotDashT > 0;
     // 陵落：生命上限债务恢复（每秒 +2，不回当前血量，回满即止——单次触发 40 ÷ 2/s = 恰好 20s）；
     // 警报 / BOSS 登场动画期间仅按 50% 流速推进（entranceDt，下同）
@@ -1579,44 +1569,32 @@
         launchDagouWave(0);
       }
     }
-    // 漓（重做）：不再有独立计数表。
-    // ① 连携七日澜心：armorSkillGauge 语义为「下一次充能」进度——跨过 1 的瞬间转为持有充能
-    //    （最多 1+chargeBonus 次），并立刻释放淡粉特效清除 250px 内敌弹（lingliBurst；成就「清除空气」照常判定）；
-    //    持有第 1 个充能时第 2 次充能所需水晶分数 ×1.5（见 armorSkillGain）
-    // ② BOSS 战开始：自动获得结晶护盾（未携带七日澜心也生效；每段 BOSS 战发放一次，
-    //    victoryDelay / none 复位标记——击败 BOSS 后下一轮重新发放）
-    if (hasPilot('lingli')) {
-      if (currentArmor.id === 'lanxin' && !dashFrozen &&
-          (state.armorSkillGauge || 0) >= 1 &&
-          (state.lingliCharges || 0) < 1 + (PILOTS.lingli.chargeBonus || 0)) {
-        state.armorSkillGauge = 0;
-        state.lingliCharges = (state.lingliCharges || 0) + 1;
-        lingliBurst();
-      }
-      if (bossFlow.stage === 'fight') {
-        if (!state.lingliBossShieldDone && player.alive) {
-          state.lingliBossShieldDone = true;
-          player.crystalShield = Math.max(player.crystalShield || 0, ARMOR_SKILLS.lanxin.dur);
-          if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(true);   // 成就：云心——登记开启时处于 BOSS 战
-          spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 20, 180);
-        }
+    // 炼金璃（重做 2026-10-09）：连携七日澜心——量表充能完毕（跨满 1）的瞬间立刻释放淡粉特效
+    // 清除 250px 内敌弹（lovelyBurst；成就「清除空气」照常判定），量表保持满格、按 F 照常开盾。
+    // BOSS 战 70% 血量掉落结晶护盾在 05-boss updateLovelyShieldMark（BOSS 通用分支逐帧判定）。
+    // 满格边沿检测用模块内 prev 值（重开无需复位：重置后 gauge=0，prev 随帧收敛，绝不误触发）
+    if (hasPilot('lianjinLovely')) {
+      if (currentArmor.id === 'lanxin' && !dashFrozen) {
+        const gauge = state.armorSkillGauge || 0;
+        if (gauge >= 1 && lovelyPrevGauge < 1) lovelyBurst();
+        lovelyPrevGauge = gauge;
       } else {
-        state.lingliBossShieldDone = false;
+        lovelyPrevGauge = 0;   // 非澜心装甲 / 冲刺冻结期不判边沿（换甲回来重新计满才触发）
       }
     }
     // 依：击杀计数条（左下角可见）——满 counterMax 自动召唤镰刀清扫（无需按键）；
     // BOSS 战期间每秒 +3（警报 / 登场动画与胜利结算窗口不计）；冲刺期间冻结
-    if (hasPilot('yi') && !state.challenge) {
+    if (hasPilot('mei') && !state.challenge) {
       if (!dashFrozen && bossFlow.stage === 'fight' && !bossFlow.victoryDelay) {
-        state.yiCounter = Math.min(PILOTS.yi.counterMax, state.yiCounter + PILOTS.yi.bossTickGain * entranceDt(dt));
+        state.meiCounter = Math.min(PILOTS.mei.counterMax, state.meiCounter + PILOTS.mei.bossTickGain * entranceDt(dt));
       }
-      if (!dashFrozen && state.yiCounter >= PILOTS.yi.counterMax) {
-        state.yiCounter = 0;
-        yiScythes.push({ t: 0, ang: 0, hit: new Set(), ripT: 0, rips: [] });   // ang：刀刃当前方位角（0→2π 单圈推进）；hit：本圈已命中敌人；ripT/rips：空间涟漪发射节流与存留
+      if (!dashFrozen && state.meiCounter >= PILOTS.mei.counterMax) {
+        state.meiCounter = 0;
+        meiScythes.push({ t: 0, ang: 0, hit: new Set(), ripT: 0, rips: [] });   // ang：刀刃当前方位角（0→2π 单圈推进）；hit：本圈已命中敌人；ripT/rips：空间涟漪发射节流与存留
         spawnParticles(player.x, player.y, '#FFC0CB', 24, 240);
       }
     }
-    updateYiScythes(dt);   // 镰刀为在途攻击实体：不随驾驶员计时冻结（存续/旋转/结算照常推进）
+    updateMeiScythes(dt);   // 镰刀为在途攻击实体：不随驾驶员计时冻结（存续/旋转/结算照常推进）
     updateDdjMissiles(dt);   // 叮咚鸡 Q 导弹为在途实体：照常推进
     // 连发风暴（按 8 切换，作弊键不要求装备天秀）：每 0.4~1.4s 向前发射一个友方大风暴（无视量表）；
     // 警报 / BOSS 登场动画期间与正常技能同样封锁，封锁解除瞬间立即补发第一个——
@@ -1646,22 +1624,17 @@
   }
 
   // 许凯狗冲刺结束瞬间（14-main 递减归零帧调用一次）：所有技能计量表立刻完全充能——
-  // 漓·七日澜心持有充能拉满（触发一次淡粉冲击波）、依击杀计数置满（固有判定随后召镰）、
+  // 炼金璃·澜心量表充满（连携边沿判定随后触发一次淡粉冲击波）、依击杀计数置满（固有判定随后召镰）、
   // 陵落 Q 冷却清零、天秀白色量表充满、萧杨原石充能就绪、叮咚鸡计数表满层。
   // 仅充能表：大狗导弹雨（自动循环倒计时）/ 哈基米存续 / 大无垠之王累积等非充能表不在此列
   function chargeAllGaugesOnDashEnd() {
-    // 漓：持有充能直接拉满（上限 1 + chargeBonus），进度清零；充能转化本就触发淡粉冲击波清 250px 敌弹
-    if (hasPilot('lingli')) {
-      const cap = 1 + (PILOTS.lingli.chargeBonus || 0);
-      if ((state.lingliCharges || 0) < cap) {
-        state.lingliCharges = cap;
-        state.armorSkillGauge = 0;
-        lingliBurst();
-      }
+    // 炼金璃：当前装甲为七日澜心时量表直接充满（updatePilotStatus 的满格边沿判定随即触发 lovelyBurst 清弹）
+    if (hasPilot('lianjinLovely') && currentArmor.id === 'lanxin') {
+      state.armorSkillGauge = 1;
     }
     // 依：计数条置满——updatePilotStatus 的计满召镰固有判定随后触发一次镰刀清扫（挑战模式不计）
-    if (hasPilot('yi') && !state.challenge) {
-      state.yiCounter = PILOTS.yi.counterMax;
+    if (hasPilot('mei') && !state.challenge) {
+      state.meiCounter = PILOTS.mei.counterMax;
     }
     // 陵落：Q 冷却清零（立即可释放）
     if (hasPilot('lingluo')) state.lingluoCdT = 0;
@@ -1920,11 +1893,11 @@
   //         波清解除后单独在场即正常结算。
   //   4. 【未来】双阶段转化型 BOSS（一阶段血尽 → 动画转化 → 二阶段全新技能形态，暂未实装）：
   //      秒杀类可直接整体击杀（跳过转化动画与二阶段，锚点见 06-enemy killEnemy BOSS 分支注释）。
-  //   5. 黑暗之手连携精英（dhLink）不被波及（现行实现沿用 2026-10-02 口径）——本体若被击杀，精英经
-  //      dhFleeLinkedElites 立即终止技能并迅速离场而非陪葬（埃逸波同此规则，见其结算点；爆弹已于
-  //      2026-10-04 单独落地为「不再豁免、连携精英同受爆弹伤害」，见 useBomb 内注释）。
-  //      【2026-10-03 用户改口径，待实现】精英在场应被一同砸死；黑暗之手被砸死时未登场的精英
-  //      视为未被杀死（之后的血量阈值波次仍会出现）——登记见《错误与待优化.md》。
+  //   5. 黑暗之手连携精英（dhLink）同受秒杀类结算（2026-10-03 用户改口径，2026-10-08 落地——取代
+  //      2026-10-02「不被波及」豁免）：在场精英与全场敌人一同被砸死（本体被秒杀类击杀时不转离场，
+  //      未召唤精英归属与张华&张策触发见 06-enemy killEnemy 黑暗之手分支）；已处离场相位（elPhase 2，
+  //      窗口切换离场、已登记返场）者视为脱离战场，不被本波/本陨追杀（爆弹同受波及，2026-10-04 落地，
+  //      见 useBomb 内注释）。
   function gachaMeteorImpact(color) {
     shake(color === 'gold' ? 16 : 11, 0.6);
     state.flash = 0.22;
@@ -1940,11 +1913,10 @@
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e || e.dying) continue;   // 连锁结算可能同帧收缩数组——跳过失效索引
-      // 黑暗之手连携精英（dhLink）：不被陨石波及（2026-10-02 用户定稿「自爆时不会炸死连携敌人」——
-      // 本体若被此波击杀，精英转为终止技能 + 迅速离场而非陪葬）
-      // 【2026-10-03 用户改口径，待实现】精英在场应被一同砸死；黑暗之手被砸死时未登场的精英
-      // 视为未被杀死（之后的血量阈值波次仍会出现）——登记见《错误与待优化.md》
-      if (e.dhLink) continue;
+      // 黑暗之手连携精英（dhLink）：同受陨石结算（2026-10-03 用户改口径，2026-10-08 落地——取代
+      // 2026-10-02「不被陨石波及」豁免，与埃逸殉爆同口径，见统一伤害规则第 5 条）；已处离场相位
+      // （elPhase 2，窗口切换触发的迅速离场、已登记返场）者视为脱离战场，不被本陨追杀
+      if (e.dhLink && e.elPhase === 2) continue;
       if (color === 'gold') {
         if (e.type === 'boss' && bossKilled) continue;   // 本次金陨已秒杀过一个 BOSS：后续 BOSS（极端时序同框的风暴编织者）完全免伤（2026-10-03 用户定稿：一丁点伤害都不吃）
         killEnemy(i);
@@ -2079,40 +2051,42 @@
     return true;
   }
 
-  // 漓：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
+  // 炼金璃：淡粉冲击波（七日澜心结晶护盾消失同款）——清除机体周围 250px 内所有敌方子弹。
   // 与澜心护盾消失的差异：不震屏（crystalBurst 冲击波环视觉完全一致）
-  function lingliBurst() {
+  // lovelyPrevGauge：澜心量表满格边沿检测的模块内上一帧值（见 updatePilotStatus 炼金璃块；跨局无需复位）
+  let lovelyPrevGauge = 0;
+  function lovelyBurst() {
     crystalBurst.active = true;
     crystalBurst.t = 0;
     crystalBurst.x = player.x;
     crystalBurst.y = player.y;
     // 成就「清除空气」：触发清除弹幕但实际消除数为 0
-    achvNoteLingliBurst(clearEnemyBulletsNear(player.x, player.y, 250));
+    achvNoteLovelyBurst(clearEnemyBulletsNear(player.x, player.y, 250));
     spawnParticles(player.x, player.y, '#FFC0CB', 20, 200);
   }
 
   // 依：击杀计数结算（06-enemy killEnemy 调用）——cls 1~5（5 类 = BOSS）；
   // BOSS 战期间计数 ×3，击败黑暗之手四精英改为 ×4（替换 ×3）；挑战 / 测试模式不计
-  function yiNoteKill(cls, type) {
-    if (state.challenge || !hasPilot('yi')) return;
-    const cfg = PILOTS.yi;
+  function meiNoteKill(cls, type) {
+    if (state.challenge || !hasPilot('mei')) return;
+    const cfg = PILOTS.mei;
     let gain = cfg.killGain[cls] || 0;
     if (!gain) return;
     if (bossFlow.stage === 'fight') gain *= cfg.elites.includes(type) ? cfg.eliteKillMul : cfg.bossKillMul;
-    state.yiCounter = Math.min(cfg.counterMax, state.yiCounter + gain);
+    state.meiCounter = Math.min(cfg.counterMax, state.meiCounter + gain);
   }
 
   // 依：镰刀清扫——巨大镰刀绕机体斩击一圈（刀柄贴身绕转、起扫/收尾时刀柄杆均水平朝左 scytheStart 姿态，
-  // 刃尖因素材弯钩上翘 scytheTilt ≈ 0.41 rad，判定/粒子随刃尖实际方位；素材取向见 10-draw-world drawYiScythes）。
+  // 刃尖因素材弯钩上翘 scytheTilt ≈ 0.41 rad，判定/粒子随刃尖实际方位；素材取向见 10-draw-world drawMeiScythes）。
   // 时间线：蓄力（现身后慢速倒转后拉 wind 秒，不打伤害）→ 斩击（角速度 0 起步 → 大加速升至峰值 → 余程平滑减速到 0）。
-  // 斩击中前段刀刃处每 0.09s 发射一圈空间涟漪（参照群星之杀：发光双线环大幅荡开，绘制见 10-draw-world drawYiScythes）。
+  // 斩击中前段刀刃处每 0.09s 发射一圈空间涟漪（参照群星之杀：发光双线环大幅荡开，绘制见 10-draw-world drawMeiScythes）。
   // 刀刃本帧扫过的角域 [prevAng, ang] 内的目标各结算一次：圈内敌人受 1500 + 20% 最大生命伤害
   // （20% 部分封顶 2500，普通伤害可被御4光环削减，每个敌人整圈仅受击一次），被扫中的敌方子弹一并摧毁；
   // 无视虚化护盾（扫中即斩碎并照常结算）、扫中御4金环即从交点切断（均对齐群星之杀，碎盾特效共用 breakPhaseShield）；
   // 以玩家实时位置为圆心（跟随主机移动）
-  function updateYiScythes(dt) {
-    if (!yiScythes.length) return;
-    const cfg = PILOTS.yi;
+  function updateMeiScythes(dt) {
+    if (!meiScythes.length) return;
+    const cfg = PILOTS.mei;
     const TWO_PI = Math.PI * 2;
     // 斩击进度曲线 p(ts)∈[0,1]（ts = 斩击段已进行时间），分段 C¹ 连续（接点斜率已匹配，全程无瞬跳）：
     //   前段（时长占比 A=0.35）：p = (2/3)·(2v²−v³)，v = ts/(A·dur)——角速度从 0 二次方大加速升至峰值
@@ -2137,12 +2111,12 @@
     const angAt = (t) => t < wind
       ? -wAng * windEase(t / wind)
       : -wAng + (TWO_PI + wAng) * sweepP(t - wind);
-    for (let i = yiScythes.length - 1; i >= 0; i--) {
-      const sc = yiScythes[i];
+    for (let i = meiScythes.length - 1; i >= 0; i--) {
+      const sc = meiScythes[i];
       const prevAng = angAt(sc.t);   // 上一帧刀刃角（相对 scytheStart；绝对方位 = start + ang）
       sc.t += dt;
       sc.ang = angAt(sc.t);          // 本帧刀刃角（蓄力段 0→−windAng 倒转；斩击段 −windAng→2π 顺时针扫一圈）
-      // 刀尖拖尾粒子：粉/紫火花沿刀刃外圈持续洒落（弧形渐变拖尾绘制在 10-draw-world drawYiScythes）
+      // 刀尖拖尾粒子：粉/紫火花沿刀刃外圈持续洒落（弧形渐变拖尾绘制在 10-draw-world drawMeiScythes）
       // （方位 = 起扫姿态角 + 进度角 + 刃尖弯钩偏角 tilt，即刀刃尖端的实际绝对方位，下同）
       const tipX = player.x + Math.cos(cfg.scytheStart + sc.ang + cfg.scytheTilt) * cfg.scytheR * 0.92;
       const tipY = player.y + Math.sin(cfg.scytheStart + sc.ang + cfg.scytheTilt) * cfg.scytheR * 0.92;
@@ -2153,7 +2127,7 @@
       const hR = cfg.scytheGripR + (cfg.scytheR - cfg.scytheGripR) * rand(0.3, 0.68);   // 柄身段（刀柄轨迹圈 → 刃尖）30%~68% 处
       spawnParticles(player.x + Math.cos(hAng) * hR, player.y + Math.sin(hAng) * hR, '#E3D2FF', 1, 60);
       // 空间涟漪发射（斩击行程 travel ∈ (0.02, 0.75)，参照群星之杀斩击空间波动）：每 0.09s 在刀刃当前位置
-      // 记一圈波源（波心冻结于发射点，荡开后沿斩扫轨迹形成一串涟漪；绘制在 10-draw-world drawYiScythes）
+      // 记一圈波源（波心冻结于发射点，荡开后沿斩扫轨迹形成一串涟漪；绘制在 10-draw-world drawMeiScythes）
       const travel = (sc.ang + wAng) / (TWO_PI + wAng);   // 斩击行程进度（蓄力段 <0）
       if (travel > 0.02 && travel < 0.75) {
         sc.ripT += dt;
@@ -2224,6 +2198,26 @@
         }
         eBullets.splice(b, 1); spawnParticles(eb.x, eb.y, '#FFD6F2', 1, 70);
       }
+      // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）：刀身扫中任一身体节点 →
+      // 整条斩断消散（2026-10-08 用户定稿：长条蛋挞可被镰刀斩掉；即时移除 + 全身节迸暖金/红粒。
+      // 亦不与巨大蛋挞的颤动碎裂流程混用——那是大弹专属演出，长条弹按常规弹直接斩）
+      for (const bs of enemies) {
+        const sk = bs && bs.skill;
+        if (!sk || sk.id !== 3 || !Array.isArray(sk.tarts) || !sk.tarts.length) continue;
+        for (let ti = sk.tarts.length - 1; ti >= 0; ti--) {
+          const tar = sk.tarts[ti];
+          let cut = false;
+          for (let k = 0; k < tar.pts.length; k++) {
+            if (inSector(tar.pts[k].x, tar.pts[k].y)) { cut = true; break; }
+          }
+          if (!cut) continue;
+          for (let k = 0; k < tar.pts.length; k += 2) {
+            spawnParticles(tar.pts[k].x, tar.pts[k].y, '#ffbf47', 3, 150);
+            spawnParticles(tar.pts[k].x, tar.pts[k].y, '#ff4632', 2, 110);
+          }
+          sk.tarts.splice(ti, 1);
+        }
+      }
       // 夏勇回旋刃：刀身扫中即湮灭（2026-10-04 用户定稿：镰刀消灭回旋镖；06-enemy 推进端按 done 收口技能）
       for (const en of enemies) {
         if (!en.xyBlades) continue;
@@ -2233,7 +2227,7 @@
           bl.done = true;
         }
       }
-      if (sc.t >= wind + cfg.scytheDur) { yiScythes.splice(i, 1); continue; }   // 蓄力 + 斩完一圈即消散
+      if (sc.t >= wind + cfg.scytheDur) { meiScythes.splice(i, 1); continue; }   // 蓄力 + 斩完一圈即消散
     }
   }
 
@@ -2524,7 +2518,8 @@
       if (!e) continue;   // 连锁结算（暴鸰殉爆 / 召唤体连带删除等）可能同帧收缩数组导致索引越界——与下方补扫循环同样跳过
       // 黑暗之手连携精英（dhLink）：同受爆弹波及（2026-10-04 用户定稿「不再分担、均受正常伤害」，
       // 取代 2026-10-02「自爆时不会炸死连携敌人」豁免口径）——本体若被此波击杀，幸存精英仍经
-      // killEnemy → dhFleeLinkedElites 立即终止技能并迅速离场（秒杀类金陨/殉爆的豁免仍保留，见各自结算点）
+      // killEnemy → dhFleeLinkedElites 立即终止技能并迅速离场（秒杀类金陨/殉爆豁免亦已于 2026-10-08
+      // 移除——连携精英同受秒杀类结算，见 gachaMeteorImpact / updateAiyiWaves 内注释）
       if (state.challenge) {
         if (state.challenge.kind === 'boss') e.hp -= e.maxHp * 0.60;
         else e.hp = 0;
@@ -2684,6 +2679,6 @@
     accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
     handlePlayerDeath, aiyiSelfDestruct, updateAiyiWaves, stormBossFightActive, pilotStormContactMul,
     princeStormKillGain, updatePilotStatus, triggerPilotSkill, updateFriendStorms, kingDmgBonusMul, chargeAllGaugesOnDashEnd,
-    updateDagouMissiles, yiNoteKill, noteDdjLevelUp, applyRewardItem, pushItemPickFx, currentBombCap, noteGachaStone,
+    updateDagouMissiles, meiNoteKill, noteDdjLevelUp, applyRewardItem, pushItemPickFx, currentBombCap, noteGachaStone,
     debugForceGacha,
   };

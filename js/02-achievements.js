@@ -21,7 +21,7 @@
 //   'chixin'     炽心火环灼烧击杀（07-player updatePlayer 灼烧循环）
 //   'bomb-keli'  可莉绷绷炸弹击杀（07-player useBomb，BOSS 击杀判定用）
 
-  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme, strongGearActive } from './01-config.js';
+  import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED, ARMOR_SKILLS, ENEMY_CLASS, FIRST_ROUND_BOSSES, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, isPoem, isRealme, specialGearActive } from './01-config.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
 
   // ─── 本局成就进度域（resetAchievements 随局重置）───
@@ -73,11 +73,11 @@
   // 作弊互斥白名单：局内开启作弊后（0+1~5 / 8 / 9 键），本局仅这些作弊成就可以解锁，其余成就全部锁定
   const CHEAT_ONLY_ACHV = new Set(['dagouCheat100', 'wanDaoFengLiu']);
 
-  // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV；挑战成就与强力装备互斥见 challenge/strongGearActive）
+  // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV；挑战成就与特殊装备互斥见 challenge/specialGearActive）
   function unlockAchievement(id) {
     if (!achvGateOk() || achv.unlocked[id]) return;
     if (achv.cheatUsed && !CHEAT_ONLY_ACHV.has(id)) return;   // 已作弊：非作弊成就不再获得
-    if (ACHIEVEMENTS[id] && ACHIEVEMENTS[id].challenge && strongGearActive()) return;   // 挑战成就（无伤系列等）：使用强力装备（天使璃等 strong 标记装备）期间不可获得（2026-10-08 用户定稿）
+    if (ACHIEVEMENTS[id] && ACHIEVEMENTS[id].challenge && specialGearActive()) return;   // 挑战成就（无伤系列等）：使用特殊装备（天使璃等 special 标记装备）期间不可获得（2026-10-08 用户定稿）
     achv.unlocked[id] = true;
     console.log('[成就] ' + ACHIEVEMENTS[id].name);
   }
@@ -243,7 +243,7 @@
     }
     else if (bossId === 'storm2') unlockAchievement('defeatStorm2');
     else if (bossId === 'darkhand') {
-      // 黑暗之手（待更新 BOSS，占位——实体实装后 killEnemy BOSS 分支自动上报生效）：唯我 / 光明之脚 / 内乱 / 铜皮太岁
+      // 黑暗之手（2026-10-08 实装上线——wipBoss 占位已解除，5 条成就正式开放）：唯我 / 光明之脚 / 内乱 / 铜皮太岁
       if (hasPilot('lingluo')) unlockAchievement('weiwo');
       if (!hasPilot('lingluo')) unlockAchievement('guangmingzhijiao');
       if (currentSubWeapon.id === 'feijian' || currentSubWeapon.id === 'xinring') unlockAchievement('neiluan');
@@ -370,10 +370,10 @@
     achv.lanxinShieldAbsorb = 0;
   }
 
-  // 漓弹幕清除冲击波上报（07-player lingliBurst；清除空气：实际消除数为 0）
-  function achvNoteLingliBurst(cleared) {
+  // 炼金璃弹幕清除冲击波上报（07-player lovelyBurst；清除空气：实际消除数为 0）
+  function achvNoteLovelyBurst(cleared) {
     if (!achvGateOk()) return;
-    if (!cleared) unlockAchievement('lingliAirClear');
+    if (!cleared) unlockAchievement('lianjinLovelyAirClear');
   }
 
   // 大无垠之王增伤累积上报（07-player updatePilotStatus BOSS 战累积处；陷入疯狂 ≥50% / 彻底疯狂 ≥80%）
@@ -518,7 +518,7 @@
     }
     if (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED) html += '<div class="achv-tip-locked">仅最终版本开放获得</div>';
     if (a.wipBoss) html += '<div class="achv-tip-locked">对应 BOSS 待更新，暂不可获得</div>';
-    if (a.challenge) html += '<div class="achv-tip-locked">挑战成就：使用强力装备（天使璃等）时无法获得</div>';
+    if (a.challenge) html += '<div class="achv-tip-locked">挑战成就</div>';
     return html;
   }
   function bindAchvTip(el, id) {
@@ -607,7 +607,7 @@
           (a.holders
             ? (a.holders.length ? '<br />已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '<br />暂无完成者')
             : '') +
-          (a.challenge ? '<br /><i>挑战成就：使用强力装备（天使璃等）时无法获得</i>' : '') +
+          (a.challenge ? '<br /><i>挑战成就：使用特殊装备（天使璃等）时无法获得</i>' : '') +
           (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '') +
           (a.wipBoss ? '<br /><i>对应 BOSS 待更新，暂不可获得</i>' : '');
         card.append(row, body);
@@ -623,6 +623,6 @@
     achvNoteLingluoSkill, achvNoteArmorSkillUsed, achvNotePilotSkillUsed, achvEvaluateVictory,
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,
     achvNoteChengyueRoll, achvNoteHajimiDodge, achvNoteQixingBigHalve, achvNoteMaxinSpeed, achvNoteHuiHeal,
-    achvNoteLanxinShieldStart, achvNoteLanxinAbsorb, achvNoteLanxinShieldEnd, achvNoteLingliBurst,
+    achvNoteLanxinShieldStart, achvNoteLanxinAbsorb, achvNoteLanxinShieldEnd, achvNoteLovelyBurst,
     achvNoteKingDmg, achvNoteLingluoHp1, achvNoteDagouChain, achvNoteAuraFieldKill, achvNoteGiantCrystal, achvNoteGachaGold,
   };

@@ -3,7 +3,7 @@
   console.log('[InfinityFighter] JS build: 20260925-v035-1');   // 【临时】构建标记：验证浏览器缓存是否已刷新，确认后删除
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(15 名) 02-core(9 名) 04-spawn(49 名) 05-boss(24 名) 06-enemy(78 名) 07-player(36 名) 08-entities(32 名) 09-draw-ships(29 名) 10-draw-world(21 名) 11-draw-boss(23 名) 12-ui(33 名) 13-encyclopedia(42 名) 14-main(27 名)
+  // 被依赖：02-achievements(15 名) 02-core(9 名) 04-spawn(49 名) 05-boss(24 名) 06-enemy(80 名) 07-player(35 名) 08-entities(32 名) 09-draw-ships(29 名) 10-draw-world(21 名) 11-draw-boss(23 名) 12-ui(33 名) 13-encyclopedia(42 名) 14-main(27 名)
   //
 
 
@@ -443,7 +443,7 @@
   energyOrbSheetLoader.src = 'assets/energy-orb-sheet.webp';
   const ENERGY_ORB = { cols: 10, rows: 6, frames: 60, fps: 24, baseD: 260, offX: -12, offY: 3 };   // 网格 / 帧率 / 基准直径 / 对齐偏移（素材球在帧内偏右，左移使其对准机体核心 RX=0,RY=3）
 
-  // 依：镰刀清扫素材（透明底大镰刀）：计数充满自动召唤，绕机体旋转（绘制见 10-draw-world drawYiScythes）；
+  // 依：镰刀清扫素材（透明底大镰刀）：计数充满自动召唤，绕机体旋转（绘制见 10-draw-world drawMeiScythes）；
   // 异步预加载，未加载完成时回退程序化长条镰刀形
   let scytheImg = null;
   const scytheLoader = new Image();
@@ -770,7 +770,7 @@
   function strikerHoldMul() { const m = diffMods().strikerHoldMul; return m != null ? m : 1; }
   // 2类「2*7」无停留直通：越过前锋停留线后的速度保留比例（基准 0.8；诗篇 0.6）——mods.strikerNoHoldSpdMul，缺省回退 0.8
   function strikerNoHoldSpdMul() { const m = diffMods().strikerNoHoldSpdMul; return m != null ? m : 0.8; }
-  // （坚垒护卫艇能量盾减伤 strikerFortressDR 已于 2026-10-03 移除：改为单纯高血量 HP 300，
+  // （坚垒护卫艇能量盾减伤 strikerFortressDR 已于 2026-10-03 移除：改为单纯高血量（2026-10-08 用户定稿 HP 800，诗篇走 POEM_HP 独立覆盖），
   //   无常规/诗篇减伤；《诗篇难度修正.md》#4 条目同步标注废弃）
   // （warGhostFanRange 已删除：技能1 由扇形范围斩击改为双刃斩击（2026-10-02），扇形半径/诗篇修正失去对象——
   //   《诗篇难度修正.md》#6 条目同步标注废弃）
@@ -809,11 +809,10 @@
       desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
-      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 4.8s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 6s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
     bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
-      invulnFireRateMul: 0.5,   // 免死无敌期间自身射速倍率（普通弹 cooldown 与群星之杀 slashCd 同乘）
       brief: '受到致命伤害时不死且短暂无敌，仅一次',
-      desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 3s 无敌（淡金菱形环绕，期间射速 -50%）<br>菱形消散时清除周围 250px 内敌弹并扩散金环' },
+      desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 5s 无敌（淡金菱形环绕，不降低攻速）<br>触发瞬间核心处护甲图标扩散渐隐<br>无敌结束时清除周围 120px 内敌弹<br>菱形微微扩大渐隐并扩散金环' },
     tianshu:  { id: 'tianshu', name: '天枢圣卫', glyph: '⬡', color: '#4dd0ff',
       invulnMul: 1.6,   // 受击 / 重生等常规无敌时长倍率
       guardCycle: 20, guardWindow: 10,   // 圣守周期：无敌结束后起算每 20s 展开持续 10s 的「圣守窗口」；窗口内受击在结算前免除并触发常规受击无敌（窗口/无敌期间周期不计时，等效 30s 一轮）
@@ -846,7 +845,7 @@
     striker: 2, fashiA1: 2, fashiMatrix: 2, popian: 2, douzhi: 2,
     gunship: 3, harbinger: 3, hanshuang: 3, weilong: 3, yu4: 3, anvil: 3, baoling: 3, jiaoxiang: 3, fashiA2: 3,
     capital: 4, fashiArray: 4, warMatrix: 4,
-    // 诗篇新敌占位（wip）：按其设计类别归入（黑暗之手四精英在 PILOTS.yi.elites 单独按 4 类计并 ×4）
+    // 诗篇新敌占位（wip）：按其设计类别归入（黑暗之手四精英在 PILOTS.mei.elites 单独按 4 类计并 ×4）
     popianU: 2, sponsor: 2, sponsorDeluxe: 2,
     baolingG: 3, pulseMatrix: 3, unreal: 3,
     warGhost: 4, puxuefeng: 4, hanxixian: 4, xiayong: 4, xinguodong: 4,
@@ -898,7 +897,7 @@
   const ARMOR_SKILLS = {
     // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
     // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4.8, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 6, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
   };
 
   // ---------- 群星之杀：空间斩击参数 ----------
@@ -1141,7 +1140,7 @@
   //   dashDur/dashLv 许凯狗：开场冲刺时长（s）/ 结束时跳到的关卡等级
 //   speedFast/speedSlow 马兴犬：Shift 加速 / CapsLock 减速的移速倍率（同键再按恢复原速）
   //   chargeDur/scoreMul 埃逸：死亡蓄力自爆时长（s）/ 自爆击杀的得分倍率
-  //   chargeBonus/secondCostMul 漓：连携七日澜心的充能次数加成 / 持有第 1 个充能时第 2 次充能的水晶分数倍率
+  //   chargeBonus/secondCostMul 炼金璃：连携七日澜心的充能次数加成 / 持有第 1 个充能时第 2 次充能的水晶分数倍率
   //   layerMax/layerCap 叮咚鸡：计数表单层上限 / 最多持有层数
   //   missileCount/missileArc/missileSpeed/missileR/missileDmg 叮咚鸡：Q 导弹参数（发数 / 前向扇形角 / 弹速 / 弹体半径 / 直击伤害）
   //   berserkUpsMax 叮咚鸡：升级至暴走（4→5 级）的全局次数上限（4/5 级按技能均消耗机会）
@@ -1155,7 +1154,7 @@
   //   （原 otherDmgCut 暴风之眼战其余我方伤害削减已取消——2026-10-02 用户定稿：非风暴伤害不再削减，改为携带天秀时暴风之眼血量 ×2，见 05-boss spawnBoss）
   // 注册表键序 = 主菜单卡片展示顺序（none 除外，不展示）：
   //   主槽：大狗 / 许凯狗 / 埃逸 / 可莉 / 哈基米大王 / 马兴犬 / 温酒客 / 胡笛客
-  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 漓 / 依 / 叮咚鸡 / 萧杨
+  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 炼金璃 / 依 / 叮咚鸡 / 萧杨
   // 陵落「彼岸花」矢量图标（iconSvg）：内联 SVG 字符串——currentColor 继承注册色，
   // 辉光由 .glyph-svg 的 drop-shadow 提供（渲染点：主菜单驾驶员卡片 / 数值图鉴「驾驶员」页标题）。
   function higanbanaSvg() {
@@ -1171,7 +1170,7 @@
   }
 
   // 依「四瓣花」矢量图标（iconSvg）：内联 SVG 字符串——#FFC0CB → 白色线性渐变填充（注册色即渐变本体）
-  function yiGlyphSvg() {
+  function meiGlyphSvg() {
     let petals = '';
     for (let i = 0; i < 4; i++) {
       petals += '<path d="M0 -2.4 C2.8 -4.8 3.4 -9.6 1.2 -16 C0.4 -12 -0.4 -12 -1.2 -16 C-3.4 -9.6 -2.8 -4.8 0 -2.4 Z"'
@@ -1187,7 +1186,7 @@
 
   // ── 体系级约定（设计新驾驶员必读）：许凯狗「高能冲刺」结束时（14-main 递减归零帧，仅一次）会调用
   // 07-player chargeAllGaugesOnDashEnd()，把当前驾驶员的全部技能计量表立刻充满——现有六张：
-  // 漓七日澜心持有充能 / 依击杀计数 / 陵落 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 叮咚鸡计数表。
+  // 炼金璃七日澜心持有充能 / 依击杀计数 / 陵落 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 叮咚鸡计数表。
   // 新驾驶员若引入技能计量表（冷却 / 充能 / 计数 / 层数等），必须同步在该函数登记充满逻辑，
   // 否则许凯狗冲刺结束后该表不回满（视为遗漏）。
   const PILOTS = {
@@ -1280,10 +1279,10 @@
     },
     xiaoyi: {
       id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub', default: true,
-      pickupHeal: 10, pickupHealLow: 15, pickupHealLowPct: 0.35,   // 拾取道具回血 / 低血回血 / 低血阈值（水晶不算）
-      huiHealMul: 1.25,   // 连携洄：洄的治疗效果 ×1.25
-      brief: '拾取道具回血，可与洄联动',
-      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 10 生命<br>血量低于 35% 时改为恢复 15 生命<br>同时装备护甲「洄」时：<br>洄的治疗效果增加 25%',
+      pickupHealPct: 0.05, pickupHealPctLow: 0.10, pickupHealHpGate: 60, pickupHealHpGateLow: 40,   // 拾取回复（×最大生命）/ 触发阈值（血量点数：低于 60 回 5% / 低于 40 回 10%；水晶不算）
+      huiBossHealPct: 0.60,   // 与洄连携：击败 BOSS 立刻恢复 60% 生命（取代洄自身 35% 已损失口径）
+      brief: '低血拾取回血，可与洄联动',
+      desc: '小艺拥有森灵之力。血量低于 60 时拾取任意道具（水晶不算）<br>恢复 5% 生命；血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）',
     },
     king: {
       id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffffff', slot: 'sub',   // ♛ 三尖王冠保留（⚔ 试行弃用），颜色 #ffd166 → 白色
@@ -1311,19 +1310,18 @@
       brief: '按Q召唤风暴',
       desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 30000 充满<br>（真我 / 诗篇 36000；BOSS 战 +2%/s；<br>暴风之眼战 +10%~16%/s 随机）<br>友方大风暴击杀 1/2/3/4 类敌人时<br>量表立刻增加 0.4%/0.8%/1.6%/3.2%<br>满时按 Q：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3<br>（其余我方伤害不再削减，暴风之眼血量 ×2）',
     },
-    lingli: {
-      id: 'lingli', name: '漓', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
-      // 重做（2026-09-28 批次）：不再有独立计数表。
-      // chargeBonus：连携七日澜心——结晶护盾可充能次数 +1（最多同时持有 1+chargeBonus 次）；
-      // secondCostMul：已持有第 1 个充能时，第 2 次充能所需水晶分数倍率；
-      // 每次充能完毕立刻释放淡粉特效并清除 250px 内敌弹（见 07-player updatePilotStatus / lingliBurst）；
-      // 未携带七日澜心：BOSS 战开始时自动获得结晶护盾（携带七日澜心时同样生效）
-      chargeBonus: 1, secondCostMul: 1.5,
-      brief: '增强七日澜心<br>BOSS战开始时获得结晶护盾',
-      desc: '折光穹顶之剑。同时携带七日澜心时：<br>结晶护盾的可充能次数 <b>+1</b><br>（最多同时持有 2 次充能），<br>持有第 1 个充能时，第 2 次充能<br>所需水晶分数 <b>+50%</b>；<br>每次充能完毕立刻释放淡粉特效<br>并清除 250px 内所有敌方子弹<br>未携带七日澜心时：<b>BOSS 战开始时<br>自动获得结晶护盾</b>（携带七日澜心时<br>此效果同样生效）',
+    lianjinLovely: {
+      id: 'lianjinLovely', name: '炼金璃', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
+      // 重做（2026-10-09 用户定稿）：无独立数值参数。
+      // ① BOSS 战：BOSS 血量首次到达 70% 时额外掉落一个结晶护盾道具（每台 BOSS 一次，
+      //    见 05-boss updateLovelyShieldMark / 08-entities applyPowerupPickup 'crystalShield'）；
+      // ② 连携七日澜心：量表充能完毕的瞬间立刻释放淡粉特效并清除 250px 内敌弹（lovelyBurst），
+      //    量表保持满格、按 F 照常开启结晶护盾（见 07-player updatePilotStatus）
+      brief: 'BOSS战血量70%时掉落结晶护盾<br>连携澜心：量表充满即清弹',
+      desc: '同时携带七日澜心时：<br>七日澜心量表<b>充能完毕</b>的瞬间，立刻释放<br>淡粉特效并清除 250px 内所有敌方子弹<br>（量表保持满格，按 F 照常开启结晶护盾）<br><b>BOSS 战</b>：BOSS 血量首次到达 <b>70%</b> 时<br>额外掉落一个<b>结晶护盾</b>（每台 BOSS 一次）',
     },
-    yi: {
-      id: 'yi', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 yiGlyphSvg：#FFC0CB → 白）
+    mei: {
+      id: 'mei', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 meiGlyphSvg：#FFC0CB → 白）
       // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS）；
       // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×3）；
       // elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
@@ -1336,7 +1334,7 @@
       //   判定/拖尾/粒子均以「姿态角 + tilt」的刃尖方位为准，刀柄杆姿态不受影响）/
       // scytheWind 蓄力后拉时长（s，慢速倒转蓄势，段内不打伤害）/ scytheWindAng 后拉角度（rad；斩击总行程 2π+windAng，恰回正左）/
       // scytheWidth 仅作素材未加载回退长条的高度（正常绘制按素材「握把→杆顶→刃尖」锚定 + 素材系缩放 SCX/SCY
-      // （见 10-draw-world drawYiScythes 锚点注释）：杆轴水平朝外、握把贴机体、刃尖达 scytheR 外圈，
+      // （见 10-draw-world drawMeiScythes 锚点注释）：杆轴水平朝外、握把贴机体、刃尖达 scytheR 外圈，
       // 尺寸由锚点决定；素材 1199×1754 竖构图）/
       // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）——每个敌人被刀刃扫过时受击一次
       counterMax: 122, killGain: { 1: 1, 2: 3, 3: 8, 4: 20, 5: 122 },
@@ -1375,18 +1373,18 @@
       desc: '牛蛋肥嘟嘟。<br>没有任何效果。',
     },
 
-    // ── 特殊驾驶员（strong: true = 强力角色，强力装备约定见 strongGearActive）──────────
+    // ── 特殊驾驶员（special: true = 特殊驾驶员，简称 sp；特殊装备约定见 specialGearActive）──────────
     // 排序约定（2026-10-08 用户定稿）：选择页 / 图鉴展示顺序 = 注册表键序，特殊驾驶员一律登记在
     // 全部常规驾驶员之后（本表末尾）——此后新增的特殊驾驶员均放此处，勿插入常规区段。
     // 天使璃：无限生命——三条死亡路径（damagePlayer / 暴风之眼持续接触 / 焦香灼烧）均不扣命数，
     // 死后照常 1.6s 重生，永不失败结算；左下角恒显 1 颗心（12-ui updateHUD 特判）；
     // 使用期间无法获得任何挑战成就（02-achievements 统一门控）；
-    // 视觉：选择页卡片右上角白光角标（CSS .pilot-card.strong）+ 主页面驾驶员菱形框青粉渐变流光
-    // 与双白芒绕框（CSS .pilot-diamond.strong-pilot，refreshLoadout 切换）
-    tianshili: {
-      id: 'tianshili', name: '天使璃', glyph: '✧', color: '#ffb7d5', slot: 'main', strong: true,   // ✧ 四芒星（天使辉光）
+    // 视觉：选择页卡片右上角青粉渐变三角角标（CSS .pilot-card.special，overflow 裁在边框内）+ 主页面驾驶员菱形框青粉渐变流光
+    // 与双白芒绕框（CSS .pilot-diamond.special-pilot，refreshLoadout 切换）
+    tianshiLovely: {
+      id: 'tianshiLovely', name: '天使璃', glyph: '✧', color: '#ffb7d5', slot: 'main', special: true,   // ✧ 四芒星（天使辉光）
       brief: '无限生命',
-      desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>强力角色</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
+      desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
   };
   // ---------- 主/副驾驶员槽位 ----------
@@ -1413,19 +1411,13 @@
     return rapid ? 0.2 + Math.random() * 0.8
       : PILOTS.dagou.waveIvMin + Math.random() * (PILOTS.dagou.waveIvMax - PILOTS.dagou.waveIvMin);
   }
-  // 小艺连携洄：洄的治疗效果倍率（回血 / BOSS 击败回血均乘算）
-  function pilotHuiHealMul() {
-    const x = pilotEntry('xiaoyi');
-    return (x && currentArmor.id === 'hui' && currentArmor.regenHp) ? x.huiHealMul : 1;
-  }
-
-  // ---------- 强力装备标记与挑战成就门控（2026-10-08 用户定稿） ----------
+  // ---------- 特殊装备标记（special，简称 sp）与挑战成就门控（2026-10-08 用户定稿） ----------
   // 约定：各装备注册表（PILOTS / ARMORS / PLANES / WINGMEN_CFG / SUB_WEAPONS……后续扩展）的条目
-  // 可带 strong: true 标记 = 强力装备——使用期间无法获得任何挑战成就（ACHIEVEMENTS[x].challenge，
-  // 02-achievements unlockAchievement 统一门控）。当前强力装备：天使璃（tianshili）。
-  function strongGearActive() {
-    return !!(currentPilotMain.strong || currentPilotSub.strong ||
-      currentArmor.strong || currentPlane.strong || currentWingman.strong || currentSubWeapon.strong);
+  // 可带 special: true 标记 = 特殊装备——使用期间无法获得任何挑战成就（ACHIEVEMENTS[x].challenge，
+  // 02-achievements unlockAchievement 统一门控）。当前特殊装备：天使璃（tianshiLovely）。
+  function specialGearActive() {
+    return !!(currentPilotMain.special || currentPilotSub.special ||
+      currentArmor.special || currentPlane.special || currentWingman.special || currentSubWeapon.special);
   }
 
   // 天秀忧郁王子：友方大风暴（大型龙卷（暴风之眼召唤物）同款风暴的我方版，按 Q 释放）
@@ -2236,7 +2228,9 @@
     // 反弹（2026-10-08 用户定稿细化）：真我/诗篇命中左右屏幕边缘反弹——沿弹体逐节传递（头部撞壁折返写入轨迹
     // 历史，后续节段抵达折点才转向，非整条瞬弹）；反弹次数难度化沿袭原光束（2026-10-03 定稿）：真我 1 次、诗篇 2 次
     s4: {
-      warnDur: 1.2,            // 每组预警时长（s，2026-10-03 四轮定稿 0.9 → 1.2（+0.3s））——暗红虚线方向预警 + 端点光斑闪动（渲染见 11-draw-boss）
+      warnDur: 1.2,            // 每组预警总时长（s，2026-10-03 四轮定稿 0.9 → 1.2（+0.3s））——暗红虚线方向预警 + 端点光斑闪动（渲染见 11-draw-boss）
+      warnGrow: 0.2,           // 预警线自发射点沿朝向逐段生长至出屏的时长（s，2026-10-08 用户定稿：0.6 → 0.2s 内伸满；easeOutCubic 减速伸长，< warnDur 余下时间整线常亮脉动）
+      warnShrink: 0.35,        // 每段生成时「从大收缩到正常」的警示特效时长（s，2026-10-08 用户定稿：新段宽度 3.2× → 1× easeOut 收缩）
       gap: -0.08,              // 上一组发射 → 下一组预警的间隔（s；负值 = 预警结束即刻衔接下一组——组发射间隔 = warnDur 1.2s，预警期与上一组弹体尾段重叠）
       moveDur: 1.6,            // 释放后向屏幕中线水平移动并停稳的时长（s；< 第二轮发射 2.4s，第三轮发射 3.6s 时已居中静止）
       dmg: 50,                 // 单枚伤害（× bossDmgMul 同原光束；白盾存在时不判伤）
@@ -2245,15 +2239,15 @@
       bouncePoem: 2,           // 诗篇难度反弹次数（沿袭原光束：弹射 2 次）
       tartLen: 460,            // 蛋挞全长（px，≈贴图 1964×200 原生纵横比对应厚度 47；约占屏高 58%）
       tartW: 47,               // 蛋挞厚度（px；判定半宽 = 此值之半 + 玩家 hitRadius）
-      tartSpeed: 700,          // 头部推进速度（px/s；11.7px/帧 < smoke 12px/帧阈值；全长露出 ≈0.66s）
+      tartSpeed: 1050,         // 头部推进速度（px/s；2026-10-08 用户定稿 +50%：700 → 1050（17.5px/帧）；全长露出 ≈0.44s）
       tartSeg: 23,             // 身体采样点间距（px，全长 ≈20 节；屏缘折返的转向粒度）
       trailLen: 130,           // 拖尾长度（px，尾端沿轨迹历史向后的渐隐彩带）
       trailN: 7,               // 拖尾采样段数
-      emitIv: 0.04,            // 出现期粒子迸发间隔（s，发射点红色粒子节奏；全部露出即停）
+      emitIv: 0.012,           // 出现期粒子喷发间隔（s，2026-10-08 用户定稿大幅加密 0.04 → 0.012 × 每拍 2 粒 ≈167/s——「空间喷发召唤而出」；全部露出即停）
       groups: [                // 发射组（共 3 组按序释放；本体比例位 x/y 相对机体中心；oy = 纵向像素偏移（上移负）；ang 射出方向 rad）
         [{ x: 0, y: 0.42, ang: Math.PI / 2 }],                                   // ① 机头：正下
-        [{ x: -0.27, y: 0.30, oy: -50, ang: Math.PI / 2 - 0.24 },               // ② 机头两侧双爪：沿爪朝向同时发射（2026-10-03 用户定稿：左右互换修正——左爪朝右下/右爪朝左下，向屏内侧交叉；初始点上移 50px）
-         { x: 0.27, y: 0.30, oy: -50, ang: Math.PI / 2 + 0.24 }],
+        [{ x: -0.27, y: 0.30, oy: -50, ang: Math.PI / 2 - 0.415 },              // ② 机头两侧双爪：沿爪朝向同时发射（左右互换修正——左爪朝右下/右爪朝左下，向屏内侧交叉；初始点上移 50px；2026-10-08 用户定稿：与竖直夹角 0.24 ≈13.7° → 0.415 ≈23.8°（+10°））
+         { x: 0.27, y: 0.30, oy: -50, ang: Math.PI / 2 + 0.415 }],
         [{ x: -0.47, y: 0.02, ang: Math.PI / 2 + 0.88 },                        // ③ 最侧边双后翼：沿翼朝向同时发射（朝外斜下；本体已居中 → 左右必然对称）
          { x: 0.47, y: 0.02, ang: Math.PI / 2 - 0.88 }],
       ],
@@ -2305,11 +2299,18 @@
     // 连携召唤（2026-10-01 定稿）：血量降到 80/60/40/20% 阈值时各召唤一名精英（每轮随机、不重复）；
     // 场上有任意一名连携精英时，黑暗之手受到的普通伤害降低 guardDR（高能爆弹/绷绷炸弹为真实伤害不受此减免
     // 且正常波及连携精英——2026-10-04 用户定稿，结算点 08-entities enemyDamageMul）；
+    // 本段击坠增伤（2026-10-08 用户定稿）：当前窗口精英在本段血量内（触发召唤阈值 → 再降 20%）被击坠——
+    // 减伤撤销、受到的普通伤害额外 +100%（guardAmp，至本段结束/下一窗口召唤止；高能爆弹/绷绷炸弹同样不吃），
+    // 且本体永久登记该精英对应「额外技能」（dhBonusSkills，整场战斗生效——技能本体待设计实装）；
+    // 精英未被击杀而离场 → 不触发任何效果；此前窗口的精英（离场/返场后）被击坠只登记额外技能、不加伤
+    //（其对应血量段已不存在）。登记统一走 02-core dhOnLinkedEliteKilled（06-enemy killEnemy 调用）；
     // 精英所在的 20% 血量窗口结束（下一个阈值触发 / 本体死亡）仍未被击杀 → 迅速离场并记录血量
     //（state.dhFledElites，第三轮刷怪期按 ELITE_REVIVE.levels 固定等级返场：14-main 触发 / 04-spawn spawnRevivedElite 生成，见 05-boss updateBossDarkhand）；
-    // 本体自爆（死亡）时连携精英不被同一波秒杀类（金陨/埃逸殉爆）/ 全屏瞬发清场伤害波及（结算点跳过 dhLink，
-    // 见 07-player / 06-enemy；高能爆弹/绷绷炸弹已单独落地为同受波及——2026-10-04 用户定稿）——
-    // 它们立即终止当前技能并迅速离场（dhFleeLinkedElites），离场期间照常参与撞机结算（06-enemy 通用碰撞分支）
+    // 本体死亡时连携精英同受秒杀类（金陨/埃逸殉爆）与高能爆弹/绷绷炸弹结算（2026-10-03 / 2026-10-04
+    // 用户定稿，不再豁免；结算点 07-player）——秒杀类击杀时在场精英一同被砸死（不转离场），常规击杀时
+    // 幸存精英立即终止当前技能并迅速离场（dhFleeLinkedElites）；未召唤精英按「此前有无逃走登记」归属
+    // 满血返场/视作击杀触发张华&张策（见 06-enemy killEnemy）；离场期间照常参与撞机结算（06-enemy
+    // 通用碰撞分支），已处离场相位（elPhase 2）者不被秒杀类追杀
     summon: {
       thresholds: [0.8, 0.6, 0.4, 0.2],   // 血量阈值（×maxHp），依次各召唤一名
       pairs: [                             // 召唤池两两分组（2026-10-03 五轮定稿）：前两轮从第一组组内随机排序召唤、后两轮从第二组组内随机排序——组内顺序随机、组间先后固定
@@ -2317,6 +2318,7 @@
         ['hanxixian', 'xinguodong'],
       ],
       guardDR: 0.7,                        // 任意连携精英在场：受到的所有伤害 -70%（2026-10-03 五轮定稿 65% → 70%；2026-10-02 曾 -50% → -65%）
+      guardAmp: 1.0,                       // 本段精英被击坠：减伤撤销 + 受到的普通伤害 +100%（2026-10-08 用户定稿；至本段结束止，高能爆弹/绷绷炸弹不吃）
     },
   };
 
@@ -2391,8 +2393,10 @@
       // 段首锁定瞄准角、段内扇位固定展开——射击均匀不甩动）
       segShots: 5, poemSegShots: 6,
       segGap: 0.14, realmeSegGap: 0.12, poemSegGap: 0.1,
-      segCount: 2, realmeSegCount: 3, segSpreadDeg: 26, reload: 1.5,
-      bulletSpeed: 255, bulletR: 5, dmg: 10,   // 300 × 0.85 = 255（2026-10-03 用户定稿弹速 -15%）
+      segCount: 2, realmeSegCount: 3, segSpreadDeg: 26, poemSegSpreadDeg: 32.5, reload: 1.5,
+      // poemSegSpreadDeg 32.5 = 2026-10-08 用户定稿：诗篇每两颗子弹的夹角与低难度一致（26/4 = 6.5°/颗 ×
+      // 6 发 5 间隙 = 32.5°）——诗篇 6 发/段的散射总范围相应扩大（低难度 5 发仍 26°）
+      bulletSpeed: 300, bulletR: 5, dmg: 10,   // 2026-10-08 用户定稿弹速定值 300（历史：300 → 2026-10-03 -15% → 255 → +30% 331.5 → 回归 300）
       // 冲③尾部残像参数（残像换影并入流星穿刺——2026-10-02，原独立技能3 取消）：
       afterT: 0.7, burstSpeed: 190, burstDmg: 10,
       // 残像自爆短弹发数按难度（2026-10-04 二次定稿 6/7/9/10——虚象/具象/真我/诗篇；真我 9 / 诗篇 10
@@ -2450,7 +2454,7 @@
       // 技能2 核心膨胀：一次推出三颗缓慢膨胀黑红能量球（基准朝玩家方向、相邻夹角 60°，方向锁定施放瞬间
       // 玩家方位缓慢漂移不跟踪），飞行 orbDur 后各自原地爆散环形弹——分裂弹数按难度（2026-10-04 用户指定
       // 四难度）：6 / 7 / 8 / 10；移速 72 / 膨胀速率 9.2（体型不变：出生 14 / 上限 60，爆散时半径约 32）
-      orbR: 60, orbSpd: 72, orbDur: 2.0, orbGrow: 9.2, ringN: 6, formRingN: 7, realmeRingN: 8, poemRingN: 10, ringSpeed: 140, ringDmg: 12,   // ringSpeed 140 = 2026-10-03 二轮定稿：分裂小子弹射速 -30%（原 200）
+      orbR: 60, orbSpd: 72, orbDur: 2.0, orbGrow: 9.2, ringN: 6, formRingN: 7, realmeRingN: 8, poemRingN: 10, ringSpeed: 200, ringDmg: 12,   // ringSpeed 200 = 2026-10-08 用户定稿定值 200（历史：原 200 → 2026-10-03 -30% → 140 → 短暂 196 → 回归 200）
       // —— 牛角减伤（被动常驻，2026-10-03 用户定稿，三轮改版：仅真我/诗篇难度 -20%，其余难度无减伤）——
       // 命中点落在两翼折角（牛角）头部时伤害 ×hornRealmeMul（真我/诗篇 0.8）——
       // 判定几何见 xiayongHornDmgMul()（u = 命中点横向半宽比例 / v = 纵向半高比例；牛角 ≈ 立绘横向最外端
@@ -2735,7 +2739,7 @@
       { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 140, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 10% 1s / 10% 2s 虚化护盾
       { id: 'violet',  color: '#c084fc', weight: 0.21, skill: 'violet', firstDelay: [0.5, 1], entry: 140, charge: 120, iv: [1.4, 2.3] },     // 紫晶：单发精确追踪弹（紫=追踪）；间隔较幽蓝 +0.3s、无虚化护盾、首攻不额外延长
       { id: 'white',   color: '#eaf1f8', weight: 0.15, skill: 'silent', entry: 140, charge: 120 },                              // 霜白：不开火（停留规则与普通 2类一致）
-      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 300, entry: 84, charge: 72 },                    // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速 60%（84/72）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 300 承担承伤职能（2026-10-03 取消减伤）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
+      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 800, entry: 84, charge: 72 },                    // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速 60%（84/72）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 800 承担承伤职能（2026-10-03 取消减伤；2026-10-08 用户定稿 300→800，诗篇仍走 POEM_HP.striker_fortress = 3000 绝对覆盖）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
       { id: 'dusk',    color: '#14161c', weight: 0.12, skill: 'dusk' },                       // 幽暮：黑色机白核；出现权重按关卡分档直接取值（Lv1~10 为 2 / Lv11~20 为 5，见 strikerVariantWeights）
     ],
     gunship: [
@@ -2841,8 +2845,10 @@
   const DROP_SHIELD_RATE = 0.02;   // 量子护盾基础掉率
   const DROP_SHIELD_BLUE = 0.06;   // 蓝色敌人护盾掉率
   const DROP_SHIELD_STACK = 0.35;  // 场上已有护盾道具或我方已带盾时的降率倍数
-  const DROP_HP_RATE = 0.018;      // 加血套件基础掉率
-  const DROP_HP_GREEN = 0.10;      // 增生侧翼艇（淡青绿）加血掉率（固定值）
+  const DROP_HP_BY_CLASS = { 1: 0.005, 2: 0.01, 3: 0.02, 4: 0.06 };   // 加血套件按敌机类别基础掉率（1类 0.5% / 2类 1% / 3类 2% / 4类 6%，2026-10-08 用户定稿）
+  const DROP_HP_PROLIFERA = 0.04;  // 增生侧翼艇（淡青绿）加血掉率（固定值，不随类别表；2026-10-08 用户定稿 10%→4%）
+  const DROP_HP_CYAN = 0.08;       // 青时炮艇（3类 cyan 变体，绿色标记）加血掉率（固定值；2026-10-08 用户定稿）
+  const DROP_HP_GREEN = 0.10;      // 铁砧（治疗无人机，灰+绿标记）加血掉率（固定值，维持 10%）
   const DROP_HP_BOSS = 0.40;       // BOSS 加血：40% 掉 1 个
   const DROP_HP_BOSS2 = 0.10;      // BOSS 加血：另有 10% 一次掉 2 个
   const DROP_BOMB_ORANGE = 0.005;  // 橙色敌人爆弹掉率（整场战斗最多触发一次，不影响 4类 5% 与 BOSS 20%）
@@ -2907,9 +2913,10 @@
   //   desc：结算页悬停详情与数值图鉴「成就」页的描述文案
   //   holders：「无垠」专属——已完成者名单（x 与名单由维护者随版本手动更新）
   //   finalOnly：仅最终版本开放获得（受 ACHIEVEMENT_INFINITY_ENABLED 门控，当前恒不可获得）
-  //   wipBoss：对应 BOSS 待实装占位（黑暗之手、归星等，bossId 以各成就 desc 为准）——解锁判定已在
+  //   wipBoss：对应 BOSS 待实装占位（当前仅剩摘星者对应的「归星」；黑暗之手已于 2026-10-08 实装上线，
+  //   唯我 / 光明之脚 / 内乱 / 铜皮太岁 / 酒客飞匕 5 条已正式开放获得）——解锁判定已在
   //   02-achievements achvOnBossKilled 预埋（实体实装后自动生效），展示处标注「对应 BOSS 待更新」
-  //   challenge：挑战成就（2026-10-08 用户定稿）——全部无伤类成就标记为此；使用强力装备（strong: true，
+  //   challenge：挑战成就（2026-10-08 用户定稿）——全部无伤类成就标记为此；使用特殊装备（special: true，
   //   如天使璃）期间无法获得（02-achievements unlockAchievement 统一门控），悬停/图鉴页展示标注
   // 「无垠」的"无驾驶员效果"= 主/副槽均为 无驾驶员 或 whiteboard 白板驾驶员（当前为胡笛客/牛蛋；温酒客已实装受伤提升效果、萧杨已实装原石效果，均不再白板）；
   // "无护甲效果" = ARMORS 注册表中带 noEffect 标记的护甲（当前仅标准护甲）。
@@ -2933,7 +2940,7 @@
     chengyueDry6: { name: '非非', tier: 'gray', icon: '☾', desc: '装备澄月时，连续暴走6次都不触发护盾效果。' },
     xukaiPreBossDeath: { name: '萎靡不振', tier: 'gray', icon: '⇈', desc: '使用许凯狗时，在击败第一轮BOSS前被击坠。' },
     wenjiukeWin: { name: '九克之王', tier: 'gray', icon: '醉', desc: '大变革即将上演！使用温酒客通关' },
-    lingliAirClear: { name: '清除空气', tier: 'gray', icon: '⚔', desc: '使用漓并触发清除弹幕时，没有任何子弹被消除掉。' },
+    lianjinLovelyAirClear: { name: '清除空气', tier: 'gray', icon: '⚔', desc: '使用炼金璃并触发清除弹幕时，没有任何子弹被消除掉。' },
     hajimiDodge60: { name: '哦非非', tier: 'gray', icon: '喵', desc: '哈基米大王的闪避概率到达60%。' },
     // ── 银（具象）──
     kill200: { name: '狂暴开杀', tier: 'silver', icon: '⚔', desc: '击坠 200 架敌机。' },
@@ -2953,10 +2960,10 @@
     maxinSlow30: { name: '鳖爬', tier: 'silver', icon: '🐢', desc: '使用马兴犬时，连续30s低速移动。' },
     hudikeWin: { name: '卑鄙笛客', tier: 'silver', icon: '笛', desc: '使用胡笛客通关。' },
     niudanWin: { name: '嘟嘟牛蛋', tier: 'silver', icon: '蛋', desc: '使用牛蛋通关。' },
-    weiwo: { name: '唯我', tier: 'silver', icon: '👤', wipBoss: true, desc: '使用陵落击坠黑暗之手。' },
-    neiluan: { name: '内乱', tier: 'silver', icon: '🗡', wipBoss: true, desc: '装备无界飞剑或辛国栋之怒击坠黑暗之手。' },
-    tongpitasui: { name: '铜皮太岁', tier: 'silver', icon: '🧱', wipBoss: true, desc: '装备铜皮夏勇并击坠黑暗之手。' },
-    guangmingzhijiao: { name: '光明之脚', tier: 'silver', icon: '🦶', wipBoss: true, desc: '不使用陵落的情况下，击坠黑暗之手。' },
+    weiwo: { name: '唯我', tier: 'silver', icon: '👤', desc: '使用陵落击坠黑暗之手。' },
+    neiluan: { name: '内乱', tier: 'silver', icon: '🗡', desc: '装备无界飞剑或辛国栋之怒击坠黑暗之手。' },
+    tongpitasui: { name: '铜皮太岁', tier: 'silver', icon: '🧱', desc: '装备铜皮夏勇并击坠黑暗之手。' },
+    guangmingzhijiao: { name: '光明之脚', tier: 'silver', icon: '🦶', desc: '不使用陵落的情况下，击坠黑暗之手。' },
     // ── 金（真我）──
     stormWithTianxiu: { name: '忧郁', tier: 'gold', icon: '🎹', desc: '使用天秀忧郁王子击坠暴风之眼。' },
     stormWithoutTianxiu: { name: '击坠风暴', tier: 'gold', icon: '🛩', desc: '不使用天秀忧郁王子的情况下，击坠暴风之眼。' },
@@ -2980,7 +2987,7 @@
     wanDaoFengLiu: { name: '万道风流', tier: 'gold', icon: '🎐', desc: '开启天秀忧郁王子的风暴作弊模式。' },
     inFieldKill12: { name: '其实是打不到', tier: 'gold', icon: '⚒', desc: '击坠 12 架处于御4力场或铁砧光圈范围内的敌机。' },
     lingqiaotuwei: { name: '灵巧突围', tier: 'gold', icon: '🧭', desc: '击坠 8 个炮火先兆者。' },
-    jiukefeidi: { name: '酒客飞匕', tier: 'gold', icon: '🍶', wipBoss: true, challenge: true, desc: '非诗篇难度下，无伤击坠黑暗之手。' },
+    jiukefeidi: { name: '酒客飞匕', tier: 'gold', icon: '🍶', challenge: true, desc: '非诗篇难度下，无伤击坠黑暗之手。' },
     // ── 紫（诗篇）──
     // 诗篇难度专属无伤击坠系列：与真我档无伤成就互斥（诗篇无伤只解锁本系列，非诗篇无伤走旧档；有伤击坠互不影响）
     wangXiNanYi: { name: '往昔难忆', tier: 'purple', icon: '🕰', challenge: true, desc: '诗篇难度下，无伤击坠旧日之歌。' },
@@ -3015,7 +3022,7 @@
     DEMO_TOP, DEMO_BOTTOM,
     ARMORS, ARMOR_SKILLS, ENEMY_CLASS, ENEMY_GRADES, enemyGrade, currentArmor, setArmor, armorMaxHp,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain, setPilotSub, hasPilot, pilotEntry,
-    dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, pilotHuiHealMul, strongGearActive, PRINCE_STORM,
+    dagouWaveIv, pilotBombDmgMul, pilotBombStartAdd, specialGearActive, PRINCE_STORM,
     WINGMEN_CFG, currentWingman, WINGMAN, BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD,
     SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     ENEMY_TYPES, HARBINGER, WEILONG, HANSHUANG, YU4, ANVIL, ELITES, ZHANGZHANG,
@@ -3026,7 +3033,7 @@
     CAPITAL_PALETTE, GUNSHIP_PALETTE, STAR_COUNT, MAX_BOMBS, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, REWARD_ITEMS,
     CAPITAL_HIGHFIRE_DR, CAPITAL_DESCEND_DR, BOSS_LOWFIRE_BONUS, POPIAN_VULN_LV1, POPIAN_VULN_LV2, WEAPON_DROP_HITS,
     CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE, DROP_KIT_YELLOW, DROP_SHIELD_RATE,
-    DROP_SHIELD_BLUE, DROP_SHIELD_STACK, DROP_HP_RATE, DROP_HP_GREEN, DROP_HP_BOSS, DROP_HP_BOSS2,
+    DROP_SHIELD_BLUE, DROP_SHIELD_STACK, DROP_HP_BY_CLASS, DROP_HP_PROLIFERA, DROP_HP_CYAN, DROP_HP_GREEN, DROP_HP_BOSS, DROP_HP_BOSS2,
     DROP_BOMB_ORANGE, DROP_KIT_BERSERK, SIDE_BEHAVIOR_COLORS, SIDE_MOON, SIDE_SPAWN_W, SIDE_SWIRL,
     TEST_HP, SIDE_SHOOT_HP, SIDE_SCORE, SIDE_KAMIKAZE_SCORE, WIP_PLACEHOLDER_TYPES, POEM_HP, poemHpOf, eliteHpOf, scytheImg, tartImg, tartStripImg, tartUltraImg, darkhandImg, dhSampleSolid, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg,
     BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSS_LOOT_BOTH,

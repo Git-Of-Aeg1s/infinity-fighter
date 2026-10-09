@@ -1990,10 +1990,11 @@
   function drawSongBar(e, isDh) {
     if (e.phase !== 'combat') return;
     if (isDh) {
-      // 黑暗之手血条（2026-10-03 用户定稿：测试2 D2 四连爪痕方案）——黑条上四道爪痕撕口，
-      // 每道撕口精准落在连携召唤血量阈值（80/60/40/20%）上，血量白热前线划过撕口 = 该精英
-      // 被召唤、撕口随之迸亮常驻（「每个爪痕召唤一个敌人」）。登场 = 黑条浮现 → 爪痕连撕 ×4
-      //（按召唤顺序自右向左；2026-10-04 提速 +100% 并提前至展开期内起砍）→ 展开完成瞬间满格填充。
+      // 黑暗之手血条（2026-10-03 用户定稿：测试2 D2 四连爪痕方案；2026-10-08 用户定稿六稿 G6 雾锁爪痕 +
+      // 梯形条体）——黑条上四道爪痕撕口，每道撕口精准落在连携召唤血量阈值（80/60/40/20%）上，血量白热
+      // 前线划过撕口 = 该精英被召唤、撕口随之迸亮常驻（「每个爪痕召唤一个敌人」）。登场 = 黑条浮现 →
+      // 爪痕连撕 ×4（按召唤顺序自右向左；2026-10-04 提速 +100% 并提前至展开期内起砍）→ 展开完成瞬间满格
+      // 填充 → 进入 G6 稳定期动效：血量区黑红雾气弥散 + 撕口雾结缓聚红缘 + 边框黑雾粒子 + 撕口爪指松扣。
       // 旧日之歌血条（幽紫→猩红→金橙）保持原路径不变。
       const bw = 360, bh = 13;
       const cx = CANVAS_W / 2, top = 24, mid = top + bh / 2, bot = top + bh;
@@ -2003,6 +2004,7 @@
       const gashXs = ths.map((t) => x0 + bw * t);        // 撕口位置：自右向左 80 → 60 → 40 → 20%
       const slashT = (k) => (0.20 + k * 0.26) / 2;       // 第 k 道爪痕撕下时刻（2026-10-04 提速 +100%：起砍 0.10s 落在血条展开期内、间隔 0.13s；须与 05-boss dhSlashN 排程严格对齐）
       const openT = (k) => slashT(k) + 0.08;             // 撕口裂开时刻
+      const dhPrand = (i) => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };   // 确定性伪随机（G6 雾层 / 边框粒子）
       const bt = e.barT;
       const slabA = clamp(bt / 0.12, 0, 1);              // 黑条浮现
       const flash = 1 - clamp(bt / 0.25, 0, 1);          // 登场红光爆闪（收敛：过强会罩出血条一圈红晕像 bug）
@@ -2030,12 +2032,11 @@
       ctx.translate(cx, mid);
       ctx.transform(sxp, 0, skew, syp, jx / jdiv, jy / syp);       // 绕血条中心缩放/错切/颤动
       ctx.translate(-cx, -mid);
-      // 六边条体 - 已撕开爪痕斜带（上缘入刀、左斜 8px、宽 4px）的 evenodd 裁剪
+      // 梯形条体（2026-10-08 用户定稿：两端收尖改梯形，下底长上底短）- 已撕开爪痕斜带（上缘入刀、左斜 8px、宽 4px）的 evenodd 裁剪
       const clawClip = () => {
         ctx.beginPath();
-        ctx.moveTo(x0, mid);
-        ctx.lineTo(x0 + 15, top); ctx.lineTo(x1 - 15, top); ctx.lineTo(x1, mid);
-        ctx.lineTo(x1 - 15, bot); ctx.lineTo(x0 + 15, bot);
+        ctx.moveTo(x0 + 14, top); ctx.lineTo(x1 - 14, top);   // 梯形上底（短）
+        ctx.lineTo(x1, bot); ctx.lineTo(x0, bot);             // 梯形下底（长）
         ctx.closePath();
         for (let k = 0; k < cutN; k++) {
           const gx = gashXs[k];
@@ -2091,6 +2092,53 @@
       tint.addColorStop(1, 'rgba(60, 6, 14, 0.30)');
       ctx.fillStyle = tint;
       ctx.fillRect(x0, top, x1 - x0, bh);
+      // —— G6 雾锁爪痕（2026-10-08 用户定稿）：血量区黑红雾气弥散 + 撕口雾结缓聚红缘（入场完成后 0.4s 淡入；
+      // 血量越低雾越稀；确定性伪随机，无逐帧随机漂移）
+      if (floodP >= 1 && fillW > 1) {
+        const fogA = clamp((bt - 0.30) / 0.4, 0, 1);
+        const dim = 0.45 + 0.55 * ratio;
+        const fy0 = top + 1.2, fy1 = bot - 1.2, fym = (fy0 + fy1) / 2;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(x0, top, fillW, bh); ctx.clip();   // 雾只弥散在血量区内
+        for (let i = 0; i < 10; i++) {
+          const sd = dhPrand(i * 3 + 1), sd2 = dhPrand(i * 5 + 2), sd3 = dhPrand(i * 7 + 3);
+          const span = Math.max(20, fillW);
+          const wx = x0 + ((sd * span - state.time * (4 + sd2 * 5)) % span + span) % span;
+          const wy = fy0 + 2 + sd2 * (fy1 - fy0 - 4) + Math.sin(state.time * (0.4 + sd3 * 0.5) + i * 1.9) * 2.2;
+          const wr = 9 + sd3 * 12 + Math.sin(state.time * 0.7 + i) * 1.5;
+          const wa = (0.05 + 0.075 * sd) * dim * fogA;
+          const fg = ctx.createRadialGradient(wx, wy, 0, wx, wy, wr);
+          fg.addColorStop(0, `rgba(44, 7, 14, ${(wa * 1.5).toFixed(3)})`);
+          fg.addColorStop(0.55, `rgba(26, 4, 9, ${wa.toFixed(3)})`);
+          fg.addColorStop(1, 'rgba(14, 2, 6, 0)');
+          ctx.fillStyle = fg;
+          ctx.beginPath(); ctx.arc(wx, wy, wr, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let k = 0; k < cutN; k++) {
+          const gx = gashXs[k];
+          if (gx > x0 + fillW) continue;               // 血量区外无雾结（阈值已划过 = 该爪痕已召唤）
+          const ph = (state.time / 3.4 + k * 0.25) % 1;
+          const gather = Math.pow(Math.max(0, Math.sin(ph * Math.PI)), 2);
+          const kr = 5 + 3.5 * (1 - gather);
+          for (let j = 0; j < 2; j++) {
+            const ang = state.time * (0.7 + j * 0.4) + k * 1.7 + j * 2.6;
+            const wx = gx + Math.cos(ang) * kr * 0.8;
+            const wy = fym + Math.sin(ang) * kr * 0.32;
+            const wa = (0.1 + 0.16 * gather) * dim * fogA;
+            const fg = ctx.createRadialGradient(wx, wy, 0, wx, wy, kr);
+            fg.addColorStop(0, `rgba(120, 14, 26, ${(wa * 0.8).toFixed(3)})`);
+            fg.addColorStop(1, 'rgba(30, 3, 8, 0)');
+            ctx.fillStyle = fg;
+            ctx.beginPath(); ctx.arc(wx, wy, kr, 0, Math.PI * 2); ctx.fill();
+          }
+          if (gather > 0.55) {                         // 凝聚成形时红缘亮起
+            ctx.strokeStyle = `rgba(255, 96, 80, ${((gather - 0.55) * 0.8 * dim * fogA).toFixed(3)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(gx, fym, kr * 0.72, 0, Math.PI * 2); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
       ctx.restore();
       ctx.restore();
       // 撕口红光：常态红光呼吸（增强，撕痕始终有存在感）；血量划过阈值（该精英被召唤）后常亮脉冲更醒目
@@ -2107,6 +2155,70 @@
         ctx.lineTo(gx - 4, bot + 1);
         ctx.stroke();
         ctx.shadowBlur = 0;
+      }
+      // —— G6 爪指松扣（2026-10-08 用户定稿）：四根小爪倒扣撕口缓慢屈伸，血量跌破阈值（该精英被召唤）
+      // 对应爪指松脱飞走——0.5s 升起、张开、消散（时点驱动：以跨越瞬间记时，避免大血量池下半举卡滞）
+      if (!e.gashRel) e.gashRel = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        if (bt < openT(k)) continue;                 // 撕口裂开前无爪指
+        const crossed = ratio < ths[k];
+        if (crossed && !e.gashRel[k]) e.gashRel[k] = state.time;
+        const lift = crossed ? clamp((state.time - e.gashRel[k]) / 0.5, 0, 1) : 0;
+        if (lift >= 1) continue;                     // 已松脱消散
+        const gx = gashXs[k];
+        const flex = Math.pow(Math.max(0, Math.sin((state.time * 0.7 + k * 0.8) % 1 * Math.PI * 2)), 2);
+        const dy = -lift * 14 - flex * 1.2;          // 升起 / 屈伸
+        const a = (0.85 - lift * 0.85) * (0.8 + 0.2 * flex);
+        const spread = 1 + lift * 1.6;               // 松脱时爪指张开
+        ctx.save();
+        ctx.translate(gx, top + dy);
+        ctx.globalAlpha = a * slabA;
+        ctx.strokeStyle = `rgba(255, 82, 70, ${(0.55 + 0.25 * flex).toFixed(3)})`;
+        ctx.lineWidth = 1.1;
+        ctx.shadowColor = '#ff4642'; ctx.shadowBlur = 4 + lift * 4;
+        ctx.fillStyle = 'rgba(16, 3, 8, 0.94)';
+        ctx.beginPath();                             // 倒扣小爪：掌节 + 尖爪钩（钩进撕口）
+        ctx.moveTo(-4 * spread, 0); ctx.lineTo(4 * spread, 0);
+        ctx.quadraticCurveTo(4.6 * spread, 5, 1.6 * spread, 8.5);
+        ctx.quadraticCurveTo(0.5, 10.5, 0, 12);
+        ctx.quadraticCurveTo(-1.2, 9.5, -2.4 * spread, 7.5);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+      // —— G6 边框黑雾粒子（2026-10-08 用户定稿）：沿梯形周界缓行 + 外法向飘散明灭（黑红余烬感，
+      // 入场完成后 0.4s 淡入；少量红烬微光点缀；确定性伪随机）
+      if (floodP >= 1) {
+        const mistA = clamp((bt - 0.30) / 0.4, 0, 1);
+        const dim = 0.45 + 0.55 * ratio;
+        const PER = [
+          { a: [x0 + 14, top], b: [x1 - 14, top], n: [0, -1] },      // 上底（短）
+          { a: [x1 - 14, top], b: [x1, bot], n: [0.68, -0.73] },     // 右斜边
+          { a: [x1, bot], b: [x0, bot], n: [0, 1] },                 // 下底（长）
+          { a: [x0, bot], b: [x0 + 14, top], n: [-0.68, -0.73] },    // 左斜边
+        ];
+        for (let i = 0; i < 16; i++) {
+          const seg = PER[i % 4];
+          const sd = dhPrand(i * 11 + 5), sd2 = dhPrand(i * 13 + 7), sd3 = dhPrand(i * 17 + 9);
+          const u = ((sd + state.time * (0.015 + sd2 * 0.02)) % 1 + 1) % 1;   // 沿边缓行
+          const px = seg.a[0] + (seg.b[0] - seg.a[0]) * u;
+          const py = seg.a[1] + (seg.b[1] - seg.a[1]) * u;
+          const off = 1.5 + sd3 * 4 + Math.sin(state.time * (0.5 + sd2) + i * 2.3) * 1.6;   // 法向飘散距离（呼吸）
+          const mx = px + seg.n[0] * off, my = py + seg.n[1] * off;
+          const tw = 0.5 + 0.5 * Math.sin(state.time * (1.2 + sd3 * 1.6) + i * 2.1);
+          const mr = 2.2 + sd * 3.4;
+          const ma = (0.1 + 0.16 * tw) * (0.55 + 0.45 * dim) * mistA;
+          const mg = ctx.createRadialGradient(mx, my, 0, mx, my, mr);
+          mg.addColorStop(0, `rgba(30, 6, 11, ${(ma * 1.4).toFixed(3)})`);
+          mg.addColorStop(0.6, `rgba(16, 3, 7, ${ma.toFixed(3)})`);
+          mg.addColorStop(1, 'rgba(10, 2, 5, 0)');
+          ctx.fillStyle = mg;
+          ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+          if (sd3 > 0.72) {                          // 红烬微光点缀
+            ctx.fillStyle = `rgba(255, 82, 66, ${(0.35 * tw * dim * mistA).toFixed(3)})`;
+            ctx.beginPath(); ctx.arc(mx, my, 0.7, 0, Math.PI * 2); ctx.fill();
+          }
+        }
       }
       // 撕裂瞬间：亮痕划过（拉长增强）+ 碎屑迸开（barT 驱动、无状态）
       for (let k = 0; k < 4; k++) {
@@ -2977,6 +3089,9 @@
     // 「预警 → 发射」（世界坐标，机体上层）——
     // 预警 = 暗红虚线方向束 + 端点光斑闪动（呼吸相位用 e.skill.pt，gameover 随 update 冻结自动定格；紫改红随黑红弹幕同系；
     // 2026-10-03 五轮定稿：线宽 2→3.5 增粗 + 红辉光，闪动频率/幅度加大更醒目）；
+    // 2026-10-08 用户定稿：预警线不再整条同时出现——自发射点沿朝向逐段生长延伸至出屏（warnGrow 内 easeOutCubic
+    // 减速伸长，位置连续无瞬跳），每段生成时带「从大收缩到正常」警示特效（warnShrink 内段宽 3.2× → 1× 收缩），
+    // 端点光斑随线头推进、伸满后驻留终点继续脉动；
     // 弹体 = 超长蛋挞逐段贴图（tartUltraImg 水彩烘焙图，见 drawDhTart），随 dhUpdateTart 逐节露出/平移/屏缘折返
     if (e.skill && e.skill.id === 3) {
       const c4 = DARKHAND.s4, s = e.skill;
@@ -2994,25 +3109,39 @@
             if (ddy > 1e-6) tMin = Math.min(tMin, (CANVAS_H + 30 - sy) / ddy);
             if (tMin < Infinity) wl = tMin;
           }
+          // 线头位置：warnGrow 内 easeOutCubic 自 0 伸长至 wl（起笔在发射点、减速收尾——位置连续无瞬跳）
+          const grow = clamp(s.pt / Math.max(c4.warnGrow, 1e-4), 0, 1);
+          const tip = (1 - Math.pow(1 - grow, 3)) * wl;
           ctx.save();
           ctx.translate(sx, sy);
           ctx.rotate(gm.ang);
-          ctx.globalAlpha = 0.4 + Math.sin(s.pt * 26) * 0.4;   // 0~0.8 大幅闪动（原 0.05~0.65）
           ctx.strokeStyle = '#ff4632';
-          ctx.lineWidth = 3.5;                                 // 增粗（原 2；2026-10-03 用户定稿 4.5→3.5）
-          ctx.setLineDash([12, 9]);
           ctx.shadowColor = '#ff2030';
           ctx.shadowBlur = 7 + Math.sin(s.pt * 26) * 3;        // 红辉光随闪动呼吸
-          ctx.beginPath();
-          ctx.moveTo(6, 0);
-          ctx.lineTo(wl, 0);
-          ctx.stroke();
-          ctx.setLineDash([]);
+          ctx.lineCap = 'round';
+          // 逐段手绘虚线（取代 setLineDash——每段需独立线宽以实现生成时「从大收缩到正常」警示）：
+          // 段距 21 = 实 12 + 空 9（同原虚线口径），起点偏移 6 避开发射点光晕；段生成时刻 = 线头抵达段首
+          //（easeOutCubic 反解），生成后 warnShrink 内段宽 3.2× → 1× 平方衰减收缩；新段透明度抬升更醒目
+          const pitch = 21, dash = 12;
+          const nSeg = Math.min(Math.ceil((wl - 6) / pitch), Math.ceil((tip - 6) / pitch));
+          for (let k = 0; k < nSeg; k++) {
+            const x0 = 6 + k * pitch;
+            const x1 = Math.min(x0 + dash, tip);
+            if (x1 - x0 < 0.5) break;
+            const t0 = c4.warnGrow * (1 - Math.pow(1 - clamp((x0 - 6) / Math.max(wl - 6, 1), 0, 1), 1 / 3));
+            const sh = clamp((s.pt - t0) / Math.max(c4.warnShrink, 1e-4), 0, 1);
+            ctx.lineWidth = 3.5 * (1 + 2.2 * (1 - sh) * (1 - sh));   // 3.2× → 1×
+            ctx.globalAlpha = (0.4 + Math.sin(s.pt * 26) * 0.4) * (0.55 + 0.45 * sh);
+            ctx.beginPath();
+            ctx.moveTo(x0, 0);
+            ctx.lineTo(x1, 0);
+            ctx.stroke();
+          }
           ctx.shadowBlur = 0;
           ctx.globalAlpha = 0.55 + Math.sin(s.pt * 20) * 0.4;  // 端点光斑同步大闪（原 0.2~0.8）
           ctx.fillStyle = '#ffb3a6';
           ctx.beginPath();
-          ctx.arc(wl, 0, 6.5, 0, Math.PI * 2);                 // 光斑加大（原 4.5）
+          ctx.arc(tip, 0, 6.5, 0, Math.PI * 2);                // 光斑随线头推进（伸满后驻留终点）；光斑加大（原 4.5）
           ctx.fill();
           ctx.restore();
         }

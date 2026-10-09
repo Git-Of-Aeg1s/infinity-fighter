@@ -3,6 +3,12 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(2 名) 06-enemy(1 名) 12-ui(2 名) 14-main(3 名)
   //
+  // ⚠ 音频解锁纪律（2026-10-09 用户定稿：未解锁时 BGM 与警报一律不响）：浏览器禁止无用户手势
+  // 自动播放，本模块所有有声媒体统一受 `bgmUnlocked` 解锁闩把守（首次 keydown/pointerdown/
+  // touchstart 解锁；手柄 / AI 操控不产生这三类事件故不解锁）。**后续新增任何音效必须接入同一
+  // 闩（起播 / 续播前检查 bgmUnlocked），禁止裸调 play()**——否则会出现"AI/手柄操控时新音效独响、
+  // BGM/警报不响"的门槛不一致（历史 bug：警报未接闩，不点击页面时警报独响）。
+  //
   import { bossFlow, musicToggle, state } from './02-core.js';
 
 
@@ -216,7 +222,7 @@
       // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停 / 静音
       if (state.paused || audioMuted) {
         if (!alarmAudio.paused) alarmAudio.pause();
-      } else if (alarmAudio.src && bossFlow.stage === 'warn' && alarmAudio.paused && alarmAudio.currentTime > 0) {
+      } else if (bgmUnlocked && alarmAudio.src && bossFlow.stage === 'warn' && alarmAudio.paused && alarmAudio.currentTime > 0) {
         alarmAudio.play().catch(() => {});
       }
       return;
@@ -238,7 +244,7 @@
   alarmAudio.preload = 'auto';
 
   function startAlarm() {
-    if (audioMuted) return;   // 静音时不播放警报音效
+    if (audioMuted || !bgmUnlocked) return;   // 静音 / 未解锁（浏览器自动播放限制）不播放警报——与 BGM 同门槛，见模块头「音频解锁纪律」
     alarmAudio.currentTime = 0;
     alarmAudio.play().catch(() => {});
   }
@@ -253,6 +259,9 @@
     bgmUnlocked = true;
     const a = bgmCurrent ? bgmAudios[bgmCurrent] : null;
     if (a && !state.paused && !audioMuted) a.play().catch(() => {});
+    // 解锁瞬间若正处警报演出（此前被解锁闩挡住从未起播）则补响——与 BGM「解锁即起播」语义对齐；
+    // 曾起播后中途暂停的（currentTime > 0）由 updateBGM 警报续播分支接管
+    if (bossFlow.stage === 'warn' && !state.paused && !audioMuted && alarmAudio.paused && alarmAudio.currentTime === 0) startAlarm();
   }
   window.addEventListener('keydown', unlockBGM, { once: true });
   window.addEventListener('pointerdown', unlockBGM, { once: true });

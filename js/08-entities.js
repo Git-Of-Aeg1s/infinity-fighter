@@ -5,13 +5,13 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
-  import { BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
+  import { ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS_LOWFIRE_BONUS, BULWARK, CANVAS_H, CANVAS_W, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, CHAOS_SMALL_DMG_MUL, DARKHAND, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, MAX_BOMBS, PIERCE_WEAKEN_MUL, PILOTS, PLAYER_CFG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, SHIELD_DURATION, STORM, STORM2, STORM_SHIP, UNREAL, WAVE_POEM, currentArmor, diffMods, enemyDmgMul, enemyGrade, hasPilot, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
-  import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
+  import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNoteLanxinShieldStart, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -61,9 +61,14 @@
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
     if (e.type === 'hanshuang' && e.hsNoDecel) mul *= (1 - HANSHUANG.entryDR);
-    // 黑暗之手：场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时受到的普通伤害 -70%
-    //（主武器/僚机弹幕/斩击；高能爆弹/绷绷炸弹为真实伤害不受此减免、连携精英亦同受爆弹伤害——2026-10-04 用户定稿；见 01-config DARKHAND.summon）
-    if (e.type === 'boss' && e.bossId === 'darkhand' && dhGuardActive()) mul *= 1 - DARKHAND.summon.guardDR;
+    // 黑暗之手：本段击坠增伤优先于护卫减伤（2026-10-08 用户定稿）——当前血量窗口的精英被击坠（e.dhAmp，
+    // 登记见 02-core dhOnLinkedEliteKilled）→ 减伤撤销、受到的普通伤害 +100%（至本段结束/下一窗口召唤止）；
+    // 否则场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时 -70%
+    //（主武器/僚机弹幕/斩击；高能爆弹/绷绷炸弹为真实伤害，两种修正均不受、连携精英亦同受爆弹伤害——2026-10-04 用户定稿；见 01-config DARKHAND.summon）
+    if (e.type === 'boss' && e.bossId === 'darkhand') {
+      if (e.dhAmp) mul *= 1 + DARKHAND.summon.guardAmp;
+      else if (dhGuardActive()) mul *= 1 - DARKHAND.summon.guardDR;
+    }
     // 铜皮夏勇·牛角减伤（被动常驻，2026-10-03 用户定稿）：命中点落在两翼折角（牛角）头部时 ×0.5——
     // 主炮/僚机弹幕传弹体坐标判定；空间斩击等大范围伤害不传命中点、不判部位（见 01-config xiayongHornDmgMul）
     mul *= xiayongHornDmgMul(e, hitX, hitY);
@@ -215,6 +220,7 @@
       // 位置 / 巨大蛋挞自旋 / 弧线 / 寿命全部停止推进，战场画面定格。根因：14-main idle/gameover 分支的
       // updateBullets 演示弹道共用路径会把场上残留敌弹（蛋挞）继续推下屏
       if (state.mode === 'gameover') break;
+      b.age = (b.age || 0) + dt;   // 存在时长（弧线弹出生色漂移 / 蛇行相位共用；weave 分支不再单独推进）
       // 蛋挞被依的镰刀斩中（2026-10-04 用户定稿）：颤动 hitShudderT → 碎裂（迸散粒子一次）→ 渐隐 hitFadeT → 移除；
       // 全程冻结移动 / 自旋 / 碰撞（continue 跳过本帧全部推进；颤动抖动与渐隐 alpha 由渲染端按 tartHitT 取值）
       if (b.tart && b.tartHitT != null) {
@@ -333,7 +339,6 @@
       }
       // 蛇行弹（紫晶 DNA 双螺旋）：朝向绕出射基准角正弦摆动、恒速前进——左右两束相位相反，全程持续交绕
       if (b.weave) {
-        b.age += dt;
         const wA = b.baseAng + b.weave.amp * Math.sin(b.weave.om * b.age + b.weave.ph);
         const wS = Math.hypot(b.vx, b.vy) || 1;
         b.vx = Math.cos(wA) * wS; b.vy = Math.sin(wA) * wS;
@@ -622,12 +627,16 @@
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
   function applyPowerupPickup(p) {
     achvNotePickup();   // 成就：UPUPUP——道具拾取计数（水晶不走本路径不计）
-    // 小艺：拾取任意道具（水晶不走本路径）恢复生命——血量低于 35% 时回复量提升（森灵之力）
+    // 小艺：拾取任意道具（水晶不走本路径）恢复生命——血量低于 60 回复 5% 生命、低于 40 改为 10%
+    //（2026-10-08 用户定稿：阈值为血量点数、回复量按最大生命百分比；血量 ≥60 时拾取不回血）
     if (hasPilot('xiaoyi') && player.alive) {
       const maxHp = player.maxHp || PLAYER_CFG.maxHp;
-      const heal = player.hp < maxHp * PILOTS.xiaoyi.pickupHealLowPct ? PILOTS.xiaoyi.pickupHealLow : PILOTS.xiaoyi.pickupHeal;
-      player.hp = Math.min(maxHp, player.hp + heal);
-      spawnParticles(player.x, player.y - 12, '#8ce36b', 6, 120);
+      const heal = player.hp < PILOTS.xiaoyi.pickupHealHpGateLow ? maxHp * PILOTS.xiaoyi.pickupHealPctLow
+        : player.hp < PILOTS.xiaoyi.pickupHealHpGate ? maxHp * PILOTS.xiaoyi.pickupHealPct : 0;
+      if (heal > 0) {
+        player.hp = Math.min(maxHp, player.hp + heal);
+        spawnParticles(player.x, player.y - 12, '#8ce36b', 6, 120);
+      }
     }
     if (p.kind === 'hp') {
       // 诗篇（WAVE_POEM.healPct）：回复量改为当前血量上限 ×35%（四舍五入：陵落 60→21 / 铜皮夏勇 130→46）；
@@ -646,6 +655,15 @@
         player.shield = SHIELD_DURATION;
         player.shieldMax = SHIELD_DURATION;   // 读条分母同步
         spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
+      }
+    } else if (p.kind === 'crystalShield') {
+      // 结晶护盾（炼金璃：BOSS 血量 70% 掉落，见 05-boss updateLovelyShieldMark）：
+      // 七日澜心结晶护盾同款——环绕 6s（ARMOR_SKILLS.lanxin.dur，与量子护盾同时长），消失时清弹
+      // 许凯狗冲刺期间不读条：仅吸收，护盾效果跳过（与量子护盾同口径）
+      if (state.pilotDashT <= 0) {
+        player.crystalShield = Math.max(player.crystalShield || 0, ARMOR_SKILLS.lanxin.dur);
+        if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
+        spawnParticles(p.x, p.y, '#FFC0CB', 18, 200);
       }
     } else if (p.kind === 'berserk') {
       // 许凯狗冲刺期间不读条：仅吸收得分（+100），不进入暴走
@@ -713,7 +731,7 @@
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
-      // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 漓等量表冻结不计（见 updatePilotStatus）
+      // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 炼金璃等量表冻结不计（见 updatePilotStatus）
       if (state.pilotDashT > 0 && player.alive) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);

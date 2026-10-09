@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(36 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(93 名) 13-encyclopedia(18 名) 14-main(37 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(37 名) 07-player(46 名) 08-entities(20 名) 09-draw-ships(20 名) 10-draw-world(27 名) 11-draw-boss(9 名) 12-ui(93 名) 13-encyclopedia(18 名) 14-main(37 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -37,10 +37,8 @@
   const jingdunBar = document.getElementById('jingdunBar');
   const jingdunFill = document.getElementById('jingdunFill');
   // 七日澜心（装甲技能）圆形计数表：左下角生命值上方量表（12-ui updateHUD 渲染填充角度）
-  // skillGaugeCount：右下角充能数字（漓连携时显示持有充能份数）
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
-  const skillGaugeCount = document.getElementById('skillGaugeCount');
   // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 Q 释放友方大风暴）
   // 陵落复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
   // pilotGaugeCount：右下角充能数字（叮咚鸡显示已充满持有层数）
@@ -143,14 +141,12 @@
     dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
     dagouChains: [],       // 大狗：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
     daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与大狗连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
-    yiCounter: 0,          // 依：击杀计数（上限 PILOTS.yi.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
+    meiCounter: 0,         // 依：击杀计数（上限 PILOTS.mei.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
     ddjGauge: 0,           // 叮咚鸡：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
     ddjLayers: 0,          // 叮咚鸡：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
     ddjUses: 0,            // 叮咚鸡：Q 技能已释放次数（全局初始 useMax=3 次，2026-10-02 用户定稿）
     ddjUseMax: PILOTS.dingdongji.useMax,   // 叮咚鸡：Q 释放上限（击败 BOSS 掷骰 +1——25%/第 5、6 轮 100%，见 06-enemy killEnemy；重开复位）
     ddjBerserkUps: 0,      // 叮咚鸡：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
-    lingliCharges: 0,      // 漓：持有的结晶护盾充能次数（0~2，仅连携七日澜心时累计；满自动释放清弹特效）
-    lingliBossShieldDone: false, // 漓：本段 BOSS 战开始护盾已发放标记（每段 BOSS 战一次，见 07-player updatePilotStatus）
     // ---- 奖励道具效果状态（2026-10-01 改版：道具槽已取消——击坠赞助无人机立即生效，07-player applyRewardItem 置位与推进，resetGame 归位）----
     laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +40%
     laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.40/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
@@ -241,6 +237,7 @@
     permBarrier: 0,    // 永久屏障（击坠赞助无人机获得瓶中精灵时立即赋予：整局不随时间衰减，在 barrier 右侧以青色段显示）
     bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
     bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
+    bulwarkEndT: 0,    // 最终壁垒：无敌结束后的菱形收尾演出剩余时间（0.35s 微微扩大渐隐，updatePlayer 置位/衰减，drawPlayer 读取）
     chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
     regenT: 0,         // 洄：回血计时（每 2s +1 HP）
     tianshuCycleT: 0,  // 天枢圣卫：圣守周期计时（无敌结束后起算，满 guardCycle=20s 展开圣守窗口，见 07-player）
@@ -293,14 +290,14 @@
   /** @type {Array} */ const feijianWaves = [];  // 副武器·无界飞剑：待发射飞剑波（尾部下沉 → 分裂悬浮 → 中央先发依次前射，见 07-player updateFeijianWaves）
   /** @type {Array} */ const xinRings = [];      // 副武器·辛国栋之怒：恒速飞行的空间系穿透灼烧火环（玫红→粉渐变，见 07-player updateXinRings）
   /** @type {Array} */ const blastRings = [];    // 爆炸冲击圈（大狗导弹雨 / 捣蛋来袭爆炸时的蓝色扩散环，指示波及范围；见 07-player dagouMissileBlast）
-  /** @type {Array} */ const yiScythes = [];     // 依：镰刀清扫（计数充满自动召唤，绕机旋转 + 周期伤害/消弹；见 07-player updateYiScythes）
+  /** @type {Array} */ const meiScythes = [];     // 依：镰刀清扫（计数充满自动召唤，绕机旋转 + 周期伤害/消弹；见 07-player updateMeiScythes）
   /** @type {Array} */ const ddjMissiles = [];   // 叮咚鸡：Q 导弹（前向 120° 扇形 4 发直线飞行，直击伤害；见 07-player updateDdjMissiles）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
   const crystalBurst = { active: false, t: 0, duration: 0.55, x: 0, y: 0 };
 
-  // 最终壁垒免死金色光环：金色环自机体有限扩散（对应其 250px 清弹范围）
+  // 最终壁垒免死金色光环：金色环自机体有限扩散（对应其 120px 清弹范围）
   const bulwarkBurst = { active: false, t: 0, duration: 0.6, x: 0, y: 0 };
 
   // 键盘输入状态：14-main 的监听器写入、07-player 等读取
@@ -592,15 +589,34 @@
 
   // ---------- 装甲共享辅助（02-core 持有 eBullets/player，避免 06↔07 循环依赖） ----------
 
-  // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失共用）。
+  // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失 / 量子护盾到期 / 炼金璃淡粉冲击波共用）。
+  // 巨大蛋挞（b.tart）豁免（2026-10-08 用户定稿：不再被任何护盾扩散波消除——仅能被依的镰刀斩碎，斩击流程见 07-player updateMeiScythes）；
+  // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）可被消除（同日定稿）：任一身体节点进入半径即整条消散。
   // 返回实际清除数（成就：清除空气 / 云心）
   function clearEnemyBulletsNear(x, y, radius) {
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
+      if (b.tart) continue;   // 巨大蛋挞免疫扩散波消弹（2026-10-08 用户定稿）
       if (Math.hypot(b.x - x, b.y - y) <= radius) {
         spawnParticles(b.x, b.y, '#9be7ff', 3, 80);
         eBullets.splice(i, 1);
+        n++;
+      }
+    }
+    // 长条蛋挞消除扫描：身体节点（tar.pts，[0]=头、间距 tartSeg）任一进入半径 → 整条移除（每节迸暖金粒）
+    for (const bs of enemies) {
+      const sk = bs && bs.skill;
+      if (!sk || sk.id !== 3 || !Array.isArray(sk.tarts) || !sk.tarts.length) continue;
+      for (let i = sk.tarts.length - 1; i >= 0; i--) {
+        const tar = sk.tarts[i];
+        let hit = false;
+        for (let k = 0; k < tar.pts.length; k++) {
+          if (Math.hypot(tar.pts[k].x - x, tar.pts[k].y - y) <= radius) { hit = true; break; }
+        }
+        if (!hit) continue;
+        for (let k = 0; k < tar.pts.length; k += 2) spawnParticles(tar.pts[k].x, tar.pts[k].y, '#ffbf47', 3, 110);
+        sk.tarts.splice(i, 1);
         n++;
       }
     }
@@ -641,6 +657,7 @@
   function clearNearestEnemyBullet(x, y) {
     let best = -1, bestD = Infinity;
     for (let k = 0; k < eBullets.length; k++) {
+      if (eBullets[k].tart) continue;   // 巨大蛋挞免疫消弹（2026-10-08 用户定稿：仅镰刀可斩）——不作为消除目标
       const d = Math.hypot(eBullets[k].x - x, eBullets[k].y - y);
       if (d < bestD) { bestD = d; best = k; }
     }
@@ -660,7 +677,7 @@
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
-      if (b.owner !== owner) continue;
+      if (b.owner !== owner || b.tart) continue;   // 巨大蛋挞免疫消弹（2026-10-08 用户定稿：仅镰刀可斩）
       spawnWatchClearFx(player.x, player.y, b);
       eBullets.splice(i, 1);
       n++;
@@ -684,9 +701,10 @@
   }
 
   // 最终壁垒：每条命一次的免死判定——致死伤害改为存活（同样生效于导弹等强制击杀路径）。
-  // 恢复 1 点生命、获得 3s 无敌（受 invulnDiffMul 难度倍率影响）。
-  // 演出：机体被淡金菱形环绕至无敌结束（不闪动机体）——触发瞬间不清弹/不扩环；
-  // 菱形开始消散时（07-player updatePlayer 中剩 0.3s）才清除周围 250px 内子弹并扩散金环。
+  // 恢复 1 点生命、获得 5s 无敌（受 invulnDiffMul 难度倍率影响；不降低攻速，2026-10-09 用户定稿）。
+  // 演出：机体被淡金菱形环绕至无敌结束（不闪动机体）+ 核心处 ⛨ 装甲图标扩散渐隐（spawnArmorGlyphFx，
+  // 与祈星/澄月同款演出体系）——无敌结束瞬间（菱形消失处）才清除周围 120px 内子弹并扩散金环，
+  // 菱形随即微微扩大渐隐（0.35s 收尾，见 07-player updatePlayer / 09-draw-ships drawPlayer）。
   // 返回 true = 本次免死已消耗；调用方（damagePlayer / 06-enemy BOSS 持续接触）在 hp <= 0 分支优先调用。
   function tryBulwarkCheatDeath() {
     if (currentArmor.id !== 'bulwark' || player.bulwarkUsed) return false;
@@ -696,9 +714,10 @@
     const lowBoss = enemies.find(en => en.type === 'boss' && !en.dying && en.maxHp > 0 && en.hp / en.maxHp < 0.1);
     state.achvBulwarkLowBoss = lowBoss ? (lowBoss.bossId || null) : null;
     player.hp = 1;
-    player.invuln = 3 * invulnDiffMul();
+    player.invuln = 5 * invulnDiffMul();
     player.invulnBlink = false;   // 免死无敌不闪动机体：以淡金菱形环绕演出代替隐/显闪烁
     player.bulwarkFxT = player.invuln;   // 菱形演出与实际无敌时长同步（含难度/装甲倍率）
+    spawnArmorGlyphFx('⛨', currentArmor.color);   // 核心处护甲图标扩散渐隐（技能生效反馈）
     spawnParticles(player.x, player.y, '#ffb545', 26, 260);
     shake(6, 0.3);
     return true;
@@ -710,6 +729,21 @@
   // 结算挂点：08-entities enemyDamageMul（主炮/僚机弹幕/斩击）；另见 05-boss updateBossDarkhand（dhGuardActive 用于技能间隔 ×1.2，非减免用途）
   function dhGuardActive() {
     return enemies.some(el => el && el.dhLink && el.hp > 0);
+  }
+
+  // 黑暗之手连携精英击坠登记（2026-10-08 用户定稿）：任意连携精英（dhLink 窗口召唤 / elRevive 返场）被击坠时——
+  // ① 本体永久登记其对应「额外技能」（dhBonusSkills[type] = true，整场战斗生效；技能本体待设计实装，
+  //   实装后在 05-boss 技能循环消费此表）；② 若被击坠者恰为当前血量窗口的精英（boss.dhCurrent）→ 置
+  //   boss.dhAmp：本段剩余血量内护卫减伤撤销、受到的普通伤害 +100%（本段 = 触发召唤的血量阈值 → 再降 20%；
+  //   下一窗口召唤时 dhAmp 清零）。未被击杀而离场者不触发任何效果；此前窗口的精英被击坠只拿技能不加伤
+  //  （其对应血量段已不存在）。高能爆弹/绷绷炸弹为真实伤害，不吃减免也不吃增伤（不经 enemyDamageMul 结算）。
+  // 调用方：06-enemy killEnemy（dhLink / elRevive 精英死亡统一登记）
+  function dhOnLinkedEliteKilled(type) {
+    const boss = enemies.find(x => x && x.type === 'boss' && x.bossId === 'darkhand' && !x.dying);
+    if (!boss) return;
+    if (!boss.dhBonusSkills) boss.dhBonusSkills = {};
+    boss.dhBonusSkills[type] = true;   // 额外技能登记（技能本体待设计——实装后在 05-boss 技能循环消费）
+    if (boss.dhCurrent === type) boss.dhAmp = true;   // 本段击坠：反向增伤至本段结束（08-entities enemyDamageMul 消费）
   }
 
   // 黑暗之手连携精英「迅速离场」：记录当前血量（state.dhFledElites，下一轮小怪刷新阶段登场——细节待设计），
@@ -740,7 +774,7 @@
   export {
     canvas, ctx, setCtx, DPR, hpFill, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
-    douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, skillGaugeCount, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
+    douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, fpsMeter, padIndicator, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
@@ -751,13 +785,13 @@
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, frostZones, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, yiScythes, ddjMissiles,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, meiScythes, ddjMissiles,
     slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
-    dhGuardActive, dhFleeLinkedElites, departRevivedElites,
+    dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst, spawnBlastRing,
     shake,
   };

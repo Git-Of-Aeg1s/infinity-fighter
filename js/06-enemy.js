@@ -5,13 +5,13 @@
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, hpKitBanked, hpKitLastT, lives, orangeBombUsed, rewardItem, score, stormVortex, xgLooseBombs}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
-  import { ANVIL, ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DARKHAND, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_GREEN, DROP_HP_RATE, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, POPIAN_U, PULSE_MATRIX, REWARD_ITEMS, rollCrystalGiant, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPAWN_PHASE_LEVEL, SPONSOR, STORM, STORM2, STORM_WIND, UNREAL, WAVE_POEM, WAR_GHOST, WEILONG, YU4, bossDmgMul, currentArmor, currentDifficulty, diffMods, enemyDmgMul, hasPilot, isPoem, isRealme, invulnDiffMul, isHardTier, pilotHuiHealMul } from './01-config.js';
-  import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
+  import { ANVIL, ARMOR_SKILLS, BAOLING, BAOLING_G, BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, CANVAS_H, CANVAS_W, convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DARKHAND, DOUZHI, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, FIRST_ROUND_BOSSES, HANSHUANG, HARBINGER, JIAOXIANG, PILOTS, PLAYER_CFG, POPIAN, POPIAN_U, PULSE_MATRIX, REWARD_ITEMS, rollCrystalGiant, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPAWN_PHASE_LEVEL, SPONSOR, STORM, STORM2, STORM_WIND, UNREAL, WAVE_POEM, WAR_GHOST, WEILONG, YU4, bossDmgMul, currentArmor, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hasPilot, isPoem, isRealme, invulnDiffMul, isHardTier } from './01-config.js';
+  import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
-  import { accumulateWeaponDropHit, applyRewardItem, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, pilotStormContactMul, shieldSweepHit, testDamagePlayer, yiNoteKill } from './07-player.js';
-  import { updateBossLootMarks } from './05-boss.js';
+  import { accumulateWeaponDropHit, applyRewardItem, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, meiNoteKill, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
+  import { updateBossLootMarks, updateLovelyShieldMark } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvBaolingBlastBegin, achvBaolingBlastEnd, achvNoteAuraFieldKill, achvNoteDamage, achvNoteHuiHeal, achvNoteWatchClear, achvOnBossKilled, achvOnDeath, achvOnKill, unlockAchievement } from './02-achievements.js';
 
@@ -37,6 +37,8 @@
         updateBoss(e, dt);
         // BOSS 血量阶段掉落判定（每当失去 20% 血量；所有 BOSS 通用，含今后新增，见 05-boss updateBossLootMarks）
         updateBossLootMarks(e);
+        // 炼金璃：BOSS 血量首次到达 70% 时额外掉落结晶护盾（未装备炼金璃时内部直接跳过，见 05-boss updateLovelyShieldMark）
+        updateLovelyShieldMark(e);
 
         // 撞玩家（BOSS 不受撞击反伤）。旧日之歌：接触一次性伤害 60（受击无敌帧照常）；
         // 暴风之眼：接触持续掉血 ≈40/s（1 血/0.025s，无视无敌帧）；护盾均免疫；测试模式血量归零自动重置（不掉命）
@@ -58,7 +60,7 @@
                 if (!tryBulwarkCheatDeath()) {
                   player.hp = 0;
                   player.alive = false;
-                  if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
+                  if (!hasPilot('tianshiLovely')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
                   spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
                   shake(16, 0.6);
                   achvOnDeath('crash:storm', state.lives <= 0);   // 成就：暴风陨落 / 至尊陨落等死因结算
@@ -2662,7 +2664,8 @@
           s.segT -= segGap;
           if (s.shotI === 0) s.base = Math.atan2(player.y - e.y, player.x - e.x);   // 段首锁定瞄准角——段内扇形固定展开，射击均匀不随玩家甩动
           if (player.alive) {
-            const off = (s.shotI - (shots - 1) / 2) * (c.segSpreadDeg / (shots - 1)) * Math.PI / 180;
+            const spread = isPoem() ? c.poemSegSpreadDeg : c.segSpreadDeg;   // 诗篇总张角 32.5°：相邻夹角与低难度一致 6.5°/颗、散射范围扩大（2026-10-08 用户定稿）
+            const off = (s.shotI - (shots - 1) / 2) * (spread / (shots - 1)) * Math.PI / 180;
             pushEBullet(e, s.base + off, c.bulletSpeed, cfg, { r: c.bulletR, dmg: c.dmg, color: '#e02424', grad: 'hr' });   // 黑红渐变（四精英统一色系，2026-10-03）
           }
           s.shotI++;
@@ -3294,7 +3297,7 @@
   }
 
   // 敌人颜色标记：决定道具掉落规则（1类按行为 / 2·3·4类按变体 / 特殊舰船与 BOSS 按固定标记）
-  //   red=套件×1.5 | purple=套件×1.2 | yellow=套件×1.2（含金）| blue=护盾6% | green=加血10% | orange=爆弹1%（整场一次）
+  //   red=套件×1.5 | purple=套件×1.2 | yellow=套件×1.2（含金）| blue=护盾6% | green=加血固定值（增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%）| orange=爆弹1%（整场一次）
   //   gray / white / black 无专属掉落规则，仅作分类（gray=灰黑系特殊无人机/炮兵）
   function enemyColorTags(e) {
     switch (e.type) {
@@ -3338,6 +3341,7 @@
     const isBoss = e.type === 'boss';
     if (e.type === 'douzhi' || e.type === 'sponsor' || e.type === 'sponsorDeluxe') return;   // 奖励无人机：不走通用道具池（斗志给增益、赞助系给奖励道具，仅掉水晶）
     // 类型掉率修正：1类（含增生侧翼艇；卫护飞船不走此池）所有道具概率减半；2类突击艇全部道具概率 ×0.75。
+    //   （加血套件 2026-10-08 起改为按类别固定掉率——见下方 hpRate，不吃本乘区）
     // 虚象：1/2类额外减少修正不再生效。
     // 低火力减免（真我/具象，mods.dropClassLowWeaken）：判定等级 = 攻击等级 + 场上升级套件数 + 4×场上暴走道具数——
     //   判定等级 1 时削减修正失效；判定等级 2 时效果减弱 50%（1类 ×0.5→×0.75 / 2类 ×0.75→×0.875）；
@@ -3379,7 +3383,8 @@
     let shieldRate = tags.includes('blue') ? DROP_SHIELD_BLUE : DROP_SHIELD_RATE;
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
     shieldRate *= dropMul;
-    // 加血套件：普通敌人走互斥链（基础 1.8% / 增生侧翼艇固定 10%）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
+    // 加血套件：普通敌人走互斥链（按敌机类别 1类 0.5% / 2类 1% / 3类 2% / 4类 6%；绿标记固定值不吃类别表——
+      //   增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%，2026-10-08 用户定稿，不再吃类型削减/判定等级减免乘区）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
     // 真我特殊机制（mods.hpKitGap）：任意两次加血套件之间至少间隔 8s——
     //   冷却期内掉落判定照常进行，但加血环节概率变为 50%（hpKitBankChance）且敌人不掉落（改为"预触发"计数）；
     //   冷却结束后若预触发 ≥1，击杀的第一个敌人必定掉落一个加血套件（随后计数清零）。
@@ -3391,7 +3396,9 @@
     const hpKitGap = dMods.hpKitGap != null ? dMods.hpKitGap : Infinity;
     const hpKitInCd = state.time - state.hpKitLastT < hpKitGap;
     const hpKitRelease = !isBoss && hpKitGap !== Infinity && !hpKitInCd && state.hpKitBanked >= 1;
-    const hpRate = isBoss ? 0 : (tags.includes('green') ? DROP_HP_GREEN : DROP_HP_RATE) * dropMul;
+    const hpRate = isBoss ? 0 : tags.includes('green')
+        ? (e.type === 'gunship' ? DROP_HP_CYAN : e.type === 'anvil' ? DROP_HP_GREEN : DROP_HP_PROLIFERA)   // 绿标记固定值：青时炮艇 8% / 铁砧 10% / 增生侧翼艇 4%
+        : (DROP_HP_BY_CLASS[ENEMY_CLASS[e.type]] || 0);
     let hpDropped = false;
     if (hpKitRelease) {
       // 冷却结束后的第一个敌人必掉一个（清空预触发计数），并占用本次互斥链
@@ -3492,7 +3499,7 @@
     if (player.hp <= 0) {
       player.hp = 0;
       player.alive = false;
-      if (!hasPilot('tianshili')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
+      if (!hasPilot('tianshiLovely')) state.lives--;   // 天使璃：无限生命，不扣命数（永不失败结算）
       spawnParticles(player.x, player.y, '#ff4d6d', 40, 320);
       shake(16, 0.6);
       achvOnDeath('burn:jiaoxiang', state.lives <= 0);   // 成就：烫烫烫等死因结算
@@ -3523,6 +3530,10 @@
     // 其它暴鸰的殉爆波及会再次调用 killEnemy——不拦截会造成两只暴鸰互相重入引爆（无限递归、海量爆炸卡死）
     if (e._deathSettled) return;
     e._deathSettled = true;
+    // 黑暗之手连携精英击坠登记（2026-10-08 用户定稿）：任意连携精英（dhLink 窗口召唤 / elRevive 返场）
+    // 被击坠 → 本体永久登记其「额外技能」；若为当前血量窗口的精英 → 本段减伤撤销 + 反向增伤 +100%
+    //（高能爆弹/绷绷炸弹不吃，登记逻辑见 02-core dhOnLinkedEliteKilled）
+    if (e.dhLink || e.elRevive) dhOnLinkedEliteKilled(e.type);
     // 4F 精英击毁：场上已有的地毯轰炸预警弹转存全局（state.xgLooseBombs）继续倒计时爆炸——
     // 不随实体消失（实体弹结算挂 advanceEliteMinions、随实体移除停跑），见 updateXgLooseBombs
     if (ELITES[e.type] && e.xgBombs && e.xgBombs.length) {
@@ -3578,13 +3589,28 @@
           spawnParticles(player.x, player.y, '#ffcf4d', 20, 240);   // 金色粒子提示上限提升
         }
       }
+      const dhSweepDeath = state.aiyiSelfDestruct || state.sweepKill;   // 秒杀类击杀（金陨/埃逸殉爆）——黑暗之手死亡方式分岔（下方清场同用）
       if (e.bossId === 'darkhand') {
-        dhFleeLinkedElites();   // 黑暗之手死亡：其 20% 血量窗口随死亡结束——残余连携精英迅速离场并记录血量（第三轮按 ELITE_REVIVE.levels 返场）
-        // 四精英全数击败（含被爆弹波及击杀者，无任何离场登记）→ 置位标记：第三轮 Lv25 召唤张华&张策（14-main 消费）
+        // 死亡方式分岔（2026-10-08 用户定稿）：秒杀类击杀 → 在场连携精英由本波/本陨照常击杀（下方清场
+        // 含 dhLink，不转离场）；常规击杀 → 幸存精英迅速离场并记录血量（第三轮按 ELITE_REVIVE.levels 返场）
+        if (!dhSweepDeath) {
+          dhFleeLinkedElites();   // 黑暗之手常规死亡：其 20% 血量窗口随死亡结束——残余连携精英迅速离场并记录血量（第三轮按 ELITE_REVIVE.levels 返场）
+        }
+        // 未召唤精英归属（2026-10-08 用户定稿）：死亡时尚未召唤（未到 80/60/40/20% 阈值）的精英——
+        // ① 此前有精英逃走（dhFledElites 非空，含本次常规死亡离场者）→ 视作未被击杀，满血登记返场
+        //   （rec.hp 传 eliteHpOf 满值 → spawnRevivedElite 全额登场），后续波次照常登场；
+        // ② 此前无任何精英逃走 → 视作被击杀，四精英全数击败 → 第三轮 Lv25 召唤张华&张策（dhZhangPending，14-main 消费）
+        if (state.dhFledElites.length) {
+          for (const pair of DARKHAND.summon.pairs) {
+            for (const t of pair) {
+              if (!(e.dhSummoned || []).includes(t)) state.dhFledElites.push({ type: t, hp: eliteHpOf(t) });
+            }
+          }
+        }
         state.dhZhangPending = state.dhFledElites.length === 0;
       }
       if (!testMode) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
-      yiNoteKill(5, e.type);   // 依：BOSS = 5 类，击杀计数 +122（充满自动召唤镰刀）
+      meiNoteKill(5, e.type);   // 依：BOSS = 5 类，击杀计数 +122（充满自动召唤镰刀）
       // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"）；
       // 成就「！？爆爆？！」：最终自爆（最后一条命）炸死最终 BOSS 风暴编织者
       if (state.aiyiSelfDestruct && hasPilot('aiyi')) {
@@ -3616,7 +3642,7 @@
             vx: 0, vy: rand(150, 200),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant, firstBoss: firstBossCry,
-            fromBoss: true,   // BOSS 掉落水晶标记（漓隐藏计数表不计入，见 08-entities updateCrystals）
+            fromBoss: true,   // BOSS 掉落水晶标记（炼金璃隐藏计数表不计入，见 08-entities updateCrystals）
             phase: Math.random(),
             t: Math.random() * Math.PI * 2,
           });
@@ -3642,12 +3668,14 @@
       if (e.bossId === 'song') state.crystalMagnetMul = 1.5;
       // 温酒客：每击败一个 BOSS，受到伤害提升 -25 个百分点（+100% → +75% → +50% → +25% → +0%，最低归零）
       if (state.wenjiukeVuln > 0) state.wenjiukeVuln = Math.max(0, state.wenjiukeVuln - PILOTS.wenjiuke.vulnDecay);
-      // 洄：击败 BOSS 时回复 35% 已损失生命（上限当前装甲最大生命）。
+      // 洄：击败 BOSS 时回复 35% 已损失生命（上限当前装甲最大生命）；小艺连携改为立刻恢复 60% 生命
+      //（2026-10-08 用户定稿：取代 35% 已损失口径，按最大生命结算）。
       // 直接结算到 player.hp，不走道具掉落——与真我加血套件 8s 节流（hpKitLastT）完全无关，不触发也不受其冷却限制。
-      // 小艺连携：洄的治疗效果 ×1.35（pilotHuiHealMul）——成就「时流回溯」按实际结算量累计
+      // 成就「时流回溯」按实际结算量累计
       if (currentArmor.id === 'hui' && currentArmor.bossKillLostPct && player.alive) {
-        const huiMul = pilotHuiHealMul();
-        const bossHeal = Math.min((player.maxHp - player.hp) * currentArmor.bossKillLostPct * huiMul, player.maxHp - player.hp);
+        const bossHeal = hasPilot('xiaoyi')
+          ? Math.min(player.maxHp * PILOTS.xiaoyi.huiBossHealPct, player.maxHp - player.hp)   // 小艺连携：固定 60% 生命
+          : Math.min((player.maxHp - player.hp) * currentArmor.bossKillLostPct, player.maxHp - player.hp);   // 洄本体：35% 已损失
         if (bossHeal > 0) {
           player.hp += bossHeal;
           achvNoteHuiHeal(bossHeal);
@@ -3709,13 +3737,15 @@
       // BOSS 被击败：强行击坠场上所有剩余敌方单位（小怪 / 护航 / 召唤物，含 BOSS 测试召唤物）
       // 倒序遍历逐个走 killEnemy 完整击杀演出（爆炸粒子 / 水晶 / 计分）
       // （增生侧翼艇被清场击毁时会分裂卫护飞船并追加到数组尾部，故循环至场上无残留为止）
-      // 黑暗之手连携精英（dhLink，2026-10-03 用户定稿）：不被 BOSS 死亡清场波及——上方 dhFleeLinkedElites
-      // 已令其终止技能并转为往下离场（记录血量待下一轮登场设计），清场循环须跳过（离场中仍是数组成员）
+      // 黑暗之手连携精英（dhLink）：常规死亡不被清场波及——上方 dhFleeLinkedElites 已令其终止技能并
+      // 转为往下离场（记录血量待第三轮返场）；秒杀类击杀（金陨/埃逸殉爆）则同受清场——在场精英与全场
+      // 敌人一同被砸死（2026-10-08 用户定稿）；已处离场相位者（elPhase 2，窗口切换离场、已登记返场）
+      // 两种死亡方式均不被追杀
       let clearGuard = 0;
-      while (enemies.some(en => en && en.type !== 'boss' && !en.dhLink) && clearGuard++ < 50) {
+      while (enemies.some(en => en && en.type !== 'boss' && (!en.dhLink || (dhSweepDeath && en.elPhase !== 2))) && clearGuard++ < 50) {
         for (let i = enemies.length - 1; i >= 0; i--) {
           const en = enemies[i];
-          if (en && en.type !== 'boss' && !en.dhLink) killEnemy(i);
+          if (en && en.type !== 'boss' && (!en.dhLink || (dhSweepDeath && en.elPhase !== 2))) killEnemy(i);
         }
       }
       // 清场击杀可能触发 1 类紫亡语射击，统一再清一次残留敌弹
@@ -3782,7 +3812,7 @@
     // 真我以下难度（虚象/具象；后续诗篇等更高难度不受影响）：清除概率 ×1.5（不超过 100%）
     const watchCls = ENEMY_CLASS[e.type];
     const bossFight = bossFlow.stage === 'fight';
-    yiNoteKill(watchCls, e.type);   // 依：按敌人类别 1/2/3/4 增加击杀计数（BOSS 战 ×3 / 四精英 ×4，见 07-player）
+    meiNoteKill(watchCls, e.type);   // 依：按敌人类别 1/2/3/4 增加击杀计数（BOSS 战 ×3 / 四精英 ×4，见 07-player）
     const watchTable = bossFight ? currentArmor.clearChanceBoss : currentArmor.clearChance;
     let watchChance = (watchCls && watchTable && !testMode) ? watchTable[watchCls] : 0;
     if (watchChance && !isHardTier()) watchChance = Math.min(1, watchChance * 1.5);
