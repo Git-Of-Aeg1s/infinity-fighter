@@ -170,7 +170,7 @@
   // 注册表键序 = 主菜单卡片展示顺序。brief = 主菜单卡片简短文案；desc = 数值与机制图鉴「副武器」页详细文案。
   // 数值定位：主炮 Lv4 裸 DPS ≈ 800~880、僚机双机合计 ≈ 140~230；副武器取 50~110 区间，
   // 以"弹道形状 / 发射方式"提供差异化手感，而非单纯堆数值。
-  // fire.kind：jixing=极夜流光（标记直射激光）/ daodan=捣蛋来袭（大狗同款导弹）/ feijian=无界飞剑（全屏均分分裂连射）/ xinring=辛国栋之怒（恒速穿透灼烧火环）
+  // fire.kind：jixing=极夜流光（标记直射激光）/ daodan=捣蛋来袭（叮咚鸡同款导弹）/ feijian=无界飞剑（全屏均分分裂连射）/ xinring=辛国栋之怒（恒速穿透灼烧火环）
   // 副武器矢量图标（iconSvg，同 PILOTS.higanbanaSvg 路线）：内联 SVG 字符串——
   // 渐变/配色在 SVG 内部固化（贴合弹体涂装），外层 span 的 currentColor（注册色）仅承担 .glyph-svg 辉光。
   let subGradSeq = 0;   // 渐变 id 计数：同一页面多处渲染图标时保证 defs id 唯一
@@ -186,7 +186,7 @@
       + '<path d="M6.5,-5.8 C5.2,-9 6.4,-11.6 8.2,-13.2 C9.3,-10.4 8.8,-7.4 6.5,-5.8 Z"/>'
       + '</g></svg>';
   }
-  function dogMissileSvg() {   // 捣蛋来袭「狗耳导弹」：大狗同款导弹 + 折角狗耳（「捣蛋/导弹」谐音，用户 2026-09-27 定稿）；白蓝 #9fd0ff 同先兆者导弹涂装。
+  function dogMissileSvg() {   // 捣蛋来袭「狗耳导弹」：叮咚鸡同款导弹 + 折角狗耳（「捣蛋/导弹」谐音，用户 2026-09-27 定稿）；白蓝 #9fd0ff 同先兆者导弹涂装。
     // 整体 translate(0,-4.5)：弹体墨迹（耳 -8.4 ~ 焰尾 +17.5）视觉重心偏下 +4.5，上移后墨迹居中于 em 框（装备框 30px 对位校正）
     return '<svg viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">'
       + '<g transform="translate(0,-4.5)">'
@@ -233,9 +233,9 @@
 //   speedFast/speedSlow 马兴犬：Shift 加速 / CapsLock 减速的移速倍率（同键再按恢复原速）
   //   chargeDur/scoreMul 埃逸：死亡蓄力自爆时长（s）/ 自爆击杀的得分倍率
   //   chargeBonus/secondCostMul 炼金璃：连携七日澜心的充能次数加成 / 持有第 1 个充能时第 2 次充能的水晶分数倍率
-  //   layerMax/layerCap 叮咚鸡：计数表单层上限 / 最多持有层数
-  //   missileCount/missileArc/missileSpeed/missileR/missileDmg 叮咚鸡：Q 导弹参数（发数 / 前向扇形角 / 弹速 / 弹体半径 / 直击伤害）
-  //   berserkUpsMax 叮咚鸡：升级至暴走（4→5 级）的全局次数上限（4/5 级按技能均消耗机会）
+  //   layerMax/layerCap 大狗：计数表单层上限 / 最多持有层数
+  //   missileCount/missileArc/missileSpeed/missileR/missileDmg 大狗：Q 导弹参数（发数 / 前向扇形角 / 弹速 / 弹体半径 / 直击伤害）
+  //   berserkUpsMax 大狗：升级至暴走（4→5 级）的全局次数上限（4/5 级按技能均消耗机会）
   //   counterMax/killGain/bossKillMul/eliteKillMul/elites/bossTickGain 依：击杀计数上限 / 各类别击杀增量（1~5 类）/
   //     BOSS 战计数倍率 / 击败四精英的倍率与其类型清单 / BOSS 战每秒自然计数
   //   scytheR/scytheGripR/scytheTilt/scytheDur/scytheWidth/scytheBaseDmg/scytheHpPct/scytheHpPctCap 依：镰刀清扫参数
@@ -245,8 +245,8 @@
   //   stormDmgCut/stormCrashCut 天秀：来自暴风之眼的伤害削减（普通/碰撞）
   //   （原 otherDmgCut 暴风之眼战其余我方伤害削减已取消——2026-10-02 用户定稿：非风暴伤害不再削减，改为携带天秀时暴风之眼血量 ×2，见 05-boss spawnBoss）
   // 注册表键序 = 主菜单卡片展示顺序（none 除外，不展示）：
-  //   主槽：大狗 / 许凯狗 / 埃逸 / 可莉 / 哈基米大王 / 马兴犬 / 温酒客 / 胡笛客
-  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 炼金璃 / 依 / 叮咚鸡 / 萧杨
+  //   主槽：叮咚鸡 / 许凯狗 / 埃逸 / 可莉 / 哈基米大王 / 马兴犬 / 温酒客 / 胡笛客
+  //   副槽：小艺 / 大无垠之王 / 陵落 / 天秀忧郁王子 / 炼金璃 / 依 / 大狗 / 萧杨
   // 陵落「彼岸花」矢量图标（iconSvg）：内联 SVG 字符串——currentColor 继承注册色，
   // 辉光由 .glyph-svg 的 drop-shadow 提供（渲染点：主菜单驾驶员卡片 / 数值图鉴「驾驶员」页标题）。
   function higanbanaSvg() {

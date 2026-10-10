@@ -733,7 +733,7 @@ async function sceneDarkhand() {
         }
         if (!combat) errors.push({ key: '黑暗之手未进入战斗', stack: '400 帧后 phase=' + e.phase + '（应为 combat，四段式登场合计约 4.3s）' });
         if (sawFan) errors.push({ key: '黑暗之手登场蛋挞扇应已删除', stack: '登场动画期间出现 tart 长条蛋挞弹（reveal 发射逻辑未删干净？）' });
-        // ② 技能循环：入场后 skillCd = 旧日之歌 2.2s×40%×虚象 1.5 ≈1.3s + 技能时长 → 700 帧内应施放 ≥1 次并出弹幕
+        // ② 技能循环：入场后 skillCd = 旧日之歌 2.0s×40%×虚象 1.5 = 1.2s + 技能时长 → 700 帧内应施放 ≥1 次并出弹幕
         //    （本场景此阶段场上仅黑暗之手一个敌人，eBullets 非空即其弹幕；暗核弹 / 巨大蛋挞 / 涟漪均计入）
         // ①b 技能4 爪翼毁灭蛋挞：强制触发，走完整「预警→发射×3 组→收口」状态机（2026-10-08 用户定稿
         //    激光替换为超长蛋挞：预警 1.2s × 3 组 = 3.6s，弹速 1050（同日 +50% 定稿）→ 末组蛋挞飞出屏
@@ -805,7 +805,92 @@ async function sceneDarkhand() {
           if (linkE.hp > 5000) errors.push({ key: '爆弹未波及连携精英', stack: 'useBomb 后 dhLink 精英 hp=' + linkE.hp + '（应 ≤5000 = 10000 - (4000+10%×10000)——2026-10-04 定稿连携精英同受爆弹全额伤害）' });
           if (e.hp >= hp0) errors.push({ key: '爆弹未对黑暗之手结算', stack: 'useBomb 后本体 hp 未下降（爆弹结算循环异常？）[诊断] e.hp=' + e.hp + ' hp0=' + hp0 + ' 在场=' + (core.enemies.indexOf(e) >= 0) + ' stage=' + core.bossFlow.stage + ' bombs=' + core.state.bombs + ' alive=' + core.player.alive + ' combatReady=' + e.combatReady + ' challenge=' + core.state.challenge });
         }
-        sample('黑暗之手 跑帧（登场演出 + 常态技能弹幕 + 连携召唤/离场记录）');
+        // ⑥ 击坠登记「额外技能」强制触发（2026-10-10 用户定稿实装）：登记四表 + dhMarkSkill 后逐技能
+        //    强制释放——id5 回旋镖（真我两轮 / 二次相撞湮灭）/ id6 翼根散射（两轮外内排布）/ id7 边界轰炸
+        //    （8 枚落点 + 中心一批导弹）/ id8 旋眼火螺（公转径向射击 3s）/ id9 双标记导弹（镜像标记 + 交替
+        //    落点）；附带断言暗影导弹雨释放锁（id4 非连续，2026-10-10 用户定稿）
+        e.dhBonusSkills = { xiayong: 1, puxuefeng: 1, xinguodong: 1, hanxixian: 1 };
+        e.dhMarkSkill = true;
+        const mkSkill = (id) => { e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null }; };
+        mkSkill(5);   // id5 回旋镖：真我两轮 ≈ (0.2+0.9+迸出+绕行 1.575)×2 ≈ 6.4s ≈ 384 帧，上限 420
+        let b5 = false, b5bad = false;
+        for (let f = 0; f < 420 && e.skill; f++) {
+          frames(1); isolate();
+          if (e.hp < e.maxHp) e.hp = e.maxHp;   // 防玩家自动开火磨死本体（死亡冻结技能推进——假红根因）
+          const sk = e.skill; if (!sk) break;
+          if (sk.blades) for (const b of sk.blades) { b5 = true; if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) b5bad = true; }
+        }
+        if (!b5) errors.push({ key: '技能5 回旋镖未出现', stack: '强制 id=5 技能 420 帧内 blades 恒空（warn 门控 / 双刃生成异常？）' });
+        if (b5bad) errors.push({ key: '技能5 回旋镖坐标异常', stack: 'blades 出现但存在非有限坐标（绕行推进异常？）' });
+        if (e.skill) errors.push({ key: '技能5 回旋镖未收口', stack: '420 帧后 e.skill 未清空（真我两轮 ≈6.4s 应完成）' });
+        mkSkill(6);   // id6 散射：两轮 5 发×2 爪 + 轮间 0.35 ≈ 1.6s ≈ 100 帧，上限 200
+        let shot6 = 0;
+        for (let f = 0; f < 200 && e.skill; f++) {
+          if (e.hp < e.maxHp) e.hp = e.maxHp;
+          frames(1);
+          shot6 += core.eBullets.length;   // 先读后清：isolate 会清敌弹，读序颠倒恒 0（假红根因）
+          isolate();
+        }
+        if (!shot6) errors.push({ key: '技能6 散射未出弹', stack: '强制 id=6 技能 200 帧内 eBullets 恒空（段节拍 / 爪位异常？）' });
+        if (e.skill) errors.push({ key: '技能6 散射未收口', stack: '200 帧后 e.skill 未清空（两轮 ≈1.6s 应完成）' });
+        mkSkill(7);   // id7 轰炸：投 4 拍 ≈1.28s + 预警 1.0s ≈ 2.3s ≈ 140 帧，上限 240；中心一批导弹入 missiles
+        let mis7 = 0;
+        for (let f = 0; f < 240 && e.skill; f++) {
+          if (e.hp < e.maxHp) e.hp = e.maxHp;
+          frames(1); isolate();
+          mis7 = Math.max(mis7, core.missiles.length);
+        }
+        if (mis7 < 1) errors.push({ key: '技能7 中心导弹未发射', stack: '强制 id=7 技能 missiles 恒空（一批扇形轻追踪导弹未生成？）' });
+        if (e.skill) errors.push({ key: '技能7 轰炸未收口', stack: '240 帧后 e.skill 未清空（投满 + 全爆 ≈2.3s 应完成）' });
+        mkSkill(8);   // id8 旋眼：真我 fireIv 0.135、orbitDur 3.0s ≈ 180 帧，上限 240
+        let shot8 = 0;
+        for (let f = 0; f < 240 && e.skill; f++) {
+          if (e.hp < e.maxHp) e.hp = e.maxHp;
+          frames(1);
+          shot8 += core.eBullets.length;   // 先读后清（同 id6）
+          isolate();
+        }
+        if (!shot8) errors.push({ key: '技能8 旋眼未出弹', stack: '强制 id=8 技能 240 帧内 eBullets 恒空（公转 / 射击节拍异常？）' });
+        if (e.skill) errors.push({ key: '技能8 旋眼未收口', stack: '240 帧后 e.skill 未清空（orbitDur 3.0s 应完成）' });
+        mkSkill(9);   // id9 双标记：真我 30 发/3s + 0.35 缓冲 ≈ 205 帧，上限 260；断言镜像标记（和恒定 + y 相等）
+        let n9 = 0, mkSum = null, mkBad = false;
+        for (let f = 0; f < 260 && e.skill; f++) {
+          if (e.hp < e.maxHp) e.hp = e.maxHp;
+          frames(1); isolate();
+          const sk = e.skill; if (!sk) break;
+          if (sk.mark && sk.mark2) {
+            n9 = sk.firedN;
+            if (mkSum == null) mkSum = sk.mark.x + sk.mark2.x;
+            if (sk.mark.y !== sk.mark2.y || Math.abs((sk.mark.x + sk.mark2.x) - mkSum) > 0.5) mkBad = true;
+          }
+        }
+        if (n9 <= 0) errors.push({ key: '技能9 双标记未出弹', stack: '强制 id=9 技能 260 帧内 firedN 恒 0（标记 / 生成循环异常？）' });
+        if (mkBad) errors.push({ key: '技能9 镜像标记异常', stack: 'mark2 与 mark 不满足水平镜像（x 和漂移 / y 不等）' });
+        if (e.skill) errors.push({ key: '技能9 双标记未收口', stack: '260 帧后 e.skill 未清空（真我 3s + 缓冲应完成）' });
+        // ⑥b 暗影导弹雨释放锁：dhS5Lock 置 2 后多次技能释放内 id4 不得出现（锁内不入池——2026-10-10 用户定稿非连续）
+        e.skill = null; e.dhS5Lock = 2; e.skillCd = 0;
+        let saw4 = false;
+        for (let f = 0; f < 480 && e.dhS5Lock > 0; f++) {
+          frames(1); isolate();
+          if (e.hp < e.maxHp) e.hp = e.maxHp;
+          if (e.skill && e.skill.id === 4) saw4 = true;
+        }
+        if (saw4) errors.push({ key: '暗影导弹雨释放锁失效', stack: 'dhS5Lock > 0 期间出现 id4 技能（池过滤缺失）' });
+        if (e.dhS5Lock > 0) errors.push({ key: '暗影导弹雨释放锁未递减', stack: '480 帧内 dhS5Lock 未归 0（其他技能释放未递减）' });
+        // ⑥c 强制释放队列：击坠新登记的额外技能 → 下一个释放的技能必定为它（2026-10-10 用户定稿；
+        // 登记 = dhForceQueue push、消费 = startDarkhandSkill shift——连续击坠多名按顺序逐个强制）
+        e.skill = null; e.skillCd = 0; e.dhForceQueue = ['puxuefeng'];
+        frames(2);
+        if (!e.skill || e.skill.id !== 6) errors.push({ key: '强制释放队列未生效', stack: `dhForceQueue=['puxuefeng'] 后首个技能 id=${e.skill ? e.skill.id : 'null'}（应为 6 翼根散射）` });
+        e.skill = null; e.skillCd = 0; e.dhForceQueue = ['xiayong', 'xinguodong'];
+        frames(2);
+        const fForce1 = e.skill ? e.skill.id : null;
+        e.skill = null; e.skillCd = 0;
+        frames(2);
+        const fForce2 = e.skill ? e.skill.id : null;
+        if (fForce1 !== 5 || fForce2 !== 7) errors.push({ key: '强制释放队列顺序异常', stack: `dhForceQueue=['xiayong','xinguodong'] 依次得 ${fForce1},${fForce2}（应为 5,7——按击坠顺序逐个强制）` });
+        e.dhForceQueue = [];
+        sample('黑暗之手 跑帧（登场演出 + 常态技能弹幕 + 连携召唤/离场记录 + 额外技能五连 + 强制队列）');
       }
       core.enemies.length = 0;
       key('p'); frames(5); key('p', false);

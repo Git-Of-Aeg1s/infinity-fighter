@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(31 名) 05-boss(2 名) 06-enemy(32 名) 07-player(2 名) 08-entities(12 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(32 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -226,10 +226,12 @@
       fireInterval: [1e9, 1e9],   // 占位：不攻击，机制待设计
     },
     // 特殊敌机：暴风之眼技能2 召唤的大型龙卷（可击毁、缓慢下移直至脱离战场、随机 360° 射风弹）
+    // 碰撞伤害原 42 已改持续掉血模型（06-enemy tornado 分支：每 0.1s 扣 4 血 / 诗篇 5，不触发无敌帧）——crashDmg 键已删
     tornado: {
       w: 144, h: 144, hp: 3600, score: 0, color: '#eaf6ff', drawScale: 1,
-      bulletSpeed: 170, bulletR: 5, bulletDmg: 16, crashDmg: 42,
+      bulletSpeed: 170, bulletR: 5, bulletDmg: 16,
       fireInterval: [0.2, 0.3],
+      fireIntervalPoem: [0.14, 0.21],   // 诗篇射击间隔 = 基准 -30%（2026-10-10 用户定稿；06-enemy 开火处 isPoem() 取值，登记《诗篇难度修正.md》）
     },
 
     // ---------- 诗篇难度新敌（2026-09-28 批次注册表，逐个实装中） ----------
@@ -271,7 +273,7 @@
     // 血量 1200 为实装占位值，待《怪物属性总表.xlsx》校准（本机无表，先按占位实装）
     puxuefeng: {        // 狞笑朴学峰（原名 狂笑朴学峰）：极速截击——流星穿刺 / 翼根连弩（两技 1↔2 交替）
       w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红（2026-10-02）；分数 1000（2026-10-10 按怪物属性总表同步，原 650）——朴学峰
-      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40, crashDmgPoem: 48,   // 冲撞贯穿伤害诗篇 48（2026-10-10 用户定稿；基准 40 不变——仅流星穿刺贯穿结算用，贴身通用碰撞仍走 crashDmg）
       fireInterval: [1e9, 1e9],
     },
     hanxixian: {        // 猩红韩希先（原名 韩希先）：三眼炮座——凝视锁定 / 旋眼火螺（两技循环）
@@ -304,7 +306,8 @@
   // 炮火先兆者参数
   const HARBINGER = {
     descend: 180,        // 进场/离场下降速度（提升 50%）
-    wingDR: 0.25,        // 对僚机弹幕减伤 25%（装甲针对僚机火力）
+    entrySpeed: 200,     // 入场初速（2026-10-10 用户定稿 200），在 entryDecay 内线性衰减回 descend；离场仍为 descend
+    entryDecay: 1,       // 入场初速衰减时长（s）
     // 首波充能：1.5~2.5s 变红（逐机随机，充满即召唤首发）+ 3s 灰黑覆盖（无静止保持段）
     chargeFirstMin: 1.5, // 首波：红色扩展时长下限（2026-10-10 用户定稿：首攻 1.5~2.5s 逐机随机；实值存 e.chargeFirstDur）
     chargeFirstMax: 2.5, // 首波：红色扩展时长上限（诗篇 BOSS 双召唤强制 1.5s / 2.5s 各一）
@@ -315,11 +318,10 @@
     grayHold: 1.5,       // 后续波：保持全灰黑静止时长（charge+reset+grayHold = 4.5s）
     cycle: 4.5,          // 每波固定时长（首波与后续波均为 4.5s）
     maxMissiles: 5,      // 入场即充能：首发 1.5~2.5s，后续每波红相 2s 召唤，共 1+4=5 发（末发约 20s 后离场）
-    hold: 30,            // 就位停留兑底上限（实际由充能序列驱动离场：第 5 发召唤后置 holdTimer=0）
+    hold: 20,            // 就位停留时长（2026-10-10 用户定稿 20s 后离场；到期时若红相充能未释放，则释放完再走——见 06-enemy 移动分支）
     warnTime: 2,         // 导弹垂直预警线时长（2026-10-10 用户定稿：3s→2s 统一调整）
     missileSpeed: 1400,  // 导弹从上方下落速度（高速）
     missileR: 12,        // 导弹半径（宽于常规子弹）
-    missileDmgMin: 60,   // 导弹伤害下限：实际伤害 = max(此值, 当前血量 80%)（低血保底，不再直接秒杀）
   };
 
   // 威龙参数（特殊3类无人机）
@@ -368,19 +370,21 @@
     auraFadeIn: 0.6,     // 光环渐显时长（延迟后从透明淡入到完全体）
     auraR: 160,          // 防御光环半径（覆盖悬停带内相邻敌人）
     dmgReduce: 0.30,     // 光环内敌人受到的非真实伤害降低 30%
-    dwell: 22,           // 到位后停留时长（22s）
+    dwell: 20,           // 到位后停留时长（2026-10-10 用户定稿 22 → 20）
   };
 
   // 铁砧参数（特殊3类治疗无人机）：登场后展开正方形淡青绿治疗光环，圈内所有敌人（含自身）每秒回复
+  // 1.5% 最大生命 + 固定生命（常规 50 / 诗篇 100——2026-10-10 用户定稿，原 1%+60 无诗篇分档；诗篇值登记《诗篇难度修正.md》）
   const ANVIL = {
     speed: 240,          // 下降/离场速度（同御4）
     auraDelay: 0.5,      // 登场后治疗光环显现延迟
     auraFadeIn: 0.6,     // 光环渐显时长（延迟后从透明淡入到完全体）
     auraR: 150,          // 治疗光环半径（正方形半边长，覆盖悬停带内相邻敌人）
     healInterval: 1,     // 治疗触发间隔（每秒一次）
-    healRatio: 0.01,     // 每次回复目标最大生命的 1%
-    healFlat: 60,        // 每次额外回复固定 60 生命
-    dwell: 22,           // 到位后停留时长（22s，同御4）
+    healRatio: 0.015,    // 每次回复目标最大生命的 1.5%（2026-10-10 用户定稿 1% → 1.5%）
+    healFlat: 50,        // 每次额外回复固定 50 生命（2026-10-10 用户定稿 60 → 50）
+    healFlatPoem: 100,   // 诗篇难度固定回复 100（2026-10-10 用户定稿，见 06-enemy anvilHealTick）
+    dwell: 20,           // 到位后停留时长（2026-10-10 用户定稿 22 → 20，同御4）
   };
 
   // 暴鸰参数（特殊3类自爆无人机）
@@ -401,7 +405,6 @@
     enemyDmgBase: 600,   // 意外爆炸对敌人基础伤害
     enemyDmgRatio: 0.2,  // + 目标最大生命 20%
     enemyDmgCap: 2000,   // 对敌人伤害上限
-    vuln: 0.35,          // 玩家处于爆圈内时对暴鸰的增伤（无论是否已投弹）
     crashDmg: 24,        // 碰撞伤害（结算走 ENEMY_TYPES.baoling.crashDmg，此处同步登记）
   };
 
@@ -413,7 +416,6 @@
     speedPost: BAOLING.speedPost * 0.85,     // 投弹后俯冲速度（204 = 240 × 0.85）
     blastR: BAOLING.blastR * 1.3,            // 爆炸半径（94.9 = 73 × 1.3；红色预警圈 / 玩家伤害半径）
     deathBlastR: BAOLING.deathBlastR * 1.3,  // 亡语自爆对周围敌方单位的波及半径（325 = 250 × 1.3）
-    vuln: BAOLING.vuln,                      // 玩家处于爆圈内时对暴鸰·G 的增伤（同暴鸰 0.35）
   };
 
   // 虚幻参数（特殊3类冰霜投弹机，2026-09-29 实装）：机体与各项数值全部与暴鸰一致（引用 BAOLING 原值自动跟随），仅——
@@ -437,7 +439,6 @@
     enemyDmgBase: BAOLING.enemyDmgBase * 0.7,    // 殉爆对敌人基础伤害（420 = 600 × 70%）
     enemyDmgRatio: BAOLING.enemyDmgRatio * 0.7,  // + 目标最大生命 14%（20% × 70%）
     enemyDmgCap: BAOLING.enemyDmgCap * 0.7,      // 对敌人伤害上限（1400 = 2000 × 70%）
-    vuln: BAOLING.vuln,                      // 玩家处于爆圈内时对虚幻的增伤（同暴鸰 0.35）
     crashDmg: BAOLING.crashDmg,              // 碰撞伤害（同暴鸰 24，结算走 ENEMY_TYPES.unreal.crashDmg）
     frostR: 100,             // 寒冷区域半径（px）
     frostDurMin: 3,          // 寒冷区域最短持续（s）
@@ -452,8 +453,8 @@
   // 焦香螺旋桨参数（特殊3类火焰灼烧无人机）：登场后绕大圈巡航，火焰光环持续灼烧我方战机
   const JIAOXIANG = {
     speed: 120,            // 巡航速度
-    entryBoost: 1.5,       // 就位前（非侧翼入场）移速加成倍率（150%）；侧翼入场无此加成
-    entryBoostDecayDist: 140,   // 距目标点小于此值时，加成按剩余距离线性衰减，到位（entryReach）降回 100%
+    entrySpeed: 280,       // 顶部入场初速（2026-10-10 用户定稿 280），在 entryDecay 内线性衰减回巡航速；侧翼入场无加成
+    entryDecay: 1,         // 入场初速衰减时长（s）
     turnRate: 3.0,         // 转向速率（速度向量朝期望方向插值速率；越大转弯越急，保证速度曲线连贯无突变）
     entryReach: 26,        // 入场到达判定距离（距目标点小于此值即切入绕圈；速度向量保留，无位置重置）
     leadAngle: 1.0,        // 绕圈引导点领先角度（rad）：追踪圆周上领先此角度的点，形成大致圆形轨迹
@@ -556,7 +557,9 @@
 
   // 破片参数（特殊2类三连发导弹无人机）：直线飞到选定点急停锁停 → 索敌范围随时间增长 → 红圈预警 → 三连发不可击毁导弹
   const POPIAN = {
-    speed: 180,            // 直线飞行速度
+    speed: 180,            // 直线飞行速度（巡航）
+    entrySpeed: 250,       // 入场初速（2026-10-10 用户定稿 250），在 entryDecay 内线性衰减回巡航速
+    entryDecay: 1,         // 入场初速衰减时长（s）
     flankChance: 0.20,     // 20% 概率从侧翼入场
     stopTopY: 0.30,        // 停留区上界（从上往下 30% 屏高）
     stopBotY: 0.80,        // 停留区下界（80% 屏高）；停留点落在此区间、近处概率高
@@ -728,7 +731,7 @@
       segCount: 2, realmeSegCount: 3, segSpreadDeg: 26, poemSegSpreadDeg: 32.5, reload: 1.5,
       // poemSegSpreadDeg 32.5 = 2026-10-08 用户定稿：诗篇每两颗子弹的夹角与低难度一致（26/4 = 6.5°/颗 ×
       // 6 发 5 间隙 = 32.5°）——诗篇 6 发/段的散射总范围相应扩大（低难度 5 发仍 26°）
-      bulletSpeed: 300, bulletR: 5, dmg: 10,   // 2026-10-08 用户定稿弹速定值 300（历史：300 → 2026-10-03 -15% → 255 → +30% 331.5 → 回归 300）
+      bulletSpeed: 300, bulletR: 5, dmg: 16, poemDmg: 22,   // 2026-10-10 用户定稿伤害 10→16 / 诗篇 22（弹速定值 300——历史见下）
       // 冲③尾部残像参数（残像换影并入流星穿刺——2026-10-02，原独立技能3 取消）：
       afterT: 0.7, burstSpeed: 190, burstDmg: 10,
       // 残像自爆短弹发数按难度（2026-10-04 二次定稿 6/7/9/10——虚象/具象/真我/诗篇；真我 9 / 诗篇 10
@@ -743,14 +746,14 @@
       hpByDiff: { illusion: 8000, form: 10000, realme: 15000, poem: 20000 },
       // 技能1 凝视锁定：顶部大眼红细追踪线 trackT（0.5s 持续跟随）→ 锁定静止 holdT（0.5s 方向固定不开火，
       // 红细线保持指向）→ 粗激光 laserDur（方向固定，横移可扫空）——2026-10-02 用户定稿时序
-      trackT: 0.5, holdT: 0.5, laserHalfW: 15, laserDmg: 45,
+      trackT: 0.5, holdT: 0.5, laserHalfW: 15, laserDmg: 45, poemLaserDmg: 55,   // 激光伤害诗篇 55（2026-10-10 用户定稿；基准 45 不变）
       // 粗激光持续时长按难度（2026-10-04 用户指定：较原 0.9s 减少 0.4/0.3/0.1/0——虚象/具象/真我/诗篇，诗篇不变）
       illusionLaserDur: 0.5, formLaserDur: 0.6, realmeLaserDur: 0.8, laserDur: 0.9,
       // 技能2 旋眼火螺：三炮塔环绕本体 orbitR 旋转 orbitDur，每眼每 fireIv 沿径向射一发长条弹
       //（fireIv 2026-10-02 用户指定 -40%：0.18 → 0.108；诗篇改加速长条弹：初速≈0 → 180% 弹速，
       // 登记《诗篇难度修正.md》），中途反转一次
       orbitR: 58, orbitDur: 3.0, orbitSpd: 2.4, turretN: 3, fireIv: 0.108,
-      bulletSpeed: 210, bulletR: 5, dmg: 10,
+      bulletSpeed: 210, bulletR: 5, dmg: 16, poemDmg: 22,   // 2026-10-10 用户定稿伤害 10→16 / 诗篇 22
       // 技能间隔：1.8s = 公共 1.2 × 1.5（与朴学峰一致，2026-10-04 用户定稿；机型级覆盖公共值，见 06-enemy eliteSkillGap）
       skillGap: 1.8,
       // 停留高度：固定屏高 40%（2026-10-04 用户定稿与朴学峰对齐，原 35%；机型级覆盖公共带，见 04-spawn spawnEliteMinion）
@@ -780,13 +783,13 @@
       // 恒定角速度 2π/bladeDur，长轴端峰值 ≈11px/帧 < smoke 12 阈值）→ 在轨道下缘相撞点湮灭收口；
       // 轨道中心 = 施放瞬间本体位置下移 bladeCyOff、下缘掠过玩家高度带；刃体全程对玩家圆碰撞（bladeDmg，
       // 命中 0.6s 冷却）+ 暗黑拖尾（绘制层 trail 采样）
-      bladeRx: 190, bladeRy: 64, bladeRyRand: 0.2, bladeCyOff: 150, bladeDur: 1.8, bladeR: 24, bladeDmg: 30,
+      bladeRx: 190, bladeRy: 64, bladeRyRand: 0.2, bladeCyOff: 150, bladeDur: 1.8, bladeR: 24, bladeDmg: 30, poemBladeDmg: 36,   // 刃伤诗篇 36（2026-10-10 用户定稿；基准 30 不变）
       // bladeRyRand 0.2 = 2026-10-03 四轮定稿：每次施放时轨道纵向半径随机增长 0~0.2×屏高（e.elSkill.ry 施放期快照，预警椭圆/迸出/绕行/湮灭全同步）
       bladeWarn: 0.9, bladeOut: 0.35,   // bladeWarn 0.9 = 2026-10-03 三轮定稿：预警时长 +0.4s（原 0.5）
       // 技能2 核心膨胀：一次推出三颗缓慢膨胀黑红能量球（基准朝玩家方向、相邻夹角 60°，方向锁定施放瞬间
       // 玩家方位缓慢漂移不跟踪），飞行 orbDur 后各自原地爆散环形弹——分裂弹数按难度（2026-10-04 用户指定
       // 四难度）：6 / 7 / 8 / 10；移速 72 / 膨胀速率 9.2（体型不变：出生 14 / 上限 60，爆散时半径约 32）
-      orbR: 60, orbSpd: 72, orbDur: 2.0, orbGrow: 9.2, ringN: 6, formRingN: 7, realmeRingN: 8, poemRingN: 10, ringSpeed: 200, ringDmg: 12,   // ringSpeed 200 = 2026-10-08 用户定稿定值 200（历史：原 200 → 2026-10-03 -30% → 140 → 短暂 196 → 回归 200）
+      orbR: 60, orbSpd: 72, orbDur: 2.0, orbGrow: 9.2, orbDmg: 48, poemOrbDmg: 55, ringN: 6, formRingN: 7, realmeRingN: 8, poemRingN: 10, ringSpeed: 200, ringDmg: 16, poemRingDmg: 22,   // 能量球接触独立（2026-10-10 用户定稿 12→48 / 诗篇 55）；爆散环弹 12→16 / 诗篇 22（同日定稿）
       // —— 牛角减伤（被动常驻，2026-10-03 用户定稿，三轮改版：仅真我/诗篇难度 -20%，其余难度无减伤）——
       // 命中点落在两翼折角（牛角）头部时伤害 ×hornRealmeMul（真我/诗篇 0.8）——
       // 判定几何见 xiayongHornDmgMul()（u = 命中点横向半宽比例 / v = 纵向半高比例；牛角 ≈ 立绘横向最外端
@@ -810,7 +813,7 @@
       slideSpeed: 120, dropIv: 0.32,
       bombN: 8, realmeBombN: 6, poemBombN: 7,
       bombWarn: 0.8, realmeBombWarn: 1.0, poemBombWarn: 0.9,
-      bombR: 73, realmeBombR: 60, poemBombR: 75, bombDmg: 30, bombBandPct: 0.72,
+      bombR: 73, realmeBombR: 60, poemBombR: 75, bombDmg: 30, poemBombDmg: 38, bombBandPct: 0.72,   // 爆炸伤害诗篇 38（2026-10-10 用户定稿；基准 30 不变）
       alignDur: 1.0, alignK: 5,   // 对齐段超时（s）/ 刹车系数（速度 = alignK×剩余距离封顶）
       // 技能2 连发导弹（2026-10-04 改版）：每轮两批 × volleyN 发扇形轻追踪导弹（批间隔 volleyGap；发射瞬间按
       // 玩家方向预压恒定角速度形成弧线追踪）；轮数按难度：虚象/具象仅 1 轮（illusionBatches=2 批收口）、
@@ -825,7 +828,7 @@
       volleySpreadDeg: 64, missileSpeed: 235, missileTurn: 0.55,
       illusionMissileSpeed: 200, illusionMissileTurn: 0.4,
       poemRisePct: 0.1, poemRiseK: 1.5, poemVolleyGapAdd: 0.5,   // poemRiseK 1.5 = 2026-10-04 二次定稿：上移/回落均放缓（原 3，时间常数 ≈0.67s，10% 屏高 ≈2s 平滑完成）
-      missileDmg: 14, missileR: 6,
+      missileDmg: 20, poemMissileDmg: 26, missileR: 6,   // 2026-10-10 用户定稿 14→20 / 诗篇 26
       // 技能间隔：1.8s = 公共 1.2 × 1.5（与朴学峰一致，2026-10-04 用户定稿；机型级覆盖公共值，见 06-enemy eliteSkillGap）
       skillGap: 1.8,
       // 停留高度：固定屏高 40%（2026-10-04 用户定稿与朴学峰对齐，原 30%；机型级覆盖公共带，见 04-spawn spawnEliteMinion）
@@ -891,7 +894,8 @@
   // 脉冲矩阵参数（特殊3类）：三座暗红流光法术矩阵菱形「骑边拼合」成等边三角形 + 中央暗红核心；
   // 五档充能张合 + 周期性范围脉冲（半径较焦香火焰光环大 20%）
   const PULSE_MATRIX = {
-    entrySpeed: 120,       // 登场横移初速（px/s），1s 内二次缓出衰减到巡航速（2026-10-02 移动逻辑改版）
+    entrySpeed: 180,       // 登场横移初速（px/s，2026-10-10 用户定稿 120 → 180），1s 内二次缓出衰减到巡航速
+    entrySpeedPoem: 240,   // 登场横移初速 · 诗篇难度（2026-10-10 用户定稿）
     cruiseMin: 50,         // 巡航速下限（px/s，每台随机）
     cruiseMax: 60,         // 巡航速上限（px/s，每台随机）
     travelPct: 0.80,       // 累计走过屏宽比例（80%）后停驻
@@ -950,12 +954,20 @@
   // 2类（突击艇）前锋停留线：位于 3/4 类悬停高度（y≈110~170）的前方（更靠下），凸显其前锋定位
   const STRIKER_HOLD_Y = 210;
 
-  // 坚垒护卫艇（2类黄色变体，2026-09-28 新增）：机体为霜白突击艇上下倒置 + 前置能量盾（下方机体边框两条线增粗外移 + 流光，绘制见 09-draw-ships drawFortressStrikerBody）
-  // 2026-10-03 起取消能量盾减伤机制，改为单纯高血量（HP 300），诗篇不再有额外减伤
+  // 3/4 类舰入场初速（2026-10-10 用户定稿）：登场以初速直冲、decay(s) 内线性衰减至各自巡航速（炮艇 270 / 主力舰 250）；
+  // 诗篇难度用 poem 档。入场倒计时 e.entryT 在 06-enemy 共享下降分支懒初始化（挑战/BOSS 召唤体同样生效）
+  const SHIP_ENTRY = {
+    gunship: { v0: 320, poem: 360 },
+    capital: { v0: 280, poem: 300 },
+    decay: 1,
+  };
+  const STRIKER_POEM_ENTRY = 200;   // 2类突击艇诗篇难度入场速度（常规 160，2026-10-10 用户定稿）
+
+  // 坚垒护卫艇（2类黄色变体，2026-09-28 新增）：机体为霜白突击艇上下倒置 + 前置能量盾（下方机体边框两条线增粗外移 + 流光，绘制见 09b-draw-enemies drawFortressStrikerBody）
+  // 2026-10-03 起取消能量盾减伤机制，改为单纯高血量；2026-10-10 起移除移速 60% 负修正（入位/冲锋与全体突击艇同速）
   const STRIKER_FORTRESS = {
     hp: 300,          // 血量（VARIANTS.striker 条目同步定义 hp: 300）
     holdYOffset: 48,  // 停留位置较普通 2类前锋停留线（y 200~240）下移量（px）：更靠前、贴近玩家
-    speedMul: 0.6,    // 移速为其他突击艇的 60% —— 落地方式：VARIANTS 条目 entry/charge 取全体基准 140/120 × 0.6 = 84/72
   };
 
   // 幽暮突击艇（2类黑色变体）参数：浮现(渐显) → 下移落点停驻 → 停 0.2s(白环预警) → 环射 6/8 发 → 随即下移同距渐隐离场
@@ -980,29 +992,29 @@
   const VARIANTS = {
     striker: [
       // entry = 入位下降速度（px/s）；charge = 冲锋基准速度（冲锋速度 = charge + (关卡-1)×5）
-      // 入位/冲锋已统一（怪物属性总表 2026-09 批次）：全体入位 140、冲锋基准 120——字段保留以便日后按变体再分化
+      // 入位已统一（2026-10-10 用户定稿）：全体入位 160（诗篇 200，04-spawn makeEnemy 覆盖）、冲锋基准 120——字段保留以便日后按变体再分化
       // firstDelay = 首次开火额外延迟（数值或 [min,max] 区间）；iv = 变体专属攻击间隔（缺省用注册表 fireInterval）
-      { id: 'crimson', color: '#ff3b30', weight: 0.26, skill: 'straight', firstDelay: [0.2, 0.6], entry: 140, charge: 120 },   // 赤红：直射 ±10° 偏差、不追踪
-      { id: 'amber',   color: '#ff8a5c', weight: 0.26, skill: 'spread', firstDelay: [0.4, 0.8], entry: 140, charge: 120, iv: [1.4, 2.4] },     // 烈橙：前方双弹，夹角 40°/50°/60° 随机（间隔独享 1.4~2.4s）
-      { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 140, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 10% 1s / 10% 2s 虚化护盾
-      { id: 'violet',  color: '#c084fc', weight: 0.21, skill: 'violet', firstDelay: [0.5, 1], entry: 140, charge: 120, iv: [1.4, 2.3] },     // 紫晶：单发精确追踪弹（紫=追踪）；间隔较幽蓝 +0.3s、无虚化护盾、首攻不额外延长
-      { id: 'white',   color: '#eaf1f8', weight: 0.15, skill: 'silent', entry: 140, charge: 120 },                              // 霜白：不开火（停留规则与普通 2类一致）
-      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 800, entry: 84, charge: 72 },                    // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速 60%（84/72）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 800 承担承伤职能（2026-10-03 取消减伤；2026-10-08 用户定稿 300→800，诗篇仍走 POEM_HP.striker_fortress = 3000 绝对覆盖）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
+      { id: 'crimson', color: '#ff3b30', weight: 0.26, skill: 'straight', firstDelay: [0.2, 0.6], entry: 160, charge: 120 },   // 赤红：直射 ±10° 偏差、不追踪
+      { id: 'amber',   color: '#ff8a5c', weight: 0.26, skill: 'spread', firstDelay: [0.4, 0.8], entry: 160, charge: 120, iv: [1.4, 2.4] },     // 烈橙：前方双弹，夹角 40°/50°/60° 随机（间隔独享 1.4~2.4s）
+      { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 160, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 10% 1s / 10% 2s 虚化护盾
+      { id: 'violet',  color: '#c084fc', weight: 0.21, skill: 'violet', firstDelay: [0.5, 1], entry: 160, charge: 120, iv: [1.4, 2.3] },     // 紫晶：单发精确追踪弹（紫=追踪）；间隔较幽蓝 +0.3s、无虚化护盾、首攻不额外延长
+      { id: 'white',   color: '#eaf1f8', weight: 0.15, skill: 'silent', entry: 160, charge: 120 },                              // 霜白：不开火（停留规则与普通 2类一致）
+      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 800, entry: 160, charge: 120 },                  // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速与全体突击艇同速（2026-10-10 取消 60% 负修正）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 800 承担承伤职能（2026-10-03 取消减伤；2026-10-08 用户定稿 300→800，诗篇仍走 POEM_HP.striker_fortress = 3000 绝对覆盖）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
       { id: 'dusk',    color: '#14161c', weight: 0.12, skill: 'dusk' },                       // 幽暮：黑色机白核；出现权重按关卡分档直接取值（Lv1~10 为 2 / Lv11~20 为 5，见 strikerVariantWeights）
     ],
     gunship: [
-      // hp = 血量覆盖；speed = 下降/离场速度；firstFire = 首射延迟区间
-      { id: 'violet',  color: '#c084fc', weight: 0.5, skill: 'mixed', hp: 400, speed: 300, firstFire: [1.1, 1.9] },
+      // hp = 血量覆盖；speed = 下降/离场速度（2026-10-10 用户定稿：全体统一 270，入场初速 320/诗篇 360 见 SHIP_ENTRY）；firstFire = 首射延迟区间
+      { id: 'violet',  color: '#c084fc', weight: 0.5, skill: 'mixed', hp: 400, speed: 270, firstFire: [1.1, 1.9] },
       { id: 'crimson', color: '#ff5a5a', weight: 0.3, skill: 'aggressive', hp: 400, speed: 270, firstFire: [1.0, 1.7] },
-      { id: 'amber',   color: '#ffbf47', weight: 0.2, skill: 'ring', hp: 420, speed: 240, firstFire: [1.2, 2.4] },   // 金曜（黄）
+      { id: 'amber',   color: '#ffbf47', weight: 0.2, skill: 'ring', hp: 420, speed: 270, firstFire: [1.2, 2.4] },   // 金曜（黄）
       { id: 'orange',  color: '#ff7e2e', weight: 0.2, skill: 'orange', hp: 400, speed: 270, firstFire: [1.1, 1.9] },  // 橙焰（炽橙=大炮弹；主题色与威龙 #ff9a1a 区分）
       { id: 'cyan',    color: '#45e0e8', weight: 0.2, skill: 'cyan', hp: 400, speed: 270, firstFire: [1.1, 1.9] },   // 青时（青=召唤/屏障支援；主题色与增生侧翼艇 #7fe8c9 区分）
     ],
     capital: [
-      // speed = 下降/离场速度；wLow/wHigh = 变体选取权重（Lv1~10 / Lv11~20 分档，见 pickVariant）
+      // speed = 下降/离场速度（2026-10-10 用户定稿：全体统一 250，入场初速 280/诗篇 300 见 SHIP_ENTRY）；wLow/wHigh = 变体选取权重（Lv1~10 / Lv11~20 分档，见 pickVariant）
       { id: 'crimson', color: '#ff4d6d', wLow: 0.5, wHigh: 0.3, skill: 'barrage', speed: 250 },
-      { id: 'azure',   color: '#4d9fff', wLow: 0.3, wHigh: 0.15, skill: 'lance', speed: 220 },   // 出现时 20% 带护盾（前 5s 虚化）
-      { id: 'crgold',  color: '#ff9a1a', wLow: 0.3, wHigh: 0.15, skill: 'crgold', speed: 280, hp: 4600 },  // 赤金主力舰：橙黄舰体 + 旋转双环 + 三技能；血量 4600（其余主力舰 4200）
+      { id: 'azure',   color: '#4d9fff', wLow: 0.3, wHigh: 0.15, skill: 'lance', speed: 250 },   // 出现时 20% 带护盾（前 5s 虚化）
+      { id: 'crgold',  color: '#ff9a1a', wLow: 0.3, wHigh: 0.15, skill: 'crgold', speed: 250, hp: 4600 },  // 赤金主力舰：橙黄舰体 + 旋转双环 + 三技能；血量 4600（其余主力舰 4200）
     ],
   };
   const STRIKER_SPEED_MUL = 0.7;   // （已废弃：2类入位/冲锋速度改由 VARIANTS.striker 逐变体 entry/charge 定义）
@@ -1034,10 +1046,6 @@
     orange:  { dark: '#5e1c06', base: '#ff7e2e', light: '#ffd9ae', accent: '#ffcf6b', glow: '#ff5a1a' },   // 橙焰：炽橙舰体 + 金色炮口饰环（呼应巨型黄弹）
     cyan:    { dark: '#0c3e46', base: '#45e0e8', light: '#d6fff9', accent: '#9ff0e0', glow: '#2ee8d8' },   // 青时：青色舰体 + 青白援护饰环（呼应支援弹/屏障）
   };
-  const CAPITAL_HIGHFIRE_DR = 0.15;   // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力的减伤（受到伤害 ×0.85）
-  const CAPITAL_DESCEND_DR = 0.20;    // 4类主力舰：俯冲减速前（距悬停高度 ≥90px、速度未明显衰减）的减伤（受到伤害 ×0.8）
-  const POPIAN_VULN_LV1 = 0.30;       // 火力 Lv1 时对破片的易伤（受到伤害 ×1.30，低火力补偿）
-  const POPIAN_VULN_LV2 = 0.10;       // 火力 Lv2 时对破片的易伤（受到伤害 ×1.10）
 
   // 1类侧翼艇：五种行为对应五种颜色（与图鉴一致）
   //   pass(白)：无攻击斜插穿越 | shoot(黄)：追踪射击 | kamikaze(紫)：亡语垂直射击
@@ -1092,11 +1100,12 @@
     FASHI_A1, FASHI_A2, POPIAN, POPIAN_U,
     WAR_GHOST, ELITES, ZHANGZHANG, FASHI_MATRIX,
     PULSE_MATRIX, FASHI_ARRAY, STRIKER_HOLD_Y, STRIKER_FORTRESS,
+    SHIP_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
     SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR,
     SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,
-    CAPITAL_PALETTE, GUNSHIP_PALETTE, CAPITAL_HIGHFIRE_DR, CAPITAL_DESCEND_DR,
-    POPIAN_VULN_LV1, POPIAN_VULN_LV2, SIDE_BEHAVIOR_COLORS, SIDE_MOON,
+    CAPITAL_PALETTE, GUNSHIP_PALETTE,
+    SIDE_BEHAVIOR_COLORS, SIDE_MOON,
     SIDE_SWIRL, SIDE_SPAWN_W, SIDE_SHOOT_HP, SIDE_SCORE,
     SIDE_KAMIKAZE_SCORE,
   };

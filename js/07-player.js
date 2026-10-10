@@ -9,7 +9,7 @@
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
   import { ENEMY_CLASS, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
-  import { diffMods, invulnDiffMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { diffMods, invulnDiffMul, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
   import { REWARD_ITEMS } from './01-config-spawn.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBurst, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
@@ -93,7 +93,7 @@
     if (f.kind === 'feijian') {
       // 无界飞剑：入列一波飞剑（自机体后方飞出 → 微微后移下沉 → 迅速左右分裂渐显 → 各剑滑入全屏均分槽位
       // 就位 → 中央先发依次前射，推进与分段动画见 updateFeijianWaves / drawFeijianWaves）。
-      // 发射位置均分屏幕宽度（同大狗导弹雨 (k+0.5)·屏宽/n，绝对坐标不随玩家移动）；
+      // 发射位置均分屏幕宽度（同叮咚鸡导弹雨 (k+0.5)·屏宽/n，绝对坐标不随玩家移动）；
       // 装备驾驶员陵落时飞剑带微弱追踪（homingTurn，08-entities homing 限角速度转向）
       const n = cfg.count;
       const swords = [];
@@ -148,10 +148,10 @@
         pBullets.push({ ...base, x: mx, y: my, vx: Math.cos(va) * v0, vy: Math.sin(va) * v0 });
       }
     } else if (f.kind === 'daodan') {
-      // 捣蛋来袭：直射大狗导弹雨同款导弹（复用 dagouMissiles 数组，无 sub 标记——飞行 / 分区命中 / 600 溅射 /
-      // 低区直击 200 与大狗导弹完全一致；berserk 仅标记暴走金红涂装，不影响任何数值与规则；
+      // 捣蛋来袭：直射叮咚鸡导弹雨同款导弹（复用 dagouMissiles 数组，无 sub 标记——飞行 / 分区命中 / 600 溅射 /
+      // 低区直击 200 与叮咚鸡导弹完全一致；berserk 仅标记暴走金红涂装，不影响任何数值与规则；
       // 演示屏同样发射——updateDemo 内调用 updateDagouMissiles 推进，导弹飞出演示屏上缘后回收）
-      // 连射链与大狗导弹雨同款：发射后 10% 概率 0.3s 后再来一发（连射弹同样可继续连射、伤害一律为常规的 60%，见 launchDaodanMissile）
+      // 连射链与叮咚鸡导弹雨同款：发射后 10% 概率 0.3s 后再来一发（连射弹同样可继续连射、伤害一律为常规的 60%，见 launchDaodanMissile）
       launchDaodanMissile(0);
     } else if (f.kind === 'xinring') {
       // 辛国栋之怒：向场上生命值最高的敌人发射空间火环（焦香同款造型的玫红渐变流动版，透明度 0.8）；
@@ -178,11 +178,11 @@
 
   // 捣蛋来袭单发直射（常规发射与连射链共用）：lv = 连射层级（0/缺省 = 常规）。
   // 发射后按 PILOTS.dagou.chainChance 概率在 chainGap 秒后再来一发（lv+1，连射弹同样可继续连射），
-  // 连射弹伤害一律 = 常规 ×chainDmgMul（0.6，固定——不随连射深度逐层递减，与大狗导弹雨同款，
-  // 经 updateDagouMissiles 的 mul 通路结算）；连发作弊模式（按 9）期间不追加连射（与大狗连射链同护栏，见 launchDagouWave）
+  // 连射弹伤害一律 = 常规 ×chainDmgMul（0.6，固定——不随连射深度逐层递减，与叮咚鸡导弹雨同款，
+  // 经 updateDagouMissiles 的 mul 通路结算）；连发作弊模式（按 9）期间不追加连射（与叮咚鸡连射链同护栏，见 launchDagouWave）
   function launchDaodanMissile(lv) {
     const dc = PILOTS.dagou;
-    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed * (player.weapon >= 5 ? BERSERK.subSpdMul : 1), r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5, src: 'daodan' });   // src：来源标记（副武器捣蛋来袭——不受大狗驾驶员的 BOSS 减伤修正，见 dagouBossMul）；暴走全局修正：弹速 +50%（仅玩家捣蛋，不影响大狗导弹雨）
+    dagouMissiles.push({ x: player.x, y: player.y - 14, vy: -dc.speed * (player.weapon >= 5 ? BERSERK.subSpdMul : 1), r: dc.r, dmgMul: (lv || 0) > 0 ? dc.chainDmgMul : 1, berserk: player.weapon >= 5, src: 'daodan' });   // src：来源标记（副武器捣蛋来袭——不受叮咚鸡驾驶员的 BOSS 减伤修正，见 dagouBossMul）；暴走全局修正：弹速 +50%（仅玩家捣蛋，不影响叮咚鸡导弹雨）
     if (dc.chainChance && !state.dagouDebugRapid && Math.random() < dc.chainChance) {
       state.daodanChains.push({ t: dc.chainGap, lv: (lv || 0) + 1 });
     }
@@ -192,7 +192,7 @@
   // 不受寒霜光圈 / 壁垒免死射速修正影响（两者只干涉主炮口径），斗志昂扬攻速翻倍照常生效
   function updateSubWeapon(dt) {
     // 捣蛋来袭连射链推进（置顶于 cfg 判空之前：副武器卸下/切换后遗留待发弹照常走完）——
-    // 停火锁（警报 / BOSS 入场 / 冲刺）期间倒计时冻结，解除后继续（与大狗连射链同约定）
+    // 停火锁（警报 / BOSS 入场 / 冲刺）期间倒计时冻结，解除后继续（与叮咚鸡连射链同约定）
     for (let i = state.daodanChains.length - 1; i >= 0; i--) {
       const c = state.daodanChains[i];
       if (!playerFireLocked()) c.t -= dt;
@@ -258,6 +258,12 @@
       if (g.t < 0.8) spd = g.spd * (1.8 - (g.t / 0.8) * 0.8);            // 180% → 100%（快速衰减）
       else if (g.t < 1.4) spd = g.spd * (1 - ((g.t - 0.8) / 0.6) * 0.3); // 100% → 70%
       else spd = g.spd * 0.7;                                            // 70% 恒速
+      if (g.slowT != null) {
+        // 命中 BOSS 后 0.3s 内线性减速 40%（降至命中瞬间速度的 60%），此后恒定（2026-10-10 用户定稿——
+        // 火环贴住 BOSS 持续灼烧更久；命中瞬间 slowT=0.3 → 系数 1.0，速度逐帧连续无突跳）
+        g.slowT = Math.max(0, g.slowT - dt);
+        spd *= 0.6 + 0.4 * (g.slowT / 0.3);
+      }
       if (g.dieT != null) {
         // 消散：半速漂移 + 渐隐（绘制端按 dieT 淡出），不再结算灼烧
         g.dieT -= dt;
@@ -277,7 +283,8 @@
       for (const e of enemies) {
         if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
         if (Math.hypot(e.x - g.x, e.y - g.y) > g.r + Math.min(e.w, e.h) / 2) continue;
-        e.hp -= g.dps * g.tick * kingDmgBonusMul() * rewardOutMul();   // 抽卡演出期间我方输出 -60%
+        e.hp -= g.dps * g.tick * kingDmgBonusMul() * rewardOutMul() * pxpfChargeHurtMul(e);   // 抽卡演出期间我方输出 -60%；朴学峰冲刺易伤 ×2
+        if (e.type === 'boss' && g.slowT == null) g.slowT = 0.3;   // 首次灼烧到 BOSS：启动 0.3s 减速至命中速度 50%（一次性触发，见 updateXinRings 速度段）
         if (Math.random() < 0.3) spawnParticles(e.x + rand(-6, 6), e.y + rand(-6, 6), '#ff8fab', 1, 60);
         if (e.hp <= 0) killed.push(e);
       }
@@ -292,7 +299,7 @@
   // ---------- 群星之杀：空间斩击武器 ----------
   // 机头直射一条淡白锁定光束（不造成伤害），选中最靠近玩家的主目标；
   // 每隔一段时间召唤一道空间斩击：以主目标为中心的矩形判定区，区域内所有敌人受全额伤害。
-  // 对 BOSS 伤害 +20%；仅命中 1 个非 BOSS 敌人（单体斩击）时：伤害 +25%（攻击间隔不受影响）。
+  // 仅命中 1 个敌人（含 BOSS，单体斩击）时：伤害 +15%（攻击间隔不受影响）。
   // 斩击方向：与竖直方向夹角 5~20° 随机，左下→右上 / 右下→左上 逐次交替。
   // 暴走（Lv5）：每次连续斩击 3 下（间隔 slashGap），攻击间隔略微降低。
   let slashSeq = 0;   // 斩击方向交替计数（奇偶决定左候/右候）
@@ -331,8 +338,8 @@
   }
 
   // 对主目标及其矩形斩击区内敌人结算一次斩击伤害（复用 enemyDamageMul 修正链）。
-  // 区域内所有敌人受全额伤害；对 BOSS 伤害 +20%；
-  // 仅命中 1 个非 BOSS 敌人（单体斩击）时：伤害 +25%（攻击间隔不受影响）
+  // 区域内所有敌人受全额伤害；
+  // 仅命中 1 个敌人（含 BOSS，单体斩击）时：伤害 +15%（攻击间隔不受影响）
   function doSlash(lvl) {
     const t = player.slashTarget;
     if (!t) return false;
@@ -369,15 +376,14 @@
       }
       targets.push({ e, isMain });
     }
-    // 单体斩击：仅命中 1 个非 BOSS 敌人 → 本次伤害 +25%（测试模式不生效）
+    // 单体斩击：仅命中 1 个敌人（含 BOSS）→ 本次伤害 +15%（测试模式不生效）
     // 测试模式（图鉴挑战）不生效：单体增强视为未触发，输出保持基准值
-    const solo = targets.length === 1 && targets[0].e.type !== 'boss' && !state.challenge;
+    const solo = targets.length === 1 && !state.challenge;
     const dmgMul = solo ? 1 + STARSLAYER.soloBonus : 1;
     const killed = [];
     for (const { e, isMain } of targets) {
       let dmg = lvl.dmg * (berserk ? BERSERK.subDmgMul : 1) * dmgMul * enemyDamageMul(e, false) * rewardOutMul();   // 暴走全局修正：斩击伤害 +50%（连斩节奏不变）；暴风之眼战其余伤害削减已取消（2026-10-02 用户定稿：非风暴伤害不再削减，暴风之眼血量 ×2 代偿）
-      if (e.type === 'boss') dmg *= 1 + STARSLAYER.bossBonus;   // 对 BOSS 伤害 +20%
-      e.hp -= xiayongBarAbsorb(e, dmg);   // 空间斩击为常规直击伤害：先被夏勇屏障吸收（技能3，2026-10-03 二轮定稿）
+      e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e));   // 空间斩击为常规直击伤害：先被夏勇屏障吸收（技能3，2026-10-03 二轮定稿）；朴学峰冲刺易伤 ×2
       // 斩击击碎虚化护盾：护盾碎裂消散、立即恢复可伤（斩击本就无视虚化；特效与镰刀共用 breakPhaseShield）
       if (e.phase > 0) breakPhaseShield(e);
       spawnParticles(e.x, e.y, isMain ? '#ffffff' : '#cbb8ff', 8, 190);
@@ -1055,7 +1061,7 @@
           const etags = enemyColorTags(en);
           const tagMul = (etags.includes('gray') || etags.includes('black')) ? currentArmor.burnTagMul : 1;
           // 铜皮夏勇·屏障（技能3）：灼烧为常规伤害先被红色护盾吸收（见 01-config xiayongBarAbsorb）
-          en.hp -= xiayongBarAbsorb(en, currentArmor.burnDmg * tagMul * yu4AuraMul(en));   // 普通伤害：灰/黑标记敌人增伤 burnTagMul，可被御4防御光环削减
+          en.hp -= xiayongBarAbsorb(en, currentArmor.burnDmg * tagMul * yu4AuraMul(en) * pxpfChargeHurtMul(en));   // 普通伤害：灰/黑标记敌人增伤 burnTagMul，可被御4防御光环削减；朴学峰冲刺易伤 ×2
           if (Math.random() < 0.3) spawnParticles(en.x + rand(-8, 8), en.y + rand(-8, 8), '#ff7a18', 1, 70);
           if (en.hp <= 0) killEnemy(k);
         }
@@ -1121,8 +1127,18 @@
     player.y = CANVAS_H - 90;
     player.invuln = 2 * invulnDiffMul();   // 虚象：所有来源的无敌时间 +50%（含登场/重生保护）
     player.invulnBlink = false;   // 登场/重生无敌不闪动（机体保持完整可见）
-    player.weapon = (state.testBoss || state.challenge) ? 4 : 3;   // 复活后火力等级默认 Lv3（BOSS 试炼 / 图鉴挑战仍固定 Lv4，与 resetGame 一致）
+    player.weapon = 4;   // 复活后火力等级默认 Lv4（2026-10-10 用户定稿，原 Lv3；BOSS 试炼 / 图鉴挑战固定基准本就是 4）
     player.berserk = 0;
+    // 最终壁垒 / 铜皮夏勇：复活后立刻暴走（2026-10-10 用户定稿）——weapon=5 + 满时长，结束后回落 Lv4；
+    // 同拾取暴走道具路径（banner / 粒子 / 冲击波），但不计分；BOSS 试炼 / 图鉴挑战固定 Lv4 测试基准，不触发暴走
+    if (!state.testBoss && !state.challenge && (currentArmor.id === 'tongpi' || currentArmor.id === 'bulwark')) {
+      player.weapon = 5;
+      player.berserk = BERSERK.duration;
+      player.berserkBanner = 2.0;
+      spawnParticles(player.x, player.y, '#ff5a1f', 24, 300);
+      berserkBurst.active = true; berserkBurst.t = 0;
+      berserkBurst.x = player.x; berserkBurst.y = player.y; berserkBurst.big = true;
+    }
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0; player.spinT = 0;   // 重生清除击退/击飞自旋状态
     player.shield = 0;
     player.shieldMax = 0;         // 护盾读条分母复位
@@ -1153,7 +1169,7 @@
   // 玩家受伤统一入口。src = 伤害来源标记（驾驶员效果挂点）：
   //   'storm'      来自暴风之眼的弹幕（风弹等投射物）
   //   'stormAoe'   来自暴风之眼的瞬时区域打击（风波 / 风柱）
-  //   'stormCrash' 来自暴风之眼本体 / 其召唤的大型龙卷的碰撞伤害
+  //   'stormCrash' 来自暴风之眼本体的碰撞伤害 / 其召唤的大型龙卷的持续接触掉血（龙卷经 pilotStormContactMul 挂点，不经 damagePlayer）
   //   'aoe'        瞬时区域伤害（暴鸰爆炸 / 破片范围伤害 / 风暴编织者雷霆轰击）
   //   'missile'    导弹伤害（先兆者导弹）
   //   天秀忧郁王子：'storm'/'stormAoe' 削减 -50%、'stormCrash' -60%，受击触发增益（50% 闪避 + 攻速 +80% + 量表 +18%，5s）
@@ -1250,11 +1266,11 @@
         achvNoteHajimiDodge(PILOTS.hajimi.dodgeBase + state.hajimiDodgeBonus);   // 成就：哦非非——闪避概率 ≥60%
       }
     }
-    // 祈星：受到伤害时 30% 概率伤害减半，单次伤害 >40 时概率提升到 60%（概率走注册表）；触发时核心处图标演出
+    // 祈星：受到伤害时 30% 概率伤害减半，单次伤害 >40 时概率提升到 60%（概率走注册表）；触发时机头上方图标演出
     if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? currentArmor.halveChanceBig : currentArmor.halveChance)) {
       if (amount >= 50) achvNoteQixingBigHalve();   // 成就：繁星赐福——减半一次原伤害 ≥50 的攻击
       amount *= 0.5;
-      spawnArmorGlyphFx('✧', currentArmor.color);
+      spawnArmorGlyphFx('✧', currentArmor.color, 0.8, 'pulse', false, -38);   // 机头上方（dy=-38，与澄月统一）
     }
     // 测试模式（图鉴挑战）：玩家不再无敌 —— 照常扣血，但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（视为不死）
     if (state.challenge) {
@@ -1384,7 +1400,7 @@
         if (w.final) {
           killEnemy(j);
         } else if (e.type === 'boss') {
-          e.hp -= PILOTS.aiyi.bossDmg;   // 指定伤害（真实结算；若因此击杀走正常击毁流程）
+          e.hp -= PILOTS.aiyi.bossDmg * pxpfChargeHurtMul(e);   // 指定伤害（真实结算；若因此击杀走正常击毁流程）；朴学峰冲刺易伤 ×2
           spawnParticles(e.x, e.y, '#ffffff', 24, 280);
           if (e.hp <= 0) killEnemy(j);
         } else {
@@ -1407,10 +1423,10 @@
   // 照常扣血但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（测试模式视为不死）；护盾期间免疫
   function testDamagePlayer(amount) {
     if (!player.alive || player.shield > 0 || player.crystalShield > 0) return false;
-    // 祈星：同 damagePlayer（测试模式同样生效，概率走注册表）；触发时核心处图标演出
+    // 祈星：同 damagePlayer（测试模式同样生效，概率走注册表）；触发时机头上方图标演出
     if (currentArmor.id === 'qixing' && Math.random() < (amount > 40 ? currentArmor.halveChanceBig : currentArmor.halveChance)) {
       amount *= 0.5;
-      spawnArmorGlyphFx('✧', currentArmor.color);
+      spawnArmorGlyphFx('✧', currentArmor.color, 0.8, 'pulse', false, -38);   // 机头上方（dy=-38，与澄月统一）
     }
     player.hp -= amount;
     if (player.hp <= 0) {
@@ -1443,7 +1459,7 @@
     achvNoteChengyueRoll(true);
     player.shield = currentArmor.shieldDur || 6;
     player.shieldMax = player.shield;   // 读条分母同步（澄月 6s，与通用量子护盾一致）
-    spawnArmorGlyphFx('◉', currentArmor.color);   // 核心处澄月图标演出（淡青◉满月渐显-放大-渐隐；与注册表 glyph 同步）
+    spawnArmorGlyphFx('◉', currentArmor.color, 0.8, 'pulse', false, -38);   // 澄月图标演出：机头上方（dy=-38，同测试2 卡3/卡4 布局；淡青◉满月渐显-放大-渐隐，与注册表 glyph 同步）
     spawnParticles(player.x, player.y, '#6fe3ff', 18, 200);
   }
 
@@ -1526,7 +1542,7 @@
   //   天秀：白色量表充能——非水晶得分差分（水晶得分经 princeCrystalGain 扣除）+ BOSS 战按秒充能
   //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；闪避 / 攻速增益倒计时
   function updatePilotStatus(dt) {
-    // 许凯狗冲刺：所有驾驶员计时表 / 量表冻结（大狗导弹雨不计时、陵落冷却不走、
+    // 许凯狗冲刺：所有驾驶员计时表 / 量表冻结（叮咚鸡导弹雨不计时、陵落冷却不走、
     // 天秀量表不充能、炼金璃计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
     const dashFrozen = state.pilotDashT > 0;
     // 陵落：生命上限债务恢复（每秒 +2，不回当前血量，回满即止——单次触发 40 ÷ 2/s = 恰好 20s）；
@@ -1550,14 +1566,14 @@
       state.kingTaken = Math.min(PILOTS.king.takenCap, state.kingTaken + PILOTS.king.takenRate * dt);
       achvNoteKingDmg(state.kingDmg);   // 成就：陷入疯狂 ≥50% / 彻底疯狂 ≥80%
     }
-    // 大狗：每隔 10~22s 召唤一波 8 颗导弹雨（自下而上，见 launchDagouWave）；
+    // 叮咚鸡：每隔 10~22s 召唤一波 8 颗导弹雨（自下而上，见 launchDagouWave）；
     // 召唤前 warnLead 秒屏幕下方渐显蓝光预警（绘制见 10-draw-world drawDagouWarn），发射后快速渐隐；
     // 连射链：每波发射后 chainChance 概率在 chainGap 秒后再来一波（连射波同样可继续连射），伤害逐波 ×chainDmgMul；
     // 警报 / BOSS 登场动画期间（bossEntranceActive）所有计时器冻结——倒计时与连射链均不递减、绝不发射导弹
     //（预警若已显示则随计时冻结自然停驻，动画结束照常走完剩余倒计时再发射）；
     // 许凯狗冲刺期间同样完全冻结
-    // 连发开关作弊（按 9）未装备大狗时同样生效：开关置位即启用整套导弹雨系统（连发间隔运行），
-    // 关闭且未装备大狗则不运行（无导弹雨）
+    // 连发开关作弊（按 9）未装备叮咚鸡时同样生效：开关置位即启用整套导弹雨系统（连发间隔运行），
+    // 关闭且未装备叮咚鸡则不运行（无导弹雨）
     if (hasPilot('dagou') || state.dagouDebugRapid) {
       const entrance = bossEntranceActive();
       if (!dashFrozen && !entrance) {
@@ -1602,7 +1618,7 @@
       }
     }
     updateMeiScythes(dt);   // 镰刀为在途攻击实体：不随驾驶员计时冻结（存续/旋转/结算照常推进）
-    updateDdjMissiles(dt);   // 叮咚鸡 Q 导弹为在途实体：照常推进
+    updateDdjMissiles(dt);   // 大狗 Q 导弹为在途实体：照常推进
     // 连发风暴（按 8 切换，作弊键不要求装备天秀）：每 0.4~1.4s 向前发射一个友方大风暴（无视量表）；
     // 警报 / BOSS 登场动画期间与正常技能同样封锁，封锁解除瞬间立即补发第一个——
     // 需在下方 tianxiu 早退之前运行（未装备天秀时开关置位同样生效）
@@ -1633,8 +1649,8 @@
 
   // 许凯狗冲刺结束瞬间（14-main 递减归零帧调用一次）：所有技能计量表立刻完全充能——
   // 炼金璃·澜心量表充满（连携边沿判定随后触发一次淡粉冲击波）、依击杀计数置满（固有判定随后召镰）、
-  // 陵落 Q 冷却清零、天秀白色量表充满、萧杨原石充能就绪、叮咚鸡计数表满层。
-  // 仅充能表：大狗导弹雨（自动循环倒计时）/ 哈基米存续 / 大无垠之王累积等非充能表不在此列
+  // 陵落 Q 冷却清零、天秀白色量表充满、萧杨原石充能就绪、大狗计数表满层。
+  // 仅充能表：叮咚鸡导弹雨（自动循环倒计时）/ 哈基米存续 / 大无垠之王累积等非充能表不在此列
   function chargeAllGaugesOnDashEnd() {
     // 炼金璃：当前装甲为七日澜心时量表直接充满（updatePilotStatus 的满格边沿判定随即触发 lovelyBurst 清弹）
     if (hasPilot('lianjinLovely') && currentArmor.id === 'lanxin') {
@@ -1655,7 +1671,7 @@
       spawnParticles(player.x, player.y, '#ffd166', 18, 240);
       pushItemPickFx('gacha');
     }
-    // 叮咚鸡：计数表满层（layerCap 层 + 单层进度满格，与正常累积满层状态一致）
+    // 大狗：计数表满层（layerCap 层 + 单层进度满格，与正常累积满层状态一致）
     if (hasPilot('dingdongji')) {
       state.ddjLayers = PILOTS.dingdongji.layerCap;
       state.ddjGauge = PILOTS.dingdongji.layerMax;
@@ -1827,7 +1843,7 @@
           if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
           if (e.type === 'boss') continue;   // BOSS 不被这次全场灼烧（避免直接秒杀）
           const dmg = e.type === 'xinguodong' ? xr.dps * 5 : xr.dps;
-          e.hp -= dmg * rewardOutMul();
+          e.hp -= dmg * rewardOutMul() * pxpfChargeHurtMul(e);
           spawnParticles(e.x, e.y, '#ff8fab', 3, 100);
           if (e.hp <= 0) killed.push(e);
         }
@@ -1930,7 +1946,7 @@
         killEnemy(i);
         if (e.type === 'boss') bossKilled = true;   // 暴风之眼在此被秒 → killEnemy 同步召唤的风暴编织者带 _sdImmune 登场、且不在本轮结算快照内（天然豁免）
       } else {
-        e.hp -= color === 'purple' ? 16000 : 6000;
+        e.hp -= (color === 'purple' ? 16000 : 6000) * pxpfChargeHurtMul(e);
         spawnParticles(e.x, e.y, '#ffffff', 12, 260);
         if (e.hp <= 0) killEnemy(i);
       }
@@ -1938,7 +1954,7 @@
     state.sweepKill = false;
   }
 
-  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子、陵落、叮咚鸡、萧杨（原石抽卡充能释放）均按 Q
+  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子、陵落、大狗、萧杨（原石抽卡充能释放）均按 Q
   function triggerPilotSkill(keyName = 'q') {
     if (state.mode !== 'playing' || state.paused) return false;
     // 警报 / BOSS 登场动画期间不可释放技能（入场演出收尾、battle 尚未正式展开）
@@ -1961,7 +1977,7 @@
       achvNotePilotSkillUsed();   // 成就：忘了——天秀 Q 技能已使用
       return true;
     }
-    // 叮咚鸡：计数表任一层满时按 Q——向前方 120° 均匀射出 4 发导弹 → 触发武器等级升级 → 消耗一层；
+    // 大狗：计数表任一层满时按 Q——向前方 120° 均匀射出 4 发导弹 → 触发武器等级升级 → 消耗一层；
     // Q 技能全局初始仅能释放 3 次（2026-10-02 用户定稿）：无论火力等级，次数用完层数再多也无法释放；
     // 上限随击败 BOSS 掷骰提升（25%/第 5、6 轮 100%，见 06-enemy killEnemy——state.ddjUseMax 运行时累加）；
     // 升级至暴走（4→5 级）另受 3 次机会限制：4/5 级时按技能均消耗一次机会，耗尽后 4/5 级无法再按
@@ -2000,7 +2016,7 @@
           player.berserkBanner = 1.0;
         }
       }
-      achvNotePilotSkillUsed();   // 成就：忘了——叮咚鸡 Q 技能已使用
+      achvNotePilotSkillUsed();   // 成就：忘了——大狗 Q 技能已使用
       return true;
     }
     // 陵落：按 Q 触发暴走——立刻损失 40 生命（不会致死）；冷却 40s（开局技力条为空不能释放）。
@@ -2165,7 +2181,7 @@
         if (sc.hit.has(en) || !inSector(en.x, en.y)) continue;
         if (en.phase > 0) breakPhaseShield(en);   // 镰刀斩碎虚化护盾（碎盾特效与群星之杀共用）
         const dmg = cfg.scytheBaseDmg + Math.min(en.maxHp * cfg.scytheHpPct, cfg.scytheHpPctCap);
-        en.hp -= xiayongBarAbsorb(en, dmg * yu4AuraMul(en));   // 镰刀为常规伤害：先被夏勇屏障吸收（技能3）
+        en.hp -= xiayongBarAbsorb(en, dmg * yu4AuraMul(en) * pxpfChargeHurtMul(en));   // 镰刀为常规伤害：先被夏勇屏障吸收（技能3）；朴学峰冲刺易伤 ×2
         sc.hit.add(en);
         spawnParticles(en.x + rand(-12, 12), en.y + rand(-12, 12), '#FFFFFF', 4, 150);
         spawnParticles(en.x + rand(-12, 12), en.y + rand(-12, 12), '#FFC0CB', 5, 130);
@@ -2240,7 +2256,7 @@
     }
   }
 
-  // 叮咚鸡：关卡提升掷计数增量（01-config 值阶梯：70% +1 / 10% +2 / 6% +3 / 3% +4 / 1% +8，其余 +0；
+  // 大狗：关卡提升掷计数增量（01-config 值阶梯：70% +1 / 10% +2 / 6% +3 / 3% +4 / 1% +8，其余 +0；
   // 14-main 关卡提升处调用）——增量计入当前层进度，满 8 转入一层持有（最多 3 层，溢出顺延计入下一层；
   // 三层已满后溢出丢弃）
   function noteDdjLevelUp() {
@@ -2262,7 +2278,7 @@
     state.ddjGauge = Math.min(v, cfg.layerMax);   // 满层持有中：进度停在 8（下一层不可再积）
   }
 
-  // 叮咚鸡：Q 导弹更新——直线飞行、命中第一个敌人直接造成伤害（白光闪核 + 冲击圈反馈）；
+  // 大狗：Q 导弹更新——直线飞行、命中第一个敌人直接造成伤害（白光闪核 + 冲击圈反馈）；
   // 登场虚化 BOSS 穿透；出屏移除（绘制见 10-draw-world drawDdjMissiles）
   function updateDdjMissiles(dt) {
     if (!ddjMissiles.length) return;
@@ -2280,7 +2296,7 @@
       }
       if (hit) {
         // 铜皮夏勇·牛角减伤：导弹命中点落在两翼折角（牛角）头部时伤害 ×0.5（见 01-config xiayongHornDmgMul）
-        hit.hp -= xiayongBarAbsorb(hit, cfg.missileDmg * xiayongHornDmgMul(hit, m.x, m.y) * kingDmgBonusMul() * rewardOutMul());   // 叮咚鸡 Q 导弹（夏勇屏障先吸收，技能3）；抽卡演出期间 -60%
+        hit.hp -= xiayongBarAbsorb(hit, cfg.missileDmg * xiayongHornDmgMul(hit, m.x, m.y) * kingDmgBonusMul() * rewardOutMul() * pxpfChargeHurtMul(hit));   // 大狗 Q 导弹（夏勇屏障先吸收，技能3）；抽卡演出期间 -60%；朴学峰冲刺易伤 ×2
         dashKillFx.push({ x: m.x, y: m.y, t: 0, max: 0.3, r: m.r * 1.8 });
         spawnParticles(m.x, m.y, '#ffd166', 10, 180);
         if (hit.hp <= 0) { const j = enemies.indexOf(hit); if (j >= 0) killEnemy(j); }
@@ -2291,7 +2307,7 @@
     }
   }
 
-  // 大狗：召唤一波 8 颗导弹雨——均匀分布（屏宽 / count 等分），中间两发先射出、随后向两侧
+  // 叮咚鸡：召唤一波 8 颗导弹雨——均匀分布（屏宽 / count 等分），中间两发先射出、随后向两侧
   // 两两错峰（相邻两拍间隔 launchGap，很小）；导弹自下而上射出，白蓝渐变先兆者同款（绘制见 09-draw-ships）；
   // lv = 连射链层级（0/缺省 = 常规波）：发射后 chainChance 概率在 chainGap 秒后再来一波（lv+1），
   // 连射波伤害一律 = 常规波 ×chainDmgMul（0.6，固定——不随连射深度逐波递减）
@@ -2313,18 +2329,18 @@
     spawnParticles(CANVAS_W / 2, CANVAS_H - 8, '#9fd0ff', 14, 170);   // 底部少量水花粒子（无震屏：入场演出克制）
   }
 
-  // 大狗驾驶员波雨弹对 BOSS 伤害修正（2026-10-08 用户定稿）：仅驾驶员召唤的导弹（src='dagou'）命中 BOSS 时
+  // 叮咚鸡驾驶员波雨弹对 BOSS 伤害修正（2026-10-08 用户定稿）：仅驾驶员召唤的导弹（src='dagou'）命中 BOSS 时
   // ×bossDmgMul（0.65 = -35%）——副武器捣蛋来袭（src='daodan'）/ 连发作弊模式（src='dagouCheat'）不受此修正，
-  // 其余导弹（叮咚鸡 ddjMissiles 等）与本修正无关。直击与溅射统一走此函数（按受击目标逐个判定）
+  // 其余导弹（大狗 ddjMissiles 等）与本修正无关。直击与溅射统一走此函数（按受击目标逐个判定）
   function dagouBossMul(e, m) {
     return (m.src === 'dagou' && e.type === 'boss') ? PILOTS.dagou.bossDmgMul : 1;
   }
 
-  // 大狗导弹雨推进：发射延迟归零后上行飞行；分区命中规则（低区首触直击穿透 → 第二次命中 / 高区命中爆炸，
+  // 叮咚鸡导弹雨推进：发射延迟归零后上行飞行；分区命中规则（低区首触直击穿透 → 第二次命中 / 高区命中爆炸，
   // 详见 PILOTS.dagou 注释）；命中点以白光闪核 + 粒子"化开"弹体（避免瞬间消失的生硬感）
   function updateDagouMissiles(dt) {
     const cfg = PILOTS.dagou;
-    achvSetKillSrc('dagou');   // 成就：大狗导弹击杀来源（叮咚——炮火先兆者）
+    achvSetKillSrc('dagou');   // 成就：叮咚鸡导弹击杀来源（叮咚——炮火先兆者）
     for (let i = dagouMissiles.length - 1; i >= 0; i--) {
       const m = dagouMissiles[i];
       if (m.delay > 0) { m.delay -= dt; continue; }
@@ -2346,14 +2362,14 @@
         if (Math.abs(m.x - e.x) < e.w / 2 + m.r && Math.abs(m.y - e.y) < e.h / 2 + m.r) { hit = e; break; }
       }
       if (hit) {
-        const mul = (m.dmgMul || 1) * kingDmgBonusMul() * rewardOutMul();   // 抽卡演出期间捣蛋/大狗导弹 -60%（mul 通路覆盖直击与溅射）
+        const mul = (m.dmgMul || 1) * kingDmgBonusMul() * rewardOutMul();   // 抽卡演出期间捣蛋/叮咚鸡导弹 -60%（mul 通路覆盖直击与溅射）
         if (m.y > CANVAS_H * cfg.lowZonePct && !m.pierced) {
           // 低区首触：对命中目标直击 200，导弹穿透继续飞行（不爆炸不消失；白光闪核 + 火花作穿透反馈）
           // 铜皮夏勇·牛角减伤：命中点在两翼折角（牛角）头部时 ×0.5（见 01-config xiayongHornDmgMul）
           m.pierced = true;
           dashKillFx.push({ x: m.x, y: m.y, t: 0, max: 0.22, r: 12 });
           spawnParticles(m.x, m.y, '#dff3ff', 6, 150);
-          hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, m.x, m.y) * mul * dagouBossMul(hit, m));   // 低区直击（夏勇屏障先吸收，技能3；对 BOSS ×bossDmgMul 仅驾驶员召唤弹）
+          hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, m.x, m.y) * mul * dagouBossMul(hit, m) * pxpfChargeHurtMul(hit));   // 低区直击（夏勇屏障先吸收，技能3；对 BOSS ×bossDmgMul 仅驾驶员召唤弹）；朴学峰冲刺易伤 ×2
           if (hit.hp <= 0) { const j = enemies.indexOf(hit); if (j >= 0) killEnemy(j); }
           continue;
         }
@@ -2369,7 +2385,7 @@
     achvClearKillSrc();
   }
 
-  // 大狗导弹爆炸：主目标（被直接击中的敌人）先受 200 直击、再随溅射受 400（合计 600）；
+  // 叮咚鸡导弹爆炸：主目标（被直接击中的敌人）先受 200 直击、再随溅射受 400（合计 600）；
   // 爆点周围 blastR 内的所有敌人（含主目标）受 400 溅射伤害。
   // 连射链 dmgMul 与大无垠之王累积增伤由调用方乘算后经 mul 传入；m 用于按来源判定对 BOSS 减伤
   // （dagouBossMul：仅驾驶员召唤弹对 BOSS ×bossDmgMul）；爆炸生成蓝色冲击圈指示波及范围
@@ -2383,11 +2399,11 @@
       if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
       if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：溅射伤害穿透
       if (Math.hypot(e.x - x, e.y - y) > cfg.blastR + Math.max(e.w, e.h) / 2) continue;
-      e.hp -= xiayongBarAbsorb(e, cfg.splashDmg * mul * dagouBossMul(e, m));   // 溅射为常规伤害：先被夏勇屏障吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹
+      e.hp -= xiayongBarAbsorb(e, cfg.splashDmg * mul * dagouBossMul(e, m) * pxpfChargeHurtMul(e));   // 溅射为常规伤害：先被夏勇屏障吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹；朴学峰冲刺易伤 ×2
       if (e.hp <= 0) killed.push(e);
     }
     if (hit && !hit.dying && hit.hp > 0) {   // 主目标直击部分（未被溅射击杀时结算，合计 200 + 400）
-      hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, x, y) * mul * dagouBossMul(hit, m));   // 铜皮夏勇·牛角减伤：爆点在牛角头部时 ×0.5；屏障先吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹
+      hit.hp -= xiayongBarAbsorb(hit, cfg.directDmg * xiayongHornDmgMul(hit, x, y) * mul * dagouBossMul(hit, m) * pxpfChargeHurtMul(hit));   // 铜皮夏勇·牛角减伤：爆点在牛角头部时 ×0.5；屏障先吸收（技能3）；对 BOSS ×bossDmgMul 仅驾驶员召唤弹；朴学峰冲刺易伤 ×2
       if (hit.hp <= 0 && !killed.includes(hit)) killed.push(hit);
     }
     for (const t of killed) {
@@ -2433,7 +2449,7 @@
           if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
           if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：主体接触伤害穿透
           if (Math.hypot(e.x - s.x, e.y - s.y) > PRINCE_STORM.r + Math.max(e.w, e.h) / 2) continue;
-          e.hp -= PRINCE_STORM.tickDmg * mul * yu4AuraMul(e) * kingDmgBonusMul();   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴
+          e.hp -= PRINCE_STORM.tickDmg * mul * yu4AuraMul(e) * kingDmgBonusMul() * pxpfChargeHurtMul(e);   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴；朴学峰冲刺易伤 ×2
           if (Math.random() < 0.4) spawnParticles(e.x + rand(-8, 8), e.y + rand(-8, 8), '#dff3ff', 1, 80);
           if (e.hp <= 0) killed.push(e);
         }
@@ -2545,7 +2561,7 @@
         }
         // 黑暗之手：连携精英 guard 减免不再作用于爆弹（2026-10-04 用户定稿：高能爆弹/绷绷炸弹为真实伤害
         // 全额结算，取代原「含爆弹 -70%」口径；普通伤害减免仍走 08-entities enemyDamageMul）
-        e.hp -= dmg;
+        e.hp -= dmg * pxpfChargeHurtMul(e);   // 高能爆弹为真实伤害：不减伤不豁免，但朴学峰冲刺易伤（易伤为增伤方向，2026-10-10）仍生效
         spawnParticles(e.x, e.y, '#ffffff', 14, 240);
         if (e.hp <= 0) killEnemy(i);
       }

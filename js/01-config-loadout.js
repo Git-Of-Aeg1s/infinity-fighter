@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(26 名) 13-encyclopedia(13 名) 14-main(5 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
@@ -56,7 +56,7 @@
       id: 'chaos',
       name: '混乱将至',
       desc: '直线弹道，猛烈输出',
-      startWeapon: 1,   // 初始火力等级（Lv1 即三射线；开局 / 重生回落到此等级；BOSS 试炼 / 图鉴挑战固定 Lv4）
+      startWeapon: 1,   // 初始火力等级（Lv1 即三射线；开局回落到此等级；死亡复活固定 Lv4——最终壁垒/铜皮夏勇复活即暴走 Lv5，见 07-player respawnPlayer；BOSS 试炼 / 图鉴挑战固定 Lv4）
       drawScale: 1.15,  // 机体绘制放大 15%（座舱核心与判定点尺寸不变，见 paintShip 逆向补偿）
       coreY: -7,        // 视觉座舱核心相对机体的纵向偏移（混乱将至座舱位于 y-7；装甲环绕图标等对准用）
       bulletColor: '#7ce7ff',
@@ -176,11 +176,10 @@
   // 机头直射一条较细淡白锁定光束（不造成伤害），选中最靠近玩家的主目标；
   // 每隔 interval 秒召唤一道空间斩击：以主目标为中心的矩形判定区（沿斩击方向），
   // 区域内所有敌人受全额伤害（无主/副目标之分）。
-  // 对 BOSS 伤害提升 bossBonus（无视主/副目标之分，命中几个 BOSS 各自加成）；
-  // 单体斩击：本次斩击仅命中 1 个非 BOSS 敌人时，伤害提升 soloBonus（攻击间隔不受影响）。
+  // 单体斩击：本次斩击仅命中 1 个敌人（含 BOSS）时，伤害提升 soloBonus（攻击间隔不受影响）。
   // 斩击方向：与竖直方向夹角 5~20° 随机，左下→右上 / 右下→左上 逐次交替。
   // 暴走（Lv5）：每次连续斩击 slashes 次（间隔 slashGap），攻击间隔略微降低。
-  // DPS 配平（主目标）：Lv1 330 / Lv2 450 / Lv3 600 / Lv4 880 / Lv5 2200。
+  // DPS 配平（主目标）：Lv1 330 / Lv2 450 / Lv3 600 / Lv4 880 / Lv5 2200。（2026-10-10 用户定稿：间隔 1.5/1.4/1.3/1.2/1.0s，伤害等 DPS 重配）
   const STARSLAYER = {
     beamHalfW: 4.4,          // 锁定光束半宽（稍宽）
     beamColor: '#eaf2ff',    // 淡白色
@@ -191,14 +190,13 @@
     slashAngleMax: 20,       // 夹角上限
     slashLenMul: 2.3,        // 矩形半长 = slashR × 此系数（沿斩击方向；Lv3/4/5 由 levels 表显式 halfLen 覆盖）
     slashWMul: 0.70,         // 矩形半宽 = slashR × 此系数（垂直斩击方向，"宽度较宽"；Lv3/4/5 由 levels 表显式 halfW 覆盖）
-    bossBonus: 0.20,         // 对 BOSS 伤害 +20%
-    soloBonus: 0.25,         // 单体斩击（仅命中 1 个非 BOSS 敌人）伤害 +25%
+    soloBonus: 0.15,         // 单体斩击（仅命中 1 个敌人，含 BOSS）伤害 +15%（2026-10-10 用户定稿：可对 BOSS 生效，原 BOSS +20% 专属加成废除）
     levels: {
-      1: { interval: 1.30, dmg: 429, slashR: 46 },               // 429/1.30 = 330（判定：2.3R × 0.7R = 105.8 × 32.2）
-      2: { interval: 1.20, dmg: 540, slashR: 50 },               // 540/1.20 = 450（判定：115 × 35）
-      3: { interval: 1.10, dmg: 660, slashR: 54, halfLen: 123, halfW: 37 },   // 660/1.10 = 600（判定显式给定）
-      4: { interval: 1.00, dmg: 880, slashR: 58, halfLen: 130, halfW: 39 },   // 880/1.00 = 880（判定显式给定）
-      5: { interval: 0.90, dmg: 660, slashR: 64, slashes: 3, halfLen: 144, halfW: 43 },   // 3×660/0.90 = 2200（判定显式给定）；暴走全局：伤害+50%（990/击）→ 3300，连斩节奏不变
+      1: { interval: 1.50, dmg: 495, slashR: 46 },               // 495/1.50 = 330（判定：2.3R × 0.7R = 105.8 × 32.2；2026-10-10 用户定稿：间隔整体放宽，伤害按 DPS 不变重配）
+      2: { interval: 1.40, dmg: 630, slashR: 50 },               // 630/1.40 = 450（判定：115 × 35）
+      3: { interval: 1.30, dmg: 780, slashR: 54, halfLen: 123, halfW: 37 },   // 780/1.30 = 600（判定显式给定）
+      4: { interval: 1.20, dmg: 1056, slashR: 58, halfLen: 130, halfW: 39 },   // 1056/1.20 = 880（判定显式给定）
+      5: { interval: 1.00, dmg: 733, slashR: 64, slashes: 3, halfLen: 144, halfW: 43 },   // 3×733/1.00 = 2199 ≈ 2200（判定显式给定）；暴走全局：伤害+50%（≈1100/击）→ ≈3299 ≈ 3300，连斩节奏不变
     },
   };
 
@@ -216,8 +214,10 @@
       barTail: '#ffbf47', barMid: '#ffd9a0', barHead: '#8a6bff',   // 尾橙黄 → 头蓝紫
       flame: '#9b7bff',
       // dmgMulByLevel：群星允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
-      //   双僚机合计 DPS = Lv1 140 / Lv2 170 / Lv3 200 / Lv4 230 / Lv5 550（Lv5 另有暴走全局射速 +50% 修正 → 实际 825）。
-      dmgMulByLevel: { 1: 2.6542, 2: 2.0683, 3: 1.75, 4: 1.3964, 5: 1.0313 },
+      //   双僚机合计 DPS（图鉴口径）= Lv1 200 / Lv2 230 / Lv3 260 / Lv4 300 / Lv5 1000
+      //  （2026-10-10 用户定稿：射击间隔 +80% 由 WINGMAN_LEVELS.interval ×1.8 承担，单发伤害按新 DPS 重配；
+      //   Lv5 图鉴 1000 = 配置层 666.7 ×暴走全局射速 1.5）
+      dmgMulByLevel: { 1: 6.4583, 2: 4.6997, 3: 3.7772, 4: 2.9643, 5: 2.0056 },
       offsetX: 46, offsetY: 16,    // 后侧站位（沿用通用参数值）
       weapon: { kind: 'volley' },  // 对称双 volley 模型（走 WINGMAN_LEVELS + dmgMulByLevel）
     },
@@ -229,7 +229,9 @@
       offsetX: 48, offsetY: -14,   // 前侧站位（外移加大横向距离，本体+盾整体往右上移动；微微下移 -20 → -14）
       // 防御辅助型：前方连体白盾消解非导弹直射弹（详见 BULWARK 与挡弹系统）
       // 武器：一侧扇形错序发射（最前方先发）——0°（竖直向上）→90°（水平）均布，另有一发 105°（水平朝下 15°）压轴
-      //   双僚机合计 DPS = Lv1 160 / Lv2 200 / Lv3 240 / Lv4 300 / Lv5 444（弹幕扩容后单发伤害按比例重配平，DPS 不变；Lv5 另有暴走全局射速 +50% 修正 → 实际 666）
+      //   双僚机合计 DPS（图鉴口径）= Lv1 260 / Lv2 300 / Lv3 350 / Lv4 400 / Lv5 1000
+      //  （2026-10-10 用户定稿：射击间隔 +80%（0.96/0.84/0.72/0.60 → ×1.8），单发伤害按新 DPS 重配；
+      //   Lv5 图鉴 1000 = 配置层 666.7 ×暴走全局射速 1.5）
       weapon: {
         kind: 'fan',
         spreadMax: 105,          // 相对竖直向上、朝外侧的最大夹角（度）：最外侧一发为 90°+15°=105°（水平朝下 15°）
@@ -244,11 +246,11 @@
           colorTail: '#e6392a', colorMid: '#ff8b3d', colorHead: '#ffd257',   // 尾红 → 中橙 → 头金
         },
         levels: {
-          1: { count: 6, interval: 0.96, dmg: 25.6, speedMul: 1.17, flameMul: 0.35 },     // 0~90° 均布 5 发（相邻夹角 90/4=22.5°）+ 105° 压轴；尾焰随等级增长（flameMul 0~1）
-          2: { count: 7, interval: 0.84, dmg: 24.0, speedMul: 1.17, flameMul: 0.5 },      // 0~90° 均布 6 发（相邻夹角 90/5=18°）+ 105° 压轴
-          3: { count: 8, interval: 0.72, dmg: 21.6, speedMul: 1.17, flameMul: 0.65 },     // 0~90° 均布 7 发（相邻夹角 90/6=15°）+ 105° 压轴
-          4: { count: 10, interval: 0.60, dmg: 18.0, speedMul: 1.17, flameMul: 0.8 },     // 0~90° 均布 9 发（相邻夹角 90/8=11.25°）+ 105° 压轴
-          5: { count: 10, interval: 0.60, dmg: 26.667, speedMul: 2.5, flame: true, flameMul: 1 },   // 暴走：与 Lv4 同为 10 发（不再 +1 发）、弹速×2.5、尾焰最强(1.0)、间隔同 Lv4；全局：射速+50%（实际 0.40）、弹速再+50%
+          1: { count: 6, interval: 1.728, dmg: 74.88, speedMul: 1.17, flameMul: 0.35 },     // 0~90° 均布 5 发（相邻夹角 90/4=22.5°）+ 105° 压轴；尾焰随等级增长（flameMul 0~1）
+          2: { count: 7, interval: 1.512, dmg: 64.8, speedMul: 1.17, flameMul: 0.5 },      // 0~90° 均布 6 发（相邻夹角 90/5=18°）+ 105° 压轴
+          3: { count: 8, interval: 1.296, dmg: 56.7, speedMul: 1.17, flameMul: 0.65 },     // 0~90° 均布 7 发（相邻夹角 90/6=15°）+ 105° 压轴
+          4: { count: 10, interval: 1.08, dmg: 43.2, speedMul: 1.17, flameMul: 0.8 },     // 0~90° 均布 9 发（相邻夹角 90/8=11.25°）+ 105° 压轴
+          5: { count: 10, interval: 1.08, dmg: 72.0, speedMul: 2.5, flame: true, flameMul: 1 },   // 暴走：与 Lv4 同为 10 发（不再 +1 发）、弹速×2.5、尾焰最强(1.0)、间隔同 Lv4；全局：射速+50%（实际 0.72）→ 图鉴 DPS 1000
         },
       },
     },
@@ -278,27 +280,29 @@
         // 视觉宽度 ≈ 风暴编织者雷电长条弹 × 1.25（r 5.75 → 宽 11.5）
         speed: 600, accel: 8020, len: 115, r: 5.75, growDur: 0.25, growLen0: 40,
         capVuln: 1.5,   // 对 4类敌人（capital / fashiArray）的增伤倍率
-        levels: {   // 单发伤害 = DPS × 间隔 ÷ 激光数（DPS 规格：120 / 150 / 180 / 220 / 440）
-          1: { count: 2, interval: 1.07, dmg: 64.2 },
-          2: { count: 2, interval: 1.0, dmg: 75 },
-          3: { count: 2, interval: 0.86, dmg: 77.4 },
-          4: { count: 2, interval: 0.71, dmg: 78.1 },
-          5: { count: 4, interval: 0.5, dmg: 55 },   // 暴走：4 条激光（2 常规 ±16 + 2 外移 ±32）；全局：射速+50%（实际 0.33）、弹速+50% → DPS 660
+        levels: {   // 单发伤害 = DPS × 间隔 ÷ 激光数（DPS 图鉴口径：100 / 120 / 150 / 180 / 500）
+          // 2026-10-10 用户定稿：射击间隔 +80%（1.07/1.0/0.86/0.71/0.5 → ×1.8），单发伤害按新 DPS 重配；Lv5 图鉴 500 = 配置层 333.3 ×1.5
+          1: { count: 2, interval: 1.926, dmg: 96.3 },
+          2: { count: 2, interval: 1.8, dmg: 108 },
+          3: { count: 2, interval: 1.548, dmg: 116.1 },
+          4: { count: 2, interval: 1.278, dmg: 115.02 },
+          5: { count: 4, interval: 0.9, dmg: 75 },   // 暴走：4 条激光（2 常规 ±16 + 2 外移 ±32）；全局：射速+50%（实际 0.6）→ 图鉴 DPS 500
         },
       },
     },
     daodan: {
-      id: 'daodan', name: '捣蛋来袭', glyph: '▲', iconSvg: dogMissileSvg(), color: '#9fd0ff',   // iconSvg = 狗耳导弹矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg；「捣蛋/导弹」谐音 + 大狗来源）；glyph ▲ 保留作字形回退（原☄不对称；✷与可莉✹同族，均弃用）
+      id: 'daodan', name: '捣蛋来袭', glyph: '▲', iconSvg: dogMissileSvg(), color: '#9fd0ff',   // iconSvg = 狗耳导弹矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg；「捣蛋/导弹」谐音 + 叮咚鸡来源）；glyph ▲ 保留作字形回退（原☄不对称；✷与可莉✹同族，均弃用）
       brief: '向前直射导弹',
-      desc: '自机体直射一枚大狗导弹雨同款导弹<br>（白蓝渐变先兆者同款；600 溅射 / 低区直击 200，<br>飞行与命中规则与大狗导弹完全一致）<br>每发发射后 10% 概率 0.3s 后连射一发<br>（连射弹同样有概率继续连射）<br>连射弹伤害一律为正常导弹的 60%（固定不递减）<br>开局需等待一个完整攻击间隔后才首次射击<br>仅发射间隔随火力等级提升<br>始终单发直射——暴走也不多发、不斜发（涂装变金红）',
+      desc: '自机体直射一枚叮咚鸡导弹雨同款导弹<br>（白蓝渐变先兆者同款；600 溅射 / 低区直击 200，<br>飞行与命中规则与叮咚鸡导弹完全一致）<br>每发发射后 10% 概率 0.3s 后连射一发<br>（连射弹同样有概率继续连射）<br>连射弹伤害一律为正常导弹的 60%（固定不递减）<br>开局需等待一个完整攻击间隔后才首次射击<br>仅发射间隔随火力等级提升<br>始终单发直射——暴走也不多发、不斜发（涂装变金红）',
       fire: {
         kind: 'daodan',
-        levels: {   // 单发伤害恒为大狗导弹 600（表中 DPS = 600 ÷ 间隔）
-          1: { interval: 3.3, dps: 180 },
-          2: { interval: 3.0, dps: 200 },
-          3: { interval: 2.7, dps: 220 },
-          4: { interval: 2.5, dps: 240 },
-          5: { interval: 1.3, dps: 460 },   // 暴走全局：射速+50%（实际 0.87）、弹速+50% → DPS 690
+        levels: {   // 单发伤害恒为叮咚鸡导弹 600（表中 DPS = 600 ÷ 间隔；连射概率不计算在秒伤内）
+          // 2026-10-10 用户定稿：DPS 图鉴口径 100/120/150/180/500——伤害恒 600 不动，全部由射击间隔承担；Lv5 图鉴 500 = 配置层 333.3 ×1.5
+          1: { interval: 6.0, dps: 100 },
+          2: { interval: 5.0, dps: 120 },
+          3: { interval: 4.0, dps: 150 },
+          4: { interval: 3.3333, dps: 180 },
+          5: { interval: 1.8, dps: 333.33 },   // 暴走全局：射速+50%（实际 1.2）→ 图鉴 DPS 500
         },
       },
     },
@@ -314,13 +318,14 @@
         sinkT: 0.3,    // 后移下沉用时（s），到位即分裂
         splitT: 0.44,  // 分裂就位用时（s）：各剑自波次中心渐显滑入全屏均分槽位
         fireGap: 0.06, // 相邻发射序的间隔（s）：分裂后段（splitT×70%）即开始发射，无就位停顿
-        speed: 900, len: 51, r: 5,   // 剑身长 +70%（30 → 51）、剑柄长 +50%（绘制见 paintFeijianSword）；剑体宽（2r）≈ 大狗导弹宽一半；暴走弹速 ×1.4
+        speed: 900, len: 51, r: 5,   // 剑身长 +70%（30 → 51）、剑柄长 +50%（绘制见 paintFeijianSword）；剑体宽（2r）≈ 叮咚鸡导弹宽一半；暴走弹速 ×1.4
         levels: {   // 单发伤害 = DPS × 间隔 ÷ 剑数（攻击间隔自飞剑生成瞬间起算，动画时长不影响节奏）
-          1: { count: 6, interval: 2.2, dmg: 66 },
-          2: { count: 7, interval: 2.1, dmg: 63 },
-          3: { count: 8, interval: 1.9, dmg: 57 },
-          4: { count: 9, interval: 1.7, dmg: 52.9 },
-          5: { count: 9, interval: 1.2, dmg: 74.7, pierceChance: 0.5 },   // 暴走：射速/伤害大增 + 50% 穿透一次；全局：射速+50%（实际 0.8）、弹速×1.4×1.5=×2.1 → DPS 840
+          // 2026-10-10 用户定稿：射击间隔 +80%（2.2/2.1/1.9/1.7/1.2 → ×1.8），单发伤害按新 DPS 重配；Lv5 图鉴 640 = 配置层 426.7 ×1.5
+          1: { count: 6, interval: 3.96, dmg: 79.2 },
+          2: { count: 7, interval: 3.78, dmg: 81 },
+          3: { count: 8, interval: 3.42, dmg: 76.95 },
+          4: { count: 9, interval: 3.06, dmg: 81.6 },
+          5: { count: 9, interval: 2.16, dmg: 102.4, pierceChance: 0.5 },   // 暴走：射速/伤害大增 + 50% 穿透一次；全局：射速+50%（实际 1.44）、弹速×1.4×1.5=×2.1 → 图鉴 DPS 640
         },
       },
     },
@@ -332,12 +337,12 @@
         kind: 'xinring',
         speed: 180,   // 火环巡航速度（初速 ×1.8：0.8s 衰减至巡航、再 0.6s 衰减至 70%——见 updateXinRings）
         tick: 0.1,    // 灼烧结算间隔（s）
-        levels: {   // 发射间隔较初版 -20%（×1.25）
-          1: { interval: 3.75, dps: 190, r: 50 },
-          2: { interval: 3.5, dps: 220, r: 55 },
-          3: { interval: 3.25, dps: 240, r: 60 },
-          4: { interval: 3.0, dps: 260, r: 64 },
-          5: { interval: 2.25, dps: 520, r: 80 },   // 暴走：大幅强化；全局：灼烧伤害+50%（实际 780），射速 / 弹速 / 半径不变
+        levels: {   // 发射间隔较初版 -20%（×1.25）；2026-10-10 用户定稿：改为直接调灼烧秒伤（interval 不动）——DPS 图鉴口径 140/160/180/200/640，Lv5 图鉴 640 = 配置层 426.7 ×1.5
+          1: { interval: 3.75, dps: 140, r: 50 },
+          2: { interval: 3.5, dps: 160, r: 55 },
+          3: { interval: 3.25, dps: 180, r: 60 },
+          4: { interval: 3.0, dps: 200, r: 64 },
+          5: { interval: 2.25, dps: 426.67, r: 80 },   // 暴走：大幅强化；全局：灼烧伤害+50%（图鉴 DPS 640），射速 / 弹速 / 半径不变
         },
       },
     },
@@ -347,7 +352,7 @@
 
   // ── 体系级约定（设计新驾驶员必读）：许凯狗「高能冲刺」结束时（14-main 递减归零帧，仅一次）会调用
   // 07-player chargeAllGaugesOnDashEnd()，把当前驾驶员的全部技能计量表立刻充满——现有六张：
-  // 炼金璃七日澜心持有充能 / 依击杀计数 / 陵落 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 叮咚鸡计数表。
+  // 炼金璃七日澜心持有充能 / 依击杀计数 / 陵落 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 大狗计数表。
   // 新驾驶员若引入技能计量表（冷却 / 充能 / 计数 / 层数等），必须同步在该函数登记充满逻辑，
   // 否则许凯狗冲刺结束后该表不回满（视为遗漏）。
   const PILOTS = {
@@ -356,9 +361,9 @@
       id: 'none', name: '无驾驶员', empty: true,
       desc: '不携带驾驶员出击。',
     },
-    // 主槽：大狗 / 许凯狗 / 埃逸 / 可莉 / 马兴犬 / 温酒客 / 胡笛客
+    // 主槽：叮咚鸡 / 许凯狗 / 埃逸 / 可莉 / 马兴犬 / 温酒客 / 胡笛客
     dagou: {
-      id: 'dagou', name: '大狗', glyph: '☄', color: '#7fb8ff', slot: 'main', default: true,   // ☄ 彗星拖尾 = 单枚导弹飞行（原⟰移交许凯狗；不与捣蛋来袭 ▲ 重复）；默认主驾驶员（与可莉互换，用户 2026-09-27 指定）
+      id: 'dagou', name: '叮咚鸡', glyph: '☄', color: '#7fb8ff', slot: 'main', default: true,   // ☄ 彗星拖尾 = 单枚导弹飞行（原⟰移交许凯狗；不与捣蛋来袭 ▲ 重复）；默认主驾驶员（与可莉互换，用户 2026-09-27 指定）
       // 导弹雨：waveIv 召唤间隔（s）/ count 每波数量 / dmg 对命中目标及小范围敌人的伤害（BOSS 不再减免，同 dmg）
       // blastR 溅射半径 / speed 上行速度 / launchGap 相邻两发的发射间隔（s，中间两发先出、向两侧两两错开）
       // 预警蓝光：warnLead 发射前渐显时长（s）/ warnPeak 峰值透明度 / warnFade 发射后快速渐隐时长（s）
@@ -377,10 +382,10 @@
       // 副武器捣蛋来袭（src='daodan'）/ 连发作弊模式（src='dagouCheat'）的导弹不受此修正（见 07-player dagouBossMul）
       bossDmgMul: 0.65,
       brief: '召唤导弹打击',
-      desc: '大狗叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>下方 65% 区域首触不爆炸：对命中目标<br>直击 200 后穿透继续飞行；第二次命中<br>（或进入上方 35% 线内首次命中）即爆炸：<br>主目标 200 直击 + 400 溅射（合计 600）、<br>爆点周围小范围敌人受 400 溅射<br>每波发射后有 10% 概率在 0.3s 后连射一波<br>（连射波同样有概率继续连射），<br>连射波伤害一律为正常波的 60%（固定不递减）<br><b>对 BOSS 的伤害 -35%</b><br>（副武器捣蛋来袭与作弊连发的导弹<br>不受此修正）',
+      desc: '叮咚鸡叫叫叫。每隔 10~22s 召唤一波 8 颗导弹雨<br>（均匀分布，中间两发先射出，随后向两侧<br>两两错峰发射）自下而上射出<br>发射前 1.5s 屏幕下方渐显蓝光预警<br>导弹为白蓝色渐变的先兆者同款<br>下方 65% 区域首触不爆炸：对命中目标<br>直击 200 后穿透继续飞行；第二次命中<br>（或进入上方 35% 线内首次命中）即爆炸：<br>主目标 200 直击 + 400 溅射（合计 600）、<br>爆点周围小范围敌人受 400 溅射<br>每波发射后有 10% 概率在 0.3s 后连射一波<br>（连射波同样有概率继续连射），<br>连射波伤害一律为正常波的 60%（固定不递减）<br><b>对 BOSS 的伤害 -35%</b><br>（副武器捣蛋来袭与作弊连发的导弹<br>不受此修正）',
     },
     xukaigou: {
-      id: 'xukaigou', name: '许凯狗', glyph: '⟰', color: '#ffffff', slot: 'main',   // ⟰ 接手大狗原四重上射箭（原⇈双箭头弃用；颜色改白）
+      id: 'xukaigou', name: '许凯狗', glyph: '⟰', color: '#ffffff', slot: 'main',   // ⟰ 接手叮咚鸡原四重上射箭（原⇈双箭头弃用；颜色改白）
       dashDur: 7, dashLv: 8,
       dashEntry: 0.5,   // 冲刺入场时长（s）：从出发位置平滑升至摆动区，不瞬间闪现
       enemySpdMul: 1.65,   // 冲刺期间怪物移速倍率（+65%）：敌机更快冲入击杀窗口，营造迎面疾驰感
@@ -402,7 +407,7 @@
       desc: '埃逸能流奔涌。死亡时蓄力（0.5s，最后一条命 1s）——<br>一道/三道能流波自远处收缩汇聚后殉爆：<br>一道/数道极宽冲击波自死亡地点快速扩散至全场，<br>被波及的敌人立刻结算（<b>无视虚化护盾</b>）——<br>非最后一条命：非 BOSS 敌人立刻击杀、BOSS 受 6000 伤害<br>最后一条命：被波及的所有敌人（含 BOSS）立刻被击杀<br>击杀暴风之眼的同一次殉爆不会波及随后召唤的<br>风暴编织者（该批扩散波扫完后恢复正常判定）；<br>增生侧翼艇被波炸毁时不分裂卫护飞船<br>被殉爆击杀的敌人仅获得 20% 分数<br>最后一条命的殉爆击杀最终 BOSS 仍算作胜利<br>（结算标题"自爆成功"）',
     },
     keli: {
-      id: 'keli', name: '可莉', glyph: '✹', color: '#ff7a45', slot: 'main',   // ✹ 绷绷火花（default 移交大狗，用户 2026-09-27 与大狗互换位置）
+      id: 'keli', name: '可莉', glyph: '✹', color: '#ff7a45', slot: 'main',   // ✹ 绷绷火花（default 移交叮咚鸡，用户 2026-09-27 与叮咚鸡互换位置）
       bombDmgMul: 1.5, bombStartAdd: 1, bombIgnoreDiffCut: true,   // 绷绷炸弹：真我爆弹对 BOSS 的减伤减半（×0.75 → ×0.875）
       // aoeCut/missileCut：受到的瞬时区域伤害 / 导弹伤害削减
       // （瞬时区域 = 暴鸰爆炸 / 破片范围伤害 / 风暴编织者雷霆轰击 / 暴风之眼区域打击；
@@ -510,7 +515,7 @@
       desc: '缎带与镰刀的看板娘。左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
-      id: 'dingdongji', name: '叮咚鸡', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
+      id: 'dingdongji', name: '大狗', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
       // 计数表（左下角可见）：layerMax 单层上限 / layerCap 最多持有层数；
       // 每次提升关卡等级掷增量（noteDdjLevelUp，01 值阶梯 70/10/6/3/1%）；
       // 任一层满按 Q：missileCount 发导弹在 missileArc 前向扇形均匀射出（missileSpeed 直线弹速 /
@@ -522,7 +527,7 @@
       missileCount: 4, missileArc: 120, missileSpeed: 520, missileR: 6, missileDmg: 400,
       berserkUpsMax: 3, useMax: 3,
       brief: '按Q升级武器（每局仅3次）',
-      desc: '叮咚！左下角计数表（单层上限 <b>8</b>，最多积累 <b>3</b> 层）：<br>每次提升关卡等级掷一次——<b>70%</b> +1、<b>10%</b> +2、<br><b>6%</b> +3、<b>3%</b> +4、<b>1%</b> +8（其余不增加）<br>任一层计数满后按 <b>Q</b>：向前方 <b>120°</b> 范围<br>均匀射出 <b>4</b> 发叮咚鸡导弹（直击 400），<br>随后<b>触发武器等级升级</b>，然后消耗一层计数<br>Q 技能<b>全局初始仅能释放 3 次</b>（无论火力等级，<br>次数用完后层数再多也无法释放）；<br>每次<b>击败 BOSS</b> 有 <b>25%</b> 概率立即使释放上限 <b>+1</b><br>（第 <b>5、6</b> 轮 BOSS 概率提升至 <b>100%</b>）；<br>升级至<b>暴走</b>（4/5 级按技能）另计机会，<br>同样<b>全局仅 3 次</b>',
+      desc: '叮咚！左下角计数表（单层上限 <b>8</b>，最多积累 <b>3</b> 层）：<br>每次提升关卡等级掷一次——<b>70%</b> +1、<b>10%</b> +2、<br><b>6%</b> +3、<b>3%</b> +4、<b>1%</b> +8（其余不增加）<br>任一层计数满后按 <b>Q</b>：向前方 <b>120°</b> 范围<br>均匀射出 <b>4</b> 发大狗导弹（直击 400），<br>随后<b>触发武器等级升级</b>，然后消耗一层计数<br>Q 技能<b>全局初始仅能释放 3 次</b>（无论火力等级，<br>次数用完后层数再多也无法释放）；<br>每次<b>击败 BOSS</b> 有 <b>25%</b> 概率立即使释放上限 <b>+1</b><br>（第 <b>5、6</b> 轮 BOSS 概率提升至 <b>100%</b>）；<br>升级至<b>暴走</b>（4/5 级按技能）另计机会，<br>同样<b>全局仅 3 次</b>',
     },
     xiaoyang: {
       id: 'xiaoyang', name: '萧杨', glyph: '☘', color: '#228B22', slot: 'sub',   // ☘ 三叶草回调（🍀 emoji 自带色破坏单色风格弃用），深绿辉光保留
@@ -553,7 +558,7 @@
   // 每名驾驶员归属 slot（'main' 主驾驶员 / 'sub' 副驾驶员，暂定分野、可随设计调整）；
   // 可同时装备主副各一名，效果同时生效。战斗逻辑经 hasPilot(id) 判定（任一槽位命中即生效），
   // 不区分主副——待主/副差异设计明确后再在此扩展。
-  let currentPilotMain = PILOTS.dagou;   // 主驾驶员（默认大狗，用户 2026-09-27 调整；写操作经 setPilotMain）
+  let currentPilotMain = PILOTS.dagou;   // 主驾驶员（默认叮咚鸡，用户 2026-09-27 调整；写操作经 setPilotMain）
   let currentPilotSub = PILOTS.xiaoyi;  // 副驾驶员（默认小艺；写操作经 setPilotSub）
   function setPilotMain(p) { currentPilotMain = p; }
   function setPilotSub(p) { currentPilotSub = p; }
@@ -568,7 +573,7 @@
   // 可莉：绷绷炸弹伤害倍率 / 初始额外爆弹数
   function pilotBombDmgMul() { return (pilotEntry('keli') || {}).bombDmgMul || 1; }
   function pilotBombStartAdd() { return (pilotEntry('keli') || {}).bombStartAdd || 0; }
-  // 大狗导弹雨间隔：连发模式 0.2~1s（按 9 切换），正常取注册表 10~22s
+  // 叮咚鸡导弹雨间隔：连发模式 0.2~1s（按 9 切换），正常取注册表 10~22s
   function dagouWaveIv(rapid) {
     return rapid ? 0.2 + Math.random() * 0.8
       : PILOTS.dagou.waveIvMin + Math.random() * (PILOTS.dagou.waveIvMax - PILOTS.dagou.waveIvMin);
@@ -629,12 +634,13 @@
   // 夹角不再按等级固定，而是由“单轮发数”决定（见 WINGMAN_SPREAD）；level.spread 仅作缺省回退
   // 每级每发伤害倍率见各僚机自身的 dmgMulByLevel
   // flameMul=尾焰强度（0~1）：Lv1~4 随等级增长，Lv5 暴走最强（1.0），低等级永不超越（绘制见 10-draw-world）
+  // 2026-10-10 用户定稿：射击间隔整体 +80%（0.80/0.62/0.52/0.40/0.34 → ×1.8），DPS 目标由 dmgMulByLevel 重配平
   const WINGMAN_LEVELS = {
-    1: { volleys: [2, 2], spread: 10, interval: 0.80, flameMul: 0.35 },   // Lv1：2+2 发、射速慢
-    2: { volleys: [3, 2], spread: 10, interval: 0.62, flameMul: 0.5 },    // Lv2：3+2 发
-    3: { volleys: [3, 3], spread: 10, interval: 0.52, flameMul: 0.65 },   // Lv3：3+3 发
-    4: { volleys: [3, 4], spread: 10, interval: 0.40, flameMul: 0.8 },    // Lv4：3+4 发（第二轮 4 发、6°）、恢复正常射速
-    5: { volleys: [5, 5], spread: 8, interval: 0.34, flameMul: 1 },       // 暴走：5+5 发、发光，伤害走 ×2；尾焰最强(1.0)；全局：射速+50%（实际 0.23）
+    1: { volleys: [2, 2], spread: 10, interval: 1.44, flameMul: 0.35 },   // Lv1：2+2 发、射速慢
+    2: { volleys: [3, 2], spread: 10, interval: 1.116, flameMul: 0.5 },    // Lv2：3+2 发
+    3: { volleys: [3, 3], spread: 10, interval: 0.936, flameMul: 0.65 },   // Lv3：3+3 发
+    4: { volleys: [3, 4], spread: 10, interval: 0.72, flameMul: 0.8 },    // Lv4：3+4 发（第二轮 4 发、6°）
+    5: { volleys: [5, 5], spread: 8, interval: 0.612, flameMul: 1 },       // 暴走：5+5 发、发光，伤害走 ×2；尾焰最强(1.0)；全局：射速+50%（实际 0.408）
   };
 
   // 僚机单轮弹幕夹角(度)按“该轮发数”取值：2发20° / 3发10° / 4发6° / 5发8°（发数越多相邻夹角越小、弹幕更聚拢）

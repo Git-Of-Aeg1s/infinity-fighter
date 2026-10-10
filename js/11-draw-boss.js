@@ -7,9 +7,69 @@
   //
   import { CANVAS_H, CANVAS_W, ENERGY_ORB, darkhandImg, energyOrbSheet, hanxixianImg, lightningImg, lightningImgAlt, lightningImgBig, lightningImgRing, lightningImgThin, puxuefengImg, stormEyeImg, tartUltraImg, xinguodongImg, xiayongImg } from './01-config-core.js';
   import { BOSSES, BOSS_BULLET, BOSS_WARN, DARKHAND, STORM, STORM2, STORM2_SHIP } from './01-config-boss.js';
+  import { ELITES } from './01-config-enemies.js';
+  import { isPoem, isRealme } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 
+
+    // ---------- 暴风之眼：风暴标记渐变精灵（2026-10-10 A级性能优化） ----------
+    // zoneMarks/风柱绘制原每帧逐道 createLinearGradient/createRadialGradient（每道标记 5~9 个渐变对象，
+    // 预警 1~4 道 + 打击多道时每帧可达 30+ 个）。渐变形状全部固定 → 预烘焙位图，运行时 drawImage 缩放
+    //（线性/径向渐变随缩放保真）+ 链式 globalAlpha 乘算还原动态透明度，渐变对象分配降为 0。
+    // 透明度烘焙约定：精灵色标峰值 alpha=1，运行时 globalAlpha = 外层值 × 动态因子（写完即恢复）。
+  function makeGradSprite(w, h, vertical, stops) {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const g = cv.getContext('2d');
+      const gr = vertical ? g.createLinearGradient(0, 0, 0, h) : g.createLinearGradient(0, 0, w, 0);
+      for (const st of stops) gr.addColorStop(st[0], st[1]);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, w, h);
+      return cv;
+    }
+  let _stormSprites = null;
+  function stormSprites() {
+      if (!_stormSprites) {
+        _stormSprites = {
+          // 风带/风柱本体：中心亮两侧渐隐对称条（峰值 1，运行时乘动态中心透明度）
+          band: makeGradSprite(16, 8, false, [[0, 'rgba(223, 243, 255, 0)'], [0.5, 'rgba(223, 243, 255, 1)'], [1, 'rgba(223, 243, 255, 0)']]),
+          whiteBand: makeGradSprite(16, 8, false, [[0, 'rgba(255, 255, 255, 0)'], [0.5, 'rgba(255, 255, 255, 1)'], [1, 'rgba(255, 255, 255, 0)']]),
+          // 蓄能光楔：单向渐隐条（左亮/右亮两向，对应入射侧方向）+ 竖向天幕条
+          wedgeHL: makeGradSprite(16, 8, false, [[0, 'rgba(240, 251, 255, 1)'], [1, 'rgba(240, 251, 255, 0)']]),
+          wedgeHR: makeGradSprite(16, 8, false, [[0, 'rgba(240, 251, 255, 0)'], [1, 'rgba(240, 251, 255, 1)']]),
+          wedgeV: makeGradSprite(8, 16, true, [[0, 'rgba(240, 251, 255, 1)'], [1, 'rgba(240, 251, 255, 0)']]),
+        };
+        // 落点蓄光：径向光斑（峰值 1，尺寸运行时缩放；fillRect 超出画布部分自然裁剪，与原实现等效）
+        const spot = document.createElement('canvas');
+        spot.width = 64; spot.height = 64;
+        const sg = spot.getContext('2d');
+        const rg = sg.createRadialGradient(32, 32, 0, 32, 32, 32);
+        rg.addColorStop(0, 'rgba(240, 251, 255, 1)');
+        rg.addColorStop(1, 'rgba(240, 251, 255, 0)');
+        sg.fillStyle = rg;
+        sg.fillRect(0, 0, 64, 64);
+        _stormSprites.spot = spot;
+        // 弯曲上升风痕：曲线形状固定（相对 bx 平移不变）→ 2x 烘焙整条渐隐曲线位图；
+        // 基准 bx=6（精灵内坐标 = 原坐标 - (bx-6)），运行时 drawImage(bx-6, hy, 16, 56) 对齐
+        const trail = document.createElement('canvas');
+        trail.width = 32; trail.height = 112;
+        const tg = trail.getContext('2d');
+        tg.scale(2, 2);
+        const lg = tg.createLinearGradient(0, 0, 0, 56);
+        lg.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        lg.addColorStop(1, 'rgba(223, 243, 255, 0)');
+        tg.strokeStyle = lg;
+        tg.lineWidth = 1.6;
+        tg.lineCap = 'round';
+        tg.beginPath();
+        tg.moveTo(11, 56);
+        tg.quadraticCurveTo(0, 26, 10, 0);
+        tg.stroke();
+        _stormSprites.trail = trail;
+      }
+      return _stormSprites;
+    }
 
     // ---------- 暴风之眼：绘制（区域标记 / 风波 / 风柱 / 风暴本体 / 大型龙卷） ----------
   function drawZoneMarks() {
@@ -31,17 +91,14 @@
           ctx.fill();
           // ② 入射侧蓄能光楔：亮区自入射边缘向内压进（裁剪在风波带内、随带弯曲），预示风自该侧灌入
           const wedgeW = CANVAS_W * (0.10 + prog * 0.32);
-          const wedge = ctx.createLinearGradient(
-            fromRight ? CANVAS_W : 0, 0,
-            fromRight ? CANVAS_W - wedgeW : wedgeW, 0);
-          wedge.addColorStop(0, `rgba(240, 251, 255, ${(0.55 + prog * 0.35).toFixed(3)})`);
-          wedge.addColorStop(1, 'rgba(240, 251, 255, 0)');
+          const sp0 = stormSprites();
           ctx.save();
           stormWaveBand(z, STORM.waveHalfW);
           ctx.clip();
-          ctx.fillStyle = wedge;
-          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-          ctx.restore();
+          ctx.globalAlpha *= (0.55 + prog * 0.35) / 0.9;   // 链式乘算：精灵峰值 1 → 原动态峰值 0.9
+          ctx.drawImage(fromRight ? sp0.wedgeHR : sp0.wedgeHL,
+            fromRight ? CANVAS_W - wedgeW : 0, 0, wedgeW, CANVAS_H);
+          ctx.restore();   // 恢复 clip 与 globalAlpha
           // ③ 入射方向涌动的风痕：短亮线沿带从入射侧涌入，速度随进度加快
           ctx.lineCap = 'round';
           ctx.lineWidth = 1.6;
@@ -56,12 +113,12 @@
             ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
           }
-          // ④ 入射侧蓄光：入射边缘光斑随倒计时渐亮（打击即将到来）
-          const gl = ctx.createRadialGradient(edgeX, z.y0, 0, edgeX, z.y0, 140);
-          gl.addColorStop(0, `rgba(240, 251, 255, ${(0.22 + prog * 0.45).toFixed(3)})`);
-          gl.addColorStop(1, 'rgba(240, 251, 255, 0)');
-          ctx.fillStyle = gl;
-          ctx.fillRect(edgeX - 140, z.y0 - 140, 280, 280);
+          // ④ 入射侧蓄光：入射边缘光斑随倒计时渐亮（打击即将到来）——径向光斑精灵 + 链式透明度
+          const sp1 = stormSprites();
+          const _ga = ctx.globalAlpha;
+          ctx.globalAlpha = _ga * (0.22 + prog * 0.45);
+          ctx.drawImage(sp1.spot, edgeX - 140, z.y0 - 140, 280, 280);
+          ctx.globalAlpha = _ga;
         } else {
           // 风柱标记（全难度）：预警不再闪烁——外层亮度随倒计时线性攀升，起始更暗（0.25）结尾更亮（0.95），
           // 叠加内部各层自身的渐亮，整体自暗向明单调变化
@@ -70,23 +127,21 @@
           // 弯曲上升风痕（越近落下越快越亮）+ 落点地面渐亮，充满“风正在聚集”的动势
           const w = STORM.pillarW;
           const cxp = z.x;
-          // ① 柔和风带：中心亮两侧渐隐（整体亮度提高，醒目预警）
-          const band = ctx.createLinearGradient(cxp - w / 2, 0, cxp + w / 2, 0);
-          band.addColorStop(0, 'rgba(223, 243, 255, 0)');
-          band.addColorStop(0.5, `rgba(223, 243, 255, ${(0.22 + prog * 0.24).toFixed(3)})`);
-          band.addColorStop(1, 'rgba(223, 243, 255, 0)');
-          ctx.fillStyle = band;
-          ctx.fillRect(cxp - w / 2, 0, w, CANVAS_H);
-          // ② 顶部蓄能光楔：亮区自天顶向下压，随倒计时推进越来越低（预示风柱自上而降）
+          // ① 柔和风带：中心亮两侧渐隐（整体亮度提高，醒目预警）——对称条精灵 + 链式透明度
+          const sp2 = stormSprites();
+          const _ba = ctx.globalAlpha;
+          ctx.globalAlpha = _ba * (0.22 + prog * 0.24);
+          ctx.drawImage(sp2.band, cxp - w / 2, 0, w, CANVAS_H);
+          ctx.globalAlpha = _ba;
+          // ② 顶部蓄能光楔：亮区自天顶向下压，随倒计时推进越来越低（预示风柱自上而降）——竖条精灵
           const wedgeH = CANVAS_H * (0.10 + prog * 0.32);
-          const wedge = ctx.createLinearGradient(0, 0, 0, wedgeH);
-          wedge.addColorStop(0, `rgba(240, 251, 255, ${(0.62 + prog * 0.33).toFixed(3)})`);
-          wedge.addColorStop(1, 'rgba(240, 251, 255, 0)');
-          ctx.fillStyle = wedge;
-          ctx.fillRect(cxp - w / 2, 0, w, wedgeH);
-          // ③ 弯曲上升风痕：6 道带渐隐尾的弧线自下而上涌动，速度随倒计时加快
-          ctx.lineCap = 'round';
-          ctx.lineWidth = 1.6;
+          const sp3 = stormSprites();
+          const _vg = ctx.globalAlpha;
+          ctx.globalAlpha = _vg * (0.62 + prog * 0.33);
+          ctx.drawImage(sp3.wedgeV, cxp - w / 2, 0, w, wedgeH);
+          ctx.globalAlpha = _vg;
+          // ③ 弯曲上升风痕：6 道带渐隐尾的弧线自下而上涌动，速度随倒计时加快——曲线精灵（形状固定，透明度运行时乘算）
+          const sp4 = stormSprites();
           const span = CANVAS_H + 90;
           for (let s = 0; s < 6; s++) {
             const spd = 150 + prog * 300;
@@ -95,21 +150,17 @@
             const a = (0.42 + prog * 0.55) * clamp(head / 60, 0, 1) * clamp((span - head) / 90, 0, 1);
             if (a <= 0.02) continue;
             const bx = cxp + Math.sin(s * 2.7) * w * 0.30;
-            const yg = ctx.createLinearGradient(0, hy, 0, hy + 56);
-            yg.addColorStop(0, `rgba(255, 255, 255, ${a.toFixed(3)})`);
-            yg.addColorStop(1, 'rgba(223, 243, 255, 0)');
-            ctx.strokeStyle = yg;
-            ctx.beginPath();
-            ctx.moveTo(bx + 5, hy + 56);
-            ctx.quadraticCurveTo(bx - 6, hy + 26, bx + 4, hy);
-            ctx.stroke();
+            const _ta = ctx.globalAlpha;
+            ctx.globalAlpha = _ta * a;
+            ctx.drawImage(sp4.trail, bx - 6, hy, 16, 56);
+            ctx.globalAlpha = _ta;
           }
-          // ④ 落点蓄光：地面处光斑随倒计时渐亮（打击即将到来）
-          const gl = ctx.createRadialGradient(cxp, CANVAS_H, 0, cxp, CANVAS_H, w * 0.85);
-          gl.addColorStop(0, `rgba(240, 251, 255, ${(0.22 + prog * 0.45).toFixed(3)})`);
-          gl.addColorStop(1, 'rgba(240, 251, 255, 0)');
-          ctx.fillStyle = gl;
-          ctx.fillRect(cxp - w, CANVAS_H - w, w * 2, w);
+          // ④ 落点蓄光：地面处光斑随倒计时渐亮（打击即将到来）——光斑精灵 + 链式透明度
+          const sp5 = stormSprites();
+          const _pg = ctx.globalAlpha;
+          ctx.globalAlpha = _pg * (0.22 + prog * 0.45);
+          ctx.drawImage(sp5.spot, cxp - w * 0.85, CANVAS_H - w * 0.85, w * 1.7, w * 1.7);   // 半径 0.85w → 直径 1.7w；下半超出画布自然裁剪（与原 fillRect 裁剪等效）
+          ctx.globalAlpha = _pg;
         }
         ctx.restore();
       }
@@ -148,15 +199,13 @@
       for (const p of pillarStrikes) {
         const life = p.t / p.dur;
         const a = life < 0.25 ? life / 0.25 : 1 - (life - 0.25) / 0.75;
+        // 风柱本体：白渐变条精灵（峰值 1 → 原中心 0.9，save 块内乘算、restore 自动恢复）
         const w = STORM.pillarW * (0.7 + life * 0.5);
         ctx.save();
         ctx.globalAlpha = clamp(a, 0, 1);
-        const g = ctx.createLinearGradient(p.x - w / 2, 0, p.x + w / 2, 0);
-        g.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        g.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
-        g.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(p.x - w / 2, 0, w, CANVAS_H);
+        const sp6 = stormSprites();
+        ctx.globalAlpha *= 0.9;
+        ctx.drawImage(sp6.whiteBand, p.x - w / 2, 0, w, CANVAS_H);
         ctx.restore();
       }
     }
@@ -2840,7 +2889,7 @@
   // 黑红配色（焰根暗红 → 深红 → 近黑淡出，lighter 叠加下暗红近黑自然消隐于深色太空底）+ 亮红内芯，
   // 贝塞尔锥形外焰，焰尖随相位微摆 + 呼吸；焰根压在装甲顶边内、随定稿下移（baseY -0.32h → -0.24h），
   // 变窄（半宽 0.105w → 0.075w）变短（len 0.46h → 0.34h，2026-10-02 第二轮定稿）。
-  // 相位 e.flameT 由 updateBossDarkhand 推进（gameover 后 update 停 → 尾焰定格，规避大狗导弹尾焰同类 bug）。
+  // 相位 e.flameT 由 updateBossDarkhand 推进（gameover 后 update 停 → 尾焰定格，规避叮咚鸡导弹尾焰同类 bug）。
   // 调用方传 alpha：reveal 乘 pr / combat 乘 realFade 渐入
   function dhEngineFlame(e, alpha) {
     if (alpha <= 0.02) return;
@@ -3152,9 +3201,109 @@
     }
   }
 
-  // 技能4 超长蛋挞顶层绘制入口（2026-10-10 用户反馈：长条蛋挞原先在 BOSS 机体层绘制，被后画的敌方子弹
-  // 整体盖住 → 弹体移至本函数，由 10-draw-world render() 在 drawBullets 之后调用，置于全部子弹之上；
-  // 预警线仍在 drawDarkhandBoss 机体层）。遍历场上黑暗之手（skill.id === 3 = 技能4）逐条绘制
+  // 黑暗之手「额外技能」特效层（2026-10-10 用户定稿实装；drawBoss 调用、紧随 drawDarkhandBoss 机体层——
+  // 视觉口径全同对应精英原版技能）：id5 夏勇碎翼回旋镖（预警轨道虚线 + 爪→锚迸出线 / 月牙刃 + 拖尾）、
+  // id7 辛国栋边界轰炸（落点红色收缩预警圈）、id8 韩希先旋眼火螺（三塔核绕锚公转）、id9 双标记导弹
+  //（标记点红色收缩圈短暂提示）
+  function drawDarkhandSkillFx(e) {
+    const s = e.skill;
+    if (!s) return;
+    if (s.id === 5) {
+      const xc = ELITES.xiayong;
+      if (s.st === 'warn' && !s.blades && s.cx != null) {   // cx 惰性初始化（05-boss 轮切换帧置 null 同帧重算）——null 防护防 NaN 落入 canvas
+        // 预警曲线：轨道椭圆虚线（暗红脉动 + 虚线流动）+ 两前爪→轨道锚点迸出线（全同夏勇预警，见 10-draw-world 同名段）
+        const wp = clamp(s.pt / xc.bladeWarn, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.9, 0.3 + 0.45 * wp + 0.12 * Math.sin(state.time * 12));
+        ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2;
+        ctx.setLineDash([12, 9]); ctx.lineDashOffset = -state.time * 60;
+        ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.ellipse(s.cx, s.cy, xc.bladeRx, s.ry, 0, 0, Math.PI * 2); ctx.stroke();
+        for (const dir of [1, -1]) {
+          const a0 = dir > 0 ? -Math.PI / 4 : Math.PI + Math.PI / 4;
+          ctx.beginPath();
+          ctx.moveTo(e.x + dir * 0.27 * e.w, e.y + 0.30 * e.h - 50);
+          ctx.lineTo(s.cx + Math.cos(a0) * xc.bladeRx, s.cy + Math.sin(a0) * s.ry);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]); ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+      if (s.blades) {
+        // 月牙刃：黑刃体 + 红辉光 + 白热内芯 + 暗黑拖尾（trail 由 05-boss 采样，全同夏勇刃渲染）
+        for (const b of s.blades) {
+          if (b.done) continue;
+          for (let i = 0; i < b.trail.length; i++) {
+            const tp = b.trail[i], k = (i + 1) / b.trail.length;
+            ctx.globalAlpha = k * 0.3;
+            ctx.fillStyle = '#2a060c';
+            ctx.beginPath(); ctx.arc(tp.x, tp.y, 3 + 11 * k, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(b.ang + b.dir * Math.PI / 2);
+          ctx.strokeStyle = '#1a0508'; ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 13;
+          ctx.lineWidth = 6; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.arc(0, 0, 18, -0.9, 0.9); ctx.stroke();
+          ctx.strokeStyle = '#e02424'; ctx.lineWidth = 2.4; ctx.shadowBlur = 6;
+          ctx.beginPath(); ctx.arc(0, 0, 18, -0.85, 0.85); ctx.stroke();
+          ctx.strokeStyle = '#ffd9c8'; ctx.lineWidth = 1.6; ctx.shadowBlur = 2;
+          ctx.beginPath(); ctx.arc(0, 0, 18, -0.6, 0.6); ctx.stroke();
+          ctx.restore();
+        }
+      }
+    } else if (s.id === 7 && s.bombs) {
+      // 辛国栋边界轰炸落点：红色收缩预警圈（进度推进半径收缩、明暗脉动；红色系同款）
+      const xc = ELITES.xinguodong;
+      const warnT = isPoem() ? xc.poemBombWarn : isRealme() ? xc.realmeBombWarn : xc.bombWarn;
+      const blastR = isPoem() ? xc.poemBombR : isRealme() ? xc.realmeBombR : xc.bombR;
+      for (const b of s.bombs) {
+        const prog = clamp(b.t / warnT, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = 0.35 + 0.4 * prog + 0.15 * Math.sin(state.time * 16);
+        ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, blastR * (1.12 - 0.5 * prog * prog), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha *= 0.25;
+        ctx.fillStyle = '#ff2020';
+        ctx.fill();
+        ctx.restore();
+      }
+    } else if (s.id === 8 && s.eyes) {
+      // 旋眼火螺：每眼三塔核（暗红圆核 + 红辉光 + 白热芯）绕锚公转（塔位公式同 05-boss 技能推进）
+      const hc = ELITES.hanxixian;
+      for (const eye of s.eyes) {
+        for (let i = 0; i < hc.turretN; i++) {
+          const ta = eye.ang + i * Math.PI * 2 / hc.turretN;
+          const tx = eye.ax + Math.cos(ta) * hc.orbitR, ty = eye.ay + Math.sin(ta) * hc.orbitR;
+          ctx.save();
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = '#8a1018';
+          ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 9;
+          ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#ffd9c8';
+          ctx.beginPath(); ctx.arc(tx, ty, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+    } else if (s.id === 9 && s.mark && s.markT < 0.9) {
+      // 双标记导弹：两个标记点红色收缩圈（0.9s 收缩渐隐——落点提示）
+      const prog = clamp(s.markT / 0.9, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.85 * (1 - prog);
+      ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 8;
+      for (const mk of [s.mark, s.mark2]) {
+        ctx.beginPath(); ctx.arc(mk.x, mk.y, 46 * (1 - prog) + 10, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // 技能4 超长蛋挞顶层绘制入口（2026-10-10 用户定稿：蛋挞是底层大弹幕不遮盖其他子弹——弹体由
+  // 10-draw-world render() 在 drawBullets 之前调用，置于全部敌方子弹（含玩家子弹 / 导弹）之下；
+  // 巨大蛋挞同口径在 drawBullets 内先画；预警线仍在 drawDarkhandBoss 机体层）。遍历场上黑暗之手（skill.id === 3 = 技能4）逐条绘制
   function drawDarkhandTarts() {
     for (const e of enemies) {
       if (e.bossId !== 'darkhand' || !e.skill || e.skill.id !== 3) continue;
@@ -3215,7 +3364,7 @@
   function drawBoss(e) {
       if (e.bossId === 'storm2') { drawStormBossII(e); return; }   // 风暴编织者（二阶段飞舰：当前仅图鉴预览）
       if (e.bossId === 'storm') { drawStormBoss(e); return; }   // 暴风之眼专用绘制
-      if (e.bossId === 'darkhand') { drawDarkhandBoss(e); return; }   // 黑暗之手专用绘制
+      if (e.bossId === 'darkhand') { drawDarkhandBoss(e); drawDarkhandSkillFx(e); return; }   // 黑暗之手专用绘制（机体层 + 额外技能特效层）
     const isEntering = (e.phase === 'blackhole' || e.phase === 'emerge' || e.phase === 'assemble');
 
     // ---------- 黑洞特效（进场演出期间始终绘制） ----------

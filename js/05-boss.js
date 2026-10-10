@@ -8,17 +8,21 @@
   //
   import { CANVAS_H, CANVAS_W, dhSampleSolid } from './01-config-core.js';
   import { BULWARK, PLAYER_CFG, hasPilot } from './01-config-loadout.js';
-  import { HARBINGER, JIAOXIANG } from './01-config-enemies.js';
+  import { ELITES, HARBINGER, JIAOXIANG, SHIP_BULLET_LEN } from './01-config-enemies.js';
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
-  import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, pillarStrikes, player, rand, shake, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
+  import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, missiles, pillarStrikes, player, rand, shake, spawnBlastRing, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
 
-  // BOSS 技能释放间隔难度倍率（虚象：+50%，技能更稀疏）——覆盖三个 BOSS 的全部 skillCd 赋值点
-  function bossSkillIv(base) { return base * (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1); }
+  // BOSS 技能释放间隔难度倍率（2026-10-10 用户定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
+  // 真我走 realme.mods.bossFireIntervalMul；诗篇 wip 走 isPoem 硬分支、实装时迁移 poem.mods，见《诗篇难度修正.md》#44）
+  // ——覆盖四个 BOSS 的全部 skillCd 赋值点
+  function bossSkillIv(base) {
+    return base * (isPoem() ? 0.5 : (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1));
+  }
 
 
   // ---------- BOSS：旧日之歌 ----------
@@ -67,7 +71,7 @@
         baseY: STORM2.hoverY,   // 航点扫动移动的纵向基准（停留点）
         wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
         bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-        skill: null, skillCd: bossSkillIv(1.0 * (isRealme() ? STORM2_SHIP.skillCdMul : 1)),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我统一 ×1.4）
+        skill: null, skillCd: bossSkillIv(1.0),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我/诗篇经 bossSkillIv 全局倍率）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
       });
       shake(6, 0.6);
@@ -93,7 +97,10 @@
         dhSummoned: [],              // 已召唤的连携精英（两两分组组内随机排序：前两名夏勇/朴学峰随机、后两名韩希先/辛国栋随机，2026-10-03 五轮定稿）
         dhCurrent: null,             // 当前血量窗口的连携精英（2026-10-08 用户定稿：本段内被击坠 → 减伤撤销 + 反向增伤 +100%，见 dhOnLinkedEliteKilled）
         dhAmp: false,                // 本段击坠增伤激活标记（至本段结束/下一窗口召唤止；高能爆弹/绷绷炸弹不吃，08-entities enemyDamageMul 消费）
-        dhBonusSkills: {},           // 已登记的「额外技能」表（键 = 精英 type，2026-10-08 用户定稿：任意连携精英被击坠即永久登记，整场战斗生效——技能本体待设计实装）
+        dhBonusSkills: {},           // 已登记的「额外技能」表（键 = 精英 type，2026-10-08 用户定稿：任意连携精英被击坠即永久登记，整场战斗生效——技能本体 2026-10-10 实装，见 startDarkhandSkill）
+        dhForceQueue: [],            // 新登记额外技能的强制释放队列（元素 = 精英 type 键；登记见 02-core dhOnLinkedEliteKilled、消费见 startDarkhandSkill——2026-10-10 用户定稿：获得新技能后下一个释放的技能必定为它，连续击坠多名按击坠顺序逐个强制）
+        dhMarkSkill: false,          // 真我&诗篇首次降至 80% 血解锁「双标记导弹」（id 9）入池标记（2026-10-10 用户定稿；且仅连携精英在场时可选）
+        dhS5Lock: 0,                 // 暗影导弹雨（id 4）释放锁：>0 时不可入池，每释放一个其他技能 -1（非诗篇 2 / 诗篇 1——2026-10-10 用户定稿「不连续释放」）
         shock: null,                 // 现形震荡波 { t, dur }（reveal 结束释放，纯演出）
         skill: null, skillCd: darkhandSkillCd(),
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
@@ -143,7 +150,7 @@
       baseY: BOSS.hoverY,   // 航点扫动移动的纵向基准（停留点）
       wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
       bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-      skill: null, skillCd: bossSkillIv(1.4 * (isRealme() ? SONG_SHIP.skillCdMul : 1)),   // 真我：技能间隔 ×0.55
+      skill: null, skillCd: bossSkillIv(1.4),   // 入场期占位（进入 combat 时重置为 1.0s × 难度倍率，见组装完成分支）
       lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarbL: false, summonHarbR: false,
       parts,
       unfoldT: 0,   // 兼容图鉴预览
@@ -229,15 +236,16 @@
     e.x = CANVAS_W / 2 + Math.sin(e.moveT * 0.22) * 25;
     e.y = STORM.hoverY + Math.sin(e.moveT * 0.43) * 15;
 
-    // 真我：技能1（风波呼啸）脱离技能轮换，改为独立计时释放——每 10~16s 从随机一侧
-    // 射入一轮 3~4 道风波（仅单轮）。独立于技能槽运行：不占用技能、不影响技能释放间隔
-    if (isRealme()) {
+    // 真我/诗篇：技能1（风波呼啸）脱离技能轮换，改为独立计时释放——每 10~16s 从随机一侧
+    // 射入一轮 3~4 道风波（仅单轮）。独立于技能槽运行：不占用技能槽、不影响技能释放间隔
+    if (stormTier()) {
       if (e.s1Next == null) e.s1Next = rand(STORM_SHIP.s1.min, STORM_SHIP.s1.max);
       e.s1T = (e.s1T || 0) + dt;
       if (e.s1T >= e.s1Next) {
         e.s1T = 0;
         e.s1Next = rand(STORM_SHIP.s1.min, STORM_SHIP.s1.max);
         pushWaveMarks(Math.random() < 0.5 ? 1 : -1, 3 + Math.floor(Math.random() * 2));
+        stormPoemChancePillar(e);   // 诗篇：技能1 独立释放瞬间同样参与概率风柱判定
       }
     }
 
@@ -295,13 +303,23 @@
     }
   }
 
-  // 技能4（真我）：随机生成 2~3 个改变旋转方向的时刻——任意相邻两次间隔 ≥1s，且首次改变不晚于前 5s
-  function stormS4ChangeTimes() {
+  // 诗篇（2026-10-10 用户定稿）：开始释放除技能3外的任意技能的瞬间（含技能1 独立释放点），
+  // 10% 概率在场上随机位置召唤一道风柱打击；血量 ≤70% 后概率提升至 20%
+  function stormPoemChancePillar(e) {
+    if (!isPoem()) return;
+    const p = e.hp <= e.maxHp * 0.70 ? 0.20 : 0.10;
+    if (Math.random() < p) pushStormPillar();
+  }
+
+  // 技能4（真我/诗篇）：随机生成 2~3 个改变旋转方向的时刻——任意相邻两次间隔 ≥1s，且首次改变不晚于前 5s
+  // durOverride：诗篇持续 7.5s 时以覆盖值参与采样（改变时刻不晚于实际持续时长）
+  function stormS4ChangeTimes(durOverride) {
     const cfg = STORM_SHIP.s4;
+    const dur = durOverride ?? cfg.dur;
     const count = cfg.changesMin + Math.floor(Math.random() * (cfg.changesMax - cfg.changesMin + 1));
     for (let tries = 0; tries < 50; tries++) {
       const ts = [];
-      for (let i = 0; i < count; i++) ts.push(rand(cfg.changeGap + 0.2, cfg.dur - 0.4));
+      for (let i = 0; i < count; i++) ts.push(rand(cfg.changeGap + 0.2, dur - 0.4));
       ts.sort((a, b) => a - b);
       let ok = ts[0] <= cfg.firstChangeBy;
       for (let i = 1; ok && i < ts.length; i++) { if (ts[i] - ts[i - 1] < cfg.changeGap) ok = false; }
@@ -339,8 +357,8 @@
     } else {
       // 技能2（大型龙卷）不可连续释放：上一技能为龙卷时将其移出候选
       let pool = [0, 1, 2, 3, 4, 5, 6, 7];
-      // 真我：技能1 脱离技能轮换（独立计时释放，见 updateBossStorm）；技能8「双子旋臂」仅真我出场
-      if (isRealme()) pool = pool.filter(x => x !== 0);
+      // 真我/诗篇：技能1 脱离技能轮换（独立计时释放，见 updateBossStorm）；技能8「双子旋臂」仅真我/诗篇出场
+      if (stormTier()) pool = pool.filter(x => x !== 0);
       else pool = pool.filter(x => x !== 7);
       if (e.lastSkill === 1) pool = pool.filter(x => x !== 1);
       // 全局规则：同一技能最多连续释放两次，禁止三连
@@ -376,14 +394,14 @@
       }
       case 1:
         // 技能2：蓄力 0.7s 后向正前方（正下方）推出一个大型龙卷
-        // （可击毁、缓慢下移直至脱离战场、随机 360° 快速射风弹，碰撞 32）
+        // （可击毁、缓慢下移直至脱离战场、随机 360° 快速射风弹，碰撞为持续掉血——每 0.1s 扣 4 血 / 诗篇 5，见 06-enemy）
         e.skill = { id: 1, t: 0, dur: 1.1, charged: false, spMul };
         break;
       case 2:
-        // 技能3：连续随机选定 5 处垂直风柱（每 0.32s 布置一处标记，各 1.3s 后落下，18 伤害 + 击退）
-        // 真我：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
+        // 技能3：连续随机选定 5 处垂直风柱（每 0.32s 布置一处标记，各 1.3s 后落下，22 伤害 + 击退）
+        // 真我/诗篇：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
         e.skill = { id: 2, t: 0,
-          dur: isRealme() ? 0.15 + (STORM_SHIP.s3.rounds - 1) * STORM_SHIP.s3.gap + 0.57 : 2.0,
+          dur: stormTier() ? 0.15 + (STORM_SHIP.s3.rounds - 1) * STORM_SHIP.s3.gap + 0.57 : 2.0,
           count: 0, next: 0.15 };
         break;
       case 3:
@@ -392,28 +410,29 @@
         // 真我：总时长 9s；初始方向顺/逆时针随机，期间随机改变 2~3 次（间隔 ≥1s，首次不晚于前 5s）；
         //   旋转速度 +40%（20%+20% 加算）、风弹射速 +60%（30%+30% 加算）、风弹长度 +30%；
         //   持续期间自身获得 25% 减伤（见 08-entities enemyDamageMul）
-        e.skill = isRealme()
-          ? { id: 3, t: 0, dur: STORM_SHIP.s4.dur, fire: 0, armAng: Math.random() * Math.PI * 2,
-              dir: Math.random() < 0.5 ? 1 : -1, changes: stormS4ChangeTimes(), ci: 0, spMul }
+        // 诗篇：沿用真我结构，持续时长覆盖为 7.5s（改变方向时刻按 7.5s 采样）
+        e.skill = stormTier()
+          ? { id: 3, t: 0, dur: isPoem() ? STORM_SHIP.s4.durPoem : STORM_SHIP.s4.dur, fire: 0, armAng: Math.random() * Math.PI * 2,
+              dir: Math.random() < 0.5 ? 1 : -1, changes: stormS4ChangeTimes(isPoem() ? STORM_SHIP.s4.durPoem : null), ci: 0, spMul }
           : { id: 3, t: 0, dur: 4.6, fire: 0, armAng: Math.random() * Math.PI * 2, spMul };
         break;
       case 4: {
         // 技能5：两轮乱射风条 + 中心一枚瞄准玩家；每轮射击时长 +60%（发射更稀疏），
         // 第二轮开火时刻不变（旧版第一轮射完 1.19s + 0.9s 间隔 ≈ 2.09s）→ 两轮间隔缩短至约 0.3s
-        // 真我：两轮风弹数量 14/11（第二轮开火时刻随首轮最后一发顺延，保持约 0.3s 轮间隔）
-        const n1 = isRealme() ? STORM_SHIP.s5.counts[0] : 12;
-        const n2 = isRealme() ? STORM_SHIP.s5.counts[1] : 9;
+        // 真我：两轮风弹数量 14/11（第二轮开火时刻随首轮最后一发顺延，保持约 0.3s 轮间隔）；诗篇 16/14
+        const n1 = stormTier() ? (isPoem() ? STORM_SHIP.s5.countsPoem[0] : STORM_SHIP.s5.counts[0]) : 12;
+        const n2 = stormTier() ? (isPoem() ? STORM_SHIP.s5.countsPoem[1] : STORM_SHIP.s5.counts[1]) : 9;
         e.skill = { id: 4, t: 0, dur: 4.2, pts: stormSkill5Pts(n1), round: 1,
-          round2At: isRealme() ? 0.2 + (n1 - 1) * 0.144 + 0.3 : 0.2 + 11 * 0.09 + 0.9,
+          round2At: stormTier() ? 0.2 + (n1 - 1) * 0.144 + 0.3 : 0.2 + 11 * 0.09 + 0.9,
           centerFired: false, n2, spMul };
         break;
       }
       case 5: {
         // 技能6：三旋臂漩涡弹幕——随机顺时针/逆时针（全程不变），风条连射形成 3 条臂，转速随时间越来越快，持续 5s
-        // 真我：追加一组镜像三旋臂——初始射击位置相反（相位差 π）、转向相反，转速与射击节奏与本体一致
+        // 真我/诗篇：追加一组镜像三旋臂——初始射击位置相反（相位差 π）、转向相反，转速与射击节奏与本体一致
         const s6 = { id: 5, t: 0, dur: 5, fire: 0, armAng: Math.random() * Math.PI * 2,
-          dir: Math.random() < 0.5 ? 1 : -1, spin: isRealme() ? STORM_SHIP.s6.spin0 : 0.65, spMul };
-        if (isRealme() && STORM_SHIP.s6.mirror) {
+          dir: Math.random() < 0.5 ? 1 : -1, spin: stormTier() ? STORM_SHIP.s6.spin0 : 0.65, spMul };
+        if (stormTier() && STORM_SHIP.s6.mirror) {
           s6.armAng2 = Math.PI - s6.armAng;   // 初始射向镜像（π − armAng）：配合转向相反，任意时刻两组旋臂关于竖直中轴镜像
           s6.fx1 = CANVAS_W * STORM_SHIP.s6.fx[0];   // 真我：本体三旋臂射击点移至屏宽 35% 处
           s6.fx2 = CANVAS_W * STORM_SHIP.s6.fx[1];   // 镜像三旋臂射击点移至屏宽 65% 处（与 35% 关于中轴镜像）
@@ -458,6 +477,10 @@
         break;
       }
     }
+
+    // 诗篇（2026-10-10 用户定稿）：开始释放除技能3外的任意技能的瞬间，10% 概率（血量 ≤70% 后 20%）
+    // 在场上随机位置召唤一道风柱打击（技能1 已脱离技能槽、由独立释放点同掷，见 updateBossStorm）
+    if (id !== 2) stormPoemChancePillar(e);
   }
 
   function runStormSkill(e, s, dt) {
@@ -480,13 +503,13 @@
       }
     } else if (s.id === 2) {
       // 技能3：连续布置风柱标记（具象：每 0.32s 一处，各 1.3s 后降下打击）
-      // 真我：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
-      const rounds = isRealme() ? STORM_SHIP.s3.rounds : 5;
+      // 真我/诗篇：共 6 轮，每轮同时射出 2 个风柱（两者位置至少相差 10% 屏宽）；轮间隔固定 0.58s
+      const rounds = stormTier() ? STORM_SHIP.s3.rounds : 5;
       s.next -= dt;
       while (s.next <= 0 && s.count < rounds) {
-        s.next += isRealme() ? STORM_SHIP.s3.gap : 0.32;
+        s.next += stormTier() ? STORM_SHIP.s3.gap : 0.32;
         s.count++;
-        if (isRealme()) pushStormPillarPair();
+        if (stormTier()) pushStormPillarPair();
         else pushStormPillar();
       }
     } else if (s.id === 3) {
@@ -517,19 +540,20 @@
       s.armAng += dir * 1.6 * spinMul * s.spinCur * dt;
       s.fire -= dt;
       if (s.fire <= 0) {
-        s.fire = 0.11;
+        // 诗篇：射击间隔 0.11 × 0.7 = 0.077s（-30%，2026-10-10 用户定稿）
+        s.fire = isPoem() ? STORM_SHIP.s4.firePoem : 0.11;
         for (let k = 0; k < 4; k++) {
           // 风条：椭圆形长条弹，初速低沿飞行方向加速；最大弹速 583（较上版 +50%）、加速度 143.75/s
-          // 宽度 r=5.6，刚射出时长度 12、随时间以 150px/s 长到全长 70（真我长度 ×1.3，生长速率同步放大）；伤害 18
+          // 宽度 r=5.6，刚射出时长度 12、随时间以 150px/s 长到全长 70（真我长度 ×1.3，生长速率同步放大）；伤害 18（诗篇 28）
           const ang = s.armAng + k * Math.PI / 2;
           pushBossBullet(e.x, e.y, ang, 56 * sm * spdMul,
-            { r: 5.6, dmg: 18, color: STORM_WIND, len: 12 * lenMul, lenTarget: 70 * lenMul, growRate: 150 * lenMul, oval: true,
+            { r: 5.6, dmg: isPoem() ? STORM_SHIP.s4.barDmgPoem : 18, color: STORM_WIND, len: 12 * lenMul, lenTarget: 70 * lenMul, growRate: 150 * lenMul, oval: true,
               accel: 143.75 * sm * spdMul, maxSpeed: 583 * sm * spdMul });
         }
       }
     } else if (s.id === 4) {
-      // 技能5：两轮乱射（各 12/9 处风条 + 中心瞄准弹；真我 14/11）；每发风弹独立判定强化（15% +50% / 5% +100%）
-      // 真我：普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不受减速影响）
+      // 技能5：两轮乱射（各 12/9 处风条 + 中心瞄准弹；真我 14/11、诗篇 16/14）；每发风弹独立判定强化（15% +50% / 5% +100%）
+      // 真我/诗篇：普通风弹 20% 概率射速减慢 20%~50%（强化大风弹不受减速影响）
       let allFired = true;
       for (const p of s.pts) {
         p.delay -= dt;
@@ -538,10 +562,10 @@
           const ang = Math.PI / 2 + rand(-Math.PI / 6, Math.PI / 6);
           // 风条：初速低沿飞行方向加速至 874.5，长度 12 以 150px/s 长到 70，波动渲染；m 为强化倍率
           const m = stormSkill5Mul();
-          const slow = (isRealme() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
+          const slow = (stormTier() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
             ? rand(STORM_SHIP.s5.slowMin, STORM_SHIP.s5.slowMax) : 1;
           pushBossBullet(e.x + p.dx, e.y + p.dy, ang, 56 * sm * slow,
-            { r: 5.6 * m, dmg: STORM.tornadoDmg * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
+            { r: 5.6 * m, dmg: (isPoem() ? STORM.tornadoDmgPoem : STORM.tornadoDmg) * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
               oval: true, accel: 215.625 * sm * m * slow, maxSpeed: 874.5 * sm * m * slow });
           spawnParticles(e.x + p.dx, e.y + p.dy, '#ffffff', 4, 110);
         }
@@ -550,10 +574,10 @@
       if (!s.centerFired && s.t >= 0.55) {
         s.centerFired = true;
         const m = stormSkill5Mul();
-        const slow = (isRealme() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
+        const slow = (stormTier() && m === 1 && Math.random() < STORM_SHIP.s5.slowChance)
           ? rand(STORM_SHIP.s5.slowMin, STORM_SHIP.s5.slowMax) : 1;
         pushBossBullet(e.x, e.y, Math.atan2(player.y - e.y, player.x - e.x), 56 * sm * slow,
-          { r: 5.6 * m, dmg: STORM.tornadoDmg * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
+          { r: 5.6 * m, dmg: (isPoem() ? STORM.tornadoDmgPoem : STORM.tornadoDmg) * m, color: STORM_WIND, len: 12 * m, lenTarget: 70 * m, growRate: 150,
             oval: true, accel: 215.625 * sm * m * slow, maxSpeed: 874.5 * sm * m * slow });   // 中心弹同样参与强化判定
         spawnParticles(e.x, e.y, '#ffffff', 8, 140);
       }
@@ -567,24 +591,24 @@
     } else if (s.id === 5) {
       // 技能6：3 条臂漩涡弹幕，方向固定（顺/逆时针随机），转速随时间越来越快
       // 角速度线性递增：具象初速 0.65 不变、斜率 0.617（原 0.7）→ 5s 末最大转速 4.15→3.735 rad/s（-10%），持续时长不变
-      // 真我：两组三旋臂（本体 + 镜像，共用 spin）初始转速 +30%（0.845）、斜率收窄 0.578——5s 末最大转速 3.735 rad/s 不变
-      // 真我：同步追加一组镜像三旋臂（armAng2）——射击点 35% / 65% 屏宽、初始射向镜像（π − armAng）且转向相反，
+      // 真我/诗篇：两组三旋臂（本体 + 镜像，共用 spin）初始转速 +30%（0.845）、斜率收窄 0.578——5s 末最大转速 3.735 rad/s 不变
+      // 真我/诗篇：同步追加一组镜像三旋臂（armAng2）——射击点 35% / 65% 屏宽、初始射向镜像（π − armAng）且转向相反，
       // 任意时刻两组旋臂关于竖直中轴精确镜像；转速与射击节奏与本体一致
-      s.spin += (isRealme() ? STORM_SHIP.s6.spinSlope : 0.617) * dt;
+      s.spin += (stormTier() ? STORM_SHIP.s6.spinSlope : 0.617) * dt;
       s.armAng += s.dir * s.spin * dt;
       if (s.armAng2 != null) s.armAng2 -= s.dir * s.spin * dt;
       s.fire -= dt;
       if (s.fire <= 0) {
         s.fire = 0.10;
-        const x1 = s.fx1 ?? e.x, x2 = s.fx2 ?? e.x;   // 真我：40% / 60% 屏宽两处；具象均为风暴中心
+        const x1 = s.fx1 ?? e.x, x2 = s.fx2 ?? e.x;   // 真我/诗篇：40% / 60% 屏宽两处；具象均为风暴中心
         for (let k = 0; k < 3; k++) {
           // 风条（与技能4一致）：初速低、加速至 583、长度生长、波动渲染
           pushBossBullet(x1, e.y, s.armAng + k * Math.PI * 2 / 3, 56 * sm,
-            { r: 5.6, dmg: STORM.tornadoDmg, color: STORM_WIND, len: 12, lenTarget: 70, growRate: 150,
+            { r: 5.6, dmg: isPoem() ? STORM.tornadoDmgPoem : STORM.tornadoDmg, color: STORM_WIND, len: 12, lenTarget: 70, growRate: 150,
               oval: true, accel: 143.75 * sm, maxSpeed: 583 * sm });
           if (s.armAng2 != null) {
             pushBossBullet(x2, e.y, s.armAng2 + k * Math.PI * 2 / 3, 56 * sm,
-              { r: 5.6, dmg: STORM.tornadoDmg, color: STORM_WIND, len: 12, lenTarget: 70, growRate: 150,
+              { r: 5.6, dmg: isPoem() ? STORM.tornadoDmgPoem : STORM.tornadoDmg, color: STORM_WIND, len: 12, lenTarget: 70, growRate: 150,
                 oval: true, accel: 143.75 * sm, maxSpeed: 583 * sm });
           }
         }
@@ -596,7 +620,7 @@
         state.stormVortex = { x: e.x, y: e.y, tx: CANVAS_W / 2, ty: CANVAS_H * 0.80,
           r: CANVAS_W * 0.04, phase: 'warn', t: 0, ang: Math.random() * Math.PI * 2,
           dir: Math.random() < 0.5 ? 1 : -1, emit: 0,
-          arms: isRealme() ? STORM_SHIP.s7.arms : 2 };   // 真我：三旋臂（具象双旋臂）
+          arms: stormTier() ? STORM_SHIP.s7.arms : 2 };   // 真我/诗篇：三旋臂（具象双旋臂）
       }
       const v = state.stormVortex;
       v.t += dt;
@@ -617,21 +641,21 @@
         }
       } else if (v.phase === 'spin') {
         v.x = v.tx; v.y = v.ty;
-        // 自转由慢渐快（具象 1.1 → 2.625 rad/s；真我最大转速 2.3 rad/s，初速不变斜率收窄）
-        const spinMax = isRealme() ? STORM_SHIP.s7.spinMax : 2.625;
+        // 自转由慢渐快（具象 1.1 → 2.625 rad/s；真我/诗篇最大转速 2.3 rad/s，初速不变斜率收窄）
+        const spinMax = stormTier() ? STORM_SHIP.s7.spinMax : 2.625;
         v.ang += v.dir * (1.1 + (v.t / 5) * (spinMax - 1.1)) * dt;
         v.emit -= dt;
         if (v.emit <= 0) {
           v.emit = 0.045;   // 密集喷射：每臂约 22 发/秒
-          // 子弹呈旋臂状：同时射出沿圆周均布的 ARMS 发（具象 2 条旋臂相隔 180°；真我 3 条相隔 120°），
+          // 子弹呈旋臂状：同时射出沿圆周均布的 ARMS 发（具象 2 条旋臂相隔 180°；真我/诗篇 3 条相隔 120°），
           // 随自转形成旋转风臂；加速度/最大速度 = 四旋臂（技能4）的 70%；长度 7.2→42（初始/最大长度均为标准风条的 60%）
-          // 真我：风弹射速 +25%（初速/加速度/最大速度同步 ×1.25）
+          // 真我/诗篇：风弹射速 +25%（初速/加速度/最大速度同步 ×1.25）
           const ARMS = v.arms || 2;
-          const bMul = isRealme() ? STORM_SHIP.s7.bulletSpdMul : 1;
+          const bMul = stormTier() ? STORM_SHIP.s7.bulletSpdMul : 1;
           for (let k = 0; k < ARMS; k++) {
             const ea = v.ang + k * Math.PI * 2 / ARMS;
             pushBossBullet(v.x + Math.cos(ea) * v.r, v.y + Math.sin(ea) * v.r, ea, 56 * sm * bMul,
-              { r: 5.6, dmg: STORM.tornadoDmg, color: STORM_WIND, len: 7.2, lenTarget: 42, growRate: 150,
+              { r: 5.6, dmg: isPoem() ? STORM.tornadoDmgPoem : STORM.tornadoDmg, color: STORM_WIND, len: 7.2, lenTarget: 42, growRate: 150,
                 oval: true, accel: 100.625 * sm * bMul, maxSpeed: 408.1 * sm * bMul });
           }
         }
@@ -650,7 +674,7 @@
       if (state.stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
           Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + PLAYER_CFG.hitRadius) {
         // src 'storm'：天秀忧郁王子暴风之眼伤害削减挂点；成就死因：就位前（fly 飞抵段）= vortexPre（哦呦）
-        damagePlayer(STORM.vortexDmg * bossDmgMul(), 1, false, false, 'storm', v.phase === 'fly' ? 'vortexPre' : 'vortex');
+        damagePlayer((isPoem() ? STORM.vortexDmgPoem : STORM.vortexDmg) * bossDmgMul(), 1, false, false, 'storm', v.phase === 'fly' ? 'vortexPre' : 'vortex');
       }
     } else if (s.id === 7) {
       // 技能8「双子旋臂」：两个环上弹幕点持续喷射旋臂风弹
@@ -670,13 +694,13 @@
         p.armAng += p.dir * p.spin * dt;
         p.fire -= dt;
         if (p.fire <= 0) {
-          p.fire = C.fireInt;
+          p.fire = isPoem() ? C.fireIntPoem : C.fireInt;   // 诗篇射击间隔覆盖：三旋臂 0.12 / 四旋臂 0.14（2026-10-10 用户定稿）
           const px = e.x + Math.cos(p.a) * p.r, py = e.y + Math.sin(p.a) * p.r;
           for (let k = 0; k < p.mode; k++) {
             const ea = p.armAng + k * Math.PI * 2 / p.mode;
-            // 弹参数：三旋臂取技能6 具象口径（伤害 16）/ 四旋臂取技能4 具象口径（伤害 18），风条形态一致
+            // 弹参数：三旋臂取技能6 具象口径（伤害 16）/ 四旋臂取技能4 具象口径（伤害 18），风条形态一致；诗篇全旋臂风条 28
             pushBossBullet(px, py, ea, 56 * sm,
-              { r: 5.6, dmg: p.mode === 3 ? STORM.tornadoDmg : 18, color: STORM_WIND,
+              { r: 5.6, dmg: isPoem() ? STORM.tornadoDmgPoem : (p.mode === 3 ? STORM.tornadoDmg : 18), color: STORM_WIND,
                 len: 12, lenTarget: 70, growRate: 150, oval: true,
                 accel: 143.75 * sm, maxSpeed: 583 * sm });
           }
@@ -735,7 +759,7 @@
           f.hit = true;   // 无敌期间处于带内同样消耗本次判定：风波掠过，不结算也不补判——
           // （否则无敌结束时会被"迟到"的风波命中：出现时无敌跳过判定、静止玩家在无敌结束后被判中）
           if (player.invuln <= 0) {
-            damagePlayer(STORM.windDmg * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
+            damagePlayer((isPoem() ? STORM.windDmgPoem : STORM.windDmg) * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             // 击退：竖直推离风波带（玩家在带下方则下推、上方则上推）+ 向入射侧回推的固定分量
             // （不能用 player - 采样点：c.x 恒等于 player.x，会导致 dx=0、方向退化）
             const vdir = ((player.y + PLAYER_CFG.hitOffsetY) - c.y) >= 0 ? 1 : -1;
@@ -753,7 +777,7 @@
         if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER_CFG.hitRadius) {
           p.hit = true;   // 无敌期间处于柱内同样消耗本次判定：光柱掠过，不结算也不补判
           if (player.invuln <= 0) {
-            damagePlayer(STORM.pillarDmg * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
+            damagePlayer((isPoem() ? STORM.pillarDmgPoem : STORM.pillarDmg) * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             knockbackPlayer(player.x - p.x, 0, 420);
           }
         }
@@ -887,7 +911,7 @@
   }
 
   // ---------- BOSS3：风暴编织者（雷电飞舰） ----------
-  // 技能池（乱序，释放间隔 = 暴风之眼的 75%；玩家暴走期间间隔额外减半）：
+  // 技能池（乱序，释放间隔 = 暴风之眼的 75%）：
   //   技能1 电弧球蓄力激光：停止移动，中心电弧球明显预警蓄力 1.0s → 向下强力电弧激光（固定 60 伤害）
   //   技能2 四喷口激光：停止移动，喷口激涌蓄力 1.2s → 随机序依次向下电弧激光（50 伤害）；
   //         预警为四喷口各一圈收缩波，按发射顺序先后出现
@@ -1041,8 +1065,7 @@
 
     if (e.skill) runStorm2Skill(e, e.skill, dt);
     else {
-      // 玩家暴走：技能释放间隔额外减半（冷却计时 ×2 流逝）
-      e.skillCd -= dt * (player.weapon === 5 ? 2 : 1);
+      e.skillCd -= dt;   // 常速流逝（原「玩家暴走间隔减半」机制 2026-10-10 用户定稿删除）
       if (e.skillCd <= 0) startStorm2Skill(e);
     }
     if (e.s6Beams && e.s6Beams.length) updateS6Beams(e, dt);   // 技能6 重现光束（技能收束后继续存活）
@@ -1067,7 +1090,7 @@
     // 全局规则：连续随机到同一技能 → 技能间冷却 -80%
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv((repeat ? STORM2.skillCd * 0.2 : STORM2.skillCd) * (isRealme() ? STORM2_SHIP.skillCdMul : 1));   // 真我：技能间隔统一 ×1.4（+40%）
+    e.skillCd = bossSkillIv(repeat ? STORM2.skillCd * 0.2 : STORM2.skillCd);   // 真我/诗篇经 bossSkillIv 全局倍率（原真我专属 ×1.4 已取消）
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速 ×1.4
     e.skillUseCount[id] = (e.skillUseCount[id] || 0) + 1;
@@ -1122,15 +1145,16 @@
           const t = (k / shots) * pathT;
           offs.push({ dx: Math.sin(Math.PI + 5.6 * t) * (24 + 62 * t), dy: 168 * t });   // 先向左摆、振幅随时间增大；甩动速率 5.6（约 5 个来回）
         }
-        // 雷环排程（具象：始终 4 圈、<70% 增至 6 圈，间隔 0.8~1.5s；真我：固定 8 圈、间隔 ×0.6）：
+        // 雷环排程（圈数四难度固定：虚象 4 / 具象 5 / 真我 7 / 诗篇 9——前 ≤4 圈取喷口 0~3 顺序、超出部分随机喷口；间隔 0.8~1.5s（诗篇 0.6~1.2s），真我 ×0.6）：
         //   硬性约束：所有雷环必须在蛇形雷条射完前全部爆开——生成时刻 ≤ 射完时刻 - 停留时长(1s)，
         //   随机排程超出deadline则整体等比压缩（射完后仍有兜底强爆，见 runStorm2Skill s.id===3）
-        const ringCount = isRealme() ? STORM2_SHIP.s4.rings : 6;
+        const ringCount = isPoem() ? STORM2.s4RingN.poem : isRealme() ? STORM2.s4RingN.realme : isIllusion() ? STORM2.s4RingN.illusion : STORM2.s4RingN.form;
         const ringGapBase = isRealme() ? STORM2_SHIP.s4.ringGapMul : 1;
-        const ringNz = [0, 1, 2, 3];
-        while (ringNz.length < ringCount) ringNz.push((Math.random() * 4) | 0);   // 真我：追加 4 圈随机喷口（可重复）
+        const [gapMin, gapMax] = isPoem() ? STORM2.s4RingGapPoem : [0.8, 1.5];   // 生成间隔区间（诗篇 0.6~1.2s，2026-10-10 用户二次定稿）
+        const ringNz = [0, 1, 2, 3].slice(0, Math.min(ringCount, 4));
+        while (ringNz.length < ringCount) ringNz.push((Math.random() * 4) | 0);   // 超出 4 圈的部分：追加随机喷口（可重复）
         const ringTimes = [0.15];
-        for (let k = 1; k < ringNz.length; k++) ringTimes.push(ringTimes[k - 1] + rand(0.8, 1.5) * ringGapBase);
+        for (let k = 1; k < ringNz.length; k++) ringTimes.push(ringTimes[k - 1] + rand(gapMin, gapMax) * ringGapBase);
         const endTime = 0.1 + shots * 0.08;   // 最后一发蛇形雷条射出时刻
         const deadline = Math.max(0.2, endTime - 1.0);
         const lastRingT = ringTimes[ringNz.length - 1];
@@ -1147,10 +1171,10 @@
         e.skill = { id: 4, t: 0, dur: STORM2.s5Warn + 4 * gap5 + 0.7, strikes };
         break;
       }
-      case 5: { // 技能6：臂向光束 → 左右边界重现慢速飞行光束（每边每轮 2 条、恒定 3 轮；轮次间隔 1.5s；重现光束射速 ×0.6；自 0 增长）
-        // 光束存于 e.s6Beams（BOSS 实体级）：技能本体 4.6s 收束，飞行中的光束独立存活至飞完/被盾吃完
+      case 5: { // 技能6：臂向光束 → 左右边界重现慢速飞行光束（每边每轮 2 条、恒定 3 轮；轮次间隔 1.5s（诗篇 0.8s）；重现光束射速 ×0.6；自 0 增长）
+        // 光束存于 e.s6Beams（BOSS 实体级）：技能本体按 storm2S6Dur() 收束（具象/真我 4.6s / 诗篇 3.2s），飞行中的光束独立存活至飞完/被盾吃完
         e.s6Beams = [];
-        e.skill = { id: 5, t: 0, dur: 4.6, armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, spMul };
+        e.skill = { id: 5, t: 0, dur: storm2S6Dur(), armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, spMul };
         e.skillCd *= STORM2.s6CdMul;   // 释放后下一次技能释放间隔 -50%
         // 真我：释放瞬间四个雷电喷口处各触发一次雷霆打击——无预警、伤害减半、雷环子弹数减半
         if (isRealme()) {
@@ -1177,14 +1201,26 @@
     return pts;
   }
 
+  // 风暴编织者技能伤害取值：诗篇分叉 STORM2.<key>Poem，其余难度走基准值（虚象再于结算点经 bossDmgMul -40%）
+  function storm2Dmg(key) {
+    const poem = STORM2[key + 'Poem'];
+    return isPoem() && poem != null ? poem : STORM2[key];
+  }
+
+  // 技能6（id 5）本体总时长 = 汇聚 0.95 + 首轮预警 0.30 + 2×轮次间隔 + 0.35 尾缓冲（具象/真我 4.6s；诗篇间隔 0.8 → 3.2s）
+  function storm2S6Dur() {
+    return 1.6 + 2 * (isPoem() ? STORM2.s6RoundGapPoem : STORM2.s6RoundGap);
+  }
+
   // 雷霆打击单次落雷（技能5 主释放与真我技能6 瞬发共用）：
   //   sm：连发弹速倍率；dmgMul：伤害倍率（真我瞬发 0.5）；cntMul：外扩雷环子弹数倍率（真我瞬发 0.5）
   function fireS2Strike(x, y, dmgMul, cntMul, sm = 1) {
     if (player.alive && player.invuln <= 0 && player.shield <= 0 &&
         Math.hypot(player.x - x, (player.y + PLAYER_CFG.hitOffsetY) - y) < S2_STRIKE_R) {
-      damagePlayer(STORM2.s5Dmg * dmgMul * bossDmgMul(), 1, false, false, 'aoe');   // 雷霆轰击（瞬时区域伤害）：可莉 -30% 挂点
+      damagePlayer(storm2Dmg('s5Dmg') * dmgMul * bossDmgMul(), 1, false, false, 'aoe');   // 雷霆轰击（瞬时区域伤害，具象 40 / 诗篇 60）：可莉 -30% 挂点
     }
-    spawnStorm2Ring(x, y, 6, 0, sm, STORM2.s5RingDecelMul, 1, null, cntMul);
+    const [rnMin, rnMax] = isPoem() ? STORM2.s5RingN.poem : isRealme() ? STORM2.s5RingN.realme : isIllusion() ? STORM2.s5RingN.illusion : STORM2.s5RingN.form;   // 外扩枚数四难度（2026-10-10 用户定稿）
+    spawnStorm2Ring(x, y, 6, 0, sm, STORM2.s5RingDecelMul, 1, null, cntMul, rnMin, rnMax);
     spawnParticles(x, y, '#eaf6ff', 18, 260);
     spawnParticles(x, y, '#bfe6ff', 12, 200);   // 蓝点光（雷电轰击感，与爆闪演出叠加）
     shake(6, 0.25);
@@ -1193,14 +1229,14 @@
   // 技能3 一轮齐射：场地正中四道斜下电弧光束（左右镜像对称，角度随机、触壁反弹）
   function fireS3Volley(e, sm) {
     const ox = CANVAS_W / 2, oy = e.y + 6;
-    const C = STORM2.s3ConeHalf, minSep = STORM2.s3MinSep;
+    const C = isPoem() ? STORM2.s3ConeHalfPoem : isRealme() ? STORM2.s3ConeHalfRealme : STORM2.s3ConeHalf, minSep = STORM2.s3MinSep;
     const a1 = rand(0.12, C - minSep - 0.12);   // 内对半角
-    const a2 = a1 + rand(minSep, C - a1);       // 外对半角（≤75°）
+    const a2 = a1 + rand(minSep, C - a1);       // 外对半角（≤难度锥角 ±45°/±55°/±65°）
     for (const [side, off] of [[1, a2], [-1, a2], [1, a1], [-1, a1]]) {
       // side=+1 朝左下、-1 朝右下（角度相对竖直向下）；光束长度走 STORM2.s3Len（268.8，原 336 的 -20%），
       // 自头部轨迹从 0 增长而来（beamTrail），触壁转折时轨迹自然弯折而非整体转向
       pushBossBullet(ox, oy, Math.PI / 2 + side * off, 330 * STORM2.s3SpdMul * sm, {
-        r: 6, dmg: STORM2.s3Dmg, len: STORM2.s3Len, color: '#9fd8ff', bolt: true, beamTrail: true, bounceX: true,
+        r: 6, dmg: storm2Dmg('s3Dmg'), len: STORM2.s3Len, color: '#9fd8ff', bolt: true, beamTrail: true, bounceX: true,
       });
     }
     spawnParticles(ox, oy, '#bfe6ff', 10, 150);
@@ -1240,7 +1276,7 @@
     if (p.pointsAt && p.shot < rounds) {
       p.ptT -= dt;
       if (p.ptT <= 0) {
-        p.ptT = 1.5;   // 两轮之间间隔 1.5s（预警 → 光束自 0 增长并飞抵 → 下一轮）
+        p.ptT = isPoem() ? STORM2.s6RoundGapPoem : STORM2.s6RoundGap;   // 两轮之间间隔（具象/真我 1.5s / 诗篇 0.8s；预警 → 光束自 0 增长并飞抵 → 下一轮）
         const py = e.y - 26;
         const [a1, a2] = p.targets[p.shot];
         for (let side = 0; side < 2; side++) {
@@ -1267,14 +1303,14 @@
     }
   }
 
-  // 雷电子弹环（技能4 强化 / 技能5 打击外扩共用）：14~20 枚圆形雷电子弹（增大版 r=ringR，带短拖尾）
+  // 雷电子弹环（技能4 / 技能5 打击外扩共用）：圆形雷电子弹（默认 14~20 枚，技能5 按难度传 nMin~nMax；增大版 r=ringR，带短拖尾）
   //   hold>0：停留在生成位置（BOSS 移动也不跟随），hold 秒后向各自方向爆开；
   //   hold=0：生成即爆开（直接携带初速，不经停留逻辑）；
   //   爆开初速（同圈全部一致）：雷电长条弹速度（s4Spd×sm）的 60~80% 或 120~140% 随机取档，再乘 boost；
   //   减速下限 ringCruise 同乘 boost；decelMul：减速倍率（技能5 落雷外扩圈更快减慢）；
   //   tag：归属标记（技能4 传入技能状态对象，供"射完强爆"时识别本波雷环，见 runStorm2Skill s.id===3）
-  function spawnStorm2Ring(cx, cy, rr, hold, sm = 1, decelMul = 1, boost = 1, tag = null, cntMul = 1) {
-    const n = Math.max(4, Math.round((14 + Math.floor(Math.random() * 7)) * cntMul));   // 14~20 枚（真我瞬发 ×0.5 → 7~10）
+  function spawnStorm2Ring(cx, cy, rr, hold, sm = 1, decelMul = 1, boost = 1, tag = null, cntMul = 1, nMin = 14, nMax = 20) {
+    const n = Math.max(4, Math.round((nMin + Math.floor(Math.random() * (nMax - nMin + 1))) * cntMul));   // nMin~nMax 枚（真我技能6 瞬发经 cntMul 减半）
     const mult = Math.random() < 0.5 ? rand(0.6, 0.8) : rand(1.2, 1.4);   // 本圈速度档（同圈一致）
     const v0 = STORM2.s4Spd * sm * mult * boost;
     const decelTo = STORM2.ringCruise * boost;
@@ -1282,7 +1318,7 @@
       const ba = (k / n) * Math.PI * 2 + Math.random() * 0.25;
       const base = {
         x: cx + Math.cos(ba) * rr, y: cy + Math.sin(ba) * rr,
-        r: STORM2.ringR, dmg: STORM2.s4Dmg, color: '#9fd8ff',
+        r: STORM2.ringR, dmg: storm2Dmg('s4Dmg'), color: '#9fd8ff',
         trail: true, trailCol: '159, 216, 255', trailLife: 0.16,   // 短拖尾（白蓝，0.16s）
         decelTo, decelRate: STORM2.ringDecel * decelMul, ringTag: tag,
       };
@@ -1340,7 +1376,7 @@
               player.alive && player.invuln <= 0 && player.shield <= 0 &&
               Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
               player.y + PLAYER_CFG.hitOffsetY > ball.y) {
-            damagePlayer(STORM2.s1Dmg * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
+            damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
           }
           if (s.pt >= C1.beamDur) {
             s.shot++;
@@ -1369,7 +1405,7 @@
             strikeVis(life / STORM2.s1BeamDur, 0.12) >= 0.35 &&
             Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
             py > ball.y && py < ball.y + beamLen) {
-          damagePlayer(STORM2.s1Dmg * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
+          damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
         }
       }
     } else if (s.id === 1) {
@@ -1392,7 +1428,7 @@
           const py = player.y + PLAYER_CFG.hitOffsetY;
           if (Math.abs(player.x - b.x) < STORM2.s2R + PLAYER_CFG.hitRadius && py > b.y && py < b.y + fullLen) {
             b.hit = true;
-            damagePlayer(STORM2.s2Dmg * bossDmgMul());
+            damagePlayer(storm2Dmg('s2Dmg') * bossDmgMul());
           }
         }
       }
@@ -1420,28 +1456,24 @@
         s.next = 0.08;
         const o = s.offs[s.fired];
         pushBossBullet(ball.x, ball.y, Math.atan2(o.dy, o.dx), STORM2.s4Spd * sm, {
-          r: 4.6, dmg: STORM2.s4Dmg, len: 34, color: '#9fd8ff', bolt: true,
+          r: 4.6, dmg: storm2Dmg('s4Dmg'), len: 34, color: '#9fd8ff', bolt: true,
         });
         s.fired++;
       }
       // 四喷口雷环依次浮现（间隔 0.8~1.5s）——每圈停留在生成位置 1s 后爆开（BOSS 移动走子弹也不跟随）；
-      //   第 5/6 圈为强化圈：到点时血量 <70% 才释放（否则跳过）；雷环带 ringTag 供射完强爆识别
+      //   圈数四难度固定（虚象 3 / 具象 5 / 真我 7 / 诗篇 9），无血量门控；雷环带 ringTag 供射完强爆识别
       while (s.ringsSpawned < s.ringNz.length && s.t >= s.ringTimes[s.ringsSpawned]) {
-        if (isRealme() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
-          const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
-          spawnStorm2Ring(nz.x, nz.y, 24, 1.0, sm, 1, 1, s);
-        }
+        const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
+        spawnStorm2Ring(nz.x, nz.y, 24, 1.0, sm, 1, 1, s);
         s.ringsSpawned++;
       }
-      // 蛇形雷条射完：雷环收尾兜底——补齐本该生成而未生成的雷环（第 5/6 圈仍按血量门控），
+      // 蛇形雷条射完：雷环收尾兜底——补齐本该生成而未生成的雷环，
       //   并让所有已生成未爆开的雷环立刻爆开；补齐/强爆的雷环初速与最终速度额外 +30%
       if (s.fired >= s.shots && !s.ringsFlushed) {
         s.ringsFlushed = true;
         while (s.ringsSpawned < s.ringNz.length) {
-          if (isRealme() || s.ringsSpawned < 4 || (e.hp / e.maxHp) < 0.70) {
-            const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
-            spawnStorm2Ring(nz.x, nz.y, 24, 0, sm, 1, STORM2.s4FlushBoost, s);
-          }
+          const nz = storm2Nozzle(e, s.ringNz[s.ringsSpawned]);
+          spawnStorm2Ring(nz.x, nz.y, 24, 0, sm, 1, STORM2.s4FlushBoost, s);
           s.ringsSpawned++;
         }
         for (const b of eBullets) {
@@ -1456,14 +1488,14 @@
       }
     } else if (s.id === 4) {
       // 技能5：雷电光环（演出见 11-draw-boss）+ 下方 30% 区域 5 处依次雷击：
-      //   雷电积聚预警 1.2s → 落雷（区域 40 伤害）+ 中心外扩一圈雷电子弹
+      //   雷电积聚预警 1.2s → 落雷（区域伤害 40 / 诗篇 60）+ 中心外扩一圈雷电子弹（枚数四难度，见 fireS2Strike）
       for (const st of s.strikes) {
         st.t += dt;
         if (st.flash > 0) st.flash -= dt;   // 打击爆闪衰减（见 11-draw-boss 外扩渐隐演出）
         if (!st.fired && st.t >= STORM2.s5Warn) {
           st.fired = true;
           st.flash = 0.35;
-          fireS2Strike(st.x, st.y, 1, 1, sm);   // 落雷（区域 40 伤害）+ 中心外扩一圈雷电子弹
+          fireS2Strike(st.x, st.y, 1, 1, sm);   // 落雷 + 中心外扩一圈雷电子弹（枚数四难度）
         }
       }
     } else if (s.id === 5) {
@@ -1475,7 +1507,7 @@
       // 真我：技能2 连携的技能6 未放完——随技能2收束无缝转为独立技能6（保留时间轴与轮次进度，不重置冷却）；
       //   连携仅 1 轮（linkDur 1.5s < 技能2 自身时长 2.19s），正常随技能2收束即结束、不再转入独立技能6
       if (s.id === 1 && s.s6) {
-        const ld = s.s6.linked ? STORM2_SHIP.s2.linkDur : 4.6;
+        const ld = s.s6.linked ? STORM2_SHIP.s2.linkDur : storm2S6Dur();
         if (s.s6.t < ld) {
           e.skill = { id: 5, t: s.s6.t, dur: ld, armFired: true, pointsAt: s.s6.pointsAt,
             ptT: s.s6.ptT, shot: s.s6.shot, targets: s.s6.targets, spMul: s.spMul || 1,
@@ -1544,7 +1576,7 @@
           const tproj = clamp((player.x - b.x) * ux0 + (py2 - b.y) * uy0, 0, effLen);
           if (Math.hypot(player.x - (b.x + ux0 * tproj), py2 - (b.y + uy0 * tproj)) < STORM2.s6R + PLAYER_CFG.hitRadius) {
             b.hit = true;
-            damagePlayer(STORM2.s6Dmg * bossDmgMul());
+            damagePlayer(storm2Dmg('s6Dmg') * bossDmgMul());
           }
         }
       }
@@ -1782,7 +1814,9 @@
       // 内随机取一名尚未召唤者——组内顺序随机、组间先后固定（pairs 两两分组见 01-config DARKHAND.summon）
       const pool = sm.pairs[Math.floor(e.dhSummoned.length / 2)].filter(t => !e.dhSummoned.includes(t));
       const type = pool[Math.floor(Math.random() * pool.length)];
+      const firstWindow = e.dhSummoned.length === 0;   // 首窗 = 80% 血（双标记导弹解锁时点）
       e.dhSummoned.push(type);
+      if (firstWindow && (isRealme() || isPoem())) e.dhMarkSkill = true;   // 真我&诗篇 80% 解锁双标记导弹入池（2026-10-10 用户定稿，仅连携在场时可选）
       e.dhCurrent = type;   // 当前血量窗口精英（2026-10-08 用户定稿：本段内被击坠 → 减伤撤销 + 反向增伤，登记见 02-core dhOnLinkedEliteKilled）
       e.dhAmp = false;      // 新窗口开始：上一段的击坠增伤失效（本段血量 = 触发召唤阈值 → 再降 20%）
       const m = spawnEliteMinion(type, 1e9);   // 第二参为驻留时长：1e9 永驻，离场时机由血量窗口驱动
@@ -1792,9 +1826,11 @@
     }
 
     // —— 战斗阶段：航点扫动 + 技能循环 ——
-    // 技能5 导弹雨期间本体移速降至 s5.slowMul（2026-10-03 用户定稿）：指数逼近（速率 s5.slowK = 5/s，
-    // ≈0.6s 基本到位 / 技能结束 ≈0.6s 恢复）——「当前速度 → 新期望速度」平滑过渡，无瞬跳（速度曲线铁律）
-    const slowTarget = (e.skill && e.skill.id === 4) ? DARKHAND.s5.slowMul : 1;
+    // 技能5 导弹雨期间本体移速降至 s5.slowMul / 双标记导弹（id9）降至 bMark.slowMul 0.4（均 2026-10-10
+    // 用户定稿口径）：指数逼近（速率 s5.slowK = 5/s，≈0.6s 基本到位 / 技能结束 ≈0.6s 恢复）——
+    // 「当前速度 → 新期望速度」平滑过渡，无瞬跳（速度曲线铁律）
+    const slowTarget = (e.skill && e.skill.id === 4) ? DARKHAND.s5.slowMul
+      : (e.skill && e.skill.id === 9) ? DARKHAND.bMark.slowMul : 1;
     e.dhSlowK = ((e.dhSlowK == null) ? 1 : e.dhSlowK) + (slowTarget - ((e.dhSlowK == null) ? 1 : e.dhSlowK)) * (1 - Math.exp(-DARKHAND.s5.slowK * dt));
     // 技能4 期间常规移动暂停：本体位置由 runDarkhandSkill 的居中 smoothstep 剖面接管（2026-10-03 用户定稿）
     if (!(e.skill && e.skill.id === 3)) bossMoveUpdate(e, DARKHAND.move, dt, DARKHAND.combatSpdMul * e.dhSlowK);   // mul = 移速倍率（0.5 = 战斗移速 -50%，2026-10-01 用户定稿；登场飞掠等演出不走此通道不受影响）。漏传/传 NaN → 速度负向递增 BOSS 被钉死左上角（2026-10-01 修复教训）
@@ -1809,30 +1845,60 @@
     // 随机释放（2026-10-03 用户定稿：与暴风之眼/旧日之歌同一套规则，取代原 1→2→3→4→5 固定轮换）：
     // 加权随机池（本局未释放过的技能权重 ×1.5）、同一技能最多连续两次（禁止三连）、
     // 虚象 bossNoRepeat 直接不重样；连续随机到同技能 → 本次结束后间隔 ×0.2；蛋挞（技能3）禁止连放（2026-10-04 用户定稿）
+    // 额外技能池（2026-10-10 用户定稿实装）：击坠连携精英登记的 dhBonusSkills 对应技能进入池
+    //   5 = 夏勇碎翼回旋镖 / 6 = 朴学峰翼根散射 / 7 = 辛国栋边界轰炸 / 8 = 韩希先旋眼火螺；
+    //   9 = 双标记导弹（真我&诗篇 80% 解锁 dhMarkSkill，且仅连携精英在场 dhGuardActive 时可选）；
+    //   新登记的技能经 dhForceQueue 强制：下一个释放的技能必定为它（同日用户定稿，见 weightedPick 处）
+    // 暗影导弹雨（id 4）不连续释放（2026-10-10 用户定稿）：dhS5Lock > 0 时剔除出池——释放 id4 置锁
+    //（非诗篇 2 / 诗篇 1），每释放一个其他技能递减；极端过滤到空池时放开基础池兜底
     if (!e.skillWeights) e.skillWeights = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1 };
     if (!e.skillUseCount) e.skillUseCount = {};
+    const BONUS = { xiayong: 5, puxuefeng: 6, xinguodong: 7, hanxixian: 8 };
+    for (const k in BONUS) {
+      if (e.dhBonusSkills[k] && e.skillWeights[BONUS[k]] == null) e.skillWeights[BONUS[k]] = 1;
+    }
     let pool = [0, 1, 2, 3, 4];
+    for (const k in BONUS) if (e.dhBonusSkills[k]) pool.push(BONUS[k]);
+    if (e.dhMarkSkill && dhGuardActive()) pool.push(9);
     if (e.skillStreak >= 2) pool = pool.filter(x => x !== e.lastSkill);
     if (diffMods().bossNoRepeat) pool = pool.filter(x => x !== e.lastSkill);
     if (e.lastSkill === 2) pool = pool.filter(x => x !== 2);   // 蛋挞（技能3）不连放（2026-10-04 用户定稿：上一技能为蛋挞时本轮剔除）
-    const id = weightedPick(pool, e.skillWeights);
+    if (e.dhS5Lock > 0) pool = pool.filter(x => x !== 4);   // 暗影导弹雨非连续（2026-10-10 用户定稿）
+    if (!pool.length) {   // 极端全过滤兜底（当前过滤规则下数学不可达——0/3 无专属过滤，防御未来规则扩展；
+      // 4 锁豁免一跳：兜底池重建仍不含 4，本轮先放其他技能、锁递减后下一轮自然回归；
+      // 兜底含已登记的额外技能 5~8 与双标记 9（2026-10-10 用户指出修正）——奖励技能不因兜底被排除）
+      pool = [0, 1, 2, 3];
+      for (const k in BONUS) if (e.dhBonusSkills[k]) pool.push(BONUS[k]);
+      if (e.dhMarkSkill && dhGuardActive()) pool.push(9);
+    }
+    // 强制释放队列（2026-10-10 用户定稿：击坠连携精英新登记额外技能后，下一个释放的技能必定为该新技能；
+    // 登记见 02-core dhOnLinkedEliteKilled——非空时跳过随机池直接选中队首，簿记照常走下方统一路径）
+    let forced = null;
+    if (e.dhForceQueue && e.dhForceQueue.length) {
+      const f = BONUS[e.dhForceQueue.shift()];
+      if (f != null) forced = f;
+    }
+    const id = forced != null ? forced : weightedPick(pool, e.skillWeights);
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
     e.dhRepeatCd = repeat ? 0.2 : 1;
     e.lastSkill = id;
+    if (id === 4) e.dhS5Lock = isPoem() ? 1 : 2;
+    else if (e.dhS5Lock > 0) e.dhS5Lock--;
     e.skillUseCount[id] = (e.skillUseCount[id] || 0) + 1;
     for (const k in e.skillWeights) {
       if (+k !== id && !e.skillUseCount[+k]) e.skillWeights[k] *= 1.5;
     }
     e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0,
-      gi: 0, st: 'warn', pt: 0, tarts: [] };   // gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞（余字段被其他技能复用/无害）
+      gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null };   // gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞；blades/round：技能5 回旋镖；mark：技能9 双标记；eyes：技能8 旋眼；bombs：技能7 轰炸落点（余字段被其他技能复用/无害）
   }
 
-  // 黑暗之手技能间隔（2026-10-01 用户定稿）：无连携精英在场 = 旧日之歌（BOSS.skillCd 2.2s）的 40%（≈0.88s）；
-  // 有连携精英在场（dhGuardActive）= 旧日之歌的 120%（≈2.64s）；均再经 bossSkillIv 难度倍率。
+  // 黑暗之手技能间隔（2026-10-01 用户定稿；有连携比例 2026-10-10 用户定稿 120%→150%）：
+  // 无连携精英在场 = 旧日之歌（BOSS.skillCd 2.0s）的 40%（≈0.8s）；有连携精英在场（dhGuardActive）= 旧日之歌的 150%（≈3.0s）；
+  // 均再经 bossSkillIv 难度倍率。
   // repeatMul：连续随机到同技能时 ×0.2（同其他 BOSS 全局规则，2026-10-03）
   function darkhandSkillCd(repeatMul = 1) {
-    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.2 : 0.4)) * repeatMul;
+    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.5 : 0.4)) * repeatMul;
   }
 
   function runDarkhandSkill(e, dt) {
@@ -1865,7 +1931,7 @@
           const cy = e.y + e.h * 0.36;   // 2026-10-03 用户定稿：射击位置自 0.42h 略微上移
           const base = Math.atan2(player.y - cy, player.x - cx);
           const ang = base + (i - (n - 1) / 2) * c.cannonFanStep + bias;
-          pushBossBullet(cx, cy, ang, c.bulletSpeed, { r: c.bulletR, dmg: c.dmg, color: '#ff4632', dhDark: true, vxMul });
+          pushBossBullet(cx, cy, ang, c.bulletSpeed, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, vxMul });
           spawnParticles(cx, cy, '#ff4632', 3, 100);
         }
       }
@@ -1883,7 +1949,7 @@
         const decayAbs = spd * c.speedDecayMax * Math.random();
         for (let k = 0; k < perRing; k++) {
           const ang = base + k * Math.PI * 2 / perRing;
-          pushBossBullet(e.x, e.y, ang, spd, { r: c.bulletR, dmg: c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
+          pushBossBullet(e.x, e.y, ang, spd, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
         }
         spawnParticles(e.x, e.y, '#ff4632', 10, 200);
       }
@@ -1902,7 +1968,7 @@
       const growNoHit = (isPoem() || isRealme()) ? false : c.growNoHit;
       const cy = e.y + e.h * 0.42;
       const ang = Math.atan2(player.y - cy, player.x - e.x);
-      pushBossBullet(e.x, cy, ang, spd, { r: c.r, dmg: c.dmg, tart: true, tartSpin: 0, tartSpinSpd: c.spinSpd, color: '#ff4632', tartGrow: 0, tartGrowDur: growDur, tartFrom: c.growFrom, tartR0: c.r, tartGrowNoHit: growNoHit });
+      pushBossBullet(e.x, cy, ang, spd, { r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, tart: true, tartSpin: 0, tartSpinSpd: c.spinSpd, color: '#ff4632', tartGrow: 0, tartGrowDur: growDur, tartFrom: c.growFrom, tartR0: c.r, tartGrowNoHit: growNoHit });
       spawnParticles(e.x, cy, '#ff4632', 10, 200);
       // 蛋挞后摇（2026-10-04 用户定稿）：释放结束在常规间隔上额外加时——普通 +1.2s / 真我 +1.1s / 诗篇 +1.0s
       e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd) + (isPoem() ? c.cdLagPoem : (isRealme() ? c.cdLagRealme : c.cdLag));
@@ -1954,7 +2020,7 @@
           const R = c.tartW / 2 + PLAYER_CFG.hitRadius;
           for (let k = 0; k + 1 < tar.pts.length; k++) {
             if (dhSegDist(px, py, { x1: tar.pts[k].x, y1: tar.pts[k].y, x2: tar.pts[k + 1].x, y2: tar.pts[k + 1].y }) < R) {
-              tar.hit = true; damagePlayer(c.dmg * bossDmgMul()); break;
+              tar.hit = true; damagePlayer((isPoem() ? c.poemDmg : c.dmg) * bossDmgMul()); break;
             }
           }
         }
@@ -1991,16 +2057,245 @@
           // 落点目标 tx 全屏均匀 [20, W-20]，dx = tx - rx（A = 6·dx/T²，总位移 = A·T²/6 = dx；tx 已在屏内无需再限幅）
           const dx = 20 + Math.random() * (CANVAS_W - 40) - rx;
           pushBossBullet(rx, ry, Math.PI / 2, 0, {
-            len: c.len, r: c.r, dmg: c.dmg, vy: vy0,
+            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, vy: vy0,
             dhMissile: { T, A: 6 * dx / (T * T), vy0, ay, t: 0 },
             dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
           });
         } else {
           pushBossBullet(rx, ry, Math.PI / 2, c.speed0, {
-            len: c.len, r: c.r, dmg: c.dmg, accel: c.accel, maxSpeed: c.maxSpeed,
+            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, accel: c.accel, maxSpeed: c.maxSpeed,
             dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
           });
         }
+        spawnParticles(rx, ry, '#ff4632', 2, 90);
+      }
+      if (s.t >= dur + 0.35) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }   // +0.35s 缓冲确保末弹尽数生成
+    } else if (s.id === 5) {
+      // 击坠夏勇登记·碎翼回旋镖（2026-10-10 用户定稿）：左右前爪（复用 s4 groups[1] 爪位）各射一枚
+      // 夏勇同款回旋刃——轨道中心瞄准玩家释放瞬间位置（cx = 玩家 x，每轮重瞄），轨道纵向同夏勇
+      //（本体下方 bladeCyOff、下缘掠过玩家高度带，ry 随机增长同款）；时序 = 预警（ELITES.xiayong
+      // .bladeWarn 0.9s，轨道虚线 + 爪→锚点迸出线，绘制见 11-draw-boss）→ 双刃自前爪 smoothstep
+      // 迸出至轨道锚点（outDur 按实际距离自适应，峰速同款 ≈10px/帧）→ 反向绕行至**第二次相撞**
+      // 湮灭（诗篇第三次相撞 = 行程 2.75π，湮灭点钳到相撞点防 dt 误差多转）；真我/诗篇连续两轮
+      //（湮灭后 roundGap 0.2s 开始第二轮预警并重新瞄准玩家当前位置）；刃对玩家碰撞/白盾量子气泡
+      // 消解/命中冷却全同夏勇（伤害 = ELITES.xiayong.bladeDmg × bossDmgMul）
+      const c = DARKHAND.bXiayong, xc = ELITES.xiayong;
+      if (s.cx == null) {   // 每轮重瞄（释放/新一轮瞬间玩家位置快照）
+        s.cx = player.alive ? player.x : CANVAS_W / 2;
+        s.cy = e.y + xc.bladeCyOff;
+        s.ry = xc.bladeRy + Math.random() * xc.bladeRyRand * CANVAS_H;
+      }
+      if (s.st === 'warn') {
+        s.pt += dt;   // 轮间衔接从负 pt 起步（roundGap 延迟叠加在预警时长之前）
+        if (s.pt >= xc.bladeWarn) {
+          s.blades = [];
+          for (const dir of [1, -1]) {
+            const ang0 = dir > 0 ? -Math.PI / 4 : Math.PI + Math.PI / 4;   // 右上 / 左上锚点（对称，同夏勇）
+            const ax0 = s.cx + Math.cos(ang0) * xc.bladeRx, ay0 = s.cy + Math.sin(ang0) * s.ry;
+            const gx = e.x + dir * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;   // 前爪位置（同 s4 groups[1]）
+            const baseDist = Math.hypot(Math.cos(ang0) * xc.bladeRx, Math.sin(ang0) * s.ry);
+            const dist = Math.hypot(ax0 - gx, ay0 - gy);
+            s.blades.push({ dir, ang: ang0, ang0, phase: 'out', ft: 0, outDur: Math.max(xc.bladeOut, dist * xc.bladeOut / baseDist), sx: gx, sy: gy, x: gx, y: gy, hitT: 0, done: false, trail: [] });
+          }
+          spawnParticles(e.x, e.y, '#3a0a10', 8, 170);
+          s.st = 'fly'; s.pt = 0;
+        }
+      } else if (s.st === 'fly') {
+        const merge = Math.PI * (isPoem() ? c.poemTravelMul : c.travelMul);   // 各刃行程：第二次相撞 1.75π / 诗篇第三次 2.75π
+        for (const b of s.blades) {
+          if (b.done) continue;
+          if (b.hitT > 0) b.hitT -= dt;
+          if (b.phase === 'out') {
+            b.ft += dt;
+            const p = Math.min(1, b.ft / b.outDur);
+            const sp = p * p * (3 - 2 * p);
+            const ax = s.cx + Math.cos(b.ang) * xc.bladeRx, ay = s.cy + Math.sin(b.ang) * s.ry;
+            b.x = b.sx + (ax - b.sx) * sp;
+            b.y = b.sy + (ay - b.sy) * sp;
+            if (p >= 1) b.phase = 'orbit';
+          } else {
+            b.ang += b.dir * (Math.PI * 2 / xc.bladeDur) * dt;
+            if ((b.ang - b.ang0) * b.dir >= merge) {
+              b.ang = b.ang0 + b.dir * merge;   // 相撞点（两刃同点重合，同夏勇口径钳位防多转）
+              b.x = s.cx + Math.cos(b.ang) * xc.bladeRx;
+              b.y = s.cy + Math.sin(b.ang) * s.ry;
+              spawnParticles(b.x, b.y, '#3a0a10', 14, 210);   // 暗黑湮灭团（同夏勇三色）
+              spawnParticles(b.x, b.y, '#e02424', 10, 290);
+              spawnParticles(b.x, b.y, '#ffd9c8', 6, 350);
+              b.done = true;
+              continue;
+            }
+            b.x = s.cx + Math.cos(b.ang) * xc.bladeRx;
+            b.y = s.cy + Math.sin(b.ang) * s.ry;
+          }
+          b.trail.push({ x: b.x, y: b.y });
+          if (b.trail.length > 12) b.trail.shift();
+          // 量子护盾气泡消解（同夏勇：守愿者白盾不阻挡，白盾气泡可消解）
+          if (player.alive && player.shield > 0 &&
+              Math.hypot(b.x - player.x, b.y - player.y) < 36 + xc.bladeR) {
+            spawnParticles(b.x, b.y, '#6fe3ff', 10, 200); b.done = true; continue;
+          }
+          if (player.alive && b.hitT <= 0 && player.invuln <= 0 &&
+              Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < xc.bladeR + PLAYER_CFG.hitRadius) {
+            damagePlayer((isPoem() ? xc.poemBladeDmg : xc.bladeDmg) * bossDmgMul(), 1, false, false, null);
+            b.hitT = 0.6;
+          }
+        }
+        if (s.blades.every(b => b.done)) {
+          const rounds = (isPoem() || isRealme()) ? c.realmeRounds : 1;   // 真我/诗篇连续两轮（2026-10-10 用户定稿）
+          if (s.round + 1 < rounds) {
+            s.round++; s.st = 'warn'; s.pt = -c.roundGap; s.blades = null; s.cx = null;   // 新一轮重新瞄准玩家
+          } else {
+            e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd);
+          }
+        }
+      }
+    } else if (s.id === 6) {
+      // 击坠朴学峰登记·翼根散射（2026-10-10 用户定稿）：左右前爪各射两轮朴学峰同款扇形散射——
+      // 每轮每爪 shotI=0 固定竖直朝下（锚 π/2），其余子弹按朴学峰角步（张角/(发数-1) ≈6.5°/颗）
+      // 向外（第一轮：左爪向左/右爪向右）/向内（第二轮：左爪向右/右爪向左）排布；段内发数/张角/
+      // 节拍/弹速/伤害全引 ELITES.puxuefeng 单一来源；轮间微歇 roundGap（自定值待校准）
+      const c = DARKHAND.bPuxuefeng, pc = ELITES.puxuefeng;
+      const shots = isPoem() ? pc.poemSegShots : pc.segShots;
+      const step = (isPoem() ? pc.poemSegSpreadDeg : pc.segSpreadDeg) / (shots - 1) * Math.PI / 180;
+      const segGap = isPoem() ? pc.poemSegGap : isRealme() ? pc.realmeSegGap : pc.segGap;
+      s.shotT -= dt;
+      while (s.shotT <= 0 && s.cannonIdx < shots) {
+        s.shotT += segGap;
+        if (!player.alive) break;
+        const i = s.cannonIdx++;
+        for (const side of [1, -1]) {   // side 1 = 右爪、-1 = 左爪
+          const gx = e.x + side * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;   // 前爪位置（同 s4 groups[1]）
+          const dir = s.round === 0 ? side : -side;   // 第一轮向外 / 第二轮向内（dir 决定偏离竖直的方向）
+          const ang = Math.PI / 2 + dir * i * step;
+          pushBossBullet(gx, gy, ang, pc.bulletSpeed, { r: pc.bulletR, dmg: isPoem() ? pc.poemDmg : pc.dmg, color: '#e02424', dhDark: true });
+          spawnParticles(gx, gy, '#ff4632', 2, 90);
+        }
+      }
+      if (s.cannonIdx >= shots) {
+        if (s.round + 1 < c.rounds) { s.round++; s.cannonIdx = 0; s.shotT = -c.roundGap; }
+        else { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }
+      }
+    } else if (s.id === 7) {
+      // 击坠辛国栋登记·边界轰炸（2026-10-10 用户定稿）：左右两列（colInset 内收于左右屏缘）竖直朝下
+      // 依次投弹——每拍左右两列各投一枚（dropsPerCol 枚、y 自 y0 屏高逐拍下移 yStep），落点预警/半径/
+      // 伤害/节拍全引 ELITES.xinguodong 单一来源（爆炸口径同 xgBombs：blastRing + 粒子 + 震屏）；
+      // 投弹时黑暗之手对应列位置喷辛国栋同款脱离火星；技能开始时本体中心同步竖直向下释放一轮
+      // 辛国栋同款扇形轻追踪导弹（仅一批——「注意只有一轮」；导弹走敌方 missiles 通道，结算同款）
+      const c = DARKHAND.bXinguodong, xc = ELITES.xinguodong;
+      const blastR = isPoem() ? xc.poemBombR : isRealme() ? xc.realmeBombR : xc.bombR;
+      const warnT = isPoem() ? xc.poemBombWarn : isRealme() ? xc.realmeBombWarn : xc.bombWarn;
+      if (s.bombs == null) {
+        // 首帧：本体中心一轮导弹雨（一批 volleyN 发扇形轻追踪，全同辛国栋连发导弹批次公式——base 竖直向下）
+        s.bombs = [];
+        const vn = isPoem() ? xc.poemVolleyN : xc.volleyN;
+        const mSpd = (isPoem() || isRealme()) ? xc.missileSpeed : xc.illusionMissileSpeed;
+        const mTurn = (isPoem() || isRealme()) ? xc.missileTurn : xc.illusionMissileTurn;
+        const stepA = xc.volleySpreadDeg / (vn - 1) * Math.PI / 180;
+        for (let i = 0; i < vn; i++) {
+          const off = i - (vn - 1) / 2;
+          const ang = Math.PI / 2 + off * stepA;
+          missiles.push({
+            x: e.x, y: e.y + e.h / 2,
+            vx: Math.cos(ang) * mSpd, vy: Math.sin(ang) * mSpd,
+            turn: off === 0 ? 0 : -Math.sign(off) * mTurn,   // 预压转向（外侧弹弧线收回，同辛国栋）
+            r: xc.missileR, dmg: isPoem() ? xc.poemMissileDmg : xc.missileDmg, dk: 1,   // dk 压暗（辛国栋导弹同款标记）
+          });
+        }
+        spawnParticles(e.x, e.y + e.h / 2, '#ff4652', 8, 160);
+      }
+      s.pt += dt;
+      while (s.cannonIdx < c.dropsPerCol && s.pt >= s.cannonIdx * c.dropIv) {
+        const k = s.cannonIdx++;
+        const y = CANVAS_H * (c.y0 + c.yStep * k);   // 竖直从上往下依次推进
+        for (const side of [1, -1]) {
+          const x = side > 0 ? CANVAS_W - c.colInset : c.colInset;
+          s.bombs.push({ x, y, t: 0 });
+          // 本体对应列位置喷辛国栋同款脱离火星（亮红 ×12 + 深红 ×8）
+          spawnParticles(x, e.y + 16, '#ff4652', 12, 220);
+          spawnParticles(x, e.y + 16, '#a11226', 8, 160);
+        }
+      }
+      for (let i = s.bombs.length - 1; i >= 0; i--) {
+        const b = s.bombs[i];
+        b.t += dt;
+        if (b.t >= warnT) {
+          if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) <= blastR) {
+            damagePlayer((isPoem() ? xc.poemBombDmg : xc.bombDmg) * bossDmgMul(), 1, false, false, null);
+          }
+          spawnParticles(b.x, b.y, '#ff4652', 20, 300);
+          spawnBlastRing(b.x, b.y, blastR, '#ff5a6a', 0.3);
+          shake(4, 0.2);
+          s.bombs.splice(i, 1);
+        }
+      }
+      if (s.cannonIdx >= c.dropsPerCol && !s.bombs.length) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }
+    } else if (s.id === 8) {
+      // 击坠韩希先登记·旋眼火螺（2026-10-10 用户定稿）：本体中心两侧随机一侧、offX 距离处释放韩希先
+      // 同款旋眼火螺（三炮塔公转 + 径向射击长条弹，公转半径/转速/时长/塔数/节拍/弹参数全引
+      // ELITES.hanxixian 单一来源；锚点固定不随本体移动，中途反转一次同款）——真我/诗篇两侧同时
+      // 释放且完全镜像对称（对侧锚塔角 = π − 本侧锚塔角、公转反号 → 任意时刻两侧塔位/弹幕关于
+      // 本体竖直轴完全对称）；真我射击间隔 +25%（fireIv ×1.25）、诗篇不增（弹道仍为诗篇加速长条弹）
+      const c = DARKHAND.bHanxixian, hc = ELITES.hanxixian;
+      if (s.eyes == null) {
+        const dual = isPoem() || isRealme();
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const a0 = Math.random() * Math.PI * 2;
+        s.eyes = [{ ax: e.x + side * c.offX, ay: e.y, ang: a0, dir: 1 }];
+        if (dual) s.eyes.push({ ax: e.x - side * c.offX, ay: e.y, ang: Math.PI - a0, dir: -1 });   // 镜像眼（塔角 π−、公转反号）
+        s.fireT = 0;
+      }
+      const fireIv = isRealme() ? hc.fireIv * 1.25 : hc.fireIv;   // 真我 +25%（诗篇不增——2026-10-10 用户定稿）
+      const flip = s.t >= hc.orbitDur / 2;   // 中途反转一次（同款）
+      for (const eye of s.eyes) eye.ang += eye.dir * hc.orbitSpd * dt * (flip ? -1 : 1);
+      s.fireT += dt;
+      while (s.fireT >= fireIv) {
+        s.fireT -= fireIv;
+        for (const eye of s.eyes) {
+          for (let i = 0; i < hc.turretN; i++) {
+            const ta = eye.ang + i * Math.PI * 2 / hc.turretN;
+            const tx = eye.ax + Math.cos(ta) * hc.orbitR, ty = eye.ay + Math.sin(ta) * hc.orbitR;
+            const opts = { x: tx, y: ty, r: hc.bulletR, dmg: isPoem() ? hc.poemDmg : hc.dmg, color: '#8a1018', len: SHIP_BULLET_LEN };   // 黑红但不过黑（同款）
+            if (isPoem()) {
+              opts.accel = 300; opts.maxSpeed = hc.bulletSpeed * 1.8;   // 诗篇加速长条弹（同款）
+              pushBossBullet(tx, ty, ta, 2, opts);
+            } else {
+              pushBossBullet(tx, ty, ta, hc.bulletSpeed, opts);
+            }
+          }
+        }
+      }
+      if (s.t >= hc.orbitDur) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }
+    } else if (s.id === 9) {
+      // 双标记导弹（真我&诗篇首次降至 80% 血解锁，2026-10-10 用户定稿）：标记玩家释放瞬间瞬时位置
+      // 与其水平镜像位置（关于屏幕竖直中线），机体实心区生成暗影导弹雨同款抛物导弹——弹道/伤害/
+      // 观感全引 DARKHAND.s5 单一来源，水平剖面（dhMissile S 曲线）精确落至两个标记点（交替分配，
+      // 弹到标记高度时水平速度恰归 0）；标记点短暂显示红色收缩圈（绘制见 11-draw-boss）；释放期间
+      // 本体移速 ×bMark.slowMul 0.4（指数逼近同 s5 通道，见 updateBossDarkhand）
+      const c = DARKHAND.bMark, c5 = DARKHAND.s5;
+      if (s.mark == null) {
+        s.mark = { x: player.alive ? player.x : CANVAS_W / 2, y: player.alive ? player.y : CANVAS_H * 0.6 };
+        s.mark2 = { x: CANVAS_W - s.mark.x, y: s.mark.y };
+        s.markT = 0;
+      }
+      s.markT += dt;
+      const dur = isPoem() ? c.poemDur : c.realmeDur;
+      const n = isPoem() ? c.poemCount : c.realmeCount;
+      const iv = dur / n;
+      while (s.firedN < n && s.t >= s.firedN * iv) {
+        s.firedN++;
+        const rp = dhSampleSolid();
+        const rx = e.x + rp.x * e.w, ry = e.y + rp.y * e.h;
+        const mk = s.firedN % 2 ? s.mark : s.mark2;   // 交替分配两个标记落点
+        const vy0 = -c5.riseVy, ay = c5.accel;
+        const dY = Math.max(mk.y - ry, 40);   // 标记高于机体时兜底 40px 下落完成水平剖面（同 s5 下限口径）
+        const T = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * ay * dY)) / ay;
+        const dx = mk.x - rx;
+        pushBossBullet(rx, ry, Math.PI / 2, 0, {
+          len: c5.len, r: c5.r, dmg: isPoem() ? c5.poemDmg : c5.dmg, vy: vy0,
+          dhMissile: { T, A: 6 * dx / (T * T), vy0, ay, t: 0 },
+          dhDark: true, color: '#ff4632', streak: c5.streak, fadeIn: c5.fadeIn,
+        });
         spawnParticles(rx, ry, '#ff4632', 2, 90);
       }
       if (s.t >= dur + 0.35) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }   // +0.35s 缓冲确保末弹尽数生成
@@ -2206,9 +2501,9 @@
         e.phaseT = 0;
         e.scale = 1;
         e.combatReady = true;
-        e.skillCd = bossSkillIv(1.0 * (isRealme() ? SONG_SHIP.skillCdMul : 1));
-        if (isRealme()) {
-          // 真我：登场部件球弹幕改为技能5 的登场变体——六发暗黑子弹共同瞄准玩家当前位置
+        e.skillCd = bossSkillIv(1.0);
+        if (songRealmeTier()) {
+          // 真我/诗篇：登场部件球弹幕改为技能5 的登场变体——六发暗黑子弹共同瞄准玩家当前位置
           // （视为释放一次技能5，但不走技能池、不触发技能1连携）
           fireDarkSix(e, Array.from({ length: 6 }, () => ({ x: player.x, y: player.y })));
           shake(10, 0.5);
@@ -2232,11 +2527,11 @@
     e.hpTrail += (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
 
     // 技能1（主技能或连携技能1）：具象/虚象与连携技能1期间停止移动（停移期间清零速度，
-    // 技能结束从静止平滑加速）；真我主技能1不再停顿——移速 ×s1MoveSlow（-75%），期望速度
+    // 技能结束从静止平滑加速）；真我/诗篇主技能1不再停顿——移速 ×s1MoveSlow（-75%），期望速度
     // 经转向加速度平滑过渡，无骤降/骤停（航点保持原样，技能结束从当前位置继续当前段）
     const s1Main = !!(e.skill && e.skill.id === 0);
     const s1Link = !!(e.link && e.link.id === 0);
-    if (s1Link || (s1Main && !isRealme())) {
+    if (s1Link || (s1Main && !songRealmeTier())) {
       e.bvx = 0; e.bvy = 0;
     } else {
       bossMoveUpdate(e, BOSS.move, dt, s1Main ? SONG_SHIP.s1MoveSlow : 1);
@@ -2285,6 +2580,15 @@
   }
 
   // ---------- 真我：旧日之歌技能改版辅助 ----------
+  // 诗篇沿用真我改版门控（2026-10-10 用户定稿）：真我或诗篇均按 SONG_SHIP 深度改版行动——
+  // 技能池 0~5 / SONG_SHIP 参数 / 入场暗黑子弹齐射 / 技能1 不停移（移速 ×s1MoveSlow）。
+  // 仅替换旧日之歌段落的难度分支站点；暴风之眼 / 风暴编织者 / 黑暗之手各站点不受影响
+  function songRealmeTier() { return isRealme() || isPoem(); }
+
+  // 暴风之眼真我改版门控（2026-10-10 用户定稿）：诗篇沿用真我全套技能组（同 songRealmeTier 先例），
+  // 数值经 STORM/STORM_SHIP 的 *Poem 覆盖键叠加；仅替换暴风之眼段落的难度分支站点
+  function stormTier() { return isRealme() || isPoem(); }
+
   // 生成 n 条旋转双曲线弹流：初始方向与角速度逐条随机。
   // 2 条流（连携概率分支）：左右管各一条，向外/向内随机（左右对称）；4 条流：两管各二、方向完全随机
   function buildArcStreams(n) {
@@ -2340,10 +2644,23 @@
       const sx = e.x + pt.tx, sy = e.y + pt.ty, t = targets[k];
       const ang = t.ang != null ? t.ang : Math.atan2(t.y - sy, t.x - sx);
       pushBossBullet(sx, sy, ang, D.speed,
-        { r: D.r, dmg: D.dmg, color: D.color, trail: D.trail, bounceX: !!t.bounce, bounceMax: t.bounce ? D.bounceMax : 0, swRef: true });
+        { r: D.r, dmg: isPoem() ? D.poemDmg : D.dmg, color: D.color, trail: D.trail, bounceX: !!t.bounce, bounceMax: t.bounce ? D.bounceMax : 0, swRef: true });   // 诗篇：暗黑子弹伤害 42（D.poemDmg，2026-10-10 用户定稿；覆盖技能5/6 与登场变体）
     });
     spawnParticles(e.x, e.y, '#c8b0ff', 14, 240);
     shake(6, 0.3);
+  }
+
+  // 诗篇技能5 追加弹（2026-10-10 用户定稿）：4 发暗黑子弹——射向在竖直向下 ±75°（下方 150° 扇区）
+  // 逐发独立随机（不强求对称），可在左右边界各反弹 1 次（bounceMax=1，超过后不再反弹、直飞出屏）；
+  // 起点自六部件位随机取 4 处（洗牌取前 4），与本体 6 发同时射出
+  function fireDarkScatterPoem(e) {
+    const D = SONG_SHIP.dark;
+    const idx = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5).slice(0, 4);
+    for (const k of idx) {
+      const pt = e.parts[k];
+      pushBossBullet(e.x + pt.tx, e.y + pt.ty, Math.PI / 2 + rand(-D.downSpread, D.downSpread), D.speed,
+        { r: D.r, dmg: D.poemDmg, color: D.color, trail: D.trail, bounceX: true, bounceMax: 1, swRef: true });   // 诗篇专属：径取诗篇伤害 42
+    }
   }
 
   // 技能5/6 重组动画数据：六球自机体四周随机角、半径 animR 处飞向各自镶接位。
@@ -2418,7 +2735,7 @@
       s.fire = 0.07;
       s.alt ^= 1;
       for (const bx of [lx, rx]) {
-        pushBossBullet(bx, by, Math.PI / 2 + rand(-0.03, 0.03), 250 * sm, { len: BOSS.longLen, dmg: BOSS.bulletDmg });
+        pushBossBullet(bx, by, Math.PI / 2 + rand(-0.03, 0.03), 250 * sm, { len: BOSS.longLen, dmg: isPoem() ? BOSS.poemBulletDmg : BOSS.bulletDmg });
       }
     }
     s.curveT -= dt;
@@ -2426,15 +2743,15 @@
       s.curveT = C.emitGap;
       for (const st of s.streams) {
         pushBossBullet(st.tube === 0 ? lx : rx, by, st.ang0, C.speed * sm,
-          { r: 4, dmg: C.arcDmg, color: BOSS_BULLET.arc, arcTint: true, angVel: st.spin, spinUp: C.spinUpMul, spinDown: C.spinDownMul,
+          { r: 4, dmg: isPoem() ? BOSS.poemArcDmg : C.arcDmg, color: BOSS_BULLET.arc, arcTint: true, angVel: st.spin, spinUp: C.spinUpMul, spinDown: C.spinDownMul,
             life: s.linked ? C.linkedLife : C.life, lifeFade: C.fadeTime });   // 连携释放：寿命降至 3.2s；arcTint 出生深紫随时间漂移至弧线绿（10-draw-world）
       }
     }
   }
 
   function startBossSkill(e, excludeId) {
-    const ship = isRealme();
-    // 全局机制：本局内从未释放过的技能，在其他技能被释放时权重 ×1.5（真我技能池 0~5）
+    const ship = songRealmeTier();   // 真我/诗篇：技能池 0~5 + SONG_SHIP 参数（诗篇全套沿用真我改版，2026-10-10 用户定稿）
+    // 全局机制：本局内从未释放过的技能，在其他技能被释放时权重 ×1.5（真我/诗篇技能池 0~5）
     if (!e.skillWeights) e.skillWeights = ship ? { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 } : { 0: 1, 1: 1, 2: 1, 3: 1 };
     if (!e.skillUseCount) e.skillUseCount = {};
     let id;
@@ -2482,8 +2799,6 @@
     e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.2 : BOSS.skillCd);
     // 血量 <50%：技能释放间隔额外降低 50%
     if (e.hp / e.maxHp < 0.5) e.skillCd *= 0.5;
-    // 真我：技能释放间隔 = 具象的 55%（SONG_SHIP.skillCdMul）
-    if (ship) e.skillCd *= SONG_SHIP.skillCdMul;
     e.lastSkill = id;
     const spMul = repeat ? 1.6 : 1.0;   // 连中同技能：本次弹速 ×1.6
     // 全局机制结算：记录本次使用，其他从未释放过的技能权重 ×1.5
@@ -2528,12 +2843,13 @@
         e.skill = { id: 5, t: 0, dur: 1.25, fired: false, anim: buildPartsAnim() };
         break;
     }
-    // 真我连携：释放技能 2~6 时概率同时释放一次技能1——≥70% 血 20% / <70% 血 30% / <35% 血 50%
+    // 真我/诗篇连携：释放技能 2~6 时概率同时释放一次技能1——真我 ≥70% 血 15% / 30~70% 血 25% / <30% 血 40%；
+    // 诗篇 20% / 30% / 50%（2026-10-10 用户定稿分难度，见 SONG_SHIP.s1.link / linkPoem）
     // （连携不享时长加成，必定 2 条流且弧线弹寿命降至 SONG_SHIP.s1.linkedLife）
     if (ship && id !== 0) {
-      const L = SONG_SHIP.s1.link;
+      const L = isPoem() ? SONG_SHIP.s1.linkPoem : SONG_SHIP.s1.link;   // 此分支仅真我/诗篇可达（ship = songRealmeTier()），非诗篇即真我
       const hpR = e.hp / e.maxHp;
-      const ch = hpR < 0.35 ? L.chanceBelow35 : hpR < 0.70 ? L.chanceLowHp : L.chance;
+      const ch = hpR < 0.30 ? L.chanceBelow30 : hpR < 0.70 ? L.chanceLowHp : L.chance;
       if (Math.random() < ch) e.link = buildSongSkill1(e, true);
     }
   }
@@ -2545,8 +2861,8 @@
     const sm = s.spMul || 1;   // 连中同技能时的弹速倍率（×1.6）
 
     if (s.id === 0) {
-      if (isRealme()) {
-        // 真我技能1：双管长条弹连发（同具象）+ 恒 4 条（连携必 2 条、寿命 3.2s）旋转双曲线弹流
+      if (songRealmeTier()) {
+        // 真我/诗篇技能1：双管长条弹连发（同具象）+ 恒 4 条（连携必 2 条、寿命 3.2s）旋转双曲线弹流
         runSongSkill1Ship(e, s, dt, lx, rx, by, sm);
       } else {
         // 技能1：停止移动，双管极快速连发长条弹（直向为主 + 极轻微散射）
@@ -2580,8 +2896,8 @@
         }
       }
     } else if (s.id === 1) {
-      if (isRealme()) {
-        // 真我技能2：7 轮大子弹散射（缺失 10%~20%）；首轮必定慢速，其余随机 3 轮快速（弹速 ×1.4~1.7）；
+      if (songRealmeTier()) {
+        // 真我/诗篇技能2：7 轮大子弹散射（缺失 10%~20%）；首轮必定慢速，其余随机 3 轮快速（弹速 ×1.4~1.7）；
         // 每轮瞄准带 ±5° 偏移角
         s.roundT -= dt;
         if (s.roundT <= 0 && s.rounds < SONG_SHIP.s2.rounds) {
@@ -2594,7 +2910,7 @@
           for (let k = 0; k < n; k++) {
             if (Math.random() < missRate) continue;   // 子弹随机缺失
             pushBossBullet(e.x, by, base + (k - (n - 1) / 2) * 0.16, 185 * sm * fast,
-              { r: 13, dmg: BOSS.bigDmg, color: BOSS_BULLET.big, streak: 39 });   // 大子弹拖尾长度（px，≈1.5× 直径——过短会被弹体辉光完全盖住）
+              { r: 13, dmg: isPoem() ? BOSS.poemBigDmg : BOSS.bigDmg, color: BOSS_BULLET.big, streak: 39 });   // 大子弹拖尾长度（px，≈1.5× 直径——过短会被弹体辉光完全盖住）；诗篇伤害 42（poemBigDmg）
           }
           shake(4, 0.2);
         }
@@ -2616,8 +2932,8 @@
         }
       }
     } else if (s.id === 2) {
-      if (isRealme()) {
-        // 真我技能3：lock 部位朝标记点；track 部位始终瞄准玩家当前位置；
+      if (songRealmeTier()) {
+        // 真我/诗篇技能3：lock 部位朝标记点；track 部位始终瞄准玩家当前位置；
         // 每轮射击间隔 0.9~1.3s 四部位独立随机；所有瞄准均带 ±10° 偏移角
         for (const p of s.parts) {
           p.timer -= dt;
@@ -2629,7 +2945,7 @@
             const ty = p.mode === 'lock' ? s.mark.y : player.y;
             const base = Math.atan2(ty - py, tx - px) + rand(-SONG_SHIP.aimOffset, SONG_SHIP.aimOffset);
             for (let k = -1; k <= 1; k++) {
-              pushBossBullet(px, py, base + k * 0.12, 270 * sm, { len: BOSS.longLen, dmg: BOSS.bulletDmg });
+              pushBossBullet(px, py, base + k * 0.12, 270 * sm, { len: BOSS.longLen, dmg: isPoem() ? BOSS.poemBulletDmg : BOSS.bulletDmg });
             }
           }
         }
@@ -2649,8 +2965,8 @@
         }
       }
     } else if (s.id === 3) {
-      if (isRealme()) {
-        // 真我技能4：以具象为基准（双管每轮各 1 发、10% 概率双管齐指玩家），获得以下修正——
+      if (songRealmeTier()) {
+        // 真我/诗篇技能4：以具象为基准（双管每轮各 1 发、10% 概率双管齐指玩家），获得以下修正——
         // ≥70% 血：270° 大范围散射 + 射速 +100%（间隔 ×0.5）；
         // <70% 血：360° 单发 + 射速 +200%（间隔 ÷3）+ 定时向下扇形圆弹幕（8~14 发，
         //   弹速 = 乱射长条弹基准速度 ×(60%~90% 或 120%~150%)，
@@ -2665,7 +2981,7 @@
             const ang = aim
               ? Math.atan2(player.y - by, player.x - bx)
               : (low ? rand(0, Math.PI * 2) : rand(-Math.PI / 4, Math.PI * 1.25));   // <70%：360°；≥70%：270°（右上 45° → 下 → 左上 45°，避开正上方 90° 死角）
-            pushBossBullet(bx, by, ang, rand(160, 300) * sm, { len: BOSS.longLen, dmg: BOSS.bulletDmg });
+            pushBossBullet(bx, by, ang, rand(160, 300) * sm, { len: BOSS.longLen, dmg: isPoem() ? BOSS.poemBulletDmg : BOSS.bulletDmg });
           }
         }
         // 定时向下扇形圆弹幕（仅 <70% 血阶段）
@@ -2679,7 +2995,7 @@
             const halfSpread = rand(0.55, 0.85);   // 扇形半张角（随机）
             for (let k = 0; k < n; k++) {
               const ang = Math.PI / 2 + (n === 1 ? 0 : ((k / (n - 1)) - 0.5) * 2 * halfSpread);
-              pushBossBullet(e.x, by, ang, refSp * mul, { r: 5, dmg: BOSS.bulletDmg, color: BOSS_BULLET.long, bossRound: true });
+              pushBossBullet(e.x, by, ang, refSp * mul, { r: 5, dmg: isPoem() ? SONG_SHIP.s4.poemFanDmg : BOSS.bulletDmg, color: BOSS_BULLET.long, bossRound: true });   // 诗篇扇形圆弹幕单列 24（poemFanDmg，不随诗篇长条弹 26）
             }
             shake(3, 0.15);
           }
@@ -2709,6 +3025,9 @@
           s.fired = true;
           endPartsAnim(e);
           fireDarkSix(e, darkTargetsBand());
+          // 诗篇：追加 4 发暗黑子弹——下方 150° 扇区逐发独立随机偏角（不必对称），
+          // 可在左右壁各反弹一次（bounceMax=1）；与本体 6 发同时射出（2026-10-10 用户定稿）
+          if (isPoem()) fireDarkScatterPoem(e);
         }
       }
     } else if (s.id === 5) {

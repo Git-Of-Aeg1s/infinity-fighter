@@ -18,7 +18,7 @@
 //   'laser:storm2'   风暴编织者技能1 电弧激光击杀
 //
 // 击杀来源标记（killSrc，killEnemy 同步窗口内消费，用完即清）：
-//   'dagou'      大狗导弹雨击杀（07-player updateDagouMissiles / dagouMissileBlast）
+//   'dagou'      叮咚鸡导弹雨击杀（07-player updateDagouMissiles / dagouMissileBlast）
 //   'chixin'     炽心火环灼烧击杀（07-player updatePlayer 灼烧循环）
 //   'bomb-keli'  可莉绷绷炸弹击杀（07-player useBomb，BOSS 击杀判定用）
 
@@ -61,8 +61,8 @@
     huiHealTotal: 0,     // 洄累计治疗量（时流回溯 ≥100；含每 2s 回复与击败 BOSS 回复）
     lanxinShieldBoss: false, // 当前结晶护盾开启于 BOSS 战（云心）
     lanxinShieldAbsorb: 0,   // 当前结晶护盾存续期间气泡消解的敌弹数（云心）
-    dagouChain3N: 0,     // 大狗：完成「连射 3 轮」的链序列数（欧欧欧 ≥2）
-    dagouChain4N: 0,     // 大狗：完成「连射 4 轮」的链序列数（！？欧欧？！ ≥1）
+    dagouChain3N: 0,     // 叮咚鸡：完成「连射 3 轮」的链序列数（欧欧欧 ≥2）
+    dagouChain4N: 0,     // 叮咚鸡：完成「连射 4 轮」的链序列数（！？欧欧？！ ≥1）
     _dagouSeqC3: false,  // 当前链序列已计 3 轮（同序列 4 轮不重复计 3 轮）
     _dagouSeqC4: false,  // 当前链序列已计 4 轮
     auraFieldKills: 0,   // 御4力场 / 铁砧光圈内击坠数（其实是打不到 ≥12）
@@ -283,7 +283,7 @@
     achv.cheatUsed = true;
   }
 
-  // 大狗导弹雨连发作弊开启（14-main 9 键）——记作弊 + 解锁捣蛋来袭（开启即得，不再计时长）
+  // 叮咚鸡导弹雨连发作弊开启（14-main 9 键）——记作弊 + 解锁捣蛋来袭（开启即得，不再计时长）
   function achvNoteDagouCheatOn() {
     achvNoteCheat();
     unlockAchievement('dagouCheat100');
@@ -394,7 +394,7 @@
     unlockAchievement('lingluoHp1');
   }
 
-  // 大狗导弹连射链上报（07-player launchDagouWave；lv = 连射层级，0/缺省 = 常规波——新序列起点）。
+  // 叮咚鸡导弹连射链上报（07-player launchDagouWave；lv = 连射层级，0/缺省 = 常规波——新序列起点）。
   // 「连射 N 轮」= 单条链序列总发射 N 波（1 轮常规 + N-1 次连射，序列自常规波起算、跨序列不累计）：
   //   欧欧欧 = 达成 2 次「连射 3 轮」（1 常规 + 2 连射，lv 达 2）；！？欧欧？！ = 达成 1 次「连射 4 轮」（lv 达 3）
   function achvNoteDagouChain(lv) {

@@ -6,7 +6,7 @@
   //   state.{cheatArm, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane } from './01-config-loadout.js';
+  import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
@@ -74,8 +74,8 @@
     if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发 / 萧杨：原石抽卡充能满时释放）
-    // 大狗导弹雨连发开关（作弊键，不要求装备大狗——任意驾驶员均可触发）：
-    // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备大狗时：开启即启用整套导弹雨系统并以连发间隔运行）。
+    // 叮咚鸡导弹雨连发开关（作弊键，不要求装备叮咚鸡——任意驾驶员均可触发）：
+    // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备叮咚鸡时：开启即启用整套导弹雨系统并以连发间隔运行）。
     // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应；
     // WEAPON_CHEAT_REQUIRE_ARM = true 时需先按 0 武装（预留机制，见顶部开关说明）
     if (k === '9' && !swarmTest && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
@@ -84,7 +84,7 @@
         state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
         achvNoteDagouCheatOn();   // 成就：作弊开关（记作弊 + 解锁捣蛋来袭）
       }
-      console.log('[debug] 大狗 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
+      console.log('[debug] 叮咚鸡 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
     }
     // 天秀连发风暴开关（作弊键，不要求装备天秀忧郁王子——任意驾驶员均可触发）：
     // 战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭；
@@ -284,7 +284,7 @@
         // 击败 BOSS 的跳变升级豁免（douzhiSkipOnce）对三种一并生效；挑战模式不刷；
         // 2026-10-04 用户定稿：BOSS 试炼（testBoss）全程不刷——击败 boss 升级引发的刷新一并禁绝，试炼场只打 boss 不出杂鱼
         else if (!state.challenge && !state.testBoss && Math.random() < rewardDroneChance()) spawnDouzhi(pickRewardDroneType());
-        // 叮咚鸡：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
+        // 大狗：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
       } else if (levelFlow.level < levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
@@ -526,8 +526,8 @@
       updateCrystals(dt);
       updateFriendStorms(dt);   // 天秀忧郁王子：友方大风暴推进（风弹 / 主体接触伤害 / 生命周期）
       updateAiyiWaves(dt);      // 埃逸：自爆扩散波推进（波前触碰敌人立刻结算）
-      updateDagouMissiles(dt);  // 大狗：导弹雨推进（错峰发射 / 上行飞行 / 命中溅射）
-      updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 陵落冷却 / 大狗计时
+      updateDagouMissiles(dt);  // 叮咚鸡：导弹雨推进（错峰发射 / 上行飞行 / 命中溅射）
+      updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 陵落冷却 / 叮咚鸡计时
       updateParticles(dt);
       updateStars(dt);
       updateNebulae(dt);
@@ -555,7 +555,8 @@
             `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>` +
             (state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`) +
             `</span>`,
-            '返回主界面'
+            '返回主界面',
+            specialGearActive()   // 特殊装备角标：当局使用 special 装备时结算弹窗右上角显示（12-ui showOverlay 第 4 参）
           );
           // BOSS 试炼 / 图鉴挑战胜利：额外提供「再次挑战」（重开同一目标）；正常流程胜利不显示
           if (state.testBoss || state.challenge) retrialBtn.classList.remove('hidden');
@@ -615,7 +616,7 @@
         armorGlyphFx[i].t += dt;
         if (armorGlyphFx[i].t >= armorGlyphFx[i].dur) armorGlyphFx.splice(i, 1);
       }
-      for (let i = blastRings.length - 1; i >= 0; i--) {   // 爆炸冲击圈（大狗导弹雨）推进
+      for (let i = blastRings.length - 1; i >= 0; i--) {   // 爆炸冲击圈（叮咚鸡导弹雨）推进
         blastRings[i].t += dt;
         if (blastRings[i].t >= blastRings[i].dur) blastRings.splice(i, 1);
       }

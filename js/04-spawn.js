@@ -7,9 +7,9 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_FORTRESS, UNREAL, VARIANTS, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
+  import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
-  import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerHoldMul, strikerNoHoldSpdMul } from './01-config-difficulty.js';
+  import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
@@ -66,6 +66,9 @@
 
 ﻿// 04-spawn：敌机工厂 / 编队与波次 / 场面压力刷新 / 特殊敌人生成 / 图鉴挑战模式
 
+  // 2类突击艇停留时长（2026-10-10 用户定稿）：常规 5s、诗篇 8s——各波次波内本就统一，现全波次同值
+  const strikerHold = () => (isPoem() ? 8 : 5);
+
   // ---------- 敌机 ----------
   /**
    * 创建敌机。behavior / variant.skill 决定移动 / 开火模式：
@@ -113,9 +116,9 @@
       behavior: opts.behavior || 'pass',
       hoverY: opts.hoverY || 0,
       arrived: false,
-      // striker 未显式给停留时长时的默认档（5~6s ×诗篇倍率）：应对日后单独刷新的场合；其余类型 0
+      // striker 未显式给停留时长时的统一档（5s，诗篇 8s——见 strikerHold）：应对日后单独刷新的场合；其余类型 0
       holdTimer: opts.holdTimer != null ? opts.holdTimer
-        : (type === 'striker' ? rand(5, 6) * strikerHoldMul() : 0),
+        : (type === 'striker' ? strikerHold() : 0),
       vNoHold: !!opts.vNoHold,             // 「2*7」无停留直通：越过前锋停留线后平滑衰减到入位速度 × vNoHoldSpdMul
       vNoHoldSpdMul: opts.vNoHoldSpdMul,   // 速度保留比例（基准 0.8 / 诗篇 0.6，取值见 strikerNoHoldSpdMul）
       speedMul: opts.speedMul != null ? opts.speedMul : 1,   // 移动/下落速度倍率（特殊编队用）
@@ -150,7 +153,7 @@
     // 2类变体移动数据：入位速度 / 冲锋基准（冲锋 = charge + (关卡-1)×5）与前锋停留线（y 200~240 逐架随机；
     // 2*7 经 opts.holdY 传入"全波统一基准 − 出生偏移"的差异化值 → 行程相等、同时到位、阵型保持；幽暮走独立状态机不适用）
     if (type === 'striker' && variant) {
-      if (variant.entry != null) e.entrySpd = variant.entry;
+      if (variant.entry != null) e.entrySpd = isPoem() ? STRIKER_POEM_ENTRY : variant.entry;   // 入位速度：常规 160（变体表）、诗篇 200（2026-10-10 用户定稿）
       if (variant.charge != null) e.chargeBase = variant.charge;
       if (variant.id !== 'dusk') e.holdY = opts.holdY != null ? opts.holdY : rand(200, 240);
       // 坚垒护卫艇（fortress）：停留位置较前锋停留线整体下移 48px（更靠下、贴近玩家；
@@ -226,8 +229,11 @@
       if (ph != null) e.hp = e.maxHp = ph;
     }
     // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
-    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）；置于诗篇血量之后以保证测试血量优先
-    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss') {
+    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）；置于诗篇血量之后以保证测试血量优先；
+    // BOSS 测试（kind 'boss'）中侧翼伴生的 1类强制波同样按正常血量（2026-10-10 用户定稿：不再 20000 测试血量，
+    // 按当前难度注册表 / 诗篇 POEM_HP——本波经 spawnBossMinionWave 在 BOSS 测试中照常刷新）
+    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss'
+        && !(state.challenge.kind === 'boss' && type === 'side')) {
       e.hp = e.maxHp = TEST_HP;
     }
     enemies.push(e);
@@ -318,7 +324,7 @@
     const vShape = Math.random() < 0.4;
     const gap = 72;
     const x0 = rand(70, CANVAS_W - 70 - (n - 1) * gap);
-    const hold = rand(4, 6) * strikerHoldMul();   // 波次统一：本波两架停留完全一致
+    const hold = strikerHold();   // 波次统一：本波两架停留完全一致（5s，诗篇 8s）
     for (let k = 0; k < n; k++) {
       const x = x0 + k * gap;
       const y = vShape ? -50 - Math.abs(k - (n - 1) / 2) * 40 : -50 - k * 16;
@@ -337,7 +343,7 @@
     const seq = [2, 3, 2, 2, 3, 2];   // 回文对称
     const gap = 70;
     const x0 = (CANVAS_W - (seq.length - 1) * gap) / 2;
-    const hold = rand(6, 8) * strikerHoldMul();   // 波次统一：本波 4 架 2类停留完全一致
+    const hold = strikerHold();   // 波次统一：本波 4 架 2类停留完全一致（5s，诗篇 8s）
     for (let k = 0; k < seq.length; k++) {
       const x = x0 + k * gap;
       if (seq[k] === 2) {
@@ -352,7 +358,7 @@
         // 3 类稍慢一点
         makeEnemy('gunship', x, -60, {
           hoverY: rand(120, 165),
-          holdTimer: 30,
+          holdTimer: 20,
           speedMul: 0.6,
         });
       }
@@ -438,7 +444,7 @@
       return;
     }
     const holdWave = Math.random() < 0.9;          // 本波二选一（全波一致）：90% 停留 / 10% 无停留直通
-    const hold = rand(4, 7) * strikerHoldMul();
+    const hold = strikerHold();   // 波内统一（5s，诗篇 8s）
     const noHoldMul = strikerNoHoldSpdMul();
     const waveHoldY = rand(200, 240);              // 全波统一基准前锋线（顶点目标；两翼按出生偏移上移）
     const mkStriker = (x, y, behavior) => {
@@ -464,14 +470,14 @@
     }
   }
 
-  // 「32223」：左右各一艘 3类炮艇压阵（悬停），中央 3 架 2类护航——波次统一停留 4~8s（诗篇 ×2）
+  // 「32223」：左右各一艘 3类炮艇压阵（悬停），中央 3 架 2类护航——波次统一停留 5s（诗篇 8s）
   function spawnGunshipWings() {
-    const hold = rand(4, 8) * strikerHoldMul();   // 波次统一：本波 3 架 2类停留完全一致
+    const hold = strikerHold();   // 波次统一：本波 3 架 2类停留完全一致（5s，诗篇 8s）
     for (const sx of [-1, 1]) {
       const x = CANVAS_W / 2 + sx * 150;
       makeEnemy('gunship', x, -60, {
         hoverY: rand(115, 160),
-        holdTimer: 30,
+        holdTimer: 20,
       });
     }
     for (let k = -1; k <= 1; k++) {
@@ -492,12 +498,12 @@
     const n = 6;
     const stepX = fromLeft ? 62 : -62;
     const startX = fromLeft ? 60 : CANVAS_W - 60;
-    const hold = rand(4, 6) * strikerHoldMul();   // 波次统一：本波 2 架 2类停留完全一致
+    const hold = strikerHold();   // 波次统一：本波 2 架 2类停留完全一致（5s，诗篇 8s）
     for (let k = 0; k < n; k++) {
       const x = startX + k * stepX;
       const y = -40 - k * 40;                          // 阶梯式滞后 → 斜线
       if (k === 3) {
-        makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 30 });
+        makeEnemy('gunship', x, y - 20, { hoverY: rand(110, 155), holdTimer: 20 });
       } else if (k % 2 === 0) {   // k=0/2/4 → 1类（三个一组，满足≥3）
         // 顶部入场 → 快速 200：vx/vy 为方向基值（近垂直下插的斜插角），模长归一
         spawnSideUnit(x, y, { vx: fromLeft ? 24 : -24, vy: rand(90, 111) }, pickSideSpawn(), rand(0.8, 1.5), true);
@@ -751,7 +757,7 @@
   function spawnGunship(variant) {
     makeEnemy('gunship', rand(110, CANVAS_W - 110), -60, {
       hoverY: rand(110, 170),
-      holdTimer: 30,
+      holdTimer: 20,
       ...(variant ? { variant } : {}),
     });
   }
@@ -847,6 +853,7 @@
     }
     e.arrived = false;
     e.entryT = 0;
+    e.entryBoostT = POPIAN.entryDecay;   // 入场初速倒计时（250 → 巡航 180，1s 线性衰减，06-enemy popian 分支消费）
     e.faceAng = 0;
     e.detectR = CANVAS_H * POPIAN.detectBase;
     e.vx = 0; e.vy = 0;
@@ -1003,7 +1010,8 @@
     const e = makeEnemy('pulseMatrix', startX, y, { fireTimer: first });
     e.dirX = fromLeft ? 1 : -1;                        // 水平移动方向（朝另一侧）
     e.pmCruise = rand(cfg.cruiseMin, cfg.cruiseMax);   // 本台巡航速（50~60 随机）
-    e.pmMoveT = 0;                                     // 登场减速计时（1s 内从 entrySpeed 缓出到巡航速）
+    e.pmEntry = isPoem() ? cfg.entrySpeedPoem : cfg.entrySpeed;   // 登场横移初速（180，诗篇 240；1s 二次缓出衰减）
+    e.pmMoveT = 0;                                     // 登场减速计时（1s 内从初速缓出到巡航速）
     e.pmTravel = 0;                                    // 累计水平位移（达 travelPct×屏宽后停驻）
     e.pmBaseY = y;       // 停驻后以此 Y 为基准微微上下摆动
     e.pmBob = true;
@@ -1082,7 +1090,7 @@
   function spawnCapital() {
     makeEnemy('capital', CANVAS_W / 2, -110, {
       hoverY: 140,
-      holdTimer: 35,
+      holdTimer: 30,
       fireTimer: 1.8,
       escortTimer: 5,
     });
@@ -1284,18 +1292,19 @@
       e.vx = e.jxDir * JIAOXIANG.speed;   // 初始速度：水平朝内（无加速）
       e.vy = 0;
     } else {
-      // 顶部出场：就位前 150% 移速加成（到位前一段距离按剩余距离衰减），光环延迟 0.8s
+      // 顶部出场：入场初速 280（1s 线性衰减回巡航 120，06-enemy jiaoxiang 分支消费），光环延迟 0.8s
       const sx = rand(80, CANVAS_W - 80);
       e = makeEnemy('jiaoxiang', sx, -60, {});
       e.jxFlank = false;
       e.jxPhase = 0;
+      e.jxEntryT = JIAOXIANG.entryDecay;   // 入场初速倒计时（280 → 120）
       e.jxTargetX = cx;      // 入场目标点：圈顶
       e.jxTargetY = cy - R;
       e.jxOrbitDir = Math.random() < 0.5 ? 1 : -1;   // 绕圈方向随机
-      // 初始速度：朝目标点方向，带 150% 入场加成（满值起步，随后按剩余距离衰减）
+      // 初始速度：朝目标点方向，满初速 280 起步（随后按时间衰减）
       const idx = e.jxTargetX - sx, idy = e.jxTargetY - (-60);
       const il = Math.hypot(idx, idy) || 1;
-      const iv = JIAOXIANG.speed * JIAOXIANG.entryBoost;
+      const iv = JIAOXIANG.entrySpeed;
       e.vx = idx / il * iv;
       e.vy = idy / il * iv;
     }
@@ -1512,7 +1521,8 @@
     } else if (!enemies.some(e => e.type === ch.type)) {
       spawnChallengeTarget();
     }
-    // 测试模式改版：敌方真实血量（1类 4000 / 2~4类 10000，由 makeEnemy 在生成时覆盖），不再每帧回满、不再锁定 BOSS 测试血量；
+    // 测试模式改版：敌方测试血量统一 20000（非 BOSS，由 makeEnemy 在生成时覆盖；swarm 与 BOSS 测试伴生的 1类强制波除外——正常血量），
+    // 不再每帧回满、不再锁定 BOSS 测试血量；
     // 炮火先兆者导引导弹满一轮后重置充能循环，便于持续观察
     for (const e of enemies) {
       if (e.type === 'harbinger' && e.missilesGuided >= HARBINGER.maxMissiles) {

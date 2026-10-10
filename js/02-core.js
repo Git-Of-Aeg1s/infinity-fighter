@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(16 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(95 名) 13-encyclopedia(18 名) 14-main(37 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(95 名) 13-encyclopedia(18 名) 14-main(37 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -44,7 +44,7 @@
   const skillGaugeRing = document.getElementById('skillGaugeRing');
   // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 Q 释放友方大风暴）
   // 陵落复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
-  // pilotGaugeCount：右下角充能数字（叮咚鸡显示已充满持有层数）
+  // pilotGaugeCount：右下角充能数字（大狗显示已充满持有层数）
   const pilotGauge = document.getElementById('pilotGauge');
   const pilotGaugeRing = document.getElementById('pilotGaugeRing');
   const pilotGaugeKey = document.getElementById('pilotGaugeKey');
@@ -153,17 +153,17 @@
     hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
     hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
     wenjiukeVuln: 1,       // 温酒客：受到伤害提升的当前幅度（开局 1 = +100%；每击败一个 BOSS -0.25，最低 0；仅 hasPilot('wenjiuke') 时生效）
-    dagouMissT: 0,         // 大狗：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
-    dagouDebugRapid: false,   // 大狗：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；离开游戏后默认关闭，见 12-ui resetGame）
-    dagouWarnFadeT: 0,     // 大狗：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
-    dagouChains: [],       // 大狗：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
-    daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与大狗连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
+    dagouMissT: 0,         // 叮咚鸡：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
+    dagouDebugRapid: false,   // 叮咚鸡：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；离开游戏后默认关闭，见 12-ui resetGame）
+    dagouWarnFadeT: 0,     // 叮咚鸡：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
+    dagouChains: [],       // 叮咚鸡：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
+    daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与叮咚鸡连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
     meiCounter: 0,         // 依：击杀计数（上限 PILOTS.mei.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
-    ddjGauge: 0,           // 叮咚鸡：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
-    ddjLayers: 0,          // 叮咚鸡：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
-    ddjUses: 0,            // 叮咚鸡：Q 技能已释放次数（全局初始 useMax=3 次，2026-10-02 用户定稿）
-    ddjUseMax: PILOTS.dingdongji.useMax,   // 叮咚鸡：Q 释放上限（击败 BOSS 掷骰 +1——25%/第 5、6 轮 100%，见 06-enemy killEnemy；重开复位）
-    ddjBerserkUps: 0,      // 叮咚鸡：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
+    ddjGauge: 0,           // 大狗：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
+    ddjLayers: 0,          // 大狗：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
+    ddjUses: 0,            // 大狗：Q 技能已释放次数（全局初始 useMax=3 次，2026-10-02 用户定稿）
+    ddjUseMax: PILOTS.dingdongji.useMax,   // 大狗：Q 释放上限（击败 BOSS 掷骰 +1——25%/第 5、6 轮 100%，见 06-enemy killEnemy；重开复位）
+    ddjBerserkUps: 0,      // 大狗：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
     // ---- 奖励道具效果状态（2026-10-01 改版：道具槽已取消——击坠赞助无人机立即生效，07-player applyRewardItem 置位与推进，resetGame 归位）----
     laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +40%
     laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.40/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
@@ -304,12 +304,12 @@
   /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
   /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 Q 释放，向上推进 + 风弹 + 主体接触伤害）
   /** @type {Array} */ const dashKillFx = [];   // 许凯狗冲刺：被击杀敌机身上的白光冲击（扩散白环 + 渐隐闪核，生成于 14-main 秒杀循环，绘制见 10-draw-world drawDashKillFx）
-  /** @type {Array} */ const dagouMissiles = []; // 大狗：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款；副武器「捣蛋来袭」直射弹复用本数组，规则数值完全同款）
+  /** @type {Array} */ const dagouMissiles = []; // 叮咚鸡：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款；副武器「捣蛋来袭」直射弹复用本数组，规则数值完全同款）
   /** @type {Array} */ const feijianWaves = [];  // 副武器·无界飞剑：待发射飞剑波（尾部下沉 → 分裂悬浮 → 中央先发依次前射，见 07-player updateFeijianWaves）
   /** @type {Array} */ const xinRings = [];      // 副武器·辛国栋之怒：恒速飞行的空间系穿透灼烧火环（玫红→粉渐变，见 07-player updateXinRings）
-  /** @type {Array} */ const blastRings = [];    // 爆炸冲击圈（大狗导弹雨 / 捣蛋来袭爆炸时的蓝色扩散环，指示波及范围；见 07-player dagouMissileBlast）
+  /** @type {Array} */ const blastRings = [];    // 爆炸冲击圈（叮咚鸡导弹雨 / 捣蛋来袭爆炸时的蓝色扩散环，指示波及范围；见 07-player dagouMissileBlast）
   /** @type {Array} */ const meiScythes = [];     // 依：镰刀清扫（计数充满自动召唤，绕机旋转 + 周期伤害/消弹；见 07-player updateMeiScythes）
-  /** @type {Array} */ const ddjMissiles = [];   // 叮咚鸡：Q 导弹（前向 120° 扇形 4 发直线飞行，直击伤害；见 07-player updateDdjMissiles）
+  /** @type {Array} */ const ddjMissiles = [];   // 大狗：Q 导弹（前向 120° 扇形 4 发直线飞行，直击伤害；见 07-player updateDdjMissiles）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
@@ -552,10 +552,10 @@
   // BOSS 登场虚化窗口：警报期间（bossFlow.stage === 'warn'）或任一 BOSS 尚未完全登场
   // （combatReady=false：旧日之歌部件组装 / 暴风之眼风聚成形 / 风暴编织者三段入场）为 true。
   // 期间所有 BOSS 视为虚化——我方射弹 / 斩击 / 灼烧 / 友方大风暴等伤害全部穿透不结算
-  // （残留的大狗导弹与场上子弹照常飞过）；充能类计数表（依击杀计数 / 天秀白色量表 / 大无垠之王
+  // （残留的叮咚鸡导弹与场上子弹照常飞过）；充能类计数表（依击杀计数 / 天秀白色量表 / 大无垠之王
   // 增伤累积）完全冻结不走字（2026-10-10 用户反馈），冷却 / 倒计时类经 entranceDt 按 50% 流速推进
   // （斗志昂扬增益例外：完全冻结，见 06-enemy updateDouzhiFx）、
-  // 大狗导弹雨挂起不在动画期间发射（07-player updatePilotStatus）
+  // 叮咚鸡导弹雨挂起不在动画期间发射（07-player updatePilotStatus）
   function bossEntranceActive() {
     if (bossFlow.stage === 'warn') return true;
     return enemies.some(e => e.type === 'boss' && !e.combatReady);
@@ -705,14 +705,15 @@
     return n;
   }
 
-  // 装甲触发图标演出（祈星减伤 / 澄月得盾共用）：机体核心处一枚装甲字符图标，
+  // 装甲触发图标演出（祈星减伤 / 澄月得盾共用）：一枚装甲字符图标（祈星/澄月位于机头上方，天枢位于核心），
   // 渐显 → 明显放大 → 渐隐，跟随核心移动（drawPlayer 逐帧在机体当前位置绘制）。
   // 触发瞬间伴随震屏/受击白闪，演出做大做强保证可感知（30px 字符 + 光晕 + 扩散环，0.8s）。
   // 图层位于核心白点之下、不盖住核心。
   // mode：'pulse'（默认）渐显-放大-渐隐 / 'flash' 高亮闪现后快速消失（天枢圣卫触发）/ 'fade' 原位渐隐（天枢圣卫过期）；
   // hex：true 时以六边环绕轮廓绘制（贴合天枢圣卫 ⬡ 图形，与常驻环绕图标同构，见 09-draw-ships）
-  function spawnArmorGlyphFx(glyph, color, dur = 0.8, mode = 'pulse', hex = false) {
-    armorGlyphFx.push({ glyph, color, t: 0, dur, mode, hex });
+  // dy：相对默认锚点的纵向偏移 px（负值向上；祈星 ✧ / 澄月 ◉ 用 -38 把图标移到机头上方，2026-10-09 用户定稿，同测试2 卡3/卡4 布局）
+  function spawnArmorGlyphFx(glyph, color, dur = 0.8, mode = 'pulse', hex = false, dy = 0) {
+    armorGlyphFx.push({ glyph, color, t: 0, dur, mode, hex, dy });
   }
 
   // 爆炸冲击圈：蓝色扩散环自爆点扩散至波及半径（指示实际溅射范围，绘制见 10-draw-world drawBlastRings）
@@ -762,7 +763,12 @@
     const boss = enemies.find(x => x && x.type === 'boss' && x.bossId === 'darkhand' && !x.dying);
     if (!boss) return;
     if (!boss.dhBonusSkills) boss.dhBonusSkills = {};
-    boss.dhBonusSkills[type] = true;   // 额外技能登记（技能本体待设计——实装后在 05-boss 技能循环消费）
+    const isNew = !boss.dhBonusSkills[type];
+    boss.dhBonusSkills[type] = true;   // 额外技能登记（技能本体见 05-boss startDarkhandSkill 消费）
+    if (isNew) {   // 新登记的额外技能：下一个释放的技能必定为它（2026-10-10 用户定稿；队列消费见 05-boss startDarkhandSkill——连续击坠多名不同精英时按击坠顺序逐个强制）
+      if (!boss.dhForceQueue) boss.dhForceQueue = [];
+      boss.dhForceQueue.push(type);
+    }
     if (boss.dhCurrent === type) boss.dhAmp = true;   // 本段击坠：反向增伤至本段结束（08-entities enemyDamageMul 消费）
   }
 

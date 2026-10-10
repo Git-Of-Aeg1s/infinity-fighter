@@ -7,9 +7,9 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
-  import { BAOLING, BAOLING_G, CAPITAL_DESCEND_DR, CAPITAL_HIGHFIRE_DR, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN_VULN_LV1, POPIAN_VULN_LV2, UNREAL, enemyGrade } from './01-config-enemies.js';
+  import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
-  import { WAVE_POEM, diffMods, enemyDmgMul, isRealme, isPoem, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { WAVE_POEM, diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
@@ -30,24 +30,14 @@
     if (capVuln && (e.type === 'capital' || e.type === 'fashiArray')) mul *= capVuln;
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
-    // 暴鸰 / 暴鸰·G / 虚幻：玩家处于其炸弹爆圈内时增伤 35%（无论炸弹是否已投出；暴鸰·G 爆圈半径 ×1.3）
-    if ((e.type === 'baoling' || e.type === 'baolingG' || e.type === 'unreal') && player.alive) {
-      const BLC = e.type === 'baolingG' ? BAOLING_G : e.type === 'unreal' ? UNREAL : BAOLING;
-      if (Math.hypot(player.x - e.x, player.y - e.y) <= BLC.blastR) mul *= 1 + BLC.vuln;
-    }
-    if (e.type === 'harbinger' && isWing) mul *= (1 - HARBINGER.wingDR);   // 炮火先兆者：僚机弹幕减伤 25%
     if (e.type === 'tornado') {
-      // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；真我：僚机易伤额外 +150%（加算，不乘算）
+      // 风团：主武器减伤 50%、僚机伤害 +150%（弱点：僚机火力）；真我/诗篇：僚机易伤额外 +150%（加算，不乘算；
+      // stormTier 口径 = 05-boss stormTier()，诗篇沿用真我全套——2026-10-10 用户定稿）
       mul *= isWing
-        ? (1 + STORM.tornadoWingVuln + (isRealme() ? STORM_SHIP.s2.wingVulnAdd : 0))
+        ? (1 + STORM.tornadoWingVuln + ((isRealme() || isPoem()) ? STORM_SHIP.s2.wingVulnAdd : 0))
         : (1 - STORM.tornadoMainDR);
     }
-    // 4类主力舰：俯冲减速前（速度未明显衰减）20% 减伤；减速/展开/悬停后恢复常规
-    if (e.type === 'capital' && !e.arrived && (e.hoverY - e.y) >= 90) mul *= (1 - CAPITAL_DESCEND_DR);
-    if (e.type === 'capital' && player.weapon >= 4) mul *= (1 - CAPITAL_HIGHFIRE_DR);
-    else if (e.type === 'boss' && player.weapon === 1) mul *= (1 + BOSS_LOWFIRE_BONUS);
-    // 破片：火力 Lv1 / Lv2 时受到 30% / 10% 易伤（低火力补偿，主武器与僚机弹均生效；高能爆弹为真实伤害不加成）
-    if (e.type === 'popian' && player.weapon <= 2) mul *= 1 + (player.weapon === 1 ? POPIAN_VULN_LV1 : POPIAN_VULN_LV2);
+    if (e.type === 'boss' && player.weapon === 1) mul *= (1 + BOSS_LOWFIRE_BONUS);   // BOSS：Lv1 逆境补偿
     // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
     if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
     // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%；真我难度全体 BOSS -10%——
@@ -58,8 +48,8 @@
       if (mod > dr) dr = mod;
       if (dr > 0) mul *= (1 - dr);
     }
-    // 暴风之眼（真我）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
-    if (e.type === 'boss' && e.bossId === 'storm' && isRealme() && e.skill && e.skill.id === 3) {
+    // 暴风之眼（真我/诗篇）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
+    if (e.type === 'boss' && e.bossId === 'storm' && (isRealme() || isPoem()) && e.skill && e.skill.id === 3) {
       mul *= (1 - STORM_SHIP.s4.dr);
     }
     // 焦香螺旋桨：登场 2s 内受到的伤害 -30%（入场保护，主武器与僚机弹幕均生效）
@@ -195,7 +185,7 @@
           }
           // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
           // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
-          e.hp -= xiayongBarAbsorb(e, dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1));   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害
+          e.hp -= xiayongBarAbsorb(e, dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1) * pxpfChargeHurtMul(e));   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害；朴学峰冲刺易伤 ×2
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
           // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，

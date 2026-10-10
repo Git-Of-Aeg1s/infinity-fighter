@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(9 名) 05-boss(7 名) 06-enemy(11 名) 07-player(4 名) 08-entities(7 名) 10-draw-world(3 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(13 名) 07-player(5 名) 08-entities(8 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg } from './01-config-core.js';
@@ -29,11 +29,10 @@
   //                          （1类 ×0.5→×0.75 / 2类 ×0.75→×0.875；BOSS 战 1类波 ×0.3 削减不受影响）
   //   bossMinionDropNoReduce true：BOSS 战 1类强制波道具掉率降低修正（×0.30）不再生效
   //   bossDmgMul             BOSS 所有伤害倍率（含弹幕/接触/区域打击/导弹）
-  //   bossFireIntervalMul    BOSS 技能释放间隔倍率（>1 技能更稀疏）
+  //   bossFireIntervalMul    BOSS 技能释放间隔倍率（2026-10-10 定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
+  //                          诗篇 wip 走 05-boss bossSkillIv isPoem 硬分支，实装时落地 poem.mods，见《诗篇难度修正.md》#44）
   //   bossNoRepeat           true：BOSS 不会连续释放两次同种技能
   //   invulnMul              玩家所有来源的无敌时间倍率
-  //   missileFlatDmg         >0：导弹命中改为固定伤害（取消秒杀/80% 血量规则），null = 保留原规则
-  //   missileDmgMin          导弹命中保底伤害（基准 HARBINGER.missileDmgMin = 60），null = 沿用基准（规则仍为 max(保底, 当前血量 80%)）
   //   noWeaponDropOnHit      true：受击不再降低武器等级
   //   bombStart              初始高能爆弹数（基准 1）
   //   bombCap                高能爆弹上限（基准 3 = MAX_BOMBS）
@@ -60,7 +59,6 @@
         bossFireIntervalMul: 1.5,
         bossNoRepeat: true,
         invulnMul: 1.5,
-        missileFlatDmg: 50,
         noWeaponDropOnHit: true,
         bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
       },
@@ -83,7 +81,6 @@
         bossFireIntervalMul: 1,
         bossNoRepeat: false,
         invulnMul: 1,
-        missileFlatDmg: null,
         noWeaponDropOnHit: false,
         bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
       },
@@ -93,8 +90,7 @@
       desc: '直面疯狂',
       wip: false,
       // 真我修正表：非BOSS敌人伤害 +35%（enemyDmgMul，覆盖弹幕/碰撞/破片三连发/法术正方体/暴鸰爆炸/焦香灼烧等非BOSS结算入口；
-      // 炮火先兆者导弹不吃此加成，改为保底伤害 70——missileDmgMin，规则仍为 max(保底, 当前血量 80%)）；
-      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与；BOSS 血量 ×1.6；全体 BOSS 受到暴走伤害 -10%（与既有 BOSS 专属暴走减免叠加时取最高）；
+      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与）；BOSS 血量 ×1.6；全体 BOSS 受到暴走伤害 -10%（与既有 BOSS 专属暴走减免叠加时取最高）；
       // 高能爆弹初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%；刷怪框架与具象基准一致（spawnIntervalMul 1）；得分 ×1.2；
       // 加血套件节流：任意两次加血套件（普通敌人掉落）至少间隔 8s（hpKitGap）——冷却期内加血环节变为
       // 50%（hpKitBankChance）概率"预触发"（计数、敌人不掉落），冷却结束后击杀的第一个敌人必掉一个（计数清零）
@@ -108,10 +104,9 @@
         dropClassLowWeaken: true,   // 掉落判定等级（攻击等级+场上套件+4×暴走道具）1：修正失效；2：减弱 50%
         bossMinionDropNoReduce: false,
         bossDmgMul: 1,
-        bossFireIntervalMul: 1,
+        bossFireIntervalMul: 0.7,   // 2026-10-10 用户定稿 1→0.7（四档 1.5/1/0.7/0.5）；取代原 STORM2_SHIP/SONG_SHIP 真我专属 skillCdMul
         bossNoRepeat: false,
         invulnMul: 1,
-        missileFlatDmg: null, missileDmgMin: 70,
         noWeaponDropOnHit: false,
         bombStart: 0, bombCap: 2, bombBossDmgMul: 0.75,
         bossHpMul: 1.6,
@@ -195,8 +190,6 @@
   function bossDmgMul() { const m = diffMods().bossDmgMul; return m != null ? m : 1; }
   // 非BOSS敌人伤害难度倍率（真我：所有非BOSS敌人伤害 +35%；大型龙卷按暴风之眼 BOSS 侧口径不吃此倍率）
   function enemyDmgMul() { const m = diffMods().enemyDmgMul; return m != null ? m : 1; }
-  // 2类突击艇停留时长难度倍率（诗篇：默认档与全部编队档 ×2）——mods.strikerHoldMul，缺省回退 1
-  function strikerHoldMul() { const m = diffMods().strikerHoldMul; return m != null ? m : 1; }
   // 2类「2*7」无停留直通：越过前锋停留线后的速度保留比例（基准 0.8；诗篇 0.6）——mods.strikerNoHoldSpdMul，缺省回退 0.8
   function strikerNoHoldSpdMul() { const m = diffMods().strikerNoHoldSpdMul; return m != null ? m : 0.8; }
 
@@ -217,7 +210,7 @@
     fashiA1: 360, popian: 500, popianU: 500, fashiMatrix: 360,
     fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 4000,
     warMatrix: 10000,
-    tornado: 4800,   // 大型龙卷（暴风之眼技能2 召唤物）：基准 3600 不覆写其余难度，诗篇 4800（2026-10-10 用户定稿）
+    tornado: 6800,   // 大型龙卷（暴风之眼技能2 召唤物）：基准 3600 / 真我 6000 不覆写其余难度，诗篇 6800（2026-10-10 用户二次定稿 4800→6800）
   };
   // 诗篇血量取值入口：key 优先 变体 → 行为 → 类型
   function poemHpOf(type, variantId, behavior) {
@@ -225,6 +218,11 @@
     if (behavior)   { const k = type + '_' + behavior;  if (POEM_HP[k] != null) return POEM_HP[k]; }
     return POEM_HP[type];
   }
+
+  // 炮火先兆者导弹命中伤害：按难度固定（2026-10-10 用户定稿）——取消原 max(保底, 当前血量 80%) 秒杀公式
+  // 与虚象固定 50 / 真我保底 70 特例；命中后武器等级 -1、暴走中断、不计入常规受击计数等特性全难度统一
+  //（结算见 06-enemy missileHitPlayer；诗篇值登记于《诗篇难度修正.md》）
+  const MISSILE_FLAT_DMG = { illusion: 60, form: 60, realme: 80, poem: 95 };
 
   // 4S 精英血量取值入口：按当前难度读机型级 hpByDiff（2026-10-04 用户定稿：四精英独立四难度血量，
   // 取代原「黑暗之手血量 × 继承比」派生；张华&张策同口径）。生成（04-spawn spawnEliteMinion）与
@@ -266,6 +264,12 @@
     return dmg - absorbed;
   }
 
+  // 朴学峰冲刺易伤：冲刺相位（elPhase 11/13/15；10/12/14 为瞄准前摇不乘）受到的所有伤害 ×2（2026-10-10 用户定稿）
+  // 覆盖全部我方伤害结算点（主炮/斩击/导弹/溅射/灼烧/光环/激光/秒杀波/自爆波及等），在扣血前乘入
+  function pxpfChargeHurtMul(e) {
+    return e && e.type === 'puxuefeng' && (e.elPhase === 11 || e.elPhase === 13 || e.elPhase === 15) ? 2 : 1;
+  }
+
   // 测试模式（图鉴挑战）：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
   // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）
   const TEST_HP = 20000;              // 1~4 类全部敌机（含大型龙卷 / 法术矩阵等召唤物）
@@ -274,8 +278,8 @@
     DIFFICULTIES, currentDifficulty, WAVE_POEM, setDifficulty,
     diffMods, resolveBossHp, isIllusion, isRealme,
     isPoem, isHardTier, invulnDiffMul, bossDmgMul,
-    enemyDmgMul, strikerHoldMul, strikerNoHoldSpdMul, POEM_HP,
-    poemHpOf, eliteHpOf, xiayongHornDmgMul, xiayongBarAbsorb,
+    enemyDmgMul, strikerNoHoldSpdMul, POEM_HP, MISSILE_FLAT_DMG,
+    poemHpOf, eliteHpOf, xiayongHornDmgMul, xiayongBarAbsorb, pxpfChargeHurtMul,
     hpKitLvWindow,
     TEST_HP,
   };

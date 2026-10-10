@@ -6,7 +6,7 @@
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hpKitBanked, hpKitLastT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBurst, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
@@ -38,6 +38,14 @@
     kingBonus.style.opacity = kingBonusAlpha.toFixed(3);
   }
 
+  // HUD 脏检查缓存（2026-10-10 A级性能优化）：updateHUD 随 rAF 每帧执行，绝大多数帧数值不变——
+  // 值相同则跳过 DOM 写入（省 JS↔DOM 桥与样式解析成本；classList.toggle 幂等成本低，不缓存）。
+  // 这些 HUD 元素仅本模块写入（bombIcons innerHTML 同理），值缓存无失同步风险。
+  let _hudHpW = '', _hudBarW = '', _hudPermW = '', _hudScoreDisp = '', _hudScore = -1,
+      _hudLivesN = -1, _hudDiffName = null, _hudBerserkW = '', _hudShieldW = '', _hudDouzhiW = '', _hudJingdunW = '',
+      _hudSkillFrac = -1, _hudSkillColor = null, _hudPilotFrac = -1, _hudPilotMode = null,
+      _hudPilotCnt = null, _hudKing = -1, _hudBombInf = false;
+
   function updateHUD() {
     // 主菜单打开时给舞台挂 menu-open 类：CSS 隐藏战斗 HUD（菜单背景透明后会透出画布）
     menuScreen.parentElement.classList.toggle('menu-open', !menuScreen.classList.contains('hidden'));
@@ -45,22 +53,26 @@
     padIndicator.classList.toggle('hidden', !gamepad.connected);
     const maxHp = player.maxHp || PLAYER_CFG.maxHp;
     const ratio = player.hp / maxHp;
-    hpFill.style.width = (ratio * 100) + '%';
+    const hpW = (ratio * 100) + '%';
+    if (hpW !== _hudHpW) { hpFill.style.width = hpW; _hudHpW = hpW; }
     // 青时炮艇支援弹屏障：HP 条右缘白蓝覆盖条（宽度 = 条宽 × barrier / max(barrierMax, 生命上限)；
     // 末 1s player.barrier 自动线性衰减 → 覆盖条等比缩短，无需额外动画）
     const barRatio = (player.barrier || 0) > 0
       ? clamp(player.barrier / Math.max(player.barrierMax || 0, maxHp), 0, 1) : 0;
-    hpBarrier.style.width = (barRatio * 100) + '%';
+    const barW = (barRatio * 100) + '%';
+    if (barW !== _hudBarW) { hpBarrier.style.width = barW; _hudBarW = barW; }
     // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；不随时间衰减）
     const permRatio = (player.permBarrier || 0) > 0
       ? clamp(player.permBarrier / maxHp, 0, 1) : 0;
-    hpPermBarrier.style.width = (permRatio * 100) + '%';
+    const permW = (permRatio * 100) + '%';
+    if (permW !== _hudPermW) { hpPermBarrier.style.width = permW; _hudPermW = permW; }
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
 
     hpFill.classList.toggle('danger', ratio <= 0.25);
     // 测试情况（测试该敌人 / 测试BOSS）：隐藏积分计数器（.score-panel）
-    scoreText.parentElement.style.display = state.challenge ? 'none' : '';
-    scoreText.textContent = state.score;
+    const scoreDisp = state.challenge ? 'none' : '';
+    if (scoreDisp !== _hudScoreDisp) { scoreText.parentElement.style.display = scoreDisp; _hudScoreDisp = scoreDisp; }
+    if (state.score !== _hudScore) { scoreText.textContent = state.score; _hudScore = state.score; }
     // 原石收集计数（当局）：仅萧杨显示——其他驾驶员不收集原石（隐藏避免常驻 0 的噪音；挑战/测试不掉水晶同样隐藏）；
     // resetGame 归零后随首颗原石点亮；萧杨只显示收集数（不再带 /16 上限后缀，2026-10-01）
     const showStones = hasPilot('xiaoyang') && !state.challenge && !state.testBoss && state.mode === 'playing';
@@ -70,8 +82,9 @@
     // 实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
     // 真我 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd））；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
     if (state.challenge) {
-      bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>';
+      if (!_hudBombInf) { bombIcons.innerHTML = '<span class="bomb-icon infinite">∞</span>'; _hudBombInf = true; }   // 挑战模式爆弹无限——仅切换时写一次
     } else {
+      _hudBombInf = false;
       const n = Math.max(0, state.bombs);
       const cap = Math.max(n, currentBombCap());
       if (bombIcons.childElementCount !== cap || bombIcons.dataset.filled !== String(n)) {
@@ -83,38 +96,46 @@
     }
     // 左下角心显示（2026-10-08 用户定稿）：显示备用命数——初始 2 命 → 1 颗，死亡一次后消失（最后一条命），再死即终局；
     // 天使璃（无限生命，special 特殊驾驶员）恒显 1 颗
-    livesText.textContent = '♥'.repeat(hasPilot('tianshiLovely') ? 1 : Math.max(0, state.lives - 1));
+    const livesN = hasPilot('tianshiLovely') ? 1 : Math.max(0, state.lives - 1);
+    if (livesN !== _hudLivesN) { livesText.textContent = '♥'.repeat(livesN); _hudLivesN = livesN; }
     // HUD 当前难度标签：战斗中显示（图鉴挑战 / BOSS 测试不显示，避免与积分器同隐不同现造成混乱）
-    diffLabel.textContent = '难度 · ' + currentDifficulty.name;
+    if (currentDifficulty.name !== _hudDiffName) { diffLabel.textContent = '难度 · ' + currentDifficulty.name; _hudDiffName = currentDifficulty.name; }
     diffLabel.classList.toggle('hidden', state.mode !== 'playing' || !!state.challenge || !!state.testBoss);
     const berserkOn = player.weapon === 5 && player.berserk > 0;
     const shieldOn = player.shield > 0;
     // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
     berserkBar.classList.toggle('active', berserkOn);
-    berserkFill.style.width = berserkOn ? (player.berserk / BERSERK.duration * 100) + '%' : '0%';
+    const berserkW = berserkOn ? (player.berserk / BERSERK.duration * 100) + '%' : '0%';
+    if (berserkW !== _hudBerserkW) { berserkFill.style.width = berserkW; _hudBerserkW = berserkW; }
     // 护盾读条（右下角）
     shieldBar.classList.toggle('active', shieldOn);
-    shieldFill.style.width = shieldOn ? (player.shield / (player.shieldMax || SHIELD_DURATION) * 100) + '%' : '0%';
+    const shieldW = shieldOn ? (player.shield / (player.shieldMax || SHIELD_DURATION) * 100) + '%' : '0%';
+    if (shieldW !== _hudShieldW) { shieldFill.style.width = shieldW; _hudShieldW = shieldW; }
     // 昂扬读条（右下角，白色；斗志昂扬增益倒计时）
     const douzhiOn = state.hasteT > 0;
     douzhiBar.classList.toggle('active', douzhiOn);
-    douzhiFill.style.width = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
+    const douzhiW = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
+    if (douzhiW !== _hudDouzhiW) { douzhiFill.style.width = douzhiW; _hudDouzhiW = douzhiW; }
     // 晶盾读条（右下角，淡粉；七日澜心结晶护盾倒计时）
     const jingdunOn = player.crystalShield > 0;
     jingdunBar.classList.toggle('active', jingdunOn);
-    jingdunFill.style.width = jingdunOn ? (player.crystalShield / ARMOR_SKILLS.lanxin.dur * 100) + '%' : '0%';
+    const jingdunW = jingdunOn ? (player.crystalShield / ARMOR_SKILLS.lanxin.dur * 100) + '%' : '0%';
+    if (jingdunW !== _hudJingdunW) { jingdunFill.style.width = jingdunW; _hudJingdunW = jingdunW; }
     // 装甲技能圆形计数表（左下角、生命值上方，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
     const skillDef = ARMOR_SKILLS[currentArmor.id];
     skillGauge.classList.toggle('hidden', !skillDef || state.mode !== 'playing');
     if (skillDef) {
       const frac = clamp(state.armorSkillGauge || 0, 0, 1);
-      skillGaugeRing.style.background = `conic-gradient(${skillDef.color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
-      skillGauge.classList.toggle('ready', frac >= 1);
-      skillGauge.style.setProperty('--skill-color', skillDef.color);
+      if (frac !== _hudSkillFrac || skillDef.color !== _hudSkillColor) {
+        skillGaugeRing.style.background = `conic-gradient(${skillDef.color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+        skillGauge.classList.toggle('ready', frac >= 1);
+        skillGauge.style.setProperty('--skill-color', skillDef.color);
+        _hudSkillFrac = frac; _hudSkillColor = skillDef.color;
+      }
     }
     // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表 / 陵落 Q 冷却（均按 Q，满格 = 可释放）
     // / 依击杀计数条（无按键，满格自动召唤镰刀；环形填充为 #FFC0CB→白 渐变）
-    // / 叮咚鸡计数表（按 Q）：环形展示当前层进度，每充满一层转一整周；已充满的持有层数在右下角显示数字
+    // / 大狗计数表（按 Q）：环形展示当前层进度，每充满一层转一整周；已充满的持有层数在右下角显示数字
     const pilotGaugeMode = (currentPilotMain.id === 'tianxiu' || currentPilotSub.id === 'tianxiu') ? 'tianxiu'
       : (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? 'lingluo'
       : (currentPilotMain.id === 'mei' || currentPilotSub.id === 'mei') ? 'mei'
@@ -139,13 +160,17 @@
         ready = state.lingluoCdT <= 0 && player.alive;
       }
       // 依：环形填充按 #FFC0CB→白 渐变推进（注册色即渐变本体）；其余量表为纯色填充
-      pilotGaugeRing.style.background = pilotGaugeMode === 'mei'
-        ? `conic-gradient(#FFC0CB, #ffffff ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`
-        : `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+      if (frac !== _hudPilotFrac || pilotGaugeMode !== _hudPilotMode) {
+        pilotGaugeRing.style.background = pilotGaugeMode === 'mei'
+          ? `conic-gradient(#FFC0CB, #ffffff ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`
+          : `conic-gradient(${PILOTS[pilotGaugeMode].color} ${frac * 360}deg, rgba(255,255,255,0.10) 0deg)`;
+        _hudPilotFrac = frac; _hudPilotMode = pilotGaugeMode;
+      }
       pilotGauge.classList.toggle('ready', ready);
-      if (pilotGaugeKey) pilotGaugeKey.textContent = pilotGaugeMode === 'mei' ? '自动' : 'Q';   // 天秀 / 陵落 / 叮咚鸡 Q 键；依无需按键
-      // 右下角充能数字：仅叮咚鸡显示已充满的持有层数（其余模式无持有量概念）
-      if (pilotGaugeCount) pilotGaugeCount.textContent = pilotGaugeMode === 'dingdongji' && (state.ddjLayers || 0) > 0 ? String(state.ddjLayers) : '';
+      if (pilotGaugeKey) pilotGaugeKey.textContent = pilotGaugeMode === 'mei' ? '自动' : 'Q';   // 天秀 / 陵落 / 大狗 Q 键；依无需按键
+      // 右下角充能数字：仅大狗显示已充满的持有层数（其余模式无持有量概念）
+      const pilotCnt = pilotGaugeMode === 'dingdongji' && (state.ddjLayers || 0) > 0 ? String(state.ddjLayers) : '';
+      if (pilotCnt !== _hudPilotCnt) { if (pilotGaugeCount) pilotGaugeCount.textContent = pilotCnt; _hudPilotCnt = pilotCnt; }
     }
     // 大无垠之王：BOSS 战累积增伤读数（血条上方；向上取整仅整数；未装备 / 无累积 / 非 BOSS 战阶段隐藏——
     // 显示门控额外要求 stage === 'fight'：即使状态因任何路径残留，小怪阶段也绝不显示；
@@ -153,7 +178,10 @@
     const showKingBonus = (currentPilotMain.id === 'king' || currentPilotSub.id === 'king') && state.kingDmg > 0
       && bossFlow.stage === 'fight' && !bossEntranceActive();
     stepKingBonusFade(showKingBonus);
-    if (showKingBonus) kingBonus.textContent = '♛ 增伤 +' + Math.ceil(state.kingDmg * 100) + '%';
+    if (showKingBonus) {
+      const kv = Math.ceil(state.kingDmg * 100);
+      if (kv !== _hudKing) { kingBonus.textContent = '♛ 增伤 +' + kv + '%'; _hudKing = kv; }
+    }
     // 可莉：绷绷炸弹 HUD 图标着色（红橙火花主题）
     bombIcons.classList.toggle('klee', currentPilotMain.id === 'keli' || currentPilotSub.id === 'keli');
     // （奖励道具槽 itemGauge / 原石抽卡 R 栏 gachaGauge 已移除——2026-10-01 道具槽整体取消：
@@ -215,19 +243,19 @@
     // 天秀忧郁王子：量表与增益全部归零
     state.princeGauge = 0;
     state.princeScoreBase = 0; state.princeCrystalGain = 0;
-    // 陵落：Q 技能冷却满值起步（开局技力条为空，不能立刻释放）；大狗：导弹雨计时取 10~22s 随机初值
+    // 陵落：Q 技能冷却满值起步（开局技力条为空，不能立刻释放）；叮咚鸡：导弹雨计时取 10~22s 随机初值
     state.lingluoCdT = (currentPilotMain.id === 'lingluo' || currentPilotSub.id === 'lingluo') ? PILOTS.lingluo.cd : 0;
     state.dagouMissT = (currentPilotMain.id === 'dagou' || currentPilotSub.id === 'dagou')
       ? dagouWaveIv(state.dagouDebugRapid) : 0;
-    state.dagouWarnFadeT = 0;   // 大狗：预警蓝光渐隐计时归零
-    state.dagouChains.length = 0;   // 大狗：待发射连射链波清空
+    state.dagouWarnFadeT = 0;   // 叮咚鸡：预警蓝光渐隐计时归零
+    state.dagouChains.length = 0;   // 叮咚鸡：待发射连射链波清空
     state.daodanChains.length = 0;   // 捣蛋来袭（副武器）：连射链待发射弹清空
     // 哈基米大王：闪避累积加成与尾部闪避计时清零；依：击杀计数归零
     state.hajimiDodgeBonus = 0;
     state.hajimiTailT = 0;
     state.meiCounter = 0;
     meiScythes.length = 0;   // 依：在途镰刀清扫随重开清空
-    // 叮咚鸡：计数表三层/当前层进度与暴走升级机会归零，在途导弹清空；Q 释放次数归零
+    // 大狗：计数表三层/当前层进度与暴走升级机会归零，在途导弹清空；Q 释放次数归零
     state.ddjGauge = 0;
     state.ddjLayers = 0;
     state.ddjUses = 0;
@@ -246,10 +274,10 @@
     player.aiyiChargeT = 0;
     friendStorms.length = 0;      // 友方大风暴随重开清空
     dashKillFx.length = 0;        // 许凯狗冲刺白光冲击特效随重开清空
-    dagouMissiles.length = 0;     // 大狗导弹雨随重开清空（否则回主菜单后飞行中/待发射导弹冻结在画面上）
+    dagouMissiles.length = 0;     // 叮咚鸡导弹雨随重开清空（否则回主菜单后飞行中/待发射导弹冻结在画面上）
     feijianWaves.length = 0;      // 副武器·无界飞剑：未发射的飞剑波随重开清空
     xinRings.length = 0;          // 副武器·辛国栋之怒：灼烧火环随重开清空
-    state.dagouChains.length = 0;   // 大狗连射链待发射队列随重开清空
+    state.dagouChains.length = 0;   // 叮咚鸡连射链待发射队列随重开清空
     state.daodanChains.length = 0;   // 捣蛋来袭连射链待发射队列随重开清空
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
@@ -296,7 +324,7 @@
     bulwarkBurst.active = false;   // 最终壁垒免死金环随重开熄灭
     watchClearFx.length = 0;       // 群星守望消弹光粒随重开清空
     armorGlyphFx.length = 0;       // 装甲触发图标演出随重开清空
-    blastRings.length = 0;         // 爆炸冲击圈（大狗导弹雨）随重开清空
+    blastRings.length = 0;         // 爆炸冲击圈（叮咚鸡导弹雨）随重开清空
     stopAlarm();
 
     enemies.length = 0;
@@ -339,7 +367,7 @@
     player.hp = player.maxHp;
     player.cooldown = 0;
     player.subCooldown = 0;   // 副武器冷却归零（此处统一复位）
-    state.dagouDebugRapid = false;    // 作弊键 9（大狗导弹连发）离开游戏后默认关闭，新局需重新按 9 开启（用户 2026-10-02 指定）
+    state.dagouDebugRapid = false;    // 作弊键 9（叮咚鸡导弹连发）离开游戏后默认关闭，新局需重新按 9 开启（用户 2026-10-02 指定）
     state.tianxiuDebugSpam = false;   // 作弊键 8（天秀旋风连发）同上
     player.kbT = 0; player.kbVx = 0; player.kbVy = 0;   // 清除击退状态
     player.spinT = 0;   // 清除击飞自旋（黑暗之手登场阴影掠过；09-draw-ships drawPlayer 读取）
@@ -395,10 +423,15 @@
     infoEntryBtn.classList.toggle('hidden', !show);
   }
 
-  function showOverlay(title, html, btnText) {
+  // 结算弹窗右上角特殊角标：当局使用特殊装备（special: true，specialGearActive 判定）时 .overlay-card
+  // 加 .special-run 类（右上角青粉渐变三角角标，style.css）——胜利 / 失败结算页显示，暂停页不传自动清除
+  const overlayCard = document.querySelector('.overlay-card');
+
+  function showOverlay(title, html, btnText, specialBadge) {
     overlayTitle.textContent = title;
     overlayDesc.innerHTML = html;
     startBtn.textContent = btnText;
+    overlayCard.classList.toggle('special-run', !!specialBadge);   // 特殊装备角标：仅结算页显示（第 4 参，暂停页缺省 → 清除）
     overlay.classList.remove('hidden');
   }
 
@@ -854,7 +887,8 @@
       `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>${state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`}<br />
        剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b></span><br /><br />
        点击下方按钮再次出击`,
-      '再来一局'
+      '再来一局',
+      specialGearActive()   // 特殊装备角标：当局使用 special 装备时结算弹窗右上角显示（12-ui showOverlay 第 4 参）
     );
     gameoverHomeBtn.classList.remove('hidden');   // 失败结算页：返回主界面按钮
     syncInfoEntryBtn();
@@ -965,7 +999,7 @@
       name.textContent = p.name;
       const desc = document.createElement('div');
       desc.className = 'armor-card-desc';
-      desc.innerHTML = p.brief || p.desc;   // 卡片用简短文案（brief）；详细机制见数值与机制图鉴「驾驶员」页
+      desc.innerHTML = p.brief || p.desc;   // 卡片用简短文案（brief）；详细机制见数值与机制图鉴「装备 → 驾驶员」子页
       card.append(name, desc);
       card.addEventListener('click', () => {
         // 槽位写入 + 同名互斥：选中一侧时从另一侧卸下同名驾驶员

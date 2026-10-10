@@ -683,7 +683,7 @@ canvas#game {
   transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
-/* 右下角充能数字：叮咚鸡持有层数（有充能才显示，12-ui updateHUD 填充） */
+/* 右下角充能数字：大狗持有层数（有充能才显示，12-ui updateHUD 填充） */
 .skill-gauge-count {
   position: absolute;
   right: -4px;
@@ -1001,6 +1001,18 @@ canvas#game {
   background: linear-gradient(135deg, #39C5BB 0%, #FFC0CB 100%);   /* 青（顶边起）→ 粉（沿斜边向右下） */
   clip-path: polygon(100% 0, 0 0, 100% 100%);   /* 右上角直角三角：两直角边贴卡片顶边/右边，斜边自左上向右下 */
   pointer-events: none;
+}
+
+/* 结算弹窗（胜利 / 失败）右上角特殊角标：当局使用特殊装备（special: true，specialGearActive 判定）时
+   由 12-ui showOverlay 第 4 参切换 .special-run（暂停页不传 → 自动清除）。
+   实现用背景图层而非伪元素：.overlay-card 是滚动容器（overflow-y: auto），背景 attachment 默认
+   scroll = 固定于元素盒自身——内容滚动时角标仍钉在可见右上角；背景天然被 10px 圆角裁剪，
+   无需 overflow 处理。225deg 沿主对角线分半：右上半即三角本体，0% 青角尖 → 50% 粉斜边 */
+.overlay-card.special-run {
+  background-image: linear-gradient(225deg, #39C5BB 0%, #FFC0CB 50%, transparent 50%);
+  background-size: 22px 22px;
+  background-position: top right;
+  background-repeat: no-repeat;
 }
 
 /* 主页面驾驶员菱形框：原金框（1.5px）替换为 #39C5BB→#FFC0CB 双色渐变流动边框——
@@ -2355,6 +2367,13 @@ kbd {
   padding: 2px 0 12px;      /* 间距收入背景内：滚动内容从页签背景下方穿过，不会露出 */
   background: rgba(5, 8, 18, 0.95);   /* 与 info-modal 同色深底，遮住穿过的滚动内容 */
 }
+
+/* 首子元素 chips 行贴死滚动区顶（怪物权重 / 装备 / 成就三页 chips 均为 info-body 首子元素，
+   2026-10-10 用户定稿；波次权重页 chips 上方有说明文字，不参与）。
+   info-body 自带 padding-top:12px，而 sticky 贴顶上限 = 父容器 content box 顶（padding 内侧），
+   顶部恒留 12px 缝且露出穿过的滚动内容——margin-top:-12px 抵消 padding 让初始即贴顶，
+   top:-12px 同步抵消该负 margin 在 sticky 贴顶时的裁剪偏移，滚动全程零缝隙 */
+.info-body > .info-subtabs:first-child { margin-top: -12px; top: -12px; }
 
 .info-chip {
   background: rgba(124, 231, 255, 0.05);

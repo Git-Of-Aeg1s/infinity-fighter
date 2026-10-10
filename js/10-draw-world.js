@@ -1,7 +1,7 @@
 // 10-draw-world：敌机绘制分发 / 双 BOSS 绘制与血条 / 警报演出 / render()
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：13-encyclopedia(2 名) 14-main(1 名)
+  // 被依赖：13-encyclopedia(1 名) 14-main(1 名)
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config-core.js';
   import { PILOTS, PRINCE_STORM, currentArmor } from './01-config-loadout.js';
@@ -176,25 +176,11 @@
       ctx.closePath();
     } else if (e.type === 'escort') {
       // 卫护飞船：深蓝紫渐变等腰三角（顶角精确指向飞行方向）+ 紫色边缘光芒（与浅蓝水晶明确区分）
+      // 2026-10-10 A级优化：整机精灵烘焙（形状/颜色全固定），一次 drawImage 取代逐机渐变+辉光重画
       const v = e._sideVel || { vx: 0, vy: 60 };
       ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);
-      ctx.beginPath();
-      ctx.moveTo(0, 5.5);
-      ctx.lineTo(3.75, -5.5);
-      ctx.lineTo(-3.75, -5.5);
-      ctx.closePath();
-      const escG = ctx.createLinearGradient(0, 5.5, 0, -5.5);   // 尾深顶亮的蓝紫渐变
-      escG.addColorStop(0, '#2b2f77');    // 深蓝紫（尾部）
-      escG.addColorStop(0.55, '#4a49b8'); // 蓝紫
-      escG.addColorStop(1, '#8a63ff');    // 亮紫（顶角）
-      ctx.fillStyle = escG;
-      ctx.shadowColor = '#9a6bff';        // 边缘紫色光芒
-      ctx.shadowBlur = 7;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(196, 160, 255, 0.95)';   // 紫色发光描边
-      ctx.lineWidth = 1.1;
-      ctx.stroke();
+      ctx.drawImage(getEscortSprite(),
+        -(ESCORT_SPRITE_W / 2), -(ESCORT_SPRITE_H / 2), ESCORT_SPRITE_W, ESCORT_SPRITE_H);
       ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑
     } else if (e.type === 'striker') {
       // 2类：菱形战机
@@ -803,7 +789,7 @@
     }
     // 4F 精英专属尾焰（统一黑红，配色见 ELITE_FLAME）：机尾向上喷射——焰体沿轴向平滑渐变（焰根红 →
     // 中段暗红 → 焰尖黑渐透明），长度随 e.elT 高频抖动 ±8%（实体自身相位：gameover 后 update 停 →
-    // 冻结不抖，同大狗导弹尾焰处理）；绘制在机体之下（焰根被机身压住），内芯亮红细焰叠加提亮；
+    // 冻结不抖，同叮咚鸡导弹尾焰处理）；绘制在机体之下（焰根被机身压住），内芯亮红细焰叠加提亮；
     // 朴学峰焰体缩至 75%、韩希先长度 95%（更长）/宽度 75%（2026-10-02）；朴学峰冲刺时随机头方向（elRot 旋转坐标系内）；
     // 图鉴预览（encyPreview）不绘制
     if (!e.encyPreview) {
@@ -1150,48 +1136,119 @@
   // 椭圆风条画笔（暴风之眼风条 = 天秀忧郁王子友方大风暴风弹共用，样式完全一致）：
   // 渐变胶囊底盘 + 上下边缘波动椭圆轮廓 + 内部两条流动正弦流线。
   // 调用方需已完成 translate(b.x,b.y) / rotate(atan2(vy,vx))；整体透明度也由调用方控制
-  function paintWindStreakBody(b) {
-    const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
-    g.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-    g.addColorStop(0.5, '#ffffff');
-    g.addColorStop(1, b.color);
-    ctx.fillStyle = g;
-    ctx.shadowColor = b.color;
-    ctx.shadowBlur = 9;
-    // 椭圆风条：整体呈风的波动感——上下边缘沿椭圆轮廓叠加流动正弦波，内部两条流线
-    const half = b.len / 2;
+  // 风条/风弹渲染（2026-10-10 方案A 精灵图预渲染——用户定稿「多存几帧保流动」）：
+  // 原实现每弹每帧 createLinearGradient + shadowBlur fill + 52 段 path（52 次 sin），诗篇螺旋风暴峰值 150~250 发同屏时为渲染热点；
+  // 现按 (color, frame) 预烘焙 24 帧循环精灵（基准 len 100 / r 6，含辉光），运行时仅一次 drawImage 轴径向缩放，渲染成本降 ~90%。
+  // 波动循环闭合：主波动相位 time×14 在 T=2π/14≈0.449s 整圈闭合，24 帧帧距 18.7ms ≈53fps 更新率——流动感与实时连续绘制基本无差；
+  // 流线相位原 time×15 与主相位不闭合（循环接缝跳变），统一改为 ×14（视觉差异可忽略）以闭合循环。
+  // 敌方风弹 / BOSS 风弹 / 友方大风暴风弹（princeStorm）三路共用本函数，一处替换全覆盖；图鉴 mock 弹同路径（state.time 动效一致）。
+  // 调用方约定：画布已 translate 到弹心 + rotate 到飞行方向（+x 为弹头），本函数以原点为中心绘制。
+  const WIND_STREAK_FRAMES = 24;
+  const WIND_SPRITE_LEN = 100, WIND_SPRITE_R = 6;      // 精灵基准尺寸（运行时按 b.len / b.r 缩放，波动波长随 len 归一化拉伸——与实时公式 u 归一化一致）
+  const WIND_SPRITE_W = 152, WIND_SPRITE_H = 68;       // 含辉光外扩余量（shadowBlur 9 + 椭圆半高 7.5）；弹心在 (76, 34)
+  const windSpriteCache = new Map();                   // color → [24 帧 canvas]
+  // 单帧风条绘制（原 paintWindStreakBody 函数体，画布参数化；g 为目标 2D 上下文、time 为波动时间快照）
+  function renderWindStreakFrame(g, time, color) {
+    const len = WIND_SPRITE_LEN, r = WIND_SPRITE_R, half = len / 2;
+    const grad = g.createLinearGradient(-half, 0, half, 0);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+    grad.addColorStop(0.5, '#ffffff');
+    grad.addColorStop(1, color);
+    g.fillStyle = grad;
+    g.shadowColor = color;
+    g.shadowBlur = 9;
+    // 椭圆风条：整体呈风的波动感——上下边缘沿椭圆轮廓叠加流动正弦波
     const edgeY = (px, sgn) => {
       const u = clamp(px / half, -1, 1);
-      const base = Math.sqrt(Math.max(0, 1 - u * u)) * b.r;                       // 椭圆轮廓
-      const wave = Math.sin(u * 7 + state.time * 14 + (sgn > 0 ? 0 : 2.2)) * b.r * 0.24;   // 风的波动（上下相位错开）
+      const base = Math.sqrt(Math.max(0, 1 - u * u)) * r;
+      const wave = Math.sin(u * 7 + time * 14 + (sgn > 0 ? 0 : 2.2)) * r * 0.24;
       return sgn * (base + wave);
     };
-    ctx.beginPath();
+    g.beginPath();
     const SEG = 12;
     for (let k = 0; k <= SEG; k++) {
-      const px = -half + (k / SEG) * b.len;
-      k === 0 ? ctx.moveTo(px, edgeY(px, -1)) : ctx.lineTo(px, edgeY(px, -1));
+      const px = -half + (k / SEG) * len;
+      k === 0 ? g.moveTo(px, edgeY(px, -1)) : g.lineTo(px, edgeY(px, -1));
     }
     for (let k = SEG; k >= 0; k--) {
-      const px = -half + (k / SEG) * b.len;
-      ctx.lineTo(px, edgeY(px, 1));
+      const px = -half + (k / SEG) * len;
+      g.lineTo(px, edgeY(px, 1));
     }
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    // 内部流线：两条沿长度方向的正弦流线，相位随时间流动（强化“风”的动感）
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-    ctx.lineWidth = 1;
+    g.closePath();
+    g.fill();
+    g.shadowBlur = 0;
+    // 内部流线：两条沿长度方向的正弦流线（相位速度统一 time×14 闭合循环，原 ×15 不闭合）
+    g.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    g.lineWidth = 1;
     for (const off of [-0.45, 0.45]) {
-      ctx.beginPath();
+      g.beginPath();
       for (let k = 0; k <= SEG; k++) {
-        const px = -half + (k / SEG) * b.len;
+        const px = -half + (k / SEG) * len;
         const u = px / half;
-        const y = u * b.r * off + Math.sin(u * 5 + state.time * 15 + off * 5) * b.r * 0.28 * Math.sqrt(Math.max(0, 1 - u * u));
-        k === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+        const y = u * r * off + Math.sin(u * 5 + time * 14 + off * 5) * r * 0.28 * Math.sqrt(Math.max(0, 1 - u * u));
+        k === 0 ? g.moveTo(px, y) : g.lineTo(px, y);
       }
-      ctx.stroke();
+      g.stroke();
     }
+  }
+  function getWindStreakSprites(color) {
+    let frames = windSpriteCache.get(color);
+    if (!frames) {
+      frames = [];
+      for (let i = 0; i < WIND_STREAK_FRAMES; i++) {
+        const cv = document.createElement('canvas');
+        cv.width = WIND_SPRITE_W; cv.height = WIND_SPRITE_H;
+        const g = cv.getContext('2d');
+        g.translate(WIND_SPRITE_W / 2, WIND_SPRITE_H / 2);
+        renderWindStreakFrame(g, i / WIND_STREAK_FRAMES * (Math.PI * 2 / 14), color);   // 主波动相位闭合一圈
+        frames.push(cv);
+      }
+      windSpriteCache.set(color, frames);
+    }
+    return frames;
+  }
+  // escort 卫护飞船整机精灵（2026-10-10 A级性能优化）：形状/颜色全固定 → 烘焙一帧（渐变+辉光+描边内含），
+  // 运行时一次 drawImage。编队波次在场 10~30 只，原每帧逐机 createLinearGradient + shadowBlur fill
+  // 为敌人侧最大热点（与风弹精灵同款手法）。2x 分辨率烘焙保辉光清晰度。
+  const ESCORT_SPRITE_W = 28, ESCORT_SPRITE_H = 32, ESCORT_SPRITE_SS = 2;   // 机体 ±3.75/±5.5 + shadow 7 外扩
+  let escortSprite = null;
+  function getEscortSprite() {
+    if (!escortSprite) {
+      const cv = document.createElement('canvas');
+      cv.width = ESCORT_SPRITE_W * ESCORT_SPRITE_SS;
+      cv.height = ESCORT_SPRITE_H * ESCORT_SPRITE_SS;
+      const g = cv.getContext('2d');
+      g.scale(ESCORT_SPRITE_SS, ESCORT_SPRITE_SS);
+      g.translate(ESCORT_SPRITE_W / 2, ESCORT_SPRITE_H / 2);
+      g.beginPath();
+      g.moveTo(0, 5.5);
+      g.lineTo(3.75, -5.5);
+      g.lineTo(-3.75, -5.5);
+      g.closePath();
+      const escG = g.createLinearGradient(0, 5.5, 0, -5.5);   // 尾深顶亮的蓝紫渐变
+      escG.addColorStop(0, '#2b2f77');    // 深蓝紫（尾部）
+      escG.addColorStop(0.55, '#4a49b8'); // 蓝紫
+      escG.addColorStop(1, '#8a63ff');    // 亮紫（顶角）
+      g.fillStyle = escG;
+      g.shadowColor = '#9a6bff';          // 边缘紫色光芒
+      g.shadowBlur = 7;
+      g.fill();
+      g.shadowBlur = 0;
+      g.strokeStyle = 'rgba(196, 160, 255, 0.95)';   // 紫色发光描边
+      g.lineWidth = 1.1;
+      g.stroke();
+      escortSprite = cv;
+    }
+    return escortSprite;
+  }
+  function paintWindStreakBody(b) {
+    const sprites = getWindStreakSprites(b.color);
+    const frame = Math.floor(state.time * 14 * WIND_STREAK_FRAMES / (Math.PI * 2)) % WIND_STREAK_FRAMES;
+    const sx = b.len / WIND_SPRITE_LEN, sy = b.r / WIND_SPRITE_R;
+    ctx.shadowBlur = 0;   // 防御：drawImage 会受 shadowBlur 影响画出阴影（辉光已烘焙在精灵内）
+    ctx.drawImage(sprites[frame],
+      -(WIND_SPRITE_W / 2) * sx, -(WIND_SPRITE_H / 2) * sy,
+      WIND_SPRITE_W * sx, WIND_SPRITE_H * sy);
   }
 
   // 飞剑单剑绘制（待发射悬浮 / 飞行弹体共用）：剑身尖锥（冰蓝→白渐变，尾部略短）+ 短小十字护手
@@ -1671,10 +1728,10 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // 巨大蛋挞（b.tart，黑暗之手技能3）置顶（2026-10-10 用户反馈：图层低于其他敌方子弹）：
-    // 主循环跳过蛋挞、最后重画——蛋挞始终绘制在全部常规敌弹之上（不再受数组 push 顺序影响遮挡）
-    for (const b of eBullets) if (!b.tart) drawOneEBullet(b);
+    // 巨大蛋挞（b.tart，黑暗之手技能3）置底（2026-10-10 用户定稿：蛋挞是底层大弹幕，不遮盖其他敌方子弹）：
+    // 主循环先画蛋挞、再画常规弹——蛋挞始终绘制在全部常规敌弹之下（不再受数组 push 顺序影响遮挡）
     for (const b of eBullets) if (b.tart) drawOneEBullet(b);
+    for (const b of eBullets) if (!b.tart) drawOneEBullet(b);
     ctx.globalAlpha = 1;   // 清除消散期子弹的渐隐透明度
     ctx.shadowBlur = 0;
   }
@@ -2548,7 +2605,7 @@
     ctx.restore();
   }
 
-  // 爆炸冲击圈（大狗导弹雨 / 捣蛋来袭）：蓝色扩散环自爆点扩张至波及半径后渐隐，
+  // 爆炸冲击圈（叮咚鸡导弹雨 / 捣蛋来袭）：蓝色扩散环自爆点扩张至波及半径后渐隐，
   // 直观指示溅射范围（生成见 07-player dagouMissileBlast / 02-core spawnBlastRing，推进见 14-main）
   function drawBlastRings() {
     for (const r of blastRings) {
@@ -2573,7 +2630,7 @@
 
   // 天秀忧郁王子：友方大风暴——暴风之眼同款俯视旋涡的我方版（三层旋臂 + 风暴眼 + 外虚线环），
   // 白蓝色调；存留末段渐隐。绘制于僚机之后、子弹之前（不遮挡我方弹幕）
-  // 大狗导弹雨预警：发射前 warnLead 秒屏幕下方自下而上渐显淡蓝光带（峰值 warnPeak，克制可见），
+  // 叮咚鸡导弹雨预警：发射前 warnLead 秒屏幕下方自下而上渐显淡蓝光带（峰值 warnPeak，克制可见），
   // 发射瞬间起 warnFade 秒内快速渐隐（透明度按剩余时间回落）
   function drawDagouWarn() {
     const cfg = PILOTS.dagou;
@@ -2737,7 +2794,7 @@
     }
   }
 
-  // 叮咚鸡：Q 导弹视觉——黄白小导弹沿飞行方向取向（主体白 + 黄头 + 淡黄尾焰粒子由更新侧撒布）
+  // 大狗：Q 导弹视觉——黄白小导弹沿飞行方向取向（主体白 + 黄头 + 淡黄尾焰粒子由更新侧撒布）
   function drawDdjMissiles() {
     if (!ddjMissiles.length) return;
     const cfg = PILOTS.dingdongji;
@@ -3178,7 +3235,7 @@
     drawStars();
     drawNebulae();
     drawDashWorldFlow();   // 许凯狗冲刺：全场流动特效（疾驰光带自上而下奔涌）
-    drawDagouWarn();   // 大狗：导弹雨发射前屏幕下方蓝光预警（渐显 → 发射后快速渐隐）
+    drawDagouWarn();   // 叮咚鸡：导弹雨发射前屏幕下方蓝光预警（渐显 → 发射后快速渐隐）
     // 主菜单攻击演示：实体层（机体/僚机/弹道/粒子/冲击波等）统一裁剪到演示屏矩形——
     // 弹道与冲击波到达边框即被截断，呈现"屏幕"边界；背景星空不裁剪，保持画面通透
     if (state.demo) {
@@ -3208,14 +3265,14 @@
     drawXinRings();       // 副武器·辛国栋之怒：灼烧火环（子弹之下）
     drawXinFuryRing();    // 奖励道具·辛国栋大怒：固定位置扩散火环（子弹之下）
     drawFeijianWaves();   // 副武器·无界飞剑：待发射飞剑（凝聚下沉 → 分裂悬浮）
+    drawDarkhandTarts();   // 黑暗之手技能4 超长蛋挞弹体：置于全部敌方子弹之下（2026-10-10 用户定稿：底层大弹幕不遮盖其他子弹——玩家子弹 / 常规敌弹 / 导弹均盖于其上，见 11-draw-boss）
     drawBullets();
-    drawDarkhandTarts();   // 黑暗之手技能4 超长蛋挞弹体：置于全部子弹之上（2026-10-10 用户反馈图层低于其他敌弹，见 11-draw-boss）
     drawMissiles();
-    drawDagouMissiles();   // 大狗：白蓝导弹雨（自下而上，命中溅射）
-    drawDdjMissiles();   // 叮咚鸡：黄白导弹（前向扇形直线飞行，直击）
+    drawDagouMissiles();   // 叮咚鸡：白蓝导弹雨（自下而上，命中溅射）
+    drawDdjMissiles();   // 大狗：黄白导弹（前向扇形直线飞行，直击）
     drawFrostZones();   // 虚幻：寒冷区域（寒霜光圈同款冰圈雾气，位于预警圈/炸弹之下）
     drawFrostField();   // 奖励道具·寒霜发生器：我方青白力场（低图层地面效果，存在感刻意压低）
-    drawBlastRings();   // 爆炸冲击圈：大狗导弹爆炸的蓝色扩散环（指示波及范围）
+    drawBlastRings();   // 爆炸冲击圈：叮咚鸡导弹爆炸的蓝色扩散环（指示波及范围）
     drawBaolingBombs();   // 暴鸰：红色预警圈 + 飞行中的炸弹（虚幻：深蓝预警圈 + 冰青圆柱弹，冲刺段朝向锁定方向）
     drawXgWarnCircles(state.xgLooseBombs);   // 辛国栋击毁残留的地毯轰炸落点预警（继续倒计时爆炸，结算见 06-enemy updateXgLooseBombs）
     drawPopianFx();       // 破片 / 破片U型：红圈预警 + 三连发不可击毁导弹
