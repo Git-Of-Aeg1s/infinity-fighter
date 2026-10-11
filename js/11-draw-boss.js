@@ -233,20 +233,34 @@
         ctx.scale(scale, scale);
         const R = v.r;
         // 底盘：浓白风旋径向渐变（核心纯白）
-        const bg = ctx.createRadialGradient(0, 0, R * 0.08, 0, 0, R);
-        bg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
-        bg.addColorStop(0.55, `rgba(223, 243, 255, ${(0.65 * w).toFixed(3)})`);
-        bg.addColorStop(1, 'rgba(223, 243, 255, 0)');
+        // （2026-10-12 性能：几何固定、各档亮度 ∝w 线性 → 峰值烘焙 + globalAlpha=w 缩放，逐帧零渐变重建）
+        const bg = cachedBossGrad(`vtx-bg-${R}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, R * 0.08, 0, 0, R);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+          g0.addColorStop(0.55, 'rgba(223, 243, 255, 0.65)');
+          g0.addColorStop(1, 'rgba(223, 243, 255, 0)');
+          return g0;
+        });
+        const bga0 = ctx.globalAlpha;
+        ctx.globalAlpha = bga0 * w;
         ctx.fillStyle = bg;
         ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = bga0;
         // 最外层强白光环：贴涡旋外缘的高亮风环（宽光带 + 亮环描边 + 两段旋转高亮弧），粗而略淡，强度随白量 w 衰减
-        const rim = ctx.createRadialGradient(0, 0, R * 0.68, 0, 0, R * 1.22);
-        rim.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        rim.addColorStop(0.55, `rgba(255, 255, 255, ${(0.34 * w).toFixed(3)})`);
-        rim.addColorStop(0.80, `rgba(255, 255, 255, ${(0.68 * w).toFixed(3)})`);
-        rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // （2026-10-12 性能：同底盘——峰值烘焙 + globalAlpha 缩放）
+        const rim = cachedBossGrad(`vtx-rim-${R}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, R * 0.68, 0, 0, R * 1.22);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0)');
+          g0.addColorStop(0.55, 'rgba(255, 255, 255, 0.34)');
+          g0.addColorStop(0.80, 'rgba(255, 255, 255, 0.68)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        const rma0 = ctx.globalAlpha;
+        ctx.globalAlpha = rma0 * w;
         ctx.fillStyle = rim;
         ctx.beginPath(); ctx.arc(0, 0, R * 1.22, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = rma0;
         ctx.save();
         ctx.rotate(v.ang * 0.5);
         ctx.strokeStyle = `rgba(255, 255, 255, ${(0.72 * w).toFixed(3)})`;
@@ -267,22 +281,40 @@
         }
         ctx.restore();
         // 外缘漂浮白光：环绕涡旋最外侧的淡淡光效——极淡外层光晕 + 6 团柔光沿轨道绕行（呼吸明灭）
-        const halo = ctx.createRadialGradient(0, 0, R * 1.10, 0, 0, R * 1.58);
-        halo.addColorStop(0, `rgba(255, 255, 255, ${(0.10 * w).toFixed(3)})`);
-        halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // （2026-10-12 性能：外层光晕几何固定、亮度 ∝w → 峰值烘焙 + globalAlpha 缩放）
+        const halo = cachedBossGrad(`vtx-halo-${R}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, R * 1.10, 0, 0, R * 1.58);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        const hla0 = ctx.globalAlpha;
+        ctx.globalAlpha = hla0 * w;
         ctx.fillStyle = halo;
         ctx.beginPath(); ctx.arc(0, 0, R * 1.58, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = hla0;
         for (let k = 0; k < 6; k++) {
           const oa = v.ang * 0.8 + k * Math.PI / 3 + state.time * 0.35;
           const orad = R * (1.18 + 0.16 * Math.sin(state.time * 1.3 + k * 1.9));
           const ox = Math.cos(oa) * orad * 1.06, oy = Math.sin(oa) * orad * 0.92;   // 略扁轨道
           const orr = R * (0.10 + 0.035 * Math.sin(state.time * 2.2 + k * 2.4));
           const oa2 = Math.max(0, 0.15 + 0.09 * Math.sin(state.time * 1.7 + k * 1.3)) * w;
-          const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, orr);
-          og.addColorStop(0, `rgba(255, 255, 255, ${oa2.toFixed(3)})`);
-          og.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          // （2026-10-12 性能：柔光 r0=0 单位渐变峰值烘焙 → translate/scale(orr) 复用；亮度 oa2（含 w 因子）
+          // 相对峰值 0.24 线性 → globalAlpha 缩放，逐帧零渐变重建）
+          const og = cachedBossGrad('vtx-og', () => {
+            const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+            g0.addColorStop(0, 'rgba(255, 255, 255, 0.24)');
+            g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            return g0;
+          });
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.scale(orr, orr);
+          const oga0 = ctx.globalAlpha;
+          ctx.globalAlpha = oga0 * (oa2 / 0.24);
           ctx.fillStyle = og;
-          ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
         }
         // 2 条内卷旋臂（对称双臂，随发射角同步自转，与风条旋向一致）——粗而略淡
         ctx.rotate(v.ang);
@@ -303,12 +335,18 @@
           ctx.stroke();
         }
         ctx.shadowBlur = 0;
-        // 风眼亮核
-        const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
-        cg.addColorStop(0, `rgba(255, 255, 255, ${(1.0 * w).toFixed(3)})`);
-        cg.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // 风眼亮核（2026-10-12 性能：几何固定、亮度 ∝w → 峰值烘焙 + globalAlpha 缩放）
+        const cg = cachedBossGrad(`vtx-cg-${R}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        const cga0 = ctx.globalAlpha;
+        ctx.globalAlpha = cga0 * w;
         ctx.fillStyle = cg;
         ctx.beginPath(); ctx.arc(0, 0, R * 0.32, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = cga0;
         ctx.restore();
       }
 
@@ -484,18 +522,28 @@
       if (e.shock) {
         const pr = clamp(e.shock.t / e.shock.dur, 0, 1);
         const wr = R * (0.4 + pr * 2.4);
-        const bw = R * (0.30 + pr * 0.25);   // 波带宽度：随扩散增厚，冲击更有分量
         ctx.save();
         // ① 波带主体：径向渐变圆环填充——前缘最亮、尾迹渐散，实体感强
-        const band = ctx.createRadialGradient(0, 0, Math.max(0, wr - bw), 0, 0, wr + bw * 0.4);
-        band.addColorStop(0, 'rgba(223, 243, 255, 0)');
-        band.addColorStop(0.55, `rgba(190, 228, 252, ${(0.38 * (1 - pr)).toFixed(3)})`);
-        band.addColorStop(0.85, `rgba(255, 255, 255, ${(0.62 * (1 - pr)).toFixed(3)})`);
-        band.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // （2026-10-12 性能：几何随 pr 连续变化 → pr 量化 40 档缓存（几何偏差 ≤2.5%，快闪波不可辨）；
+        //   各档亮度 ∝(1-pr) 线性 → 峰值烘焙 + globalAlpha=(1-pr) 缩放）
+        const prq = Math.round(pr * 40);
+        const wrq = R * (0.4 + (prq / 40) * 2.4);
+        const bwq = R * (0.30 + (prq / 40) * 0.25);
+        const band = cachedBossGrad(`shock-band-${prq}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, Math.max(0, wrq - bwq), 0, 0, wrq + bwq * 0.4);
+          g0.addColorStop(0, 'rgba(223, 243, 255, 0)');
+          g0.addColorStop(0.55, 'rgba(190, 228, 252, 0.38)');
+          g0.addColorStop(0.85, 'rgba(255, 255, 255, 0.62)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        const bda0 = ctx.globalAlpha;
+        ctx.globalAlpha = bda0 * (1 - pr);
         ctx.fillStyle = band;
         ctx.beginPath();
-        ctx.arc(0, 0, wr + bw * 0.4, 0, Math.PI * 2);
+        ctx.arc(0, 0, wrq + bwq * 0.4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = bda0;
         // ② 前缘亮线：波前锐利亮边 + 青白辉光，强化冲击方向感
         ctx.strokeStyle = `rgba(255, 255, 255, ${(0.9 * (1 - pr)).toFixed(3)})`;
         ctx.lineWidth = 4;
@@ -779,9 +827,128 @@
       }
     }
 
-    // 大型龙卷（技能2）：俯视白色风暴旋涡 —— 以 assets/storm-eye.png 原图为本体（同 BOSS 手法），
-    // 矢量特效降为低透明度点缀（旋臂/柔光），不再用暗底盘与纯黑眼遮盖原图；中心仅微光提亮
-    // 外形为正圆（碰撞体 w=h），整体逆时针旋转
+    // 大型龙卷（技能2）/ 友方大风暴共用：俯视白色风暴旋涡 —— 以 assets/storm-eye.png 原图为本体
+    // （同 BOSS 手法），矢量特效降为低透明度点缀（旋臂/柔光），中心仅微光提亮；
+    // 外形为正圆（碰撞体 w=h），整体逆时针旋转。
+    // 精灵化（2026-10-12 友方大风暴卡顿修复）：原实现每帧实时重绘全部图层——3×createRadialGradient +
+    // 主臂 4×12 段/风须 6×14 段 ≈132 次 beginPath/stroke + stormEyeImg 大图 shadowBlur(R×0.3) 合成 +
+    // 圆形 clip。敌方大型龙卷（w=144）单只在场尚可，友方大风暴（PRINCE_STORM.r=110，大 53%）按 Q /
+    // 作弊连发（0.4~1.4s/发 × dur 7s）可同屏叠 5+ 个，逐帧重绘叠加为渲染热点。与风弹方案A
+    //（10-draw-world windSpriteCache）/ 风柱渐变精灵（本文件 stormSprites）同款手法：静态/自转图层
+    // 预烘焙成精灵，运行时仅 rotate + drawImage。层次与动态性保留：底盘 → 纹理(rot×0.55 自转 +
+    // alpha 0.26) → 主臂(rot 自转) → 风须(rot + time×0.55 相对漂移) → 顶层 rim+眼光；呼吸缩放 pulse
+    // 在外层照常作用。烘焙按半径 R 键控 2x 分辨率（现两调用方：敌方 72 / 友方 110 各一套）；纹理层
+    //（圆裁原图）stormEyeImg 就绪后惰性烘焙——圆形轮廓旋转剪影不变，烘焙无损；原图未就绪期跳过
+    // 纹理层，白盘/旋臂/风须照常（比旧矢量兜底更接近成品观感；眼光统一取有图版参数，肉眼难辨）。
+    // 注：旧实现纹理层的 shadowBlur 会被同层圆形 clip 完全裁掉（视觉不可见），烘焙省略之。
+  const TORNADO_SPRITE_SS = 2;
+  const tornadoSpriteCache = new Map();          // R → { body, arms, tendrils, top }（与图片无关，惰性一次）
+  let tornadoTextureSprite = null;               // { R, cv }（依赖 stormEyeImg，就绪后烘焙一次）
+  function bakeTornadoLayer(half, painter) {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = Math.ceil(half * 2 * TORNADO_SPRITE_SS);
+      const g = cv.getContext('2d');
+      g.scale(TORNADO_SPRITE_SS, TORNADO_SPRITE_SS);
+      g.translate(half, half);
+      painter(g);
+      cv._half = half;                             // 运行时按原尺寸 blit（2x 内容缩回 1x 坐标，细臂/辉光保清晰）
+      return cv;
+    }
+  function getTornadoSprites(R) {
+      let set = tornadoSpriteCache.get(R);
+      if (!set) {
+        set = {
+          // 白色实体底盘（原 body 渐变）：高不透明白盘，风暴不再是「透明幽灵」
+          body: bakeTornadoLayer(R * 1.04 + 1, g => {
+            const body = g.createRadialGradient(0, 0, 0, 0, 0, R * 1.04);
+            body.addColorStop(0, 'rgba(248, 252, 255, 0.88)');
+            body.addColorStop(0.62, 'rgba(228, 240, 252, 0.72)');
+            body.addColorStop(0.9, 'rgba(208, 228, 246, 0.38)');
+            body.addColorStop(1, 'rgba(208, 228, 246, 0)');
+            g.fillStyle = body;
+            g.beginPath();
+            g.arc(0, 0, R * 1.04, 0, Math.PI * 2);
+            g.fill();
+          }),
+          // 主臂 ×4：根亮尾淡、根粗尾细的分段弧线（云带丝缕感）——形状相对自转坐标系固定，
+          // 烘焙固定相位 + 运行时 rotate(rot) 与旧实时 rotate 后绘制完全等价
+          arms: bakeTornadoLayer(R * 1.06 + 1, g => {
+            g.lineCap = 'round';
+            for (let arm = 0; arm < 4; arm++) {
+              const a0 = arm * (Math.PI / 2) + 0.5;
+              const SEGS = 12;
+              let qx = 0, qy = 0;
+              for (let k = 0; k <= SEGS; k++) {
+                const p = k / SEGS;
+                const ang = a0 + p * 3.0;
+                const rad = R * (0.26 + p * 0.70);
+                const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
+                if (k > 0) {
+                  const fade = 0.9 - p * 0.75;                             // 根亮尾淡
+                  g.strokeStyle = `rgba(255, 255, 255, ${(0.42 * fade + 0.05).toFixed(3)})`;
+                  g.lineWidth = R * (0.070 * (1 - p * 0.82) + 0.010);      // 根 ~6px 渐细至 ~1px
+                  g.beginPath();
+                  g.moveTo(qx, qy);
+                  g.lineTo(px, py);
+                  g.stroke();
+                }
+                qx = px; qy = py;
+              }
+            }
+          }),
+          // 细风须 ×6：更细更淡的丝缕（相对主臂的漂移由运行时 rot + time×0.55 还原）
+          tendrils: bakeTornadoLayer(R * 1.06 + 1, g => {
+            g.strokeStyle = 'rgba(255, 255, 255, 0.20)';
+            g.lineWidth = 1.1;
+            for (let arm = 0; arm < 6; arm++) {
+              const a0 = arm * (Math.PI / 3) + 1.1;
+              g.beginPath();
+              for (let k = 0; k <= 14; k++) {
+                const p = k / 14;
+                const ang = a0 + p * 2.5;
+                const rad = R * (0.20 + p * 0.76);
+                const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
+                k === 0 ? g.moveTo(px, py) : g.lineTo(px, py);
+              }
+              g.stroke();
+            }
+          }),
+          // 外缘柔光 rim + 风暴眼微光（原 rim / eyeGlow 两渐变合一，绘制顺序不变）
+          top: bakeTornadoLayer(R * 1.06 + 1, g => {
+            const rim = g.createRadialGradient(0, 0, R * 0.6, 0, 0, R * 1.06);
+            rim.addColorStop(0, 'rgba(225, 244, 255, 0)');
+            rim.addColorStop(0.8, 'rgba(235, 248, 255, 0.30)');
+            rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            g.fillStyle = rim;
+            g.beginPath();
+            g.arc(0, 0, R * 1.06, 0, Math.PI * 2);
+            g.fill();
+            const eyeGlow = g.createRadialGradient(0, 0, 0, 0, 0, R * 0.20);
+            eyeGlow.addColorStop(0, 'rgba(255, 255, 255, 0.30)');
+            eyeGlow.addColorStop(0.6, 'rgba(200, 224, 246, 0.12)');
+            eyeGlow.addColorStop(1, 'rgba(200, 224, 246, 0)');
+            g.fillStyle = eyeGlow;
+            g.beginPath();
+            g.arc(0, 0, R * 0.20, 0, Math.PI * 2);
+            g.fill();
+          }),
+        };
+        tornadoSpriteCache.set(R, set);
+      }
+      return set;
+    }
+  function getTornadoTextureSprite(R) {
+      if (!stormEyeImg || !stormEyeImg.complete || !stormEyeImg.naturalWidth) return null;
+      if (!tornadoTextureSprite || tornadoTextureSprite.R !== R) {
+        tornadoTextureSprite = { R, cv: bakeTornadoLayer(R * 1.04 + 1, g => {
+          g.beginPath();
+          g.arc(0, 0, R * 1.04 - 1, 0, Math.PI * 2);
+          g.clip();
+          g.drawImage(stormEyeImg, -R * 1.04, -R * 1.04, R * 2.08, R * 2.08);
+        }) };
+      }
+      return tornadoTextureSprite.cv;
+    }
   function drawTornado(e, spinMul = 1) {
       ctx.save();
       ctx.translate(e.x, e.y);
@@ -789,117 +956,20 @@
       const rot = -state.time * 1.9 * spinMul;   // 逆时针（canvas 角度递减）；spinMul：友方大风暴 ×2
       const pulse = 1 + Math.sin(state.time * 3.1) * 0.015;   // 轻微呼吸缩放
       ctx.scale(pulse, pulse);
-
-      // 矢量旋臂（原图/兜底共用）：多道渐细渐隐的细柔臂 + 更细的漂移风须。
-      // 旧版等宽圆头粗臂（粗、圆头、匀速弯曲）是“蛆感”根因，改成分段变宽、根亮尾淡
-      const paintArms = () => {
+      const blit = (img, angle, alpha) => {
         ctx.save();
-        ctx.rotate(rot);
-        ctx.lineCap = 'round';
-        // 主臂 ×4：根亮尾淡、根粗尾细的分段弧线（云带丝缕感，不再是一根粗虫）
-        for (let arm = 0; arm < 4; arm++) {
-          const a0 = arm * (Math.PI / 2) + 0.5;
-          const SEGS = 12;
-          let qx = 0, qy = 0;
-          for (let k = 0; k <= SEGS; k++) {
-            const p = k / SEGS;
-            const ang = a0 + p * 3.0;
-            const rad = R * (0.26 + p * 0.70);
-            const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
-            if (k > 0) {
-              const fade = 0.9 - p * 0.75;                             // 根亮尾淡
-              ctx.strokeStyle = `rgba(255, 255, 255, ${(0.42 * fade + 0.05).toFixed(3)})`;
-              ctx.lineWidth = R * (0.070 * (1 - p * 0.82) + 0.010);    // 根 ~6px 渐细至 ~1px
-              ctx.beginPath();
-              ctx.moveTo(qx, qy);
-              ctx.lineTo(px, py);
-              ctx.stroke();
-            }
-            qx = px; qy = py;
-          }
-        }
-        // 细风须 ×6：更细更淡、相对主臂缓慢漂移的丝缕，织出风流感
-        ctx.save();
-        ctx.rotate(state.time * 0.55);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.20)';
-        ctx.lineWidth = 1.1;
-        for (let arm = 0; arm < 6; arm++) {
-          const a0 = arm * (Math.PI / 3) + 1.1;
-          ctx.beginPath();
-          for (let k = 0; k <= 14; k++) {
-            const p = k / 14;
-            const ang = a0 + p * 2.5;
-            const rad = R * (0.20 + p * 0.76);
-            const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
-            k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-        }
-        ctx.restore();
+        if (angle) ctx.rotate(angle);
+        if (alpha != null) ctx.globalAlpha *= alpha;
+        ctx.drawImage(img, -img._half, -img._half, img._half * 2, img._half * 2);
         ctx.restore();
       };
-
-      if (stormEyeImg) {
-        // 白色实体底盘：先铺一层高不透明白盘，风暴不再是「透明幽灵」
-        const body = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.04);
-        body.addColorStop(0, 'rgba(248, 252, 255, 0.88)');
-        body.addColorStop(0.62, 'rgba(228, 240, 252, 0.72)');
-        body.addColorStop(0.9, 'rgba(208, 228, 246, 0.38)');
-        body.addColorStop(1, 'rgba(208, 228, 246, 0)');
-        ctx.fillStyle = body;
-        ctx.beginPath();
-        ctx.arc(0, 0, R * 1.04, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 原图纹理：低不透明度叠在白盘上（仅隐约可辨旋涡轮廓与暗色云隙）；圆形裁剪去除照片黑角
-        const D = R * 2.08;
-        ctx.save();
-        ctx.rotate(rot * 0.55);   // 与矢量点缀同向但更慢，形成内外层次
-        ctx.globalAlpha *= 0.26;
-        ctx.shadowColor = 'rgba(210, 235, 255, 0.5)';
-        ctx.shadowBlur = R * 0.3;
-        ctx.beginPath();
-        ctx.arc(0, 0, D / 2 - 1, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(stormEyeImg, -D / 2, -D / 2, D, D);
-        ctx.restore();
-
-        // 矢量旋臂：渐细渐隐细臂 + 漂移风须（共用 paintArms）
-        paintArms();
-
-        // 外缘柔光：白色气旋轮廓
-        const rim = ctx.createRadialGradient(0, 0, R * 0.6, 0, 0, R * 1.06);
-        rim.addColorStop(0, 'rgba(225, 244, 255, 0)');
-        rim.addColorStop(0.8, 'rgba(235, 248, 255, 0.30)');
-        rim.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = rim;
-        ctx.beginPath();
-        ctx.arc(0, 0, R * 1.06, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 风暴眼：仅微光提亮（照片中心已足够深，不再叠纯黑）
-        const eyeGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.20);
-        eyeGlow.addColorStop(0, 'rgba(255, 255, 255, 0.30)');
-        eyeGlow.addColorStop(0.6, 'rgba(200, 224, 246, 0.12)');
-        eyeGlow.addColorStop(1, 'rgba(200, 224, 246, 0)');
-        ctx.fillStyle = eyeGlow;
-        ctx.beginPath();
-        ctx.arc(0, 0, R * 0.20, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // 原图未加载兜底：简化矢量风暴（同样无暗底盘、中心减淡）
-        paintArms();
-        ctx.save();
-        const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.22);
-        eye.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-        eye.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = eye;
-        ctx.beginPath();
-        ctx.arc(0, 0, R * 0.22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
+      const S = getTornadoSprites(R);
+      blit(S.body, 0);                            // 白色实体底盘（不随自转）
+      const tex = getTornadoTextureSprite(R);     // 原图纹理：慢自转 + alpha 0.26（仅隐约可辨旋涡轮廓与暗色云隙）
+      if (tex) blit(tex, rot * 0.55, 0.26);
+      blit(S.arms, rot);                          // 矢量旋臂：自转
+      blit(S.tendrils, rot + state.time * 0.55);  // 细风须：相对主臂缓慢漂移，织出风流感
+      blit(S.top, 0);                             // 外缘柔光 + 风暴眼微光（不随自转）
       ctx.restore();
     }
   
@@ -1591,9 +1661,14 @@
             const asp = (lightningImgBig.naturalWidth / lightningImgBig.naturalHeight) || 0.3;
             const bl = 260 + (b.seed % 120);
             ctx.globalAlpha = clamp(bp * 1.2, 0, 1) * 0.85;
-            ctx.filter = S2_BOLT_FILTER;
-            ctx.drawImage(lightningImgBig, b.x - bl * asp / 2, b.y - bl / 2, bl * asp, bl);
-            ctx.filter = 'none';
+            const tint = ensureBoltTint();
+            if (tint) {
+              ctx.drawImage(tint, b.x - bl * asp / 2, b.y - bl / 2, bl * asp, bl);   // 预烘焙调色版：零逐帧滤镜
+            } else {
+              ctx.filter = S2_BOLT_FILTER;
+              ctx.drawImage(lightningImgBig, b.x - bl * asp / 2, b.y - bl / 2, bl * asp, bl);
+              ctx.filter = 'none';
+            }
           } else {
             ctx.strokeStyle = `rgba(205, 235, 255, ${(0.8 * bp).toFixed(3)})`;
             ctx.lineWidth = 3;
@@ -1657,6 +1732,37 @@
   // ---------- 风暴编织者：技能演出（世界坐标；状态机见 05-boss runStorm2Skill） ----------
   // 落雷素材调色：lightning-4 主色调偏紫，经 hue-rotate 归入游戏主色调（青蓝）并轻微提亮
   const S2_BOLT_FILTER = 'hue-rotate(-30deg) saturate(1.15) brightness(1.06)';
+
+  // 落雷贴图 tint 烘焙（2026-10-12 性能）：原逐帧对大图挂 ctx.filter——canvas 最贵操作之一，且恰在 BOSS
+  // 技能满屏时刻。滤镜为常量 → 素材就绪后一次性烘焙调色版，运行时纯 drawImage 零滤镜；烘焙失败回退原路径
+  let boltTintCv = null;
+  function ensureBoltTint() {
+    if (!boltTintCv && lightningImgBig && lightningImgBig.complete && lightningImgBig.naturalWidth) {
+      try {
+        const c = document.createElement('canvas');
+        c.width = lightningImgBig.naturalWidth;
+        c.height = lightningImgBig.naturalHeight;
+        const g = c.getContext('2d');
+        g.filter = S2_BOLT_FILTER;
+        g.drawImage(lightningImgBig, 0, 0);
+        boltTintCv = c;
+      } catch (err) { boltTintCv = null; }
+    }
+    return boltTintCv;
+  }
+
+  // BOSS 层渐变缓存（2026-10-12 性能）：同 09a/10-draw-world 手法——渐变按 key 复用、消除每帧
+  // createXxxGradient；上限 128（成形震荡波按 pr 量化 40 档 + 涡旋按 R 键，量级远低）
+  const bossGradCache = new Map();
+  function cachedBossGrad(key, make) {
+    let g = bossGradCache.get(key);
+    if (!g) {
+      if (bossGradCache.size > 128) bossGradCache.clear();
+      g = make();
+      bossGradCache.set(key, g);
+    }
+    return g;
+  }
   function s2Seeded(seed) {
     let s = (seed * 9973 + 479) % 233280;
     return () => ((s = (s * 9301 + 49297) % 233280) / 233280);
@@ -2885,6 +2991,30 @@
       + ` drop-shadow(${edge}px 0 0 rgba(255,42,64,0.9)) drop-shadow(-${edge}px 0 0 rgba(255,42,64,0.9))`
       + ` drop-shadow(0 ${edge}px 0 rgba(255,42,64,0.9)) drop-shadow(0 -${edge}px 0 rgba(255,42,64,0.9))`);
   }
+
+  // 登场凝聚精英黑剪影一次性烘焙（2026-10-12 登场卡顿修复）：outline/reveal 阶段四角凝聚精英原先每帧
+  // 对精英立绘源图挂 ctx.filter='brightness(0)' + imageSmoothingQuality='high' 缩放（×4 张/帧）——与
+  // 2026-10-03 黑暗之手本体逐帧滤镜同款热点（滤镜/高画质缩放按源图全分辨率处理）。改惰性烘焙 2× 显示
+  // 尺寸（h0=118 → 236px）黑剪影精灵，逐帧纯 drawImage（凝聚缩放 gScale / 辉光 shadowBlur / 浮动均
+  // 动态保留，剪影静态烘焙无损，视觉不变）。smoke 无头桩 naturalWidth 缺失 → 返回 null 回退原 filter 路径
+  const dhGhostBakes = new Map();   // 精英立绘 img → { cv, w0, h0 }（显示尺寸 ×2 烘焙）
+  function ensureDhGhostBake(img) {
+    if (!img || !img.naturalWidth) return null;
+    let b = dhGhostBakes.get(img);
+    if (!b) {
+      const h0 = 118, w0 = h0 * (img.naturalWidth / img.naturalHeight || 0.72);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w0 * 2));
+      c.height = h0 * 2;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.filter = 'brightness(0)';
+      g.drawImage(img, 0, 0, c.width, c.height);
+      b = { cv: c, w0, h0 };
+      dhGhostBakes.set(img, b);
+    }
+    return b;
+  }
   // 黑暗之手引擎尾焰（2026-10-02 用户定稿）：机尾（屏上方中央梯形装甲）朝上喷焰——
   // 黑红配色（焰根暗红 → 深红 → 近黑淡出，lighter 叠加下暗红近黑自然消隐于深色太空底）+ 亮红内芯，
   // 贝塞尔锥形外焰，焰尖随相位微摆 + 呼吸；焰根压在装甲顶边内、随定稿下移（baseY -0.32h → -0.24h），
@@ -2991,16 +3121,21 @@
           const ax = clamp(e.x + (i % 2 ? ox : -ox), 55, CANVAS_W - 55);
           const ay = clamp(e.y + (i < 2 ? -oy : oy), 70, CANVAS_H - 120);   // 上排防越屏顶（机体悬停 y≈151）
           const bob = Math.sin(state.time * 2.4 + i * 1.7) * 5;   // 凝聚期轻微浮动
+          const bake = ensureDhGhostBake(img);
           ctx.save();
           ctx.translate(ax, ay + bob);
           ctx.globalAlpha = gAlpha;
           ctx.scale(gScale, gScale);
           ctx.shadowColor = '#c22030';   // 凝聚精英暗红辉光（2026-10-03 黑红化，原紫 #7a2bb8）
           ctx.shadowBlur = 16 + Math.sin(state.time * 5 + i) * 6;
-          ctx.filter = 'brightness(0)';          // 黑暗形态：纯黑剪影
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, -w0 / 2, -h0 / 2, w0, h0);
+          if (bake) {
+            ctx.drawImage(bake.cv, -bake.w0 / 2, -bake.h0 / 2, bake.w0, bake.h0);   // 预烘焙黑剪影：零逐帧滤镜
+          } else {
+            ctx.filter = 'brightness(0)';          // 黑暗形态：纯黑剪影（无头桩/极端时序回退）
+            ctx.drawImage(img, -w0 / 2, -h0 / 2, w0, h0);
+          }
           ctx.restore();
         }
       }
@@ -3203,8 +3338,9 @@
 
   // 黑暗之手「额外技能」特效层（2026-10-10 用户定稿实装；drawBoss 调用、紧随 drawDarkhandBoss 机体层——
   // 视觉口径全同对应精英原版技能）：id5 夏勇碎翼回旋镖（预警轨道虚线 + 爪→锚迸出线 / 月牙刃 + 拖尾）、
-  // id7 辛国栋边界轰炸（落点红色收缩预警圈）、id8 韩希先旋眼火螺（三塔核绕锚公转）、id9 双标记导弹
-  //（标记点红色收缩圈短暂提示）
+  // id7 辛国栋边界轰炸（落点预警全同辛国栋精英：波浪外环 + 红罩 + 旋转虚线中环 + 首拍强调圈，
+  // 2026-10-10 用户回调）、id8 韩希先旋眼火螺（三塔核绕锚公转，半径 ×orbitRMul 同源收缩）、
+  // id9 双标记导弹（标记点红色收缩圈短暂提示）
   function drawDarkhandSkillFx(e) {
     const s = e.skill;
     if (!s) return;
@@ -3254,28 +3390,60 @@
         }
       }
     } else if (s.id === 7 && s.bombs) {
-      // 辛国栋边界轰炸落点：红色收缩预警圈（进度推进半径收缩、明暗脉动；红色系同款）
+      // 辛国栋边界轰炸落点：预警视觉全同辛国栋精英地毯轰炸 drawXgWarnCircles（10-draw-world，2026-10-10
+      // 用户回调「预警应当跟辛国栋一致」）——波浪外环（6 波起伏、相位随 b.t 流动）+ 内部红罩 + 旋转虚线
+      // 中环 + 首拍双弹大范围收缩强调圈；预警时长/半径仍按本技能难度取值（与 05-boss 爆炸结算同源）
       const xc = ELITES.xinguodong;
       const warnT = isPoem() ? xc.poemBombWarn : isRealme() ? xc.realmeBombWarn : xc.bombWarn;
       const blastR = isPoem() ? xc.poemBombR : isRealme() ? xc.realmeBombR : xc.bombR;
       for (const b of s.bombs) {
         const prog = clamp(b.t / warnT, 0, 1);
+        const curR = blastR * (1 - 0.25 * prog);
         ctx.save();
-        ctx.globalAlpha = 0.35 + 0.4 * prog + 0.15 * Math.sin(state.time * 16);
-        ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(b.x, b.y, blastR * (1.12 - 0.5 * prog * prog), 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha *= 0.25;
-        ctx.fillStyle = '#ff2020';
+        // 首拍强调圈（仅首拍双弹 b.first）：大范围收缩圆圈——从 2.6× 爆炸半径随预警进度线性收缩、
+        // 透明度渐隐，双圈叠加提示轰炸起点（公式同精英 drawXgWarnCircles 首投强调圈）
+        if (b.first) {
+          const rr = blastR * (2.6 - 1.6 * prog);
+          ctx.globalAlpha = 0.12 + 0.5 * (1 - prog);
+          ctx.strokeStyle = '#c22030';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(b.x, b.y, rr, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha *= 0.6;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(b.x, b.y, rr * 0.85, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        // 波浪外环路径（填充 + 描边共用）：半径沿圆周 6 波正弦起伏，相位随 b.t 流动（公式同精英）
+        ctx.beginPath();
+        for (let a = 0; a <= Math.PI * 2 + 0.001; a += Math.PI / 24) {
+          const rr = curR * (1 + 0.055 * Math.sin(a * 6 + b.t * 9));
+          const px = b.x + Math.cos(a) * rr, py = b.y + Math.sin(a) * rr;
+          if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.globalAlpha = 0.14;
+        ctx.fillStyle = '#8c1018';
         ctx.fill();
+        ctx.globalAlpha = 0.55 + 0.15 * Math.sin(state.time * 16);
+        ctx.strokeStyle = '#c22030';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // 旋转虚线中环：虚线段沿圆周流动（lineDashOffset 随 b.t 推进，公式同精英）
+        ctx.globalAlpha = 0.4;
+        ctx.setLineDash([9, 13]);
+        ctx.lineDashOffset = -b.t * 150;
+        ctx.beginPath(); ctx.arc(b.x, b.y, curR * 0.82, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
         ctx.restore();
       }
     } else if (s.id === 8 && s.eyes) {
-      // 旋眼火螺：每眼三塔核（暗红圆核 + 红辉光 + 白热芯）绕锚公转（塔位公式同 05-boss 技能推进）
-      const hc = ELITES.hanxixian;
+      // 旋眼火螺：每眼三塔核（暗红圆核 + 红辉光 + 白热芯）绕锚公转（塔位公式同 05-boss 技能推进——
+      // 公转半径 ×orbitRMul 0.8 同源收缩，2026-10-10 用户回调）
+      const hc = ELITES.hanxixian, orbR = hc.orbitR * DARKHAND.bHanxixian.orbitRMul;
       for (const eye of s.eyes) {
         for (let i = 0; i < hc.turretN; i++) {
           const ta = eye.ang + i * Math.PI * 2 / hc.turretN;
-          const tx = eye.ax + Math.cos(ta) * hc.orbitR, ty = eye.ay + Math.sin(ta) * hc.orbitR;
+          const tx = eye.ax + Math.cos(ta) * orbR, ty = eye.ay + Math.sin(ta) * orbR;
           ctx.save();
           ctx.globalAlpha = 0.9;
           ctx.fillStyle = '#8a1018';
@@ -3357,6 +3525,29 @@
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
       }
       ctx.restore();
+    }
+    // 关节圆补片（2026-10-10 用户回调：反弹折角处矩形条带拼接在折角内侧留楔形空缺、斜切截断观感难受）——
+    // 折角两侧条带方向突变，矩形拼片在折角内侧必然留缝；在该采样点补一块 clip 圆片（半径 = 半宽），
+    // 图源取该点弧长 u 对应贴图区段（与条带同源连续），桥接缝隙并圆化折角；近共线关节无缝隙不补；
+    // 未露出 / 锚点堆叠关节（邻段长 <0.5）跳过；回退条带渲染（无贴图）本身 round cap 无缝隙不补
+    if (img) {
+      for (let i = 1; i + 1 < n; i++) {
+        const p = tar.pts[i], pA = tar.pts[i - 1], pB = tar.pts[i + 1];
+        const d1x = p.x - pA.x, d1y = p.y - pA.y, d2x = pB.x - p.x, d2y = pB.y - p.y;
+        const l1 = Math.hypot(d1x, d1y), l2 = Math.hypot(d2x, d2y);
+        if (l1 < 0.5 || l2 < 0.5) continue;
+        if ((d1x * d2x + d1y * d2y) / (l1 * l2) > 0.999) continue;
+        const patchW = c.tartW / c.tartLen * img.width;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(d1y + d2y, d1x + d2x));
+        ctx.beginPath();
+        ctx.arc(0, 0, c.tartW / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(img, clamp(i * seg / c.tartLen * img.width - patchW / 2, 0, img.width - patchW), 0, patchW, img.height,
+          -c.tartW / 2, -c.tartW / 2, c.tartW, c.tartW);
+        ctx.restore();
+      }
     }
   }
 

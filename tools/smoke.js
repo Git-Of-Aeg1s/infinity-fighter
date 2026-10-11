@@ -279,16 +279,16 @@ async function sceneCoreFlow() {
 
 async function scenePilots() {
   // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
-  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 陵落 Q 技能），
+  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 迪奥 Q 技能），
   // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 Q → 暂停返回主界面
-  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'lingluo', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang']) {
+  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'diao', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang']) {
     const allCards = [...elements.pilotGridMain.children, ...elements.pilotGridSub.children];
     const card = allCards.find(c => c.dataset && c.dataset.pilot === pid);
     if (!card) { errors.push({ key: '驾驶员卡片缺失', stack: 'pilotGrid 中未找到卡片 ' + pid }); continue; }
     card.click();
     elements.startBtn.click();                  // 以该驾驶员开局
     frames(200);                                // ≈3.3s：出怪 / 冲刺秒杀 / 开火 / 拾取 / HUD
-    key('q'); frames(5); key('q', false);       // 驾驶员技能键 Q（天秀忧郁王子量表未满 / 陵落冷却未结束时为空操作）
+    key('q'); frames(5); key('q', false);       // 驾驶员技能键 Q（天秀忧郁王子量表未满 / 迪奥冷却未结束时为空操作）
     key('p'); frames(5);                        // 暂停
     elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
     sample('驾驶员 ' + pid + ' 主路径');
@@ -386,7 +386,7 @@ async function sceneSwarm() {
 async function scenePoem() {
   // 诗篇波次制（wip 实测）：modules 模式下直接 setDifficulty 到 poem（绕过主菜单 wip 选择限制）→ 开局跑帧——
   // 覆盖 14-main 波次制分支（清场驱动 / clearDelay / 波 N = 等级 N / BOSS 触发改波次计数）、
-  // 04-spawn 附加先兆者与加血节流递减、08-entities 35% 回复、06-enemy 波次节流（无 BOSS 阶段不触发脚本化置满）
+  // 04-spawn 附加先兆者与加血节流递减、08-entities 40% 回复（HP_KIT_HEAL_PCT 全难度统一）、06-enemy 波次节流（无 BOSS 阶段不触发脚本化置满）
   if (isModules) {
     const cfg = await importConfig();
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
@@ -412,6 +412,84 @@ async function scenePoem() {
       sample('诗篇波次制跑帧');
       cfg.setDifficulty(cfg.DIFFICULTIES.realme);   // 还原默认难度，避免影响后续场景
     }
+  }
+}
+
+async function sceneStarslayer() {
+  // 群星之杀暴走三线斩击回归（2026-10-12 用户报告：金色 4 类 / 其他敌人概率血条消失且无敌——
+  // 症状指纹 = e.hp 变 NaN：06-enemy barT 比较 `e.hp < e.maxHp` 恒 false → 血条渐隐消失；
+  // `hp -= dmg` 对 NaN 无效 → 永不掉血无敌。本场景 = 定向复现：群星之杀 + 暴走三线 + swarm 持续刷怪，
+  // 逐帧断言场上全部敌人 hp 有限性——红则记录首个 NaN 实体（type/variant/hp/maxHp/帧号）。
+  if (isModules) {
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    // 换装群星之杀（空间斩击战机）
+    const prevPlane = cfgL.currentPlane;
+    if (cfgL.PLANES.stars && cfgL.setPlane) cfgL.setPlane(cfgL.PLANES.stars);
+    // 从上一场景干净返回 → 开局 → 直接构造 swarm 挑战态（不依赖图鉴按钮——单跑场景时
+    // 权重页签未构建、按钮不存在；startSwarmTest 语义 = resetGame(true, { challenge: { kind:'swarm', ... } })）
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);
+    elements.startBtn.click(); frames(10);
+    const uiMod = await import(pathToFileURL(join(jsDir, '12-ui.js')).href);
+    if (uiMod.resetGame) uiMod.resetGame(true, { challenge: { kind: 'swarm', name: '持续刷怪测试' } });
+    frames(420);                                  // ≈7s：swarm Lv20 出怪（编队入场 / 停留线就位）
+    // hp 写入拦截（临时插桩）：wrap enemies.push + 已在场敌人，给每个敌挂 hp setter——写入 NaN 时抓
+    // Error().stack 直接指认写入行（写入侧比读取侧断言多一层堆栈信息）。验收修复后整段删除。
+    const wrapHp = (e) => {
+      if (!e || typeof e !== 'object' || e.hp == null || e._hpWrapped) return;
+      e._hpWrapped = true;
+      let _hp = e.hp;
+      Object.defineProperty(e, 'hp', {
+        configurable: true,
+        get() { return _hp; },
+        set(v) {
+          if (!Number.isFinite(v)) {
+            // 无条件报：NaN 写入一律抓栈（含 _hp 已 NaN 的持续写入——stack 即活跃写入点）
+            errors.push({ key: 'hpNaN写入@' + e.type + '/' + (e.variant || '') + '/hp=' + String(_hp), stack: new Error().stack });
+          }
+          _hp = v;
+        },
+      });
+    };
+    for (const e of core.enemies) wrapHp(e);   // 含出怪期已生成的敌人
+    const origPush = core.enemies.push.bind(core.enemies);
+    core.enemies.push = (...es) => {
+      for (const e of es) wrapHp(e);
+      return origPush(...es);
+    };
+    core.player.invuln = 1e9;                     // 防玩家死亡中断复现
+    core.player.weapon = 5;                       // 暴走 Lv5：三线独立斩击（2026-10-12 改动面）
+    core.player.berserk = 1e9;                    // 暴走常驻（不触发暴走结束掉级/澄月结算）
+    const START = NOW;
+    let bad = null, nFrames = 0;
+    for (let f = 0; f < 2600 && !bad; f++) {      // ≈43s：斩击 cd 1.0s → 43 轮 × 6 击（三线独立）＋大狗导弹雨多轮
+      runFrames(1); nFrames++;
+      for (const e of core.enemies) {
+        if (!Number.isFinite(e.hp) || !Number.isFinite(e.maxHp)) {
+          // dump 全部字段：非有限值逐个标出（定位 NaN 蔓延范围——hp/maxHp/x/y/w/h/hpTrail/barT 等）
+          const dump = [];
+          for (const k in e) {
+            const v = e[k];
+            if (k === '_hpWrapped') dump.push('_wrapped=' + v);
+            else if (typeof v === 'number' && !Number.isFinite(v)) dump.push(k + '=NaN');
+            else if (typeof v === 'number') dump.push(k + '=' + v.toFixed(1));
+          }
+          bad = { type: e.type, variant: e.variant || '', bossId: e.bossId || '', hp: String(e.hp), maxHp: String(e.maxHp), frame: Math.round((NOW - START) / (1000 / 60)), dump: dump.join(' ') };
+          break;
+        }
+      }
+    }
+    if (bad) {
+      errors.push({ key: '群星之杀斩击致敌人 hp NaN', stack: '帧 ' + bad.frame + '：' + bad.type + (bad.variant ? '/' + bad.variant : '') + (bad.bossId ? '/' + bad.bossId : '') + ' hp=' + bad.hp + ' maxHp=' + bad.maxHp + '\n  字段dump：' + bad.dump });
+    } else if (nFrames < 2600) {
+      errors.push({ key: '群星之杀场景提前终止', stack: '复现循环仅跑 ' + nFrames + ' 帧（主循环未排程？）' });
+    }
+    // 还原战机 + 返回主界面
+    cfgL.setPlane(prevPlane);
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);
+    sample('群星之杀暴走三线斩击 hp 有限性');
   }
 }
 
@@ -806,24 +884,24 @@ async function sceneDarkhand() {
           if (e.hp >= hp0) errors.push({ key: '爆弹未对黑暗之手结算', stack: 'useBomb 后本体 hp 未下降（爆弹结算循环异常？）[诊断] e.hp=' + e.hp + ' hp0=' + hp0 + ' 在场=' + (core.enemies.indexOf(e) >= 0) + ' stage=' + core.bossFlow.stage + ' bombs=' + core.state.bombs + ' alive=' + core.player.alive + ' combatReady=' + e.combatReady + ' challenge=' + core.state.challenge });
         }
         // ⑥ 击坠登记「额外技能」强制触发（2026-10-10 用户定稿实装）：登记四表 + dhMarkSkill 后逐技能
-        //    强制释放——id5 回旋镖（真我两轮 / 二次相撞湮灭）/ id6 翼根散射（两轮外内排布）/ id7 边界轰炸
+        //    强制释放——id5 回旋镖（真我/诗篇每爪连发两枚共四枚 / 二次相撞湮灭）/ id6 翼根散射（两轮外内排布）/ id7 边界轰炸
         //    （8 枚落点 + 中心一批导弹）/ id8 旋眼火螺（公转径向射击 3s）/ id9 双标记导弹（镜像标记 + 交替
         //    落点）；附带断言暗影导弹雨释放锁（id4 非连续，2026-10-10 用户定稿）
         e.dhBonusSkills = { xiayong: 1, puxuefeng: 1, xinguodong: 1, hanxixian: 1 };
         e.dhMarkSkill = true;
         const mkSkill = (id) => { e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null }; };
-        mkSkill(5);   // id5 回旋镖：真我两轮 ≈ (0.2+0.9+迸出+绕行 1.575)×2 ≈ 6.4s ≈ 384 帧，上限 420
+        mkSkill(5);   // id5 回旋镖：单轮（真我/诗篇每爪连发两枚，pairGap 0.15s）≈ 0.9 + 贝塞尔出弧 0.2~3.0s[随 ry/玩家位] + 0.15 + 绕行 1.575 + 缓冲 ≈ 6s，上限 500
         let b5 = false, b5bad = false;
-        for (let f = 0; f < 420 && e.skill; f++) {
+        for (let f = 0; f < 500 && e.skill; f++) {
           frames(1); isolate();
           if (e.hp < e.maxHp) e.hp = e.maxHp;   // 防玩家自动开火磨死本体（死亡冻结技能推进——假红根因）
           const sk = e.skill; if (!sk) break;
           if (sk.blades) for (const b of sk.blades) { b5 = true; if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) b5bad = true; }
         }
-        if (!b5) errors.push({ key: '技能5 回旋镖未出现', stack: '强制 id=5 技能 420 帧内 blades 恒空（warn 门控 / 双刃生成异常？）' });
+        if (!b5) errors.push({ key: '技能5 回旋镖未出现', stack: '强制 id=5 技能 500 帧内 blades 恒空（warn 门控 / 双刃生成异常？）' });
         if (b5bad) errors.push({ key: '技能5 回旋镖坐标异常', stack: 'blades 出现但存在非有限坐标（绕行推进异常？）' });
-        if (e.skill) errors.push({ key: '技能5 回旋镖未收口', stack: '420 帧后 e.skill 未清空（真我两轮 ≈6.4s 应完成）' });
-        mkSkill(6);   // id6 散射：两轮 5 发×2 爪 + 轮间 0.35 ≈ 1.6s ≈ 100 帧，上限 200
+        if (e.skill) errors.push({ key: '技能5 回旋镖未收口', stack: '500 帧后 e.skill 未清空（单轮四枚 ≈6s 上界应完成）' });
+        mkSkill(6);   // id6 散射：两轮 5 发×2 爪 + 轮间随机 0.6~1.4s ≈ 1.8~2.6s ≈ 156 帧，上限 200
         let shot6 = 0;
         for (let f = 0; f < 200 && e.skill; f++) {
           if (e.hp < e.maxHp) e.hp = e.maxHp;
@@ -832,8 +910,8 @@ async function sceneDarkhand() {
           isolate();
         }
         if (!shot6) errors.push({ key: '技能6 散射未出弹', stack: '强制 id=6 技能 200 帧内 eBullets 恒空（段节拍 / 爪位异常？）' });
-        if (e.skill) errors.push({ key: '技能6 散射未收口', stack: '200 帧后 e.skill 未清空（两轮 ≈1.6s 应完成）' });
-        mkSkill(7);   // id7 轰炸：投 4 拍 ≈1.28s + 预警 1.0s ≈ 2.3s ≈ 140 帧，上限 240；中心一批导弹入 missiles
+        if (e.skill) errors.push({ key: '技能6 散射未收口', stack: '200 帧后 e.skill 未清空（两轮 ≈2.5s 应完成）' });
+        mkSkill(7);   // id7 轰炸：投 6 拍 ≈1.6s + 预警 1.0s ≈ 2.6s ≈ 160 帧，上限 240；中心一批导弹入 missiles
         let mis7 = 0;
         for (let f = 0; f < 240 && e.skill; f++) {
           if (e.hp < e.maxHp) e.hp = e.maxHp;
@@ -1377,6 +1455,7 @@ const SCENES = [
   { name: 'encyclopedia', desc: '怪物图鉴预览渲染 + 数值与机制图鉴 DOM 构建', files: '12-ui 13-encyclopedia', run: sceneEncyclopedia },
   { name: 'wave-test', desc: '权重表「波次」子页试波挑战 + = 追加补波', files: '12-ui 13-encyclopedia 04-spawn 14-main', run: sceneWaveTest },
   { name: 'swarm', desc: '持续刷怪测试 Lv20 锁级 + 按 7 强制抽卡', files: '04-spawn 14-main 07-player', run: sceneSwarm },
+  { name: 'starslayer', desc: '群星之杀暴走三线斩击 hp 有限性（血条消失+无敌回归哨兵）', files: '07-player 08-entities 01-config-loadout', run: sceneStarslayer },
   { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
   { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
   { name: 'war-ghost', desc: '战争幽灵全相位（入场 / 技能 2→3→1 / 半血召唤 / 离场）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneWarGhost },

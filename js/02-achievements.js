@@ -1,6 +1,6 @@
 // 02-achievements：成就系统（注册表 ACHIEVEMENTS 见 01-config；本局进度 / 解锁判定 / 结算徽章展示 / 数值图鉴「成就」页）
 
-  // 被依赖：05-boss(1 名) 06-enemy(10 名) 07-player(21 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(5 名)
+  // 被依赖：05-boss(1 名) 06-enemy(11 名) 07-player(21 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(6 名)
 //
 // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
 // 依赖：01x 配置域（ACHIEVEMENTS 注册表 + 装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
@@ -34,7 +34,7 @@
     unlocked: {},        // 成就 id → true（本局已获得）
     bombUsedEver: false, // 本局是否使用过爆弹（高能 / 绷绷）——齐宣王 / 「无垠」
     bombFirstInFinal: false, // 本局首次用弹是否发生在最终 BOSS 战（齐宣王）
-    cheatUsed: false,    // 本局是否使用作弊（武器等级直设 0+1~5 / 8 / 9 连发开关）——无垠 / 无垠战机排除 + 作弊互斥（仅作弊成就可解锁）
+    cheatUsed: false,    // 本局是否使用作弊（武器等级直设 1~5 / 8 / 9 连发 / 0 无敌 / 7 强制抽卡）——无垠 / 无垠战机排除 + 作弊互斥（仅作弊成就可解锁）
     damageTaken: false,  // 本局是否受过任何伤害（无垠 / 无垠战机 / 各 BOSS 无伤成就）
     bossNoHit: {},       // bossId → 当前 BOSS 战分段是否无伤（昨日今日明日 / 风暴航船 / 赫拉之眼）
     bossStartAt: 0,      // 当前 BOSS 战分段开始时刻（state.time，登场警报起算；持久战计时）
@@ -47,7 +47,7 @@
     pickups: 0,          // 道具拾取数（水晶不算；UPUPUP ≥15）
     watchClears: 0,      // 群星守望消除敌弹数（群星不灭 ≥60）
     chixinClass1Kills: 0,// 炽心灼烧击杀 1 类敌人数（飞蛾扑火 ≥20）
-    lingluoSkillCount: 0,// 陵落 Q 技能成功释放次数（疯狂杀戮 ≥3）
+    lingluoSkillCount: 0,// 迪奥 Q 技能成功释放次数（疯狂杀戮 ≥3）
     armorSkillUsed: false, // 本局是否使用过装甲技能（F；忘了）
     pilotSkillUsed: false, // 本局是否使用过驾驶员主动技能（Q；忘了）
     baolingWindow: false,// 暴鸰殉爆结算窗口中（砰砰 / 砰砰礼物——单次爆炸击杀数）
@@ -75,8 +75,8 @@
     return !state.challenge && !state.testBoss;
   }
 
-  // 作弊互斥白名单：局内开启作弊后（0+1~5 / 8 / 9 键），本局仅这些作弊成就可以解锁，其余成就全部锁定
-  const CHEAT_ONLY_ACHV = new Set(['dagouCheat100', 'wanDaoFengLiu']);
+  // 作弊互斥白名单：局内开启作弊后（1~5 / 8 / 9 / 0 / 7 键），本局仅这些作弊成就可以解锁，其余成就全部锁定
+  const CHEAT_ONLY_ACHV = new Set(['dagouCheat100', 'wanDaoFengLiu', 'buSiZhiQu']);
 
   // 解锁成就（去重；仅正常流程生效；作弊互斥见 CHEAT_ONLY_ACHV；挑战成就与特殊装备互斥见 challenge/specialGearActive）
   function unlockAchievement(id) {
@@ -102,6 +102,17 @@
     if (!achvGateOk()) return;
     achv.damageTaken = true;
     if (bossFlow.stage === 'fight' && achv.currentBoss) achv.bossNoHit[achv.currentBoss] = false;
+  }
+
+  // BOSS 战全程无伤判定（2026-10-11 用户定稿：无伤通关 BOSS → 击杀得分与掉落水晶 +20%，06-enemy killEnemy 消费）。
+  // 复用无伤成就的分段标记 achv.bossNoHit（spawnBoss 重置为 true / achvNoteDamage 受伤打破）；
+  // 暴风之眼→风暴编织者为连续二阶段同一场战斗（storm2 击杀时结算总掉落），须两段均无伤才算通关无伤；
+  // 图鉴挑战 / 测试模式经 achvGateOk 拦截返回 false（与无伤成就同口径，该两模式本就不产出奖励/成就）。
+  function bossFlawlessResult(bossId) {
+    if (!achvGateOk()) return false;
+    return bossId === 'storm2'
+      ? (achv.bossNoHit.storm2 === true && achv.bossNoHit.storm === true)
+      : achv.bossNoHit[bossId] === true;
   }
 
   // 玩家掉命（damagePlayer 死亡分支 / 焦香灼烧致死 / 暴风之眼持续接触致死）。
@@ -204,7 +215,7 @@
     if (achv.auraFieldKills >= 12) unlockAchievement('inFieldKill12');
   }
 
-  // 陵落 Q 技能成功释放（07-player triggerPilotSkill；疯狂杀戮 ≥3）
+  // 迪奥 Q 技能成功释放（07-player triggerPilotSkill；疯狂杀戮 ≥3）
   function achvNoteLingluoSkill() {
     if (!achvGateOk()) return;
     achv.lingluoSkillCount++;
@@ -215,9 +226,9 @@
   function achvNoteArmorSkillUsed() { achv.armorSkillUsed = true; }
   function achvNotePilotSkillUsed() { achv.pilotSkillUsed = true; }
 
-  // 忘了：装备了带主动技能的护甲（ARMOR_SKILLS 注册）或驾驶员（天秀 / 陵落），整局从未使用过任何技能
+  // 忘了：装备了带主动技能的护甲（ARMOR_SKILLS 注册）或驾驶员（天秀 / 迪奥），整局从未使用过任何技能
   function achvCheckForgotSkill() {
-    const hasSkillEquip = !!ARMOR_SKILLS[currentArmor.id] || hasPilot('tianxiu') || hasPilot('lingluo');
+    const hasSkillEquip = !!ARMOR_SKILLS[currentArmor.id] || hasPilot('tianxiu') || hasPilot('diao');
     if (hasSkillEquip && !achv.armorSkillUsed && !achv.pilotSkillUsed) unlockAchievement('forgotSkill');
   }
 
@@ -249,8 +260,8 @@
     else if (bossId === 'storm2') unlockAchievement('defeatStorm2');
     else if (bossId === 'darkhand') {
       // 黑暗之手（2026-10-08 实装上线——wipBoss 占位已解除，5 条成就正式开放）：唯我 / 光明之脚 / 内乱 / 铜皮太岁
-      if (hasPilot('lingluo')) unlockAchievement('weiwo');
-      if (!hasPilot('lingluo')) unlockAchievement('guangmingzhijiao');
+      if (hasPilot('diao')) unlockAchievement('weiwo');
+      if (!hasPilot('diao')) unlockAchievement('guangmingzhijiao');
       if (currentSubWeapon.id === 'feijian' || currentSubWeapon.id === 'xinring') unlockAchievement('neiluan');
       if (currentArmor.id === 'tongpi') unlockAchievement('tongpitasui');
     }
@@ -277,7 +288,7 @@
   function achvSetKillSrc(src) { achv.killSrc = src; }
   function achvClearKillSrc() { achv.killSrc = null; }
 
-  // 作弊使用（14-main：0+1~5 武器等级直设）——无垠 / 无垠战机排除项；开启后仅作弊成就可解锁（CHEAT_ONLY_ACHV）
+  // 作弊使用（14-main：1~5 武器等级直设 / 0 无敌 / 7 强制抽卡）——无垠 / 无垠战机排除项；开启后仅作弊成就可解锁（CHEAT_ONLY_ACHV）
   function achvNoteCheat() {
     if (!achvGateOk()) return;
     achv.cheatUsed = true;
@@ -293,6 +304,12 @@
   function achvNoteTianxiuCheatOn() {
     achvNoteCheat();
     unlockAchievement('wanDaoFengLiu');
+  }
+
+  // 不死模式作弊开启（14-main 0 键，07-player debugToggleInvuln 返回 true 即开启瞬间）——记作弊 + 解锁不死之躯（开启即得）
+  function achvNoteInvulnCheatOn() {
+    achvNoteCheat();
+    unlockAchievement('buSiZhiQu');
   }
 
   // 守愿者白盾挡下一发直射弹（08-entities 普通弹吸收分支；守愿加护 >100）
@@ -388,7 +405,7 @@
     if (v >= 0.8) unlockAchievement('kingMad80');
   }
 
-  // 陵落 Q 技能开启后血量降为 1（07-player triggerPilotSkill 扣血结算后调用；命定之死）
+  // 迪奥 Q 技能开启后血量降为 1（07-player triggerPilotSkill 扣血结算后调用；命定之死）
   function achvNoteLingluoHp1() {
     if (!achvGateOk()) return;
     unlockAchievement('lingluoHp1');
@@ -573,7 +590,7 @@
   function renderInfoAchievements() {
     if (!infoBody) return;
     infoBody.innerHTML = '';
-    // 档位筛选标签：样式复用「怪物权重」页的 subtabs / chip（切换后仅渲染对应档位分组）
+    // 档位筛选标签：样式复用「旧怪物权重」页的 subtabs / chip（切换后仅渲染对应档位分组）
     const chips = document.createElement('div');
     chips.className = 'info-subtabs';
     const defs = [{ id: 'all', name: '全部' },
@@ -612,7 +629,7 @@
           (a.holders
             ? (a.holders.length ? '<br />已完成 ' + a.holders.length + ' 人：' + a.holders.join('、') : '<br />暂无完成者')
             : '') +
-          (a.challenge ? '<br /><i>挑战成就：使用特殊装备（天使璃等）时无法获得</i>' : '') +
+          (a.challenge ? '<br /><span style="color:#8fa2c0">挑战成就</span>' : '') +
           (a.finalOnly && !ACHIEVEMENT_INFINITY_ENABLED ? '<br /><i>仅最终版本开放获得</i>' : '') +
           (a.wipBoss ? '<br /><i>对应 BOSS 待更新，暂不可获得</i>' : '');
         card.append(row, body);
@@ -622,8 +639,8 @@
   }
 
   export {
-    achv, unlockAchievement, achvNoteBossSpawned, achvNoteDamage, achvOnDeath, achvOnKill, achvOnBossKilled,
-    achvOnBombUsed, achvSetKillSrc, achvClearKillSrc, achvNoteCheat, achvNoteDagouCheatOn, achvNoteTianxiuCheatOn, achvWingmanBlock,
+    achv, unlockAchievement, achvNoteBossSpawned, achvNoteDamage, achvOnDeath, achvOnKill, achvOnBossKilled, bossFlawlessResult,
+    achvOnBombUsed, achvSetKillSrc, achvClearKillSrc, achvNoteCheat, achvNoteDagouCheatOn, achvNoteTianxiuCheatOn, achvNoteInvulnCheatOn, achvWingmanBlock,
     achvZidianHit, achvBaolingBlastBegin, achvBaolingBlastEnd, achvNotePickup, achvNoteWatchClear,
     achvNoteLingluoSkill, achvNoteArmorSkillUsed, achvNotePilotSkillUsed, achvEvaluateVictory,
     achvEvaluateDefeat, resetAchievements, buildAchvBadge, renderResultAchievements, renderInfoAchievements,

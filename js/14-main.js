@@ -3,32 +3,31 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：（暂无）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{cheatArm, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{cheatInvuln, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
-  import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBurst, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, challengeTargets, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge } from './04-spawn.js';
+  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
-  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
-  import { berserkBurst, bombBurst, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
+  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
-  import { achvEvaluateVictory, achvNoteCheat, achvNoteDagouCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements } from './02-achievements.js';
-  import { closeEncyclopedia, initEncyDiffButtons } from './13-encyclopedia.js';
+  import { achvEvaluateVictory, achvNoteCheat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements } from './02-achievements.js';
+  import { buildT3SpawnPlan, closeEncyclopedia, initEncyDiffButtons, reopenEncySource, t3SpawnCardById } from './13-encyclopedia.js';
 
 
   // ---------- 输入 ----------
-  // 作弊武装开关（预留）：true=需先按 0 武装（state.cheatArm，右上角音量键微微变亮作为已武装标识）
-  // 才能使用作弊键 1~5 / 8 / 9；false=作弊键直接生效，按 0 不做任何事（音量键标识也不会变化）。
-  // 当前为 false——三种作弊键均无需武装。
-  const WEAPON_CHEAT_REQUIRE_ARM = false;
+  // 作弊键（1~5 / 8 / 9 / 0 / 7）均免武装直用——原「按 0 武装」预留开关（WEAPON_CHEAT_REQUIRE_ARM +
+  // state.cheatArm + 音量键提亮标识）已于 2026-10-10 用户定稿整体删除；0 键现改为作弊无敌切换
+  //（见下方 0 键处理与 07-player debugToggleInvuln）。
   // 持续刷怪测试（图鉴「数值与机制」页发起，challenge.kind==='swarm'）的数字键道具映射：
   // 按 REWARD_ITEMS 注册表顺序（1~5 普通 / 6 轰轰炸弹 / 8~0 稀有；手持斗志昂扬已移除——2026-10-01；
   // gacha 不在列——萧杨 16 颗原石专属技能）。直接生效（道具槽已取消，07-player applyRewardItem）
@@ -73,12 +72,11 @@
     // （右Ctrl 同为修饰键：按住时按 W 仍会触发浏览器关标签页且无法拦截——与马兴犬弃用 Ctrl 的原因相同，玩家自担）
     if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
-    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 陵落：强行暴走，冷却结束方可触发 / 萧杨：原石抽卡充能满时释放）
+    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 迪奥：强行暴走，冷却结束方可触发 / 萧杨：原石抽卡充能满时释放）
     // 叮咚鸡导弹雨连发开关（作弊键，不要求装备叮咚鸡——任意驾驶员均可触发）：
     // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备叮咚鸡时：开启即启用整套导弹雨系统并以连发间隔运行）。
-    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应；
-    // WEAPON_CHEAT_REQUIRE_ARM = true 时需先按 0 武装（预留机制，见顶部开关说明）
-    if (k === '9' && !swarmTest && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
+    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
+    if (k === '9' && !swarmTest && state.mode === 'playing') {
       state.dagouDebugRapid = !state.dagouDebugRapid;
       if (state.dagouDebugRapid) {
         state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
@@ -87,9 +85,8 @@
       console.log('[debug] 叮咚鸡 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
     }
     // 天秀连发风暴开关（作弊键，不要求装备天秀忧郁王子——任意驾驶员均可触发）：
-    // 战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭；
-    // WEAPON_CHEAT_REQUIRE_ARM = true 时需先按 0 武装（预留机制，见顶部开关说明）
-    if (k === '8' && !swarmTest && state.mode === 'playing' && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) {
+    // 战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭
+    if (k === '8' && !swarmTest && state.mode === 'playing') {
       state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
       state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
       if (state.tianxiuDebugSpam) achvNoteTianxiuCheatOn();   // 成就：作弊开关（记作弊 + 解锁万道风流）
@@ -102,24 +99,27 @@
     if (k === 'capslock' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
       state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedSlow ? 1 : PILOTS.maxingquan.speedSlow;
     }
-    // 作弊武装（预留机制）：WEAPON_CHEAT_REQUIRE_ARM = true 时按 0 武装（任意界面可按）后 1~5 / 8 / 9 才生效，
-    // 右上角音量键微微变亮作为已武装标识；当前开关为 false——按 0 完全无动作（音量键标识不变）。
+    // 作弊无敌（0 键，2026-10-10 用户定稿取代原「武装」预留机制）：开启瞬间回满全部血量 +
+    // 伤害归零（受击结算照常——命中消耗 / 受击闪白 / 受击无敌帧 / 掉级计数不跳过）；
+    // 再按关闭减伤（不扣血、不重复回血）。开关逻辑见 07-player debugToggleInvuln
+    //（开启记 achvNoteCheat——作弊互斥：本局仅作弊成就可解锁）。
     // "=" 立刻再召唤一个测试目标（非作弊，保持原样）
-    if (k === '0' && !swarmTest && WEAPON_CHEAT_REQUIRE_ARM && !state.cheatArm) {
-      state.cheatArm = true;
-      musicToggle.classList.add('cheat-armed');   // 已武装标识：音量键边框提亮
+    if (k === '0' && !swarmTest && state.mode === 'playing') {
+      const godOn = debugToggleInvuln();
+      if (godOn) achvNoteInvulnCheatOn();   // 成就：不死之躯（开启瞬间即得；记作弊 + 作弊互斥白名单放行）
+      console.log('[debug] 无敌模式: ' + (godOn ? 'ON（已回满血，伤害归零·受击反馈照常）' : 'OFF'));
     }
     if (state.mode === 'playing' && !state.paused) {
       // 持续刷怪测试页：数字键直接获得对应道具（立即生效），常规作弊键全部让位
       if (swarmTest && SWARM_CHEAT_ITEMS[k] && !e.repeat) {
         applyRewardItem(SWARM_CHEAT_ITEMS[k]);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
       }
-      // 测试挑战（怪物权重单敌 / 波次 / 持续刷怪）按 7：立刻释放一次萧杨「哦哦！抽卡！」——
-      // 无视是否携带萧杨、无视充能（debugForceGacha，07-player）；SWARM_CHEAT_ITEMS 无 7，三页共用不冲突；
-      // 常规战斗（非 state.challenge）按 7 无事发生
-      if (k === '7' && state.challenge && !e.repeat) debugForceGacha();
+      // 按 7：立刻释放一次萧杨「哦哦！抽卡！」——常规战斗与测试挑战页均可（2026-10-10 用户定稿删
+      // challenge 限定）；无视是否携带萧杨、无视充能（debugForceGacha，07-player，内部自带
+      // playing/paused/登场演出守卫；若恰带萧杨且已充能按正常口径消耗；记作弊防蹭成就）
+      if (k === '7' && !e.repeat) debugForceGacha();
       const lv = '12345'.indexOf(k);
-      if (lv >= 0 && !swarmTest && (!WEAPON_CHEAT_REQUIRE_ARM || state.cheatArm)) debugSetWeapon(lv + 1);
+      if (lv >= 0 && !swarmTest) debugSetWeapon(lv + 1);
       // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
       // 事件（keydown ~30Hz 连发会疯狂重复清场+群召）
       if ((k === '=' || k === '+') && !e.repeat && state.challenge) {
@@ -137,8 +137,19 @@
           }
           spawnChallengeTarget(e.shiftKey ? 10 : 1);
         } else if (state.challenge.kind === 'wave' && k === '=' && !e.shiftKey) {
-          // 波次测试：按 = 额外刷出一整波（不清除场上敌人，可观察多波叠加；Shift+=（产生 '+'）无事发生）
-          spawnChallengeWave(state.challenge);
+          if (state.challenge.waveTest3) {
+            // 测试3 波次测试：按 = 立刻清场（敌人直接移除不留尸爆、同步清敌方弹幕）并重新刷新整波（2026-10-11 用户定稿）
+            for (let guard = enemies.length * 4 + 16; enemies.length > 0 && guard > 0; guard--) {
+              const en = enemies[0];
+              if (!en || en._deathSettled) { if (en) enemies.splice(0, 1); continue; }
+              enemies.splice(0, 1);
+            }
+            clearEnemyBullets();
+            spawnChallengeWave(state.challenge);
+          } else {
+            // 波次测试：按 = 额外刷出一整波（不清除场上敌人，可观察多波叠加；Shift+=（产生 '+'）无事发生）
+            spawnChallengeWave(state.challenge);
+          }
         }
       }
     }
@@ -224,6 +235,13 @@
         bossFlow.timer = 0;
         levelFlow.level = 20;
       }
+      // 波次测试局（图鉴「波次示意」发起，challenge.kind==='wave' + waveTest3）：锁 Lv30 强度（2026-10-12 用户定稿）——
+      // bossFlow.timer 恒 0 永不进 BOSS、等级覆盖 30（职能池抽档 = Lv21 档、各卡生成端等级门控全开），
+      // 测试页可按满配口径观察波次构成；补刷仍由 updateChallenge 清场驱动
+      if (state.challenge && state.challenge.waveTest3) {
+        bossFlow.timer = 0;
+        levelFlow.level = 30;
+      }
       // 诗篇波次制：关卡等级 = 阶段基准 + 本阶段已刷波数 − 1（波 N = 等级 N：第一轮 10 波 = Lv1~10、第二轮 = Lv11~20；
       // 由 14-main 波次分支在每次 spawnWave 后同步刷新；许凯狗冲刺期由下方冲刺块覆盖等级）
       if (isPoem() && !state.challenge) levelFlow.level = lvCfg.base + levelFlow.poemWaveIdx - 1;
@@ -275,15 +293,11 @@
         }
       }
 
-      // 关卡提升时：每次升级有 DOUZHI.spawnChance 概率从屏幕左/右侧生成一架斗志昂扬横穿（挑战模式不生成）；
-      // 击败 BOSS 引发的阶段跳变升级除外（douzhiSkipOnce，见 killEnemy）
+      // 关卡提升时：prevLevel 同步 + 大狗升级计数（斗安/奖励无人舰的关卡提升概率横穿机制已删除——
+      // 2026-10-11 用户定稿改为「额外级」固定波次（波次示意「2R」卡，spawnDouzhi 横穿行为不变，13-encyclopedia 抽取））
       if (levelFlow.level > levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
-        // 奖励无人机（斗志昂扬/赞助/豪华赞助）：每次关卡提升按难度概率刷新一架（每次至多一架，5/4/1 加权抽取）；
-        // 击败 BOSS 的跳变升级豁免（douzhiSkipOnce）对三种一并生效；挑战模式不刷；
-        // 2026-10-04 用户定稿：BOSS 试炼（testBoss）全程不刷——击败 boss 升级引发的刷新一并禁绝，试炼场只打 boss 不出杂鱼
-        else if (!state.challenge && !state.testBoss && Math.random() < rewardDroneChance()) spawnDouzhi(pickRewardDroneType());
         // 大狗：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
       } else if (levelFlow.level < levelFlow.prevLevel) {
@@ -322,6 +336,7 @@
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
+        updateDelayedSpawns(dt);   // 延迟出场队列（z*8 单点排队等）：仅测试波会入队，逐帧倒计时到点生成
       } else if (bossFlow.stage === 'none') {
         // BOSS 击败后的 2s 缓冲与首波 4s 观察期不计入关卡推进（冻结 bossTimer，等级不增长）
         if (bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) bossFlow.timer += dt;
@@ -457,10 +472,35 @@
           levelFlow.lowPressureT = 0;
         }
 
-        // 波次通道（1/2 类与特殊编队）：不再等待上一波清场，刷新速率由压力调制
+        // 波次通道（设计波次表整波刷新，2026-10-12 用户定稿）：不再走旧编队抽取（pickFormation 退役）——
+        // 01-config-spawn pickDesignedWaveCard 按剩余权重+角色平衡抽一张设计卡（等级门槛/冲刺排除侧翼/场上主力舰排除 4类卡），
+        // 13-encyclopedia buildT3SpawnPlan 按波次刷怪权重生成敌机清单，04-spawn spawnDesignedWave 整波落地；
+        // 压力节奏（rush / 间隔 / 阈值放大）保持不变；特殊3类随波附赠在 spawnDesignedWave 内保留
         levelFlow.spawnTimer -= dt * rush;
         if (levelFlow.spawnTimer <= 0) {
-          spawnWave();
+          const card = pickDesignedWaveCard(state.time, levelFlow.level, {
+            noSide: state.pilotDashT > 0,                                        // 许凯狗冲刺：两侧不刷怪 → 排除侧翼卡
+            noCapital: enemies.some(e => e.type === 'capital'),                  // 主力舰同屏限 1 → 已有舰排除含 4类卡
+          });
+          // WAVE_SPAWN_LIST 卡只有元数据（tier/role），生成数据（dots 队形）在 13 同 id 设计卡上——按 id 配对取卡
+          const list = [];
+          if (card) {
+            const f3 = t3SpawnCardById(card.id);
+            if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
+          }
+          // 组合波（旧编队系统等价机制恢复，2026-10-12）：Lv5 起概率同波追加第二张卡——
+          // 抽取权重表清空期间等权兜底 + 旧组合波缺失曾致真我刷怪总量大幅降低，追加位补量；
+          // 追加位同样排除侧翼卡，noCapital 额外排除第一张含 4类的卡（防同波双 4类非设计构成）
+          if (list.length && levelFlow.level >= 5 && Math.random() < comboWaveChance(levelFlow.level)) {
+            const capInList = list.some(it => it.f.classes && it.f.classes.includes('4'));
+            const card2 = pickDesignedWaveCard(state.time, levelFlow.level, {
+              noSide: state.pilotDashT > 0,
+              noCapital: enemies.some(e => e.type === 'capital') || capInList,
+            });
+            const f32 = card2 && t3SpawnCardById(card2.id);
+            if (f32 && card2.id !== card.id) list.push({ f: f32, plan: buildT3SpawnPlan(f32) });
+          }
+          if (list.length) spawnDesignedWave(list);
           // Lv13 后本局限定：首次刷新的怪中必定伴随一台焦香螺旋桨（一次性，随波打上 waveTag）
           if (!levelFlow.jiaoxiang13Done && levelFlow.level >= 13) {
             levelFlow.jiaoxiang13Done = true;
@@ -527,7 +567,7 @@
       updateFriendStorms(dt);   // 天秀忧郁王子：友方大风暴推进（风弹 / 主体接触伤害 / 生命周期）
       updateAiyiWaves(dt);      // 埃逸：自爆扩散波推进（波前触碰敌人立刻结算）
       updateDagouMissiles(dt);  // 叮咚鸡：导弹雨推进（错峰发射 / 上行飞行 / 命中溅射）
-      updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 陵落冷却 / 叮咚鸡计时
+      updatePilotStatus(dt);    // 驾驶员逐帧状态：天秀量表充能 / 王累积 / 迪奥冷却 / 叮咚鸡计时
       updateParticles(dt);
       updateStars(dt);
       updateNebulae(dt);
@@ -595,9 +635,10 @@
         shieldBurst.t += dt;
         if (shieldBurst.t >= shieldBurst.duration) shieldBurst.active = false;
       }
-      if (crystalBurst.active) {
-        crystalBurst.t += dt;
-        if (crystalBurst.t >= crystalBurst.duration) crystalBurst.active = false;
+      for (let i = crystalBursts.length - 1; i >= 0; i--) {
+        const cb = crystalBursts[i];
+        cb.t += dt;
+        if (cb.t >= cb.duration) crystalBursts.splice(i, 1);
       }
       if (bulwarkBurst.active) {
         bulwarkBurst.t += dt;
@@ -620,13 +661,15 @@
         blastRings[i].t += dt;
         if (blastRings[i].t >= blastRings[i].dur) blastRings.splice(i, 1);
       }
-      if (berserkBurst.active) {
-        berserkBurst.t += dt;
-        if (berserkBurst.t >= berserkBurst.duration) berserkBurst.active = false;
+      for (let i = berserkBursts.length - 1; i >= 0; i--) {
+        const bz = berserkBursts[i];
+        bz.t += dt;
+        if (bz.t >= bz.duration) berserkBursts.splice(i, 1);
       }
-      if (bombBurst.active) {
-        bombBurst.t += dt;
-        if (bombBurst.t >= bombBurst.duration) bombBurst.active = false;
+      for (let i = bombBursts.length - 1; i >= 0; i--) {
+        const bb = bombBursts[i];
+        bb.t += dt;
+        if (bb.t >= bb.duration) bombBursts.splice(i, 1);
       }
     }
 
@@ -661,6 +704,14 @@
   pauseRetryBtn.addEventListener('click', () => {
     pauseRetryBtn.classList.add('hidden');
     resetGame(true, { keepTest: true });
+  });
+
+  // 返回上一步（挑战/试炼暂停专属）：清挑战回主界面，并按来源弹窗重开图鉴——
+  // 怪物图鉴来源恢复原分页与原条目、数值与机制图鉴来源重开 info 弹窗（13-encyclopedia reopenEncySource）
+  pauseBackBtn.addEventListener('click', () => {
+    pauseBackBtn.classList.add('hidden');
+    resetGame(false);
+    reopenEncySource();
   });
 
   // 再次挑战（胜利结算页专属）：保留试炼/挑战目标，重开同一 BOSS
@@ -736,6 +787,6 @@
   scheduleLoop();
 
   export {
-    WEAPON_CHEAT_REQUIRE_ARM, debugSetWeapon, lastTime, loopToken, loopByTimeout, scheduleLoop,
+    debugSetWeapon, lastTime, loopToken, loopByTimeout, scheduleLoop,
     loop, gameWrap, gameSizer, wrapNaturalH, fitStage,
   };

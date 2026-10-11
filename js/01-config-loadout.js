@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(25 名) 08-entities(8 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
@@ -18,7 +18,6 @@
     bulletSpeed: 780,
     bulletDamage: 12,
     invulnTime: 1.2,     // 受击后无敌
-    dodgeInvulnMul: 0.7, // 闪避触发（哈基米等）的无敌时长系数：正常受击无敌 ×70%
     respawnTime: 1.6,    // 掉命后重生延迟
     enterDur: 0.8,       // 主菜单开局飞入时长：从演示屏站位 smoothstep 滑向出战位（期间操控锁定，主炮照常）
     magnetRadius: 132,   // 水晶吸附半径（基础值；击败旧日之歌后另乘 crystalMagnetMul 1.5 → 198）
@@ -55,8 +54,9 @@
     chaos: {
       id: 'chaos',
       name: '混乱将至',
+      default: true,   // 默认机型（图鉴「战机」页据此标注「·默认」；默认项经 currentPlane 初始化——2026-10-10 用户定稿）
       desc: '直线弹道，猛烈输出',
-      startWeapon: 1,   // 初始火力等级（Lv1 即三射线；开局回落到此等级；死亡复活固定 Lv4——最终壁垒/铜皮夏勇复活即暴走 Lv5，见 07-player respawnPlayer；BOSS 试炼 / 图鉴挑战固定 Lv4）
+      startWeapon: 1,   // 初始火力等级（Lv1 即三射线；开局回落到此等级；死亡复活固定 Lv4——最终壁垒复活即暴走 Lv5（铜皮夏勇 2026-10-12 改为复活获量子护盾、不再暴走），见 07-player respawnPlayer；BOSS 试炼 / 图鉴挑战固定 Lv4）
       drawScale: 1.15,  // 机体绘制放大 15%（座舱核心与判定点尺寸不变，见 paintShip 逆向补偿）
       coreY: -7,        // 视觉座舱核心相对机体的纵向偏移（混乱将至座舱位于 y-7；装甲环绕图标等对准用）
       bulletColor: '#7ce7ff',
@@ -79,7 +79,7 @@
       coreY: -14,               // 视觉机头核心相对机体的纵向偏移（群星之杀核心位于 y-14；装甲环绕图标等对准用）
     },
   };
-  let currentPlane = PLANES.starslayer;
+  let currentPlane = PLANES.chaos;   // 默认机型：混乱将至（2026-10-10 用户定稿，原群星之杀）
   // 选机写入入口：currentPlane / currentWingman 是被全仓库读取的顶层 let，
   // 写操作必须经由本文件的 setter（并行修改约定 + ES modules 下导入绑定只读，均要求如此）
   function setPlane(p) { currentPlane = p; }
@@ -100,18 +100,19 @@
   // 新增装甲只需在注册表加条目：主界面卡片自动生成（12-ui buildArmorCards）。
   // brief  = 主菜单卡片的简短文案（玩家向）；desc = 数值与机制图鉴「护甲」页的详细数值文案
   // 条目顺序 = 展示顺序（主菜单卡片与图鉴护甲页均按注册表键序生成）：
-  //   第一排：群星守望（默认，无脑最适合新人）/ 铜皮夏勇 / 祈星 / 洄
+  //   第一排：铜皮夏勇（默认，血量加成最直白）/ 群星守望 / 祈星 / 洄
   //   第二排：七日澜心 / 最终壁垒 / 天枢圣卫 / 澄月；第三排：炽心
   const ARMORS = {
+    tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
+      default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化——2026-10-10 用户定稿）
+      maxHpAdd: 40, brief: '夏勇皮糙肉厚战机血量提升',
+      shieldDur: 6,   // 死亡复活赠送的量子护盾时长（s）：与通用量子护盾一致（2026-10-12 用户定稿，取代原「复活即暴走」）
+      desc: '血量提高 40<br>（100 → 140）<br>死亡复活时获得量子护盾（6s）' },
     watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
-      default: true,   // 默认装甲（图鉴「护甲」页据此标注"（默认）"；默认项经 currentArmor 初始化）
       clearChance: { 1: 0.05, 2: 0.08, 3: 0.15, 4: 0.50 },
       clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
       brief: '击毁敌机时概率消除弹幕',
       desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件：<br>群星之杀 / 群星守望 / 群星允诺）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
-    tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
-      maxHpAdd: 30, brief: '夏勇皮糙肉厚战机血量提升',
-      desc: '血量提高 30<br>（100 → 130）' },
     qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
       halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
       brief: '受伤时概率使该次伤害减半',
@@ -123,7 +124,7 @@
       desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
-      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 6s<br>（量子护盾样式+晶体网格，护盾期间量表停计<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波）' },
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 <b>4.8s</b><br>（量子护盾样式+晶体网格，护盾期间量表停计；<br>装备炼金璃延长至 <b>6s</b>）<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波' },
     bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
       brief: '受到致命伤害时不死且短暂无敌，仅一次',
       desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 5s 无敌（淡金菱形环绕，不降低攻速）<br>触发瞬间核心处护甲图标扩散渐隐<br>无敌结束时清除周围 120px 内敌弹<br>菱形微微扩大渐隐并扩散金环' },
@@ -147,7 +148,7 @@
       brief: '标准制式护甲<br>无效果',
       desc: '标准护甲。<br>没有任何效果。' },
   };
-  let currentArmor = ARMORS.watch;   // 默认装甲：群星守望（无按钮无资源管理、击杀即触发清弹，对新最无脑直观）
+  let currentArmor = ARMORS.tongpi;   // 默认装甲：铜皮夏勇（2026-10-10 用户定稿，原群星守望）
   // 装甲写入入口：与 setPlane/setWingman/setDifficulty 同约定——顶层 let 的写操作必须经由 setter
   function setArmor(a) { currentArmor = a; }
   // 装甲效果读取（键缺省安全回退；战斗逻辑经这些函数取值，不直接读 currentArmor 字段）
@@ -169,34 +170,57 @@
   const ARMOR_SKILLS = {
     // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
     // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 6, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4.8, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },   // dur 4.8s（2026-10-11 用户定稿 6→4.8；装备炼金璃延长至 6s，统一入口 crystalShieldDur()）
   };
 
+  // 结晶护盾实际时长（单一入口）：基准 = ARMOR_SKILLS.lanxin.dur（4.8s，2026-10-11 用户定稿 6→4.8）；
+  // 装备炼金璃时延长至 PILOTS.lianjinLovely.crystalShieldDur（6s）。
+  // 消费点：07-player triggerArmorSkill（澜心按 F 开盾）/ 08-entities applyPowerupPickup 'crystalShield'（结晶护盾道具）
+  function crystalShieldDur() { return hasPilot('lianjinLovely') ? PILOTS.lianjinLovely.crystalShieldDur : ARMOR_SKILLS.lanxin.dur; }
+
   // ---------- 群星之杀：空间斩击参数 ----------
-  // 机头直射一条较细淡白锁定光束（不造成伤害），选中最靠近玩家的主目标；
-  // 每隔 interval 秒召唤一道空间斩击：以主目标为中心的矩形判定区（沿斩击方向），
+  // 机头直射一条淡白锁定瞄准线（不造成伤害），选中最靠近玩家的主目标；常态仅此 1 条；
+  // 暴走（Lv5）时瞄准线变为 3 条判定白线：中线（原锁定线）+ 左右刃中心各一条（slashLineOff），
+  // 三条线各自独立判定斩击（互不共伤）。
+  // 每隔 interval 秒召唤一轮空间斩击：每线以自身目标为中心的矩形判定区（沿斩击方向），
   // 区域内所有敌人受全额伤害（无主/副目标之分）。
+  // 连斩：每线连续斩击 slashes 次；同一攻击内的全部斩击按「中→左→右」排列依次释放（不同时落下），
+  // 逐击即时锁定该线当前目标——两次斩击可落不同目标（如一列两个敌人：第一斩击坠第一个，第二斩自动改斩第二个）。
+  // 暴走 6 斩（3 线 × 2 轮）每击间隔 slashGapBerserk（0.05s，2026-10-10 用户定稿）；
+  // 非暴走 2 连斩每击间隔 slashGapBase（0.1s）。
+  // 连续斩击（同一攻击内相邻两道，含跨线）与竖直方向的夹角至少相差 slashAngleGapMin（2026-10-10 用户定稿）
+  // ——多条线的斩击倾向于不砍在同一角度（pickSlashDeg 拒绝重采样，07-player）。
   // 单体斩击：本次斩击仅命中 1 个敌人（含 BOSS）时，伤害提升 soloBonus（攻击间隔不受影响）。
-  // 斩击方向：与竖直方向夹角 5~20° 随机，左下→右上 / 右下→左上 逐次交替。
-  // 暴走（Lv5）：每次连续斩击 slashes 次（间隔 slashGap），攻击间隔略微降低。
-  // DPS 配平（主目标）：Lv1 330 / Lv2 450 / Lv3 600 / Lv4 880 / Lv5 2200。（2026-10-10 用户定稿：间隔 1.5/1.4/1.3/1.2/1.0s，伤害等 DPS 重配）
+  // 斩击方向：与竖直方向夹角 ±60°（120° 范围）均匀随机，自下向上斩击（2026-10-10 用户定稿，取消左右交替）。
+  // 暴走三线各自独立判定（2026-10-12 用户定稿，取消「判定区中心重叠、主目标必被全部 6 击命中」旧口径）：
+  // 哪条线走廊内有怪该线才斩、以该线自己的目标为中心——三线可分别斩不同怪，仅中线命中时只斩中线。
+  // 侧线锁定与主目标作战距离联动（≤ 主目标距离 + halfLen + 32，2026-10-12 用户反馈追加）——
+  // 不隔空锁定远处目标（如黑暗之手测试页侧线隔空斩到 BOSS）；BOSS 战主目标即 BOSS，三线照常全打。
+  // 主目标 DPS：中线 2 斩必中 = 2 × dmg / interval（暴走 ×1.5）；侧线另命中时逐线叠加（上限三线全中 ×3）。
+  // 判定矩形短边（halfW）：先减半（0.70R→0.35R / 显式值减半）再 +20%（→0.42R / 显式值 ×1.2，
+  // 2026-10-10 用户定稿），斩痕外观同步变窄。
   const STARSLAYER = {
     beamHalfW: 4.4,          // 锁定光束半宽（稍宽）
     beamColor: '#eaf2ff',    // 淡白色
     selectHalfW: 26,         // 光束选中判定的水平半宽（机头正上方走廊）
     slashFxTime: 0.45,       // 单次斩击特效存留时长（扫 cut + 渐隐）
-    slashGapBase: 0.10,      // 暴走三连斩每击间隔
-    slashAngleMin: 5,        // 斩击与竖直方向夹角（度）随机下限
-    slashAngleMax: 20,       // 夹角上限
+    slashGapBase: 0.10,      // 非暴走连斩每击间隔
+    slashGapBerserk: 0.05,   // 暴走连斩每击间隔（6 斩按序错开，2026-10-10 用户定稿由 0.1 缩短）
+    slashAngleMin: -60,      // 斩击与竖直方向夹角（度）随机下限（±60° = 120° 范围，2026-10-10 用户定稿）
+    slashAngleMax: 60,       // 夹角上限
+    slashAngleGapMin: 20,    // 连续斩击（同一攻击内相邻两道，含跨线）夹角差下限（度，2026-10-10 用户定稿）
+    slashLineOff: 26,        // 暴走三线走廊间距（px，世界水平）：中线 ± 此值 = 左右刃中心线（与渲染三线瞄准光束同位；每线沿自身走廊独立锁定目标。刃体 |x|≈14~32，中心 ≈23 → 外移 26；2026-10-10 用户定稿）
     slashLenMul: 2.3,        // 矩形半长 = slashR × 此系数（沿斩击方向；Lv3/4/5 由 levels 表显式 halfLen 覆盖）
-    slashWMul: 0.70,         // 矩形半宽 = slashR × 此系数（垂直斩击方向，"宽度较宽"；Lv3/4/5 由 levels 表显式 halfW 覆盖）
+    slashWMul: 0.42,         // 矩形半宽 = slashR × 此系数（垂直斩击方向；0.70 减半 → 0.35 再 +20% = 0.42，斩痕外观同步；Lv3/4/5 显式覆盖）
     soloBonus: 0.15,         // 单体斩击（仅命中 1 个敌人，含 BOSS）伤害 +15%（2026-10-10 用户定稿：可对 BOSS 生效，原 BOSS +20% 专属加成废除）
     levels: {
-      1: { interval: 1.50, dmg: 495, slashR: 46 },               // 495/1.50 = 330（判定：2.3R × 0.7R = 105.8 × 32.2；2026-10-10 用户定稿：间隔整体放宽，伤害按 DPS 不变重配）
-      2: { interval: 1.40, dmg: 630, slashR: 50 },               // 630/1.40 = 450（判定：115 × 35）
-      3: { interval: 1.30, dmg: 780, slashR: 54, halfLen: 123, halfW: 37 },   // 780/1.30 = 600（判定显式给定）
-      4: { interval: 1.20, dmg: 1056, slashR: 58, halfLen: 130, halfW: 39 },   // 1056/1.20 = 880（判定显式给定）
-      5: { interval: 1.00, dmg: 733, slashR: 64, slashes: 3, halfLen: 144, halfW: 43 },   // 3×733/1.00 = 2199 ≈ 2200（判定显式给定）；暴走全局：伤害+50%（≈1100/击）→ ≈3299 ≈ 3300，连斩节奏不变
+      1: { interval: 1.50, dmg: 247.5, slashR: 46, slashes: 2 },   // 2×247.5/1.50 = 330（连斩 2 次、单击减半保持 DPS，2026-10-10 用户定稿）
+      2: { interval: 1.40, dmg: 315, slashR: 50, slashes: 2 },     // 2×315/1.40 = 450
+      3: { interval: 1.30, dmg: 390, slashR: 54, halfLen: 123, halfW: 22.2, slashes: 2 },   // 2×390/1.30 = 600（halfW = 37 减半再 +20%）
+      4: { interval: 1.20, dmg: 528, slashR: 58, halfLen: 130, halfW: 23.4, slashes: 2 },   // 2×528/1.20 = 880（halfW = 39 减半再 +20%）
+      5: { interval: 1.00, dmg: 1120 / 3, slashR: 64, slashes: 2, slashLines: 3, halfLen: 144, halfW: 25.8 },
+      // 5: 三线独立判定（2026-10-12 用户定稿）：主目标 DPS = 中线 2 斩 × (1120/3) / 1.00 × 1.5（暴走全局伤害 +50%）= 1120；
+      //    侧线走廊另命中主目标/其他怪时逐线叠加（三线全中同一目标的上限 = 3360）；halfW = 43 减半再 +20%
     },
   };
 
@@ -209,10 +233,12 @@
     },
     stars: {
       id: 'stars', name: '群星允诺',
+      default: true,   // 默认僚机（图鉴「僚机」页据此标注「（默认）」；默认项经 currentWingman 初始化——2026-10-10 用户定稿）
       starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
       desc: '多发散射，火力覆盖',
       barTail: '#ffbf47', barMid: '#ffd9a0', barHead: '#8a6bff',   // 尾橙黄 → 头蓝紫
       flame: '#9b7bff',
+      scale: 1.045,   // 整体尺寸系数：尾焰/机体/辉光/暴走机翼统一 ×1.045（同 BULWARK.scale 体系；群星允诺无盾无碰撞，纯视觉；2026-10-11 用户定稿 +10% 后同日回调 -5%）
       // dmgMulByLevel：群星允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
       //   双僚机合计 DPS（图鉴口径）= Lv1 200 / Lv2 230 / Lv3 260 / Lv4 300 / Lv5 1000
       //  （2026-10-10 用户定稿：射击间隔 +80% 由 WINGMAN_LEVELS.interval ×1.8 承担，单发伤害按新 DPS 重配；
@@ -240,7 +266,6 @@
         speedGrad: 0.6,          // 扇形速度梯度：最前方（0°）子弹 +60%、最低（最外侧 spreadMax°）无加成，中间各发线性递减；暴走 Lv5 不生效
         barLen: 40, barR: 5.4,   // 椭圆长条弹尺寸（加长加大；弹长 +25%，32 → 40）
         pierceOnce: 1,           // 击中 1类敌人（side / prolifera）可穿透一次：该次命中不销毁子弹、继续飞行；卫护飞船（escort）无限穿透
-        tornadoHits: 2,          // 对暴风之眼召唤的大型龙卷（tornado）每次命中造成两次伤害判定
         berserk: {               // 暴走（Lv5）弹幕外观：弹长在常规基础上再 ×1.35、金红渐变配色
           lenMul: 1.35,          // 40 → 54
           colorTail: '#e6392a', colorMid: '#ff8b3d', colorHead: '#ffd257',   // 尾红 → 中橙 → 头金
@@ -255,7 +280,7 @@
       },
     },
   };
-  let currentWingman = WINGMEN_CFG.bulwark;   // 当前僚机配置（写操作经 setWingman）
+  let currentWingman = WINGMEN_CFG.stars;   // 当前僚机配置（默认群星允诺，2026-10-10 用户定稿，原守愿者；写操作经 setWingman）
 
   // 僚机通用参数（伤害/射速均可调；总体占主机 30~40%）
   const WINGMAN = {
@@ -311,7 +336,7 @@
       glyphTransform: 'rotate(180deg) scaleX(1.5)',   // 字形倒转 180°（剑尖朝上）+ 横向加宽 1.5 倍（仅 glyph 回退路径使用；iconSvg 生效时忽略）
       glyphBold: true,   // 线条增粗：† 加粗渲染（仅 glyph 回退路径使用）
       brief: '释放分裂飞剑<br>多位置打击',
-      desc: '自机体后方飞出一把飞剑，后移下沉<br>随后迅速左右分裂（渐显）为多把<br>各自滑入全屏均分的槽位，就位后中央先发依次前射<br>每把剑对命中的首个敌人造成伤害（常规不穿透）<br>装备驾驶员陵落时：飞剑带微弱追踪<br>暴走（Lv5）：射速与单发伤害大增、剑身边缘金红流动、<br>弹速 +40%、拖尾增长<br>每把剑 50% 概率可穿透一次<br>（具体数值见下方对比表格）',
+      desc: '自机体后方飞出一把飞剑，后移下沉<br>随后迅速左右分裂（渐显）为多把<br>各自滑入全屏均分的槽位，就位后中央先发依次前射<br>每把剑对命中的首个敌人造成伤害（常规不穿透）<br>装备驾驶员迪奥时：飞剑带微弱追踪<br>暴走（Lv5）：射速与单发伤害大增、剑身边缘金红流动、<br>弹速 +40%、拖尾增长<br>每把剑 50% 概率可穿透一次<br>（具体数值见下方对比表格）',
       fire: {
         kind: 'feijian',
         sinkDist: 30,  // 尾部出现后微微后移（下移）距离（px）
@@ -352,7 +377,7 @@
 
   // ── 体系级约定（设计新驾驶员必读）：许凯狗「高能冲刺」结束时（14-main 递减归零帧，仅一次）会调用
   // 07-player chargeAllGaugesOnDashEnd()，把当前驾驶员的全部技能计量表立刻充满——现有六张：
-  // 炼金璃七日澜心持有充能 / 依击杀计数 / 陵落 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 大狗计数表。
+  // 炼金璃七日澜心持有充能 / 依击杀计数 / 迪奥 Q 冷却 / 天秀白色量表 / 萧杨原石充能 / 大狗计数表。
   // 新驾驶员若引入技能计量表（冷却 / 充能 / 计数 / 层数等），必须同步在该函数登记充满逻辑，
   // 否则许凯狗冲刺结束后该表不回满（视为遗漏）。
   const PILOTS = {
@@ -421,7 +446,7 @@
       id: 'hajimi', name: '哈基米大王', glyph: 'ω', color: '#ff9ab5', slot: 'main',   // ω 猫嘴 :3（原「喵」文字占位）；2026-09-28 由副槽移至主槽（马兴犬前）
       dodgeBase: 0.35, dodgeBonusStep: 0.05, tailDur: 4,   // 暴走期闪避基础概率 / 失败累积步进 / 暴走结束后闪避存续时长（s）
       brief: '暴走时有概率闪避',
-      desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害，无敌时长为正常的 70%）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
+      desc: '哈基米大王狂暴出击。暴走期间 35% 概率闪避受到的伤害<br>（闪避不受伤害）<br>未成功闪避时下一次概率 +5%（成功后清零）<br>闪避效果延长至暴走结束后 4s<br>（覆盖后暴走的最危险窗口；概率累积仅在暴走期间进行）<br>暴走结束时若仍有累积加成则保留，<br>下次暴走时继续生效',
     },
     maxingquan: {
       id: 'maxingquan', name: '马兴犬', glyph: '⇅', color: '#d9a066', slot: 'main',   // ⇅ 上/下双箭 = Shift 加速 / Caps 减速切换（🐾 emoji 自带色破坏单色风格弃用；Unicode 无单色狗形字符）
@@ -459,13 +484,13 @@
       brief: 'BOSS战逐渐增伤',
       desc: '大无垠之王怒意蔓延。BOSS 战期间：每 1s 造成伤害 +0.75%（最多累积 +120%），<br>每 1s 受到伤害 +0.5%（最多累积 +80%）<br>多阶段 BOSS 切换时（暴风之眼→风暴编织者）<br>两项累积各减少 75%<br>BOSS 阶段结束时立刻失去全部累积',
     },
-    lingluo: {
-      id: 'lingluo', name: '陵落', glyph: '★', iconSvg: higanbanaSvg(), color: '#6a1b9a', slot: 'sub',   // iconSvg = 彼岸花矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg；主菜单卡片 / 图鉴驾驶员页生效）；glyph ★ 保留作字形回退（⛧ 倒五芒、☠ 骷髅均弃用；颜色黑紫不变）
+    diao: {
+      id: 'diao', name: '迪奥', glyph: '★', iconSvg: higanbanaSvg(), color: '#6a1b9a', slot: 'sub',   // iconSvg = 彼岸花矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg；主菜单卡片 / 图鉴驾驶员页生效）；glyph ★ 保留作字形回退（⛧ 倒五芒、☠ 骷髅均弃用；颜色黑紫不变）
       // cd：Q 技能冷却（s，开局技力条为空）/ hpCost：每次触发同时扣除的生命上限与当前生命（下限 1）
       // maxHpRegen：生命上限恢复速率（每秒，不回当前血量；40 上限 ÷ 2/s = 恰好 20s 回满）
       cd: 40, hpCost: 40, maxHpRegen: 2,
       brief: '按Q烧血暴走',
-      desc: '陵落掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后每秒回复 2 点、20s 恰好回满 40<br>（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
+      desc: '迪奥掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后每秒回复 2 点、20s 恰好回满 40<br>（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
     },
     tianxiu: {
       id: 'tianxiu', name: '天秀忧郁王子', short: '忧郁王子', glyph: '☯', color: '#dff3ff', slot: 'sub',   // ☯ 回调保留（⟳ 旋风试行后弃用）
@@ -478,13 +503,16 @@
     },
     lianjinLovely: {
       id: 'lianjinLovely', name: '炼金璃', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
-      // 重做（2026-10-09 用户定稿）：无独立数值参数。
-      // ① BOSS 战：BOSS 血量首次到达 70% 时额外掉落一个结晶护盾道具（每台 BOSS 一次，
+      crystalShieldDur: 6,   // 装备时结晶护盾时长（s，2026-10-11 用户定稿；基准 4.8 = ARMOR_SKILLS.lanxin.dur，统一入口 crystalShieldDur()）
+      // 重做（2026-10-09 用户定稿）+ 时长延长（2026-10-11 用户定稿）：
+      // ① 结晶护盾时长延长：装备本驾驶员时，澜心按 F 开启的结晶护盾与结晶护盾道具均为 6s
+      //    （crystalShieldDur() 统一入口，消费点 07-player triggerArmorSkill / 08-entities applyPowerupPickup 'crystalShield'）；
+      // ② BOSS 战：BOSS 血量首次到达 70% 时额外掉落一个结晶护盾道具（每台 BOSS 一次，
       //    见 05-boss updateLovelyShieldMark / 08-entities applyPowerupPickup 'crystalShield'）；
-      // ② 连携七日澜心：量表充能完毕的瞬间立刻释放淡粉特效并清除 250px 内敌弹（lovelyBurst），
+      // ③ 连携七日澜心：量表充能完毕的瞬间立刻释放淡粉特效并清除 250px 内敌弹（lovelyBurst），
       //    量表保持满格、按 F 照常开启结晶护盾（见 07-player updatePilotStatus）
-      brief: 'BOSS战血量70%时掉落结晶护盾<br>连携澜心：量表充满即清弹',
-      desc: '同时携带七日澜心时：<br>七日澜心量表<b>充能完毕</b>的瞬间，立刻释放<br>淡粉特效并清除 250px 内所有敌方子弹<br>（量表保持满格，按 F 照常开启结晶护盾）<br><b>BOSS 战</b>：BOSS 血量首次到达 <b>70%</b> 时<br>额外掉落一个<b>结晶护盾</b>（每台 BOSS 一次）',
+      brief: '增强结晶护盾<br>连携七日澜心，充能满时清除范围弹幕',
+      desc: '装备本驾驶员时，<b>结晶护盾</b>时长延长至 <b>6s</b><br>（基准 4.8s——澜心按 F 开启的护盾<br>与结晶护盾道具均受影响）<br>同时携带七日澜心时：<br>七日澜心量表<b>充能完毕</b>的瞬间，立刻释放<br>淡粉特效并清除 250px 内所有敌方子弹<br>（量表保持满格，按 F 照常开启结晶护盾）<br><b>BOSS 战</b>：BOSS 血量首次到达 <b>70%</b> 时<br>额外掉落一个<b>结晶护盾</b>（每台 BOSS 一次）',
     },
     mei: {
       id: 'mei', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 meiGlyphSvg：#FFC0CB → 白）
@@ -511,8 +539,8 @@
       scytheTilt: 0.75,
       scytheWind: 0.3, scytheWindAng: 0.35,
       scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
-      brief: '击杀积攒计数，满时召唤镰刀斩击一圈',
-      desc: '缎带与镰刀的看板娘。左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
+      brief: '击杀积攒充能<br>召唤镰刀斩击',
+      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
       id: 'dingdongji', name: '大狗', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
@@ -613,7 +641,7 @@
   //   scale 为整体尺寸系数：绘制（机体/盾板/尾焰/辉光）与挡弹折线半径统一乘算，保证视觉与判定一致
   const BULWARK = {
     radius: 30, arcFrom: -10, arcTo: 100, thickness: 6, segments: 12,
-    scale: 0.9,   // 整体缩小 10%
+    scale: 0.8505,   // 整体尺寸系数（历史两次各 -10% 至 0.81，2026-10-11 用户定稿 +5% → ×1.05 = 0.8505；净缩小 ≈15%）
     color: '#eaf6ff', glow: '#bfe4ff',
   };
 
@@ -655,7 +683,7 @@
     PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     PLANES, currentPlane, setPlane, setWingman,
     ARMORS, currentArmor, setArmor, armorMaxHp, starsSeriesCount,
-    ARMOR_SKILLS, STARSLAYER, WINGMEN_CFG, currentWingman,
+    ARMOR_SKILLS, crystalShieldDur, STARSLAYER, WINGMEN_CFG, currentWingman,
     WINGMAN, SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain,
     setPilotSub, hasPilot, pilotEntry, pilotBombDmgMul,

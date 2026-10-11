@@ -8,8 +8,8 @@
   import { ANVIL, CAPITAL_PALETTE, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, WIP_PLACEHOLDER_TYPES } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { currentDifficulty, isPoem, isRealme } from './01-config-difficulty.js';
-  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBurst, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, pmWaves, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
-  import { berserkBurst, bombBurst, shieldBurst } from './08-entities.js';
+  import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBursts, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, pmWaves, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
+  import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
   import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
   import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
   import { getCrystal3DSprite } from './09c-draw-crystal.js';
@@ -94,7 +94,7 @@
     } else if (e.type === 'unreal') {
       drawUnrealBody(e);      // 虚幻：同暴鸰机体 + 冰青桨心 + 机身雪花标识 + 前挂青蓝渐变圆柱炸弹（椭圆顶面 + 两道半圆弧线）
     } else if (e.type === 'douzhi' || e.type === 'sponsor' || e.type === 'sponsorDeluxe') {
-      drawDouzhiBody(e);      // 奖励无人机（斗志昂扬/赞助/豪华赞助）：类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂盒子（盒色/高度按类型）
+      drawDouzhiBody(e);      // 奖励无人舰（斗志昂扬/赞助/豪华赞助）：类暴鸰灰黑方形机体 + 四轮红色间歇闪光 + 上扬双箭头标志 + 下挂盒子（盒色/高度按类型）
     } else if (e.type === 'hanshuang') {
       drawHanshuangBody(e);   // 自带填充与描边（四角圆角矩形旋翼舱 + 灰黑渐变机身 + 天蓝霜纹边缘 + 冰蓝光圈）
     } else if (e.type === 'yu4') {
@@ -204,11 +204,15 @@
       ctx.lineTo(-16, 10);
       ctx.closePath();
       // 舰体渐变（后/上暗 → 前/下亮）取代纯色平涂，增强装甲立体感
+      // （2026-10-12 性能：几何/配色按变体固定 → cachedGrad 按变体缓存复用，消除每帧 createLinearGradient）
       const gpal = GUNSHIP_PALETTE[e.variant] || GUNSHIP_PALETTE.violet;
-      const ghull = ctx.createLinearGradient(0, -17, 0, 20);
-      ghull.addColorStop(0, gpal.dark);
-      ghull.addColorStop(0.5, gpal.base);
-      ghull.addColorStop(1, gpal.light);
+      const ghull = cachedGrad(`gs-hull-${e.variant || 'violet'}`, () => {
+        const g0 = ctx.createLinearGradient(0, -17, 0, 20);
+        g0.addColorStop(0, gpal.dark);
+        g0.addColorStop(0.5, gpal.base);
+        g0.addColorStop(1, gpal.light);
+        return g0;
+      });
       ctx.fillStyle = ghull;
     } else {
       // 4类：主力舰中央舰体（两侧机翼为独立部件，见下方折翼绘制，从中心横向滑出）
@@ -222,11 +226,15 @@
       ctx.lineTo(-19, 25);
       ctx.closePath();
       // 舰体渐变（后/上暗 → 前/下亮）取代纯色平涂，增强装甲立体感
+      // （2026-10-12 性能：几何/配色按变体固定 → cachedGrad 按变体缓存复用）
       const cpal = CAPITAL_PALETTE[e.variant] || CAPITAL_PALETTE.crimson;
-      const hullGrd = ctx.createLinearGradient(0, -34, 0, 34);
-      hullGrd.addColorStop(0, cpal.dark);
-      hullGrd.addColorStop(0.5, cpal.base);
-      hullGrd.addColorStop(1, cpal.light);
+      const hullGrd = cachedGrad(`cap-hull-${e.variant || 'crimson'}`, () => {
+        const g0 = ctx.createLinearGradient(0, -34, 0, 34);
+        g0.addColorStop(0, cpal.dark);
+        g0.addColorStop(0.5, cpal.base);
+        g0.addColorStop(1, cpal.light);
+        return g0;
+      });
       ctx.fillStyle = hullGrd;
     }
     ctx.fill();
@@ -256,10 +264,14 @@
         ctx.lineTo(sx * 40, -16);
         ctx.lineTo(sx * 19, -21);
         ctx.closePath();
-        const wGrd = ctx.createLinearGradient(0, -34, 0, 34);
-        wGrd.addColorStop(0, wpal.dark);
-        wGrd.addColorStop(0.5, wpal.base);
-        wGrd.addColorStop(1, wpal.light);
+        // 折翼渐变（2026-10-12 性能：几何/配色按变体固定 → cachedGrad 缓存复用；刚体平移不改变纵向渐变坐标）
+        const wGrd = cachedGrad(`cap-wing-${e.variant || 'crimson'}`, () => {
+          const g0 = ctx.createLinearGradient(0, -34, 0, 34);
+          g0.addColorStop(0, wpal.dark);
+          g0.addColorStop(0.5, wpal.base);
+          g0.addColorStop(1, wpal.light);
+          return g0;
+        });
         ctx.fillStyle = wGrd;
         ctx.fill();
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
@@ -365,11 +377,15 @@
       ctx.shadowBlur = 0;
 
       // (3) 能量核心（座舱位置径向发光核 + 强调色描边，取代纯白平涂）
-      const coreGrd = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 5.5);
-      coreGrd.addColorStop(0, '#ffffff');
-      coreGrd.addColorStop(0.45, pal.light);
-      coreGrd.addColorStop(0.8, pal.base);
-      coreGrd.addColorStop(1, pal.dark);
+      // （2026-10-12 性能：几何/配色按变体固定 → cachedGrad 缓存复用，消除每帧 createRadialGradient）
+      const coreGrd = cachedGrad(`gs-core-${e.variant || 'violet'}`, () => {
+        const g0 = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 5.5);
+        g0.addColorStop(0, '#ffffff');
+        g0.addColorStop(0.45, pal.light);
+        g0.addColorStop(0.8, pal.base);
+        g0.addColorStop(1, pal.dark);
+        return g0;
+      });
       ctx.fillStyle = coreGrd;
       ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = pal.accent;
@@ -380,10 +396,14 @@
 
       // (4) 尾部单引擎辉光（后部/上方居中一个喷口，呼吸明灭）
       {
-        const engGrd = ctx.createRadialGradient(0, -16, 0.4, 0, -16, 6);
-        engGrd.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-        engGrd.addColorStop(0.4, pal.accent);
-        engGrd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        // （2026-10-12 性能：引擎辉光渐变几何/配色按变体固定 → cachedGrad 缓存复用；呼吸明灭走 globalAlpha 不变）
+        const engGrd = cachedGrad(`gs-eng-${e.variant || 'violet'}`, () => {
+          const g0 = ctx.createRadialGradient(0, -16, 0.4, 0, -16, 6);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+          g0.addColorStop(0.4, pal.accent);
+          g0.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          return g0;
+        });
         ctx.globalAlpha = 0.45 + pulse * 0.5;
         ctx.fillStyle = engGrd;
         ctx.beginPath(); ctx.ellipse(0, -16, 4.5, 6, 0, 0, Math.PI * 2); ctx.fill();
@@ -465,7 +485,7 @@
         const lwR = w.r / (ENEMY_TYPES.capital.drawScale || 1);
         if (w.broken) {
           const k = clamp(w.fadeT / w.fadeDur, 0, 1);
-          const gap = 0.3 + k * 1.1;   // 断口随消散张开（敌机绘制无旋转，doSlash 记录的世界角可直接使用）
+          const gap = 0.3 + k * 1.1;   // 断口随消散张开（敌机绘制无旋转，doSlashLine 记录的世界角可直接使用）
           const rr = lwR + k * 16;
           ctx.save();
           ctx.strokeStyle = pal.accent;
@@ -1437,10 +1457,12 @@
   }
 
   // 奖励道具·辛国栋大怒：固定位置的扩散火环（不移动，半径随时间扩张）。
-  // 复用辛国栋之怒同款视觉（玫红→粉流动火舌 + 火星 + 边界环），整体透明度由 state.xinFuryRing.alpha 驱动
+  // 复用辛国栋之怒同款视觉（玫红→粉流动火舌 + 火星 + 边界环），整体透明度由各环 alpha 驱动；
+  // 多道并存：重复拾取不清除此前火环（2026-10-11 用户定稿），逐环绘制
   function drawXinFuryRing() {
-    const g = state.xinFuryRing;
-    if (!g) return;
+    for (const g of state.xinFuryRings) drawXinFuryRingOne(g);
+  }
+  function drawXinFuryRingOne(g) {
     const a = 0.85 * g.alpha;
     const r = g.r;
     ctx.save();
@@ -1515,7 +1537,7 @@
   function drawBullets() {
     for (const b of pBullets) {
       // 副武器·无界飞剑（飞行弹体）：与待发射悬浮剑同画法（paintFeijianSword，含护手 / 剑柄 / 拖尾），
-      // 朝向取弹速方向；暴走拖尾略微增长（26 → 38）；装备陵落时带微弱追踪（转向由 08-entities homing 完成）；
+      // 朝向取弹速方向；暴走拖尾略微增长（26 → 38）；装备迪奥时带微弱追踪（转向由 08-entities homing 完成）；
       // 警报 / BOSS 登场动画期间按 dieT 快速消散渐隐
       if (b.sword) {
         const fade = b.dieT != null ? clamp(b.dieT / 0.3, 0, 1) : 1;
@@ -3251,9 +3273,10 @@
     drawPowerups();
     drawPlayerFireRing();   // 炽心：自身火环（低图层——位于实体与子弹之下，不遮挡任何单位）
     for (const o of pmWaves) drawPmOrphanWave(o);   // 脉冲矩阵震荡波孤儿波（本体被击坠后残留，低图层：活体敌机之下）
-    for (const e of enemies) {
-      if (e.type === 'boss') drawBoss(e);
-      else drawEnemy(e);
+    for (const e of enemies) if (e.type === 'boss') drawBoss(e);   // BOSS 体型最大，最底层
+    // 常规敌机按体型（半径）降序绘制：大机先画在底层、小机浮上层——4类不遮挡 3/2/1类（2026-10-12 用户定稿）
+    for (const e of [...enemies].sort((a, b) => b.r - a.r)) {
+      if (e.type !== 'boss') drawEnemy(e);
     }
     drawStarslayerBeam();   // 群星之杀：机头淡白锁定光束（敌机之上、玩家之下）
     drawPlayer();
@@ -3349,8 +3372,9 @@
 
     drawMeiScythes();   // 依：镰刀清扫（绕机旋转，淡入淡出 + 淡粉范围圈）
 
-    // 结晶护盾解除冲击波：样式同量子护盾冲击波（淡粉色），但扩散范围有限——对应其 250px 消弹半径
-    if (crystalBurst.active) {      const p = crystalBurst.t / crystalBurst.duration;   // 0→1
+    // 结晶护盾解除冲击波：样式同量子护盾冲击波（淡粉色），但扩散范围有限——对应其 250px 消弹半径；
+    // 多道并存：澜心护盾到期波与炼金璃连携清弹波互不清除，逐道绘制（2026-10-11 用户定稿）
+    for (const crystalBurst of crystalBursts) {      const p = crystalBurst.t / crystalBurst.duration;   // 0→1
       const ease = 1 - Math.pow(1 - p, 3);                // easeOutCubic：初始快、末尾慢
       const maxR = 265;                                   // 略大于 250px 消弹半径
       const r = 36 + ease * (maxR - 36);
@@ -3422,8 +3446,9 @@
       ctx.restore();
     }
 
-    // 暴走冲击波：粉橙双环自机体扩散（暴走触发特效，比护盾环更小更亮、聚焦机体）
-    if (berserkBurst.active) {
+    // 暴走冲击波：粉橙双环自机体扩散（暴走触发特效，比护盾环更小更亮、聚焦机体）；
+    // 多道并存：暴走进入/陵落 Q 续按各自成波互不清除，逐道绘制（2026-10-11 用户定稿）
+    for (const berserkBurst of berserkBursts) {
       const p = berserkBurst.t / berserkBurst.duration;
       const ease = 1 - Math.pow(1 - p, 3);
       const maxR = berserkBurst.big ? 190 : 130;
@@ -3461,8 +3486,9 @@
       ctx.restore();
     }
 
-    // 高能爆弹火圈：橙黄火环自场地中心急速扩大至全场，同时渐隐（全部模式统一表现）
-    if (bombBurst.active) {
+    // 高能爆弹火圈：橙黄火环自场地中心急速扩大至全场，同时渐隐（全部模式统一表现）；
+    // 多道并存：重复释放不清除此前波，逐道绘制（2026-10-11 用户定稿）
+    for (const bombBurst of bombBursts) {
       const p = bombBurst.t / bombBurst.duration;   // 0→1
       const ease = 1 - Math.pow(1 - p, 2.2);        // easeOut：急速扩张、末段减速
       const cx = CANVAS_W / 2, cy = CANVAS_H / 2;

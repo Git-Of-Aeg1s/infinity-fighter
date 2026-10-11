@@ -453,7 +453,7 @@ canvas#game {
 .music-toggle {
   position: absolute;   /* 以 game-wrap（游戏画面框）为定位参照 */
   top: 5px;             /* 中心高度 = 5 + 18 = 23px，与左上角 ? 按钮（top 10 + 26/2）中心对齐 */
-  right: -48px;         /* 悬出画面右缘之外，不遮挡游戏画面 */
+  right: -41px;         /* 悬出画面右缘之外，不遮挡游戏画面（2026-10-12 整列左移 7px ≈ 一个数字字符宽） */
   z-index: 7;           /* 高于主菜单(6)与遮罩(5)：菜单 / 暂停 / 结算时仍可见可点；低于图鉴(10,11) */
   width: 36px;
   height: 36px;
@@ -476,11 +476,6 @@ canvas#game {
   box-shadow: 0 0 12px rgba(124, 231, 255, 0.45);
 }
 
-/* 已武装标识（内部调试状态，无任何文档提及）：音量键边框提亮（保持 1px 粗细） */
-.music-toggle.cheat-armed {
-  border-color: rgba(150, 232, 255, 0.7);
-}
-
 .music-toggle.muted {
   color: var(--muted);
   border-color: rgba(143, 162, 192, 0.3);
@@ -497,11 +492,12 @@ canvas#game {
 .fps-meter {
   position: absolute;    /* 与 .music-toggle 同一参照（game-wrap 框角） */
   top: 46px;             /* 音量键 top 5 + 高 36 + 间距 5 */
-  right: -48px;          /* 与音量键左缘对齐的 36px 盒，文字左对齐 */
+  right: -41px;          /* 与音量键同列的 36px 盒（整列左移 7px 同步） */
   z-index: 7;            /* 与音量键同层：主菜单 / 战斗 / 结算均可见 */
   width: 36px;
-  text-align: left;      /* 左对齐：2~3 位数互切时左缘不动、只向右伸缩，不跳动 */
-  white-space: nowrap;   /* "FPS 60" 允许溢出 36px 盒向右延伸，不被裁切 */
+  text-align: center;    /* 居中对齐（2026-10-12 用户定稿）：「FPS xxx」字符中心恒对齐音量图标中心
+                            （36px 盒中心 = 图标 flex 中心；两位/三位互切时中心不动、向两侧对称溢出） */
+  white-space: nowrap;   /* "FPS 120" 允许溢出 36px 盒向两侧延伸，不被裁切 */
   pointer-events: none;
   user-select: none;
   font-size: 11px;
@@ -517,7 +513,7 @@ canvas#game {
 .pad-indicator {
   position: absolute;
   top: 63px;             /* FPS 读数（top 46 + 11px 字高 + 间距）正下方 */
-  right: -48px;          /* 与音量键 / FPS 读数同列对齐 */
+  right: -41px;          /* 与音量键 / FPS 读数同列对齐（整列左移 7px 同步） */
   z-index: 7;
   width: 36px;
   display: flex;
@@ -1610,6 +1606,7 @@ kbd {
 #gameoverHomeBtn.hidden { display: none; }
 
 #pauseRetryBtn,
+#pauseBackBtn,
 #retrialBtn {
   display: block;
   margin: 10px auto 0;
@@ -1625,15 +1622,18 @@ kbd {
 }
 
 #pauseRetryBtn:hover,
+#pauseBackBtn:hover,
 #retrialBtn:hover {
   box-shadow: 0 0 20px rgba(124, 231, 255, 0.45);
   transform: translateY(-1px);
 }
 
 #pauseRetryBtn:active,
+#pauseBackBtn:active,
 #retrialBtn:active { transform: translateY(0); }
 
 #pauseRetryBtn.hidden,
+#pauseBackBtn.hidden,
 #retrialBtn.hidden { display: none; }
 
 /* ---------- BOSS 测试模式 ---------- */
@@ -1790,33 +1790,33 @@ kbd {
   min-width: 160px;
   overflow-y: auto;
   scrollbar-gutter: stable;   /* 恒定预留滚动条槽：条目多的分页（具象/真我）出现滚动条时布局不再变化 */
-  border-right: 1px solid rgba(120, 180, 255, 0.1);
-  padding: 8px 6px;           /* 水平 8→6：为名称区让宽（5 字名 65px 需在滚动条吃宽后仍放得下） */
+  padding: 4px 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
+/* 连续竖向切换列表（2026-10-11 用户定稿，替代原「一张张单独卡片」形态）：
+   行本身无边框无独立底色无分隔线，整列读作一块连续切换区；选中 = accent 底色 + 左侧亮条 */
 .ency-card {
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(120, 180, 255, 0.12);
-  background: rgba(255, 255, 255, 0.02);
+  padding: 3px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.15s;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .ency-card:hover {
-  border-color: rgba(120, 200, 255, 0.35);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);   /* 悬停淡高亮（无描边） */
 }
 
 .ency-card.selected {
-  border-color: var(--accent);
-  background: rgba(77, 208, 255, 0.08);
+  background: rgba(77, 208, 255, 0.12);        /* 选中：accent 底色 */
+  box-shadow: inset 2px 0 0 var(--accent);     /* + 左侧 2px 亮条（切换器选中标记） */
 }
 
 .ency-card-icon {
@@ -2293,7 +2293,7 @@ kbd {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 6px 16px;   /* 标题/关闭按钮上移、分隔线上移，给内容区让高度（2026-10-11 用户定稿，原 12px 16px） */
   border-bottom: 1px solid rgba(120, 180, 255, 0.15);
 }
 
@@ -2363,8 +2363,8 @@ kbd {
   z-index: 5;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 2px 0 12px;      /* 间距收入背景内：滚动内容从页签背景下方穿过，不会露出 */
+  gap: 5px;                /* chips 间距收窄（2026-10-11 用户定稿，原 8px） */
+  padding: 2px 0 6px;      /* 间距收入背景内：滚动内容从页签背景下方穿过，不会露出；底距收窄给内容让高度（原 2px 0 12px） */
   background: rgba(5, 8, 18, 0.95);   /* 与 info-modal 同色深底，遮住穿过的滚动内容 */
 }
 
@@ -2381,7 +2381,7 @@ kbd {
   border-radius: 14px;
   color: var(--muted);
   font-size: 12px;
-  padding: 4px 14px;
+  padding: 2px 10px;   /* 高度收窄（2026-10-11 用户定稿，原 4px 14px） */
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -2498,7 +2498,7 @@ kbd {
 
 /* 数值图鉴「驾驶员」页条目标题：去字距，保证「☯天秀忧郁王子（副驾驶员）」长名单行放下 */
 .info-pilot-card h4 { letter-spacing: 0; }
-/* 陵落彼岸花矢量图标（inline-block 内无行内基线 → svg 底边贴基线显得偏高）：垂直居中与文字对齐 */
+/* 迪奥彼岸花矢量图标（inline-block 内无行内基线 → svg 底边贴基线显得偏高）：垂直居中与文字对齐 */
 .info-pilot-card h4 .glyph-svg { vertical-align: middle; }
 .info-wave-card h4 .glyph-svg { vertical-align: middle; }   /* 副武器 / 护甲标题行：矢量图标与文字中线对齐 */
 

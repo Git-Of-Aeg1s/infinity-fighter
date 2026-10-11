@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(32 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(33 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -159,7 +159,7 @@
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 0,   // 无碰撞伤害（与玩家互相穿过，见 updateEnemies）
       fireInterval: [1e9, 1e9],   // 不攻击
     },
-    // 特殊2类：赞助无人机 / 豪华赞助无人机（诗篇新敌实装 2026-09-29）——造型/行动同斗志昂扬，
+    // 特殊2类：赞助无人舰 / 豪华赞助无人舰（诗篇新敌实装 2026-09-29）——造型/行动同斗志昂扬，
     // 击败后掉落奖励道具（普通/稀有，见 06-enemy grantRewardItem）；数值全部同斗志昂扬
     sponsor: {
       w: 56, h: 60, hp: 280, score: 100, color: '#f2f5fa', drawScale: 1.2,
@@ -496,7 +496,7 @@
     boxDetach: 34,       // 蓝盒脱离时向下漂离距离
   };
 
-  // 赞助无人机 / 豪华赞助无人机参数（特殊2类奖励无人机，2026-09-29）：造型/行动基本同斗志昂扬，差异仅——
+  // 赞助无人舰 / 豪华赞助无人舰参数（特殊2类奖励无人舰，2026-09-29）：造型/行动基本同斗志昂扬，差异仅——
   //   移速 -20%、上下摆动幅度大幅降低（×0.35）、盒子高度 -15%；盒子颜色：赞助=白色 / 豪华赞助=淡黄色（斗志=蓝色）；
   //   击败后掉落奖励道具（sponsor 90% 普通 + 10% 稀有 / sponsorDeluxe 必定稀有），道具系统见 06-enemy grantRewardItem
   const SPONSOR = {
@@ -961,7 +961,8 @@
     capital: { v0: 280, poem: 300 },
     decay: 1,
   };
-  const STRIKER_POEM_ENTRY = 200;   // 2类突击艇诗篇难度入场速度（常规 160，2026-10-10 用户定稿）
+  const STRIKER_ENTRY = 250;        // 2类突击艇常规入位速度（全体统一，2026-10-11 用户定稿 160→250）
+  const STRIKER_POEM_ENTRY = 280;   // 2类突击艇诗篇难度入位速度（2026-10-11 用户定稿 200→280）
 
   // 坚垒护卫艇（2类黄色变体，2026-09-28 新增）：机体为霜白突击艇上下倒置 + 前置能量盾（下方机体边框两条线增粗外移 + 流光，绘制见 09b-draw-enemies drawFortressStrikerBody）
   // 2026-10-03 起取消能量盾减伤机制，改为单纯高血量；2026-10-10 起移除移速 60% 负修正（入位/冲锋与全体突击艇同速）
@@ -985,21 +986,21 @@
   };
 
   /* ---------- 2/3/4 类变体：不同颜色 + 不同技能（weight 为出现权重） ----------
-   * striker 2类：赤红(直射±10°、不追踪) / 烈橙(spread 前方双弹、夹角 40°/50°/60° 随机) / 幽蓝(homing 追踪弹、登场 10% 1s 或 10% 2s 虚化护盾) / 霜白(silent 不开火、不停留直接冲锋) / 坚垒(fortress 黄色倒置机体+前置能量盾：不开火、移速 60%、停留更低、受伤 -20%) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；入位/冲锋速度逐变体定义
+   * striker 2类：赤红(直射±10°、不追踪) / 烈橙(spread 前方双弹、夹角 40°/50°/60° 随机) / 幽蓝(homing 追踪弹、登场 30% 0.5s 虚化护盾) / 霜白(silent 不开火、停留同普通 2类) / 坚垒(fortress 黄色倒置机体+前置能量盾：不开火、移速同全体突击艇、停留更低) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；入位/冲锋速度逐变体定义
    * gunship 3类：紫(mixed 散射+追踪) / 红(aggressive 火力猛瞄准连射) / 金(ring 环形弹幕密集)；血量/下降速度/首射延迟逐变体定义
    * capital 4类：红(barrage 密集弹幕) / 蓝(lance 瞄准齐射+螺旋；出现时 20% 带护盾，前 5s 虚化不受伤害、炮弹穿过) / 金(crgold 三技能)；下降速度逐变体定义
    */
   const VARIANTS = {
     striker: [
       // entry = 入位下降速度（px/s）；charge = 冲锋基准速度（冲锋速度 = charge + (关卡-1)×5）
-      // 入位已统一（2026-10-10 用户定稿）：全体入位 160（诗篇 200，04-spawn makeEnemy 覆盖）、冲锋基准 120——字段保留以便日后按变体再分化
+      // 入位已统一（2026-10-11 用户定稿）：全体入位 250（诗篇 280，makeEnemy 经 STRIKER_ENTRY/STRIKER_POEM_ENTRY 覆盖，entry 字段不再使用）、冲锋基准 120
       // firstDelay = 首次开火额外延迟（数值或 [min,max] 区间）；iv = 变体专属攻击间隔（缺省用注册表 fireInterval）
       { id: 'crimson', color: '#ff3b30', weight: 0.26, skill: 'straight', firstDelay: [0.2, 0.6], entry: 160, charge: 120 },   // 赤红：直射 ±10° 偏差、不追踪
       { id: 'amber',   color: '#ff8a5c', weight: 0.26, skill: 'spread', firstDelay: [0.4, 0.8], entry: 160, charge: 120, iv: [1.4, 2.4] },     // 烈橙：前方双弹，夹角 40°/50°/60° 随机（间隔独享 1.4~2.4s）
-      { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 160, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 10% 1s / 10% 2s 虚化护盾
+      { id: 'azure',   color: '#4d9fff', weight: 0.21, skill: 'homing', firstDelay: [0.5, 1], entry: 160, charge: 120 },        // 幽蓝：朝玩家 ±20° 随机偏转单发（蓝=盾+乱射）、登场 30% 0.5s 虚化护盾（2026-10-12 用户定稿）
       { id: 'violet',  color: '#c084fc', weight: 0.21, skill: 'violet', firstDelay: [0.5, 1], entry: 160, charge: 120, iv: [1.4, 2.3] },     // 紫晶：单发精确追踪弹（紫=追踪）；间隔较幽蓝 +0.3s、无虚化护盾、首攻不额外延长
       { id: 'white',   color: '#eaf1f8', weight: 0.15, skill: 'silent', entry: 160, charge: 120 },                              // 霜白：不开火（停留规则与普通 2类一致）
-      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 800, entry: 160, charge: 120 },                  // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速与全体突击艇同速（2026-10-10 取消 60% 负修正）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 800 承担承伤职能（2026-10-03 取消减伤；2026-10-08 用户定稿 300→800，诗篇仍走 POEM_HP.striker_fortress = 3000 绝对覆盖）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）
+      { id: 'fortress', color: '#ffd166', weight: 0.21, skill: 'fortress', hp: 800, entry: 160, charge: 120, hold: 20 },   // 坚垒护卫艇：黄色倒置机体+前置能量盾（仅外观）；不开火、移速与全体突击艇同速（2026-10-10 取消 60% 负修正）、停留位置下移 48px（STRIKER_FORTRESS）；高血量 HP 800 承担承伤职能（2026-10-03 取消减伤；2026-10-08 用户定稿 300→800，诗篇仍走 POEM_HP.striker_fortress = 3000 绝对覆盖）；出现权重同幽蓝（见 04-spawn STRIKER_VARIANT_TIERS）；**停留 20s**（hold 字段：2类防御系统一停留时长，makeEnemy 无条件采用、任何调用方传值都不覆盖——2026-10-11 用户定稿「2类防御的所有敌人（含之后新加的）一律 20s」，后续新增 2类防御变体在条目加 hold: 20 即可）
       { id: 'dusk',    color: '#14161c', weight: 0.12, skill: 'dusk' },                       // 幽暮：黑色机白核；出现权重按关卡分档直接取值（Lv1~10 为 2 / Lv11~20 为 5，见 strikerVariantWeights）
     ],
     gunship: [
@@ -1100,7 +1101,7 @@
     FASHI_A1, FASHI_A2, POPIAN, POPIAN_U,
     WAR_GHOST, ELITES, ZHANGZHANG, FASHI_MATRIX,
     PULSE_MATRIX, FASHI_ARRAY, STRIKER_HOLD_Y, STRIKER_FORTRESS,
-    SHIP_ENTRY, STRIKER_POEM_ENTRY,
+    SHIP_ENTRY, STRIKER_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
     SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR,
     SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,

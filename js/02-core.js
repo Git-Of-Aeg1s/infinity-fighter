@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(95 名) 13-encyclopedia(18 名) 14-main(37 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(96 名) 13-encyclopedia(19 名) 14-main(38 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -43,14 +43,14 @@
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
   // 天秀忧郁王子（驾驶员技能）白色量表：与装甲量表同款式，独立元素（按 Q 释放友方大风暴）
-  // 陵落复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
+  // 迪奥复用同一量表展示 Q 冷却（按键标签 pilotGaugeKey 随驾驶员切换 E/Q）
   // pilotGaugeCount：右下角充能数字（大狗显示已充满持有层数）
   const pilotGauge = document.getElementById('pilotGauge');
   const pilotGaugeRing = document.getElementById('pilotGaugeRing');
   const pilotGaugeKey = document.getElementById('pilotGaugeKey');
   const pilotGaugeCount = document.getElementById('pilotGaugeCount');
   // （奖励道具槽 itemGauge / 原石抽卡 R 栏 gachaGauge 已移除——2026-10-01 道具槽整体取消：
-  //   击坠赞助无人机立即生效 applyRewardItem；抽卡改萧杨 Q 技能）
+  //   击坠赞助无人舰立即生效 applyRewardItem；抽卡改萧杨 Q 技能）
   // 大无垠之王：BOSS 战累积增伤读数（左下角血条上方文字，见 index.html / 12-ui updateHUD）
   const kingBonus = document.getElementById('kingBonus');
 
@@ -79,6 +79,7 @@
   const resultAchieve = document.getElementById('resultAchieve');   // 结算页「获得成就」区（胜利 / 失败显示，暂停页隐藏）
   const pauseHomeBtn = document.getElementById('pauseHomeBtn');
   const pauseRetryBtn = document.getElementById('pauseRetryBtn');
+  const pauseBackBtn = document.getElementById('pauseBackBtn');
 
   // 怪物图鉴 DOM
   const encyclopedia = document.getElementById('encyclopedia');
@@ -104,11 +105,11 @@
   // 【state 归域总览】（《并行开发改造设计.md》批次 3：新增字段必须在行尾标注归属域与主要读写方；
   //  跨域读写需在《并行任务认领.md》声明。分区如下——声明顺序为历史累加，不与本分区一一对应）：
   //   · 流程与全局：mode / paused / time / score / lives / victoryOverlay / demo
-  //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatArm
+  //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatInvuln
   //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* / wenjiukeVuln /
   //     dagou* / daodanChains / meiCounter / ddj* / gachaStones / gachaReady
   //   · 奖励道具效果：laoda* / magnetBonus / swordStorm* / frostField / bombCapAdd / bengbagGot / jiuke* / itemPickFx / honghongT
-  //   · 技能演出与特效：gachaFx / xinFuryRing / aiyiWaves / aiyiWaveSeq
+  //   · 技能演出与特效：gachaFx / xinFuryRings / aiyiWaves / aiyiWaveSeq
   //   · 秒杀与亡语门控：aiyiSelfDestruct / sweepKill / aiyiFinalDeath / selfDestructVictory
   //   · BOSS/精英联动：xgLooseBombs / stormVortex / dhFledElites / dhZhangPending / achvBulwarkLowBoss
   //   · 测试/挑战/调试：testBoss / challenge
@@ -126,8 +127,6 @@
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
-    hpKitLastT: -99,       // 真我加血节流：上次实际掉落加血套件的时刻（-99 = 开局不受冷却限制；resetGame 归位）
-    hpKitBanked: 0,        // 真我加血节流：冷却期内"预触发"计数（50%/杀；冷却结束后第一个敌人必掉一个并清零）
     hpKitLastLv: -999,     // 加血套件等级窗口节流（2026-10-10）：上次普通敌人实际掉落加血套件的关卡等级（-999 = 未登记；06-enemy rollItemDrops 读写，resetGame 归位）
     hpKitLastPhase: -1,    // 加血套件等级窗口节流：上次掉落时的 bossFlow.phase（窗口不跨 BOSS 轮——换轮即失效；06-enemy rollItemDrops 读写，resetGame 归位）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
@@ -143,11 +142,14 @@
     sweepKill: false,         // 秒杀类技能结算中（金色陨石；与 aiyiSelfDestruct 同为「秒杀类通道」门控：
                               // killEnemy 据此禁非 BOSS 敌人的召唤型亡语——增生分裂 / 法术矩阵爆发。
                               // 统一伤害规则全文见 07-player gachaMeteorImpact 注释；结算循环结束即复位）
+    bombSweep: false,         // 高能爆弹/绷绷炸弹爆炸结算窗口（07-player useBomb 置位、安全清扫后复位）：
+                              // killEnemy 据此禁增生侧翼艇的分裂亡语（2026-10-11 用户定稿）——与 sweepKill /
+                              // aiyiSelfDestruct 同族门控，但仅扩增生两处判定（法术阵列亡语不随爆弹禁用）
     aiyiFinalDeath: false,    // 埃逸：最后一条命的死亡（endGame 延后到自爆结算之后；若自爆带来胜利则跳过）
     selfDestructVictory: false, // 埃逸：自爆击杀 BOSS（胜利结算标题改为"自爆成功"；成就占位标记见 06-enemy killEnemy）
     aiyiWaves: [],            // 埃逸：自爆扩散波 {x,y,r,id,final,speed,delay,maxR}（见 07-player updateAiyiWaves）
     aiyiWaveSeq: 0,           // 埃逸：扩散波 id 序号（敌人 _sdWaveId 去重——每道波对每个敌人仅结算一次）
-    lingluoCdT: 0,         // 陵落：Q 技能冷却剩余（s；开局 = PILOTS.lingluo.cd，技力条为空）
+    lingluoCdT: 0,         // 迪奥：Q 技能冷却剩余（s；开局 = PILOTS.diao.cd，技力条为空）
     kingDmg: 0,            // 大无垠之王：BOSS 战累积的造成伤害提升（小数，0.05 = +5%；上限 PILOTS.king.dmgCap；阶段结束清零）
     kingTaken: 0,          // 大无垠之王：BOSS 战累积的受到伤害提升（上限 PILOTS.king.takenCap；多阶段切换 ×phaseKeep）
     hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
@@ -164,7 +166,7 @@
     ddjUses: 0,            // 大狗：Q 技能已释放次数（全局初始 useMax=3 次，2026-10-02 用户定稿）
     ddjUseMax: PILOTS.dingdongji.useMax,   // 大狗：Q 释放上限（击败 BOSS 掷骰 +1——25%/第 5、6 轮 100%，见 06-enemy killEnemy；重开复位）
     ddjBerserkUps: 0,      // 大狗：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
-    // ---- 奖励道具效果状态（2026-10-01 改版：道具槽已取消——击坠赞助无人机立即生效，07-player applyRewardItem 置位与推进，resetGame 归位）----
+    // ---- 奖励道具效果状态（2026-10-01 改版：道具槽已取消——击坠赞助无人舰立即生效，07-player applyRewardItem 置位与推进，resetGame 归位）----
     laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +40%
     laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.40/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
     magnetBonus: 0,        // 磁力菇：水晶拾取半径加成（px；一整局、可叠加，08-entities 水晶吸附读取）
@@ -176,7 +178,7 @@
     bengbagGot: false,     // 绷绷背包：本局已获得标记（一局限一次，06-enemy grantRewardItem 过滤——效果直接生效，见 applyRewardItem）
     jiukeT: 0,             // 酒客之影：透明化 + 闪避窗口剩余时长（s；0 = 未激活；30s 内 100% 闪避起步、每成功闪避一次 -20%，07-player damagePlayer 判定）
     gachaFx: null,         // 哦哦！抽卡！：全套演出状态机 { phase, t, stones[], color, meteor, shock } （07-player updateGachaFx 驱动，10-draw-world 绘制）
-    xinFuryRing: null,     // 辛国栋大怒：固定扩散火环 { x, y, r, rMax, t, phase, dps, tick, tickT, alpha }（不移动、半径扩张 6s→全屏、6s 后灼烧全场、再 4s 渐隐）
+    xinFuryRings: [],      // 辛国栋大怒：固定扩散火环列表（元素 { x, y, r, rMax, t, expandDur, burnDur, dps, tick, tickT, burnt, alpha }）——可多道并存：重复拾取不清除此前火环与效果（2026-10-11 用户定稿；不移动、半径扩张 6s→全屏、6s 后灼烧全场、再 4s 渐隐）
     honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
     gachaStones: 0,          // 原石（巨型水晶）当局收集进度（0~16；仅萧杨收集转换，07-player noteGachaStone 写入；HUD 左上与结算页均仅萧杨显示，2026-10-01）
     gachaReady: false,       // 萧杨专属技能「哦哦！抽卡！」充能就绪（16 颗原石转换；Q 键释放 triggerPilotSkill，释放后 gachaStones 清零重计；已充能时捡原石不计数）
@@ -192,7 +194,7 @@
                            // 召唤张华&张策——实体待实装仅占位；resetGame 归位）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
-    cheatArm: false,   // 武器等级作弊武装开关（按 0 置位；原先为运行时动态挂载的隐式属性）
+    cheatInvuln: false,   // 作弊无敌（0 键切换，见 07-player debugToggleInvuln）：开启瞬间回满全部血量 + 伤害归零（受击结算照常——命中消耗/受击反馈/受击无敌帧/掉级计数不跳过）；再按关闭减伤（不扣血）——06-enemy 三处绕过路径（暴风之眼本体/大型龙卷持续接触、焦香灼烧）与 testDamagePlayer 整体跳过
     victoryOverlay: false, // 胜利结算页激活中（原 12-ui 顶层变量 victoryOverlayActive 并入）
     demo: false,       // 主菜单攻击演示进行中（07-player updateDemo 驱动：僚机开火门控放宽到演示态）
   };
@@ -251,7 +253,7 @@
     barrier: 0,        // 青时炮艇支援弹屏障（临时，优先吸收；到期自动消散）
     barrierMax: 0,     // 本次屏障的总量（绘制/衰减分母）
     barrierT: 0,       // 屏障剩余时长
-    permBarrier: 0,    // 永久屏障（击坠赞助无人机获得瓶中精灵时立即赋予：整局不随时间衰减，在 barrier 右侧以青色段显示）
+    permBarrier: 0,    // 永久屏障（击坠赞助无人舰获得瓶中精灵时立即赋予：整局不随时间衰减，在 barrier 右侧以青色段显示）
     bulwarkUsed: false, // 最终壁垒：本条命的一次性免死是否已消耗（resetGame / 重生重置）
     bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
     bulwarkEndT: 0,    // 最终壁垒：无敌结束后的菱形收尾演出剩余时间（0.35s 微微扩大渐隐，updatePlayer 置位/衰减，drawPlayer 读取）
@@ -266,13 +268,15 @@
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
     slashCd: 0,        // 距下次斩击的冷却（s）
-    slashTarget: null, // 当前锁定光束选中的敌人引用（每帧刷新）
-    slashQueued: 0,    // 暴走三连斩：待释放的剩余斩击次数
-    slashGapT: 0,      // 暴走三连斩：距下一击的间隔计时
-    bladeFlashT: 0,    // 双刃攻击闪光计时（doSlash 置位，updateStarslayer 衰减，paintStarslayer 读取）
+    slashTarget: null, // 当前锁定光束选中的敌人引用（每帧刷新）——中线（锁定线）目标
+    slashSideT: null,  // 群星之杀暴走侧线目标缓存 [左刃线, 右刃线]（每帧刷新，07-player updateStarslayer 写 / 09a drawStarslayerBeam 读；非暴走恒 null）
+    slashQueue: [],      // 群星之杀连斩：待释放斩击的线序队列（0 中线 / -1 左刃线 / +1 右刃线；按「中→左→右」排列）
+    slashPrevDeg: null,  // 群星之杀：上一道斩击与竖直方向夹角（度）——连续斩击两两夹角 ≥ slashAngleGapMin，按攻击重置
+    slashGapT: 0,      // 群星之杀连斩：距下一击的间隔计时
+    bladeFlashT: 0,    // 双刃攻击闪光计时（doSlashLine 置位，updateStarslayer 衰减，paintStarslayer 读取）
     berserkSpread: 0,  // 暴走刃帆变形进度 0~1（updateStarslayer 驱动，paintStarslayer 读取）
     aiyiChargeT: 0,    // 埃逸：死亡蓄力自爆倒计时（damagePlayer 掉命时置位，updatePlayer 递减，归零触发自爆）
-    lingluoMaxDebt: 0, // 陵落：被扣除的生命上限余量（每秒回 2 直至清零——单次触发恰好 20s 回满 40；重生/重开复原）
+    lingluoMaxDebt: 0, // 迪奥：被扣除的生命上限余量（每秒回 2 直至清零——单次触发恰好 20s 回满 40；重生/重开复原）
   };
 
   /** @type {Array} */ const enemies = [];
@@ -313,7 +317,7 @@
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
-  const crystalBurst = { active: false, t: 0, duration: 0.55, x: 0, y: 0 };
+  const crystalBursts = [];   // 结晶护盾解除冲击波列表（元素 { t, duration, x, y }）——澜心护盾到期波与炼金璃连携清弹波共用视觉、可多道并存互不清除（2026-10-11 用户定稿）；07-player 触发 push、14-main 推进、10-draw-world 绘制、12-ui 重开清空
 
   // 最终壁垒免死金色光环：金色环自机体有限扩散（对应其 120px 清弹范围）
   const bulwarkBurst = { active: false, t: 0, duration: 0.6, x: 0, y: 0 };
@@ -561,7 +565,7 @@
     return enemies.some(e => e.type === 'boss' && !e.combatReady);
   }
 
-  // 警报 / BOSS 登场动画期间的时间步长：冷却 / 倒计时类计数器（陵落 Q 冷却 / 血债回收 / 天枢计时 /
+  // 警报 / BOSS 登场动画期间的时间步长：冷却 / 倒计时类计数器（迪奥 Q 冷却 / 血债回收 / 天枢计时 /
   // 哈基米尾存续 / 马兴犬成就计时等）仅按 50% 速率推进——登场演出不再全额消耗技能冷却；
   // 充能类计数表不经过本函数（依 / 天秀 / 大无垠之王：警报与登场动画期间完全冻结，调用点自行门控；
   // 斗志昂扬增益倒计时也完全冻结不走本函数，见 06-enemy updateDouzhiFx）
@@ -805,7 +809,7 @@
     musicToggle, fpsMeter, padIndicator, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
     wingmanGrid, armorGrid, subGrid, pilotGridMain, pilotGridSub, bossTestRow,
-    retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, encyclopedia, encyTabs, encyList,
+    retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, pauseBackBtn, encyclopedia, encyTabs, encyList,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
@@ -818,6 +822,6 @@
     enemyFireIv, enemyFieldFireMul, rewardOutMul,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,
-    watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBurst, bulwarkBurst, spawnBlastRing,
+    watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBursts, bulwarkBurst, spawnBlastRing,
     shake,
   };

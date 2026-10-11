@@ -6,10 +6,10 @@
   //   state.{bombs, score}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
   import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
-  import { WAVE_POEM, diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
   import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
@@ -40,13 +40,10 @@
     if (e.type === 'boss' && player.weapon === 1) mul *= (1 + BOSS_LOWFIRE_BONUS);   // BOSS：Lv1 逆境补偿
     // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
     if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
-    // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%；真我难度全体 BOSS -10%——
-    // 同时存在多个暴走减免修正时取最高（不叠加）。主炮/僚机弹幕/空间斩击均生效；高能爆弹为真实伤害不经此处
-    if (e.type === 'boss' && player.weapon >= 5) {
-      let dr = e.bossId === 'storm2' ? STORM2.berserkDR : 0;
-      const mod = diffMods().bossBerserkDR || 0;
-      if (mod > dr) dr = mod;
-      if (dr > 0) mul *= (1 - dr);
+    // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%（2026-10-11 用户定稿删除原「真我全体 BOSS -10%」，
+    // 仅保留编织者 BOSS 专属档）。主炮/僚机弹幕/空间斩击均生效；高能爆弹为真实伤害不经此处
+    if (e.type === 'boss' && player.weapon >= 5 && e.bossId === 'storm2') {
+      mul *= (1 - STORM2.berserkDR);
     }
     // 暴风之眼（真我/诗篇）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
     if (e.type === 'boss' && e.bossId === 'storm' && (isRealme() || isPoem()) && e.skill && e.skill.id === 3) {
@@ -56,6 +53,13 @@
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
     if (e.type === 'hanshuang' && e.hsNoDecel) mul *= (1 - HANSHUANG.entryDR);
+    // 坚垒护卫艇：登场后随时间易伤递增（2026-10-11 用户定稿）——每完整 1s 受到伤害 +10%，
+    // 10s 起改为每完整 1s +20%（无上限：0~1s ×1.0 / 9~10s ×1.9 / 10~11s ×2.0 / 11~12s ×2.2 …）；
+    // 主武器/僚机弹幕/空间斩击共用本链均生效（高能爆弹为真实伤害不经此处）；登场锚点 e.fortBorn 见 04-spawn
+    if (e.type === 'striker' && e.variant === 'fortress' && e.fortBorn != null) {
+      const fortAge = Math.max(0, state.time - e.fortBorn);
+      mul *= fortAge < 10 ? 1 + 0.1 * Math.floor(fortAge) : 2 + 0.2 * Math.floor(fortAge - 10);
+    }
     // 黑暗之手：本段击坠增伤优先于护卫减伤（2026-10-08 用户定稿）——当前血量窗口的精英被击坠（e.dhAmp，
     // 登记见 02-core dhOnLinkedEliteKilled）→ 减伤撤销、受到的普通伤害 +100%（至本段结束/下一窗口召唤止）；
     // 否则场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时 -70%
@@ -106,7 +110,7 @@
         const ns = Math.min(b.maxSpeed || Infinity, sp + b.accel * dt);
         b.vx *= ns / sp; b.vy *= ns / sp;
       }
-      // 副武器·无界飞剑（装备陵落驾驶员时）的微弱追踪：朝最近的合格敌人限角速度转向（turnRate rad/s），
+      // 副武器·无界飞剑（装备迪奥驾驶员时）的微弱追踪：朝最近的合格敌人限角速度转向（turnRate rad/s），
       // 无目标时保持直飞。索敌规则与主炮/僚机一致：屏幕外 / 虚化 / 濒死 / 登场虚化 BOSS 不索敌
       // （极夜流光已改为"发射前标记目标位置、直射不转向"，不再走此逻辑）
       if (b.homing) {
@@ -172,7 +176,7 @@
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // mainPierce 穿透弱化：无衰减率弹（副武器·极夜流光激光）穿透后伤害减半（b.weakened 标记）
-          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +80%
+          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +60%（2026-10-10 用户定稿由 +80% 下调）
           // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
           // 奖励道具·不再陵落：螺旋飞剑射出方向在水平线以下（lowArc）——对 BOSS 仅 50% 伤害
           let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
@@ -185,7 +189,8 @@
           }
           // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
           // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
-          e.hp -= xiayongBarAbsorb(e, dmg * (e.type === 'tornado' ? (b.tornadoHits || 1) : 1) * pxpfChargeHurtMul(e));   // 守愿者弹对大型龙卷（暴风之眼召唤的暴风）判定两次伤害；朴学峰冲刺易伤 ×2
+          e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e));   // 朴学峰冲刺易伤 ×2（守愿者对大型龙卷双判定已删除——2026-10-11 用户定稿）
+          if (!Number.isFinite(e.hp)) console.error('[hpNaN哨兵]', 'bullet wing=' + !!b.wing, e.type, e.variant || '', e.hp, dmg);   // 临时插桩：定位 hp NaN 写入源（2026-10-12，验收后删）
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
           // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，
@@ -635,10 +640,10 @@
       }
     }
     if (p.kind === 'hp') {
-      // 诗篇（WAVE_POEM.healPct）：回复量改为当前血量上限 ×35%（四舍五入：陵落 60→21 / 铜皮夏勇 130→46）；
-      //   其他难度固定 +40。小艺拾取回血（上方）为独立机制不受影响
-      const healPct = isPoem() ? WAVE_POEM.healPct : null;
-      const heal = healPct != null ? Math.round((player.maxHp || PLAYER_CFG.maxHp) * healPct) : 40;
+      // 全难度统一（2026-10-12 用户定稿）：回复量 = 当前血量上限 × 40%（四舍五入：迪奥 60→24 / 铜皮夏勇 140→56）——
+      //   HP_KIT_HEAL_PCT（01-config-difficulty），取代原双轨「其他难度固定 +40 / 诗篇 ×35%」。
+      //   小艺拾取回血（上方）为独立机制不受影响
+      const heal = Math.round((player.maxHp || PLAYER_CFG.maxHp) * HP_KIT_HEAL_PCT);
       player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {
@@ -657,7 +662,7 @@
       // 七日澜心结晶护盾同款——环绕 6s（ARMOR_SKILLS.lanxin.dur，与量子护盾同时长），消失时清弹
       // 许凯狗冲刺期间不读条：仅吸收，护盾效果跳过（与量子护盾同口径）
       if (state.pilotDashT <= 0) {
-        player.crystalShield = Math.max(player.crystalShield || 0, ARMOR_SKILLS.lanxin.dur);
+        player.crystalShield = Math.max(player.crystalShield || 0, crystalShieldDur());   // 结晶护盾时长（炼金璃 6s / 基准 4.8s，01-config 单一入口）
         if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
         spawnParticles(p.x, p.y, '#FFC0CB', 18, 200);
       }
@@ -826,12 +831,12 @@
   const shieldBurst = { active: false, t: 0, duration: 0.65, x: 0, y: 0 };
 
   // 暴走冲击波：粉橙双环自机体扩散（暴走触发的醒目特效，不遮挡画面）
-  const berserkBurst = { active: false, t: 0, duration: 0.7, x: 0, y: 0, big: false };
+  const berserkBursts = [];   // 暴走冲击波列表（元素 { t, duration, x, y, big }）——多道并存：暴走进入/陵落 Q 续按/演示各自成波互不清除（2026-10-11 用户定稿）；07-player 触发 push、14-main 推进、10-draw-world 绘制、12-ui 重开清空
 
   // 高能爆弹火圈：自场地中心急速扩大至全场的橙黄色火环（全部模式统一表现）
-  const bombBurst = { active: false, t: 0, duration: 0.55, big: false };   // big：可莉绷绷炸弹——扩散波大幅加宽
+  const bombBursts = [];   // 高能爆弹/绷绷炸弹震荡波特效列表（元素 { t, duration, big }）——可多道并存：重复释放不再清除此前波（2026-10-11 用户定稿）；07-player 释放时 push、14-main 推进与过期移除、10-draw-world 绘制、12-ui 重开清空
 
   export {
     enemyDamageMul, updateBullets, POWERUP_MAGNET_RADIUS, spawnPowerup, applyPowerupPickup, updatePowerups,
-    updateCrystals, collectAllItems, collectAllCrystals, updateParticles, shieldBurst, berserkBurst, bombBurst,
+    updateCrystals, collectAllItems, collectAllCrystals, updateParticles, shieldBurst, berserkBursts, bombBursts,
   };

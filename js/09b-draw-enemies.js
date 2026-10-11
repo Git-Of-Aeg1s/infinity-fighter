@@ -102,32 +102,6 @@
         ctx.restore();
       }
 
-      // ②c 被切中的幸存敌机：闪白 + 贯穿细斩线（跟随敌机当前位置，快速衰减）
-      const hf = Math.max(0, 1 - p / 0.2);          // 前 20% 衰减
-      if (hf > 0.01 && f.hits) {
-        for (const h of f.hits) {
-          if (enemies.indexOf(h.ref) < 0) continue;  // 已被移除（击杀）则跳过
-          const rad = h.rad;
-          ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.translate(h.ref.x, h.ref.y);
-          const hgr = ctx.createRadialGradient(0, 0, 0, 0, 0, rad);
-          hgr.addColorStop(0, `rgba(255,255,255,${(0.9 * hf).toFixed(3)})`);
-          hgr.addColorStop(0.55, h.main ? `rgba(215,230,255,${(0.5 * hf).toFixed(3)})` : `rgba(205,180,255,${(0.45 * hf).toFixed(3)})`);
-          hgr.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = hgr;
-          ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
-          // 贯穿敌机的细斩线（与斩击同向）
-          ctx.rotate(f.rot);
-          ctx.globalAlpha = hf;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
-          ctx.shadowColor = edge; ctx.shadowBlur = 12;
-          ctx.beginPath(); ctx.moveTo(0, -rad); ctx.lineTo(0, rad); ctx.stroke();
-          ctx.restore();
-        }
-      }
-
       // ③ 空间波动涟漪：纯发光同心环向外扩散（不再自采样放大画布——那会把环内敌人放大成“变大幻象”）。
       // 圆形涟漪与旋转无关，故在未旋转的世界坐标下绘制。
       const TAU = Math.PI * 2;
@@ -156,11 +130,56 @@
     }
   }
 
+  // 敌方绘制渐变缓存（2026-10-12 性能）：同 09a/10-draw-world 手法——渐变按 key 复用、消除每帧
+  // createXxxGradient；上限 256（脉冲波前环按 wr 逐像素量化键，最多 ~160 项）
+  const enemyGradCache = new Map();
+  function cachedEnemyGrad(key, make) {
+    let g = enemyGradCache.get(key);
+    if (!g) {
+      if (enemyGradCache.size > 256) enemyGradCache.clear();
+      g = make();
+      enemyGradCache.set(key, g);
+    }
+    return g;
+  }
+
+  // 先兆者静态形体烘焙（2026-10-12 性能）：灰黑填充 + 深色描边为纯静态 → 一次性烘焙 2x 精灵，
+  // 运行时 drawImage；动态充能盘（红/灰覆盖）仍走 clip 实时绘制，视觉不变
+  let harbFillCv = null, harbStrokeCv = null;
+  function ensureHarbBaseSprites() {
+    if (harbFillCv) return;
+    const TAU = Math.PI * 2, R = 24, RIN = 19, RC = 9;
+    const GRAY = '#3a3f4a', DARK = '#22262e';
+    const HALF = R + 2;   // 含描边余量
+    const shape = (g) => {
+      g.beginPath();
+      g.arc(0, 0, R, 0, TAU);
+      g.arc(0, 0, RIN, 0, TAU, true);
+      g.moveTo(RC, 0); g.arc(0, 0, RC, 0, TAU);
+      g.rect(-22, -2.6, 13, 5.2);
+      g.rect(9, -2.6, 13, 5.2);
+    };
+    const bake = (paint) => {
+      const c = document.createElement('canvas');
+      const S = 2;
+      c.width = c.height = Math.ceil(HALF * 2 * S);
+      const g = c.getContext('2d');
+      g.scale(S, S);
+      g.translate(HALF, HALF);
+      shape(g);
+      paint(g);
+      c._half = HALF;
+      return c;
+    };
+    harbFillCv = bake(g => { g.fillStyle = GRAY; g.fill(); });
+    harbStrokeCv = bake(g => { g.strokeStyle = DARK; g.lineWidth = 1.6; g.stroke(); });
+  }
+
   // 炮火先兆者形体：小圆 + 外环 + 左右两条横杠；中心红色随充能从中心扩展、随后灰黑从中心覆盖
   function drawHarbingerBody(e) {
     const TAU = Math.PI * 2;
     const R = 24, RIN = 19, RC = 9;
-    const GRAY = '#3a3f4a', DARK = '#22262e', RED = '#ff2b2b';
+    const GRAY = '#3a3f4a', RED = '#ff2b2b';   // （描边色 DARK 已入烘焙精灵）
     const shape = () => {
       ctx.beginPath();
       ctx.arc(0, 0, R, 0, TAU);
@@ -183,10 +202,9 @@
     } else {
       redR = coverR; grayR = coverR;   // 保持灰黑：完全灰静止（仅后续波有此段）
     }
-    // 基础灰黑
-    shape();
-    ctx.fillStyle = GRAY;
-    ctx.fill();
+    // 基础灰黑（2026-10-12 性能：静态填充/描边走烘焙精灵，动态充能盘 clip 不变）
+    ensureHarbBaseSprites();
+    ctx.drawImage(harbFillCv, -harbFillCv._half, -harbFillCv._half, harbFillCv._half * 2, harbFillCv._half * 2);
     // 裁剪到形体，绘制从中心扩展的红色 / 覆盖的灰黑
     ctx.save();
     shape();
@@ -203,11 +221,8 @@
       ctx.beginPath(); ctx.arc(0, 0, grayR, 0, TAU); ctx.fill();
     }
     ctx.restore();
-    // 描边勾勒形体
-    shape();
-    ctx.strokeStyle = DARK;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
+    // 描边勾勒形体（烘焙精灵）
+    ctx.drawImage(harbStrokeCv, -harbStrokeCv._half, -harbStrokeCv._half, harbStrokeCv._half * 2, harbStrokeCv._half * 2);
   }
 
   // 威龙形体：俯视四旋翼【重甲】无人机 —— 四角厚环护圈(螺栓) + 内部高速旋翼 + 磨角矩形重装机身(装甲板缝/铆钉/斜切高光/暗底盘) + 纤细炮管(加强环/制退器)；明亮橙黄渐变（黄占比大）
@@ -228,20 +243,28 @@
       ctx.save();
       ctx.globalAlpha *= ap * (0.78 + 0.22 * Math.sin(state.time * 2.2));
       // 主体光环：外缘亮、内部渐透明的径向渐变（冰圈质感）
-      const halo = ctx.createRadialGradient(0, 0, ar * 0.30, 0, 0, ar);
-      halo.addColorStop(0, 'rgba(143, 216, 255, 0)');
-      halo.addColorStop(0.55, 'rgba(143, 216, 255, 0.10)');
-      halo.addColorStop(0.82, 'rgba(170, 226, 255, 0.22)');
-      halo.addColorStop(0.96, 'rgba(224, 246, 255, 0.30)');
-      halo.addColorStop(1, 'rgba(143, 216, 255, 0)');
+      // （2026-10-12 性能：几何/配色全固定 → 缓存复用，逐帧零渐变重建）
+      const halo = cachedEnemyGrad('hs-halo', () => {
+        const g0 = ctx.createRadialGradient(0, 0, ar * 0.30, 0, 0, ar);
+        g0.addColorStop(0, 'rgba(143, 216, 255, 0)');
+        g0.addColorStop(0.55, 'rgba(143, 216, 255, 0.10)');
+        g0.addColorStop(0.82, 'rgba(170, 226, 255, 0.22)');
+        g0.addColorStop(0.96, 'rgba(224, 246, 255, 0.30)');
+        g0.addColorStop(1, 'rgba(143, 216, 255, 0)');
+        return g0;
+      });
       ctx.fillStyle = halo;
       ctx.beginPath(); ctx.arc(0, 0, ar, 0, TAU); ctx.fill();
       // 白色雾气：自中心向外喷发的雾团（各雾团错相循环：自中心沿随机方位外扩、边扩散边长大、首尾淡出）
       // + 中心常驻雾核（喷发源头）
       const coreR = ar * 0.34;
-      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
-      core.addColorStop(0, 'rgba(255, 255, 255, 0.20)');
-      core.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      // （2026-10-12 性能：几何/配色固定 → 缓存复用）
+      const core = cachedEnemyGrad('hs-core', () => {
+        const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+        g0.addColorStop(0, 'rgba(255, 255, 255, 0.20)');
+        g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        return g0;
+      });
       ctx.fillStyle = core;
       ctx.beginPath(); ctx.arc(0, 0, coreR, 0, TAU); ctx.fill();
       for (let k = 0; k < 8; k++) {
@@ -251,11 +274,22 @@
         const mrad = ar * (0.09 + 0.21 * cyc);            // 雾团随扩散逐渐变大（最大 0.30R）
         const mistA = Math.sin(cyc * Math.PI) * 0.22;     // 中段最浓、首尾淡出（峰值较旧环内白雾 0.14 更浓）
         const mx = Math.cos(ma) * mr, my = Math.sin(ma) * mr;
-        const mist = ctx.createRadialGradient(mx, my, 0, mx, my, mrad);
-        mist.addColorStop(0, `rgba(255, 255, 255, ${mistA.toFixed(3)})`);
-        mist.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // （2026-10-12 性能：r0=0 单位渐变峰值烘焙 → translate/scale(mrad) 复用；浓度 mistA 相对峰值
+        //   0.22 线性 → globalAlpha 缩放，逐帧零渐变重建）
+        const mist = cachedEnemyGrad('hs-mist', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.scale(mrad, mrad);
+        const mga0 = ctx.globalAlpha;
+        ctx.globalAlpha = mga0 * (mistA / 0.22);
         ctx.fillStyle = mist;
-        ctx.beginPath(); ctx.arc(mx, my, mrad, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+        ctx.restore();
       }
       // 喷发雾粒层：自中心沿随机方位喷出的雾粒（确定性伪随机种子——不依赖实体状态，
       // 图鉴预览每帧新建 mock 对象也能保持粒子方位稳定不闪烁；时间驱动外扩+变大，首尾淡出循环再生，
@@ -274,12 +308,23 @@
         const rr = ar * (0.05 + spd * tt);                // 距中心的喷发距离
         const prad = ar * (0.07 + 0.13 * pr);             // 雾粒随喷发逐渐变大
         const px = Math.cos(ma) * rr, py = Math.sin(ma) * rr;
-        const puff = ctx.createRadialGradient(px, py, 0, px, py, prad);
-        puff.addColorStop(0, `rgba(255, 255, 255, ${(0.26 * fade).toFixed(3)})`);
-        puff.addColorStop(0.6, `rgba(230, 248, 255, ${(0.10 * fade).toFixed(3)})`);
-        puff.addColorStop(1, 'rgba(230, 248, 255, 0)');
+        // （2026-10-12 性能：r0=0 单位渐变峰值烘焙 → translate/scale(prad) 复用；两档亮度均为 fade
+        //   线性同族 → 峰值烘焙 + globalAlpha=fade 缩放）
+        const puff = cachedEnemyGrad('hs-puff', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.26)');
+          g0.addColorStop(0.6, 'rgba(230, 248, 255, 0.10)');
+          g0.addColorStop(1, 'rgba(230, 248, 255, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.scale(prad, prad);
+        const pga0 = ctx.globalAlpha;
+        ctx.globalAlpha = pga0 * fade;
         ctx.fillStyle = puff;
-        ctx.beginPath(); ctx.arc(px, py, prad, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+        ctx.restore();
       }
       // 外侧虚线霜环（缓慢流转，冰面纹路感）
       ctx.strokeStyle = 'rgba(190, 232, 255, 0.5)';
@@ -924,10 +969,14 @@
     // ---- 外层白红渐变机体（环外侧仍是白红色）+ 外发光 ----
     ctx.shadowColor = 'rgba(255, 90, 110, 0.9)';
     ctx.shadowBlur = 10 + pulse * 6;
-    const bodyGrd = ctx.createLinearGradient(0, -AH, 0, AH);
-    bodyGrd.addColorStop(0, '#fff2f2');
-    bodyGrd.addColorStop(0.5, '#ff9a9a');
-    bodyGrd.addColorStop(1, '#ff4d5e');
+    // （2026-10-12 性能：几何/配色固定 → 缓存复用；脉动外发光 shadowBlur 保留实时）
+    const bodyGrd = cachedEnemyGrad('fashimx-body', () => {
+      const g0 = ctx.createLinearGradient(0, -AH, 0, AH);
+      g0.addColorStop(0, '#fff2f2');
+      g0.addColorStop(0.5, '#ff9a9a');
+      g0.addColorStop(1, '#ff4d5e');
+      return g0;
+    });
     dia(1);
     ctx.fillStyle = bodyGrd;
     ctx.fill();
@@ -948,10 +997,14 @@
     ctx.save();
     ctx.shadowColor = '#ff5566';
     ctx.shadowBlur = 6 + pulse * 5;
-    const coreGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, AH * 0.5);
-    coreGrd.addColorStop(0, '#ffffff');
-    coreGrd.addColorStop(0.5, '#ffd6d6');
-    coreGrd.addColorStop(1, '#ff5566');
+    // （2026-10-12 性能：几何/配色固定 → 缓存复用）
+    const coreGrd = cachedEnemyGrad('fashimx-core', () => {
+      const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, AH * 0.5);
+      g0.addColorStop(0, '#ffffff');
+      g0.addColorStop(0.5, '#ffd6d6');
+      g0.addColorStop(1, '#ff5566');
+      return g0;
+    });
     dia(0.5);
     ctx.fillStyle = coreGrd;
     ctx.fill();
@@ -1012,26 +1065,45 @@
       // ① 区域雾（震荡过的地方整体蒙一层，随消散进度渐隐）
       const fogA = 0.26 * (1 - sp);
       if (fogA > 0.01) {
-        const fog = ctx.createRadialGradient(0, 0, wr * 0.2, 0, 0, wr);
-        fog.addColorStop(0, `rgba(112, 22, 34, ${fogA * 0.45})`);
-        fog.addColorStop(0.7, `rgba(112, 22, 34, ${fogA})`);
-        fog.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        // （2026-10-12 性能：内半径 0.2·wr 与外半径 wr 成比例 → 单位渐变 scale(wr) 缩放无损；
+        //   两档亮度为 fogA 线性同族 → 峰值烘焙 + globalAlpha 缩放）
+        const fog = cachedEnemyGrad('pm-fog', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0.2, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(112, 22, 34, 0.117)');
+          g0.addColorStop(0.7, 'rgba(112, 22, 34, 0.26)');
+          g0.addColorStop(1, 'rgba(112, 22, 34, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.scale(wr, wr);
+        const fga0 = ctx.globalAlpha;
+        ctx.globalAlpha = fga0 * (fogA / 0.26);
         ctx.fillStyle = fog;
         ctx.beginPath();
-        ctx.arc(0, 0, wr, 0, Math.PI * 2);
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
       // ② 波前浓雾环（波扩散期间贴波推进；波扩完后随余雾渐隐）
       const ringA = 0.34 * Math.min(1 - sp, 1 - wprog * 0.6);
       if (ringA > 0.01) {
-        const ring = ctx.createRadialGradient(0, 0, Math.max(0, wr - 20), 0, 0, wr + 12);
-        ring.addColorStop(0, 'rgba(112, 22, 34, 0)');
-        ring.addColorStop(0.6, `rgba(130, 26, 40, ${ringA})`);
-        ring.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        // （2026-10-12 性能：几何随 wr 变化但内外偏移量固定（-20/+12）→ 按 wr 量化缓存（±0.5px 不可辨）；
+        //   亮度单档线性 → 峰值 0.34 烘焙 + globalAlpha 缩放）
+        const wrq = Math.round(wr);
+        const ring = cachedEnemyGrad(`pm-ring-${wrq}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, Math.max(0, wrq - 20), 0, 0, wrq + 12);
+          g0.addColorStop(0, 'rgba(112, 22, 34, 0)');
+          g0.addColorStop(0.6, 'rgba(130, 26, 40, 0.34)');
+          g0.addColorStop(1, 'rgba(112, 22, 34, 0)');
+          return g0;
+        });
+        const rga0 = ctx.globalAlpha;
+        ctx.globalAlpha = rga0 * (ringA / 0.34);
         ctx.fillStyle = ring;
         ctx.beginPath();
-        ctx.arc(0, 0, wr + 12, 0, Math.PI * 2);
+        ctx.arc(0, 0, wrq + 12, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = rga0;
       }
       // ③ 漂散烟尘：方位由机体种子 + 低频 sin 摆动决定（逐帧确定性无抖动）
       const seed = (wv.seed || 0) * 10;
@@ -1041,13 +1113,23 @@
         const sx = Math.cos(a) * dist;
         const sy = Math.sin(a) * dist - sp * 14;
         const sr = 8 + (i % 3) * 3 + sp * 16;
-        const g2 = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-        g2.addColorStop(0, `rgba(112, 22, 34, ${0.34 * (1 - sp)})`);
-        g2.addColorStop(1, 'rgba(112, 22, 34, 0)');
+        // （2026-10-12 性能：r0=0 单位渐变峰值烘焙 → translate/scale(sr) 复用；亮度 0.34(1-sp) 线性 → globalAlpha）
+        const g2 = cachedEnemyGrad('pm-dust', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(112, 22, 34, 0.34)');
+          g0.addColorStop(1, 'rgba(112, 22, 34, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.scale(sr, sr);
+        const dga0 = ctx.globalAlpha;
+        ctx.globalAlpha = dga0 * (1 - sp);
         ctx.fillStyle = g2;
         ctx.beginPath();
-        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       }
     }
   }
@@ -3904,7 +3986,7 @@
   }
 
   // 斗志昂扬下方挂载：较大蓝色盒子 + 盒上方淡黄空心正方形图案（替代暴鸰的炸弹）
-  // 斗志昂扬系挂载盒子：cyan 蓝渐变（斗志昂扬）/ 白渐变（赞助无人机）/ 淡黄渐变（豪华赞助无人机）；
+  // 斗志昂扬系挂载盒子：cyan 蓝渐变（斗志昂扬）/ 白渐变（赞助无人舰）/ 淡黄渐变（豪华赞助无人舰）；
   // 赞助系盒子高度 ×0.85（SPONSOR.boxHMul，略微降低）；中空正方形图案与描边保持同构
   const DOUZHI_BOX_STYLES = {
     douzhi:        { light: '#5aa8ff', mid: '#2b6fd6', dark: '#16386f', base: '#0a1830', hi: 'rgba(185, 222, 255, 0.55)', mark: '#f6ecb4' },
@@ -3946,7 +4028,7 @@
     }
   }
 
-  // ── 赞助无人机核心标志备选（机体中心图案，供测试2页面对比选稿）──
+  // ── 赞助无人舰核心标志备选（机体中心图案，供测试2页面对比选稿）──
   // 每套签名统一：(cx, cy, s, pulse) —— s 为半边长，pulse ∈ [0,1] 脉动
   function paintMarkA(cx, cy, s, pulse) {   // A: 交叉闪电（⚡×2）
     ctx.save();
@@ -4041,7 +4123,7 @@
     ctx.restore();
   }
 
-  // ── 赞助无人机道具箱图案备选（盒子中心标记，供测试2页面对比选稿）──
+  // ── 赞助无人舰道具箱图案备选（盒子中心标记，供测试2页面对比选稿）──
   // 每套签名统一：(cx, cy, size, color) —— size 为半边长，color 为反差色字符串
   function paintBoxMark1(cx, cy, size, color) {   // 1: 问号 ?
     ctx.save();

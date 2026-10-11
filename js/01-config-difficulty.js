@@ -90,10 +90,9 @@
       desc: '直面疯狂',
       wip: false,
       // 真我修正表：非BOSS敌人伤害 +35%（enemyDmgMul，覆盖弹幕/碰撞/破片三连发/法术正方体/暴鸰爆炸/焦香灼烧等非BOSS结算入口；
-      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与）；BOSS 血量 ×1.6；全体 BOSS 受到暴走伤害 -10%（与既有 BOSS 专属暴走减免叠加时取最高）；
-      // 高能爆弹初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%；刷怪框架与具象基准一致（spawnIntervalMul 1）；得分 ×1.2；
-      // 加血套件节流：任意两次加血套件（普通敌人掉落）至少间隔 8s（hpKitGap）——冷却期内加血环节变为
-      // 50%（hpKitBankChance）概率"预触发"（计数、敌人不掉落），冷却结束后击杀的第一个敌人必掉一个（计数清零）
+      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与）；BOSS 血量 ×1.6；
+      // 高能爆弹初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%；刷怪框架与具象基准一致（spawnIntervalMul 1）；得分 ×1.2
+      //（原「加血套件 8s 节流 + 预触发必掉」hpKitGap/hpKitBankChance 已于 2026-10-11 用户定稿删除）
       mods: {
         enemyHpMul: 1, enemyDmgMul: 1.35, enemySpeedMul: 1, scoreMul: 1.2, bossSkillMods: {},
         spawnIntervalMul: 1,
@@ -110,8 +109,6 @@
         noWeaponDropOnHit: false,
         bombStart: 0, bombCap: 2, bombBossDmgMul: 0.75,
         bossHpMul: 1.6,
-        bossBerserkDR: 0.10,
-        hpKitGap: 8, hpKitBankChance: 0.5,
         princeGaugeFull: 36000,   // 天秀忧郁王子白色量表所需非水晶分数（基准 30000 的真我上浮）
       },
     },
@@ -119,24 +116,42 @@
       id: 'poem', name: '诗篇',
       desc: '更高难度<br>波次制刷怪',
       wip: false,
-      // 诗篇难度：波次制刷怪（见 WAVE_POEM）+ 全敌人诗篇血量表（POEM_HP，绝对值覆盖）。
-      // mods 暂为 null → diffMods() 回退具象基准（enemyHpMul 等不生效）；诗篇血量不走 enemyHpMul 乘区、
-      // 由 makeEnemy 直接取 POEM_HP 绝对值。后续实装诗篇专属修正时落地本条目 mods（结构同真我）。
+      // 诗篇难度：波次制刷怪（见 WAVE_POEM）+ 全敌人诗篇血量表（POEM_HP，绝对值覆盖，不走 enemyHpMul 乘区）。
+      // mods 已落地（2026-10-10 用户定稿「这两项」收尾；结构同真我条目）——生效差异键：scoreMul 2（表 #3 得分 ×2）、
+      // princeGaugeFull 36000（表 #25 天秀量表）；其余键与具象基准同值显式化（diffMods() 的回退是整体对象替换，
+      // 部分落键会丢具象继承，故必须全量）。真我专属键不落：bossHpMul（诗篇 BOSS 血量走 hpByDiff.poem 绝对值，
+      // 落 1.6 会二次乘算；hpKitGap/hpKitBankChance 已随 2026-10-11 真我 8s 节流删除不复存在——诗篇加血节流走波次制 healWaveGap）；
+      // BOSS 技能间隔诗篇 ×0.5 仍走 bossSkillIv() isPoem 硬分支（表 #44，迁移时改落 bossFireIntervalMul: 0.5 并删硬分支）。
       // ★ 诗篇全部特殊修正的设计目标值与登记规则见仓库根目录《诗篇难度修正.md》——实装/修改诗篇时必须同步维护该文档。
-      mods: null,
+      mods: {
+        enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 2, bossSkillMods: {},   // scoreMul ×2（表 #3：波次制总刷怪量大幅减少的补偿）
+        spawnIntervalMul: 1.3,
+        pressureCapacityMul: 1,
+        enemyFirstFireAdd: 0,
+        enemyFireIntervalMul: 1,
+        dropClassNoReduce: false,
+        dropClassLowWeaken: true,   // 掉落判定等级（攻击等级+场上套件+4×暴走道具）1：修正失效；2：减弱 50%
+        bossMinionDropNoReduce: false,
+        bossDmgMul: 1,
+        bossFireIntervalMul: 1,   // 诗篇 BOSS 技能间隔 ×0.5 经 bossSkillIv() isPoem 硬分支（表 #44；迁移时改 0.5 并删硬分支）
+        bossNoRepeat: false,
+        invulnMul: 1,
+        noWeaponDropOnHit: false,
+        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,   // 爆弹与具象同档（诗篇专属爆弹档未登记）
+        princeGaugeFull: 36000,   // 天秀忧郁王子白色量表所需非水晶分数（表 #25，与真我同值）
+      },
     },
   };
   let currentDifficulty = DIFFICULTIES.realme;   // 默认难度：真我（主页面与怪物图鉴的难度初始选中项）
 
   // ---------- 诗篇难度：波次制刷怪改版参数（登记于《诗篇难度修正.md》深度改版 #1） ----------
   // 设计目标值的单一数据源；游戏逻辑经 isPoem() 门控（模式同真我 STORM_SHIP + isRealme()）——
-  // 诗篇 wip 不可选期间不生效，图鉴「怪物权重 · 诗篇波次」子页读取本表做设计展示。
+  // 诗篇 wip 不可选期间不生效，图鉴「旧怪物权重 · 诗篇波次」子页读取本表做设计展示。
   const WAVE_POEM = {
     wavesPerPhase: [10, 10, 10],   // 每阶段波次数（= 阶段内等级数）：第一轮 Lv1~10 / 第二轮 Lv11~20 / 第三轮 Lv21~30（Lv21~30 暂与 Lv20 同强度——常规波次设计进行中，2026-10-08 随 BOSS 轮次重排扩为三段），清完进 BOSS
     clearDelay: [1.2, 2.0],    // 上一波全部击毁/离场到下一波刷出的随机间隔（s）
     capitalWaveChance: 0.20,   // 4类随波附带概率（Lv5 起每波独立判定，走常规主力舰/法术阵列选取；4类槽位通道诗篇关闭）——待调参数，随强化参数批次定稿
     healWaveGap: 2,            // 加血套件波次节流：实际掉落后 N 波内不再掉（每 2 波限 1）
-    healPct: 0.35,             // 加血套件回复量 = 当前血量上限 × 此值（四舍五入：陵落 60→21 / 铜皮夏勇 130→46）
     scoreMul: 2,               // 得分倍率（波次制总刷怪量大幅减少的补偿；实装时同步落地 DIFFICULTIES.poem.mods.scoreMul）
     harbingerExtra: [          // 波次附加炮火先兆者阈值表：取 ≤当前等级的最高档；先判 two 再判 one（互斥阶梯）
       { lv: 3,  one: 0.05, two: 0 },      // Lv3 起：5% 多刷 1 台
@@ -151,9 +166,15 @@
   // 虚象/具象/真我/诗篇下每 lv2/3/4/4 最多掉落 1 个加血套件（普通敌人掉落）：某级实际掉落后，
   // 窗口内后续等级不再掉落。不跨 BOSS 轮——清场/警报/BOSS 战（bossFlow.stage !== 'none'）期间的
   // 掉落与 BOSS 脚本化加血豁免（不判定也不登记），跨轮自然失效；判定与登记点在 06-enemy rollItemDrops
-  //（state.hpKitLastLv / hpKitLastPhase 归域声明于 02-core）。真我 8s 节流（hpKitGap）与诗篇
-  // 波次节流（WAVE_POEM.healWaveGap）叠加生效、互不替代。登记处：《诗篇难度修正.md》表 #34
+  //（state.hpKitLastLv / hpKitLastPhase 归域声明于 02-core）。诗篇波次节流
+  //（WAVE_POEM.healWaveGap）叠加生效、互不替代（原真我 8s 节流 hpKitGap 已于 2026-10-11 删除）。登记处：《诗篇难度修正.md》表 #34
   const HP_KIT_LV_WINDOW = { illusion: 2, form: 3, realme: 4, poem: 4 };
+
+  // ---------- 加血套件回复量（2026-10-12 用户定稿：全难度统一） ----------
+  // 拾取加血套件回复 = 当前血量上限 × 此值（四舍五入：迪奥 60→24 / 铜皮夏勇 140→56）——
+  // 取代原双轨「其他难度固定 +40 / 诗篇 WAVE_POEM.healPct ×35%」（healPct 键已删除）；
+  // 消费点 08-entities applyPowerupPickup（小艺拾取回血为独立机制不受影响）
+  const HP_KIT_HEAL_PCT = 0.40;
   // 当前难度加血窗口（未配置的难度/挑战分支回退 Infinity = 不限制）
   function hpKitLvWindow() {
     const w = HP_KIT_LV_WINDOW[currentDifficulty.id];
@@ -281,5 +302,6 @@
     enemyDmgMul, strikerNoHoldSpdMul, POEM_HP, MISSILE_FLAT_DMG,
     poemHpOf, eliteHpOf, xiayongHornDmgMul, xiayongBarAbsorb, pxpfChargeHurtMul,
     hpKitLvWindow,
+    HP_KIT_HEAL_PCT,
     TEST_HP,
   };
