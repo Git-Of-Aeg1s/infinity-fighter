@@ -13,6 +13,7 @@
   import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
+  import { resetSpawnWaveState } from './04-spawn.js';
   import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
@@ -352,6 +353,7 @@
     zoneMarks.length = 0;
     windFlows.length = 0;
     pillarStrikes.length = 0;
+    resetSpawnWaveState();   // 延迟出场队列 + 破片批次状态随重开清空（04-spawn 模块私有态，2026-10-12 bug 修复）
 
     player.x = CANVAS_W / 2;
     // 主菜单开局（开始游戏 / 图鉴挑战 / BOSS 试炼）：机体从演示屏站位平滑飞入出战位，不再瞬移；

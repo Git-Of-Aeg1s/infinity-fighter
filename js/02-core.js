@@ -178,7 +178,7 @@
     bengbagGot: false,     // 绷绷背包：本局已获得标记（一局限一次，06-enemy grantRewardItem 过滤——效果直接生效，见 applyRewardItem）
     jiukeT: 0,             // 酒客之影：透明化 + 闪避窗口剩余时长（s；0 = 未激活；30s 内 100% 闪避起步、每成功闪避一次 -20%，07-player damagePlayer 判定）
     gachaFx: null,         // 哦哦！抽卡！：全套演出状态机 { phase, t, stones[], color, meteor, shock } （07-player updateGachaFx 驱动，10-draw-world 绘制）
-    xinFuryRings: [],      // 辛国栋大怒：固定扩散火环列表（元素 { x, y, r, rMax, t, expandDur, burnDur, dps, tick, tickT, burnt, alpha }）——可多道并存：重复拾取不清除此前火环与效果（2026-10-11 用户定稿；不移动、半径扩张 6s→全屏、6s 后灼烧全场、再 4s 渐隐）
+    xinFuryRings: [],      // 辛国栋大怒：固定扩散怒意之环列表（元素 { x, y, r, rMax, t, expandDur, burnDur, dps, tick, tickT, alpha }）——可多道并存：重复拾取不清除此前火环与效果（2026-10-11 用户定稿；不移动、半径扩张 6s→全屏、环带持续灼烧扫过的敌人每 0.1s 一跳（dps 对齐辛国栋之怒 Lv4 = 200，2026-10-12 用户定稿）、6s 后停留 6s 渐隐）
     honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
     gachaStones: 0,          // 原石（巨型水晶）当局收集进度（0~16；仅萧杨收集转换，07-player noteGachaStone 写入；HUD 左上与结算页均仅萧杨显示，2026-10-01）
     gachaReady: false,       // 萧杨专属技能「哦哦！抽卡！」充能就绪（16 颗原石转换；Q 键释放 triggerPilotSkill，释放后 gachaStones 清零重计；已充能时捡原石不计数）
@@ -250,7 +250,7 @@
     shield: 0,         // 量子护盾剩余时间
     shieldMax: 0,      // 本次护盾的总时长（读条分母：通用与澄月均 6s，见 12-ui）
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
-    barrier: 0,        // 青时炮艇支援弹屏障（临时，优先吸收；到期自动消散）
+    barrier: 0,        // 青时炮艇支援弹屏障（临时，优先吸收；重复命中叠加、到期自动消散）
     barrierMax: 0,     // 本次屏障的总量（绘制/衰减分母）
     barrierT: 0,       // 屏障剩余时长
     permBarrier: 0,    // 永久屏障（击坠赞助无人舰获得瓶中精灵时立即赋予：整局不随时间衰减，在 barrier 右侧以青色段显示）
@@ -291,7 +291,7 @@
   /** @type {Array} */ const blBombs = [];        // 暴鸰投出的炸弹（预警 → 低速下坠 → 极速加速 → 爆炸）
   /** @type {Array} */ const frostZones = [];    // 虚幻寒冷区域（炸弹爆炸 / 殉爆留下：半径内减速，{x,y,r,t,dur,affectsPlayer,affectsEnemies,seed}）
   /** @type {Array} */ const pmWaves = [];       // 脉冲矩阵震荡波孤儿波（本体被击坠后残留：{x,y,waveT,waveR,smokeT,seed,hitDone}——06-enemy 写入与推进 / 10-draw-world 绘制 / 12-ui resetGame 清空；不经 eBullets，不可被消弹效果消除）
-  /** @type {Array} */ const popianMissiles = [];  // 破片三连发导弹（高速、不可击毁、条件性无视无敌）
+  /** @type {Array} */ const popianMissiles = [];  // 破片三连发导弹（高速、不可击毁；前两发命中不授予受击无敌——2026-10-12 用户定稿）
   /** @type {Array} */ const wgSlashes = [];       // 战争幽灵技能1/2双刃斩击流（直线飞行、每道命中一次）
   /** @type {Array} */ const spellCubes = [];      // 法术矩阵发射的发光正方体（限程→减速黯淡→原位置停留→快速渐隐）
   /** @type {Array} */ const cubeHitFx = [];       // 法术矩阵正方体命中玩家的击中特效（白热闪核 + 红色冲击波环）

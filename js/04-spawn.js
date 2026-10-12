@@ -1,13 +1,13 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 13-encyclopedia(14 名) 14-main(18 名)
+  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(19 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
+  import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
@@ -73,6 +73,12 @@
   // ---------- 延迟生成队列（2026-10-11）：z*8 单点排队等「同点依次延迟出场」场景 ----------
   const delayedSpawns = [];   // { t, fn }
   function queueDelayedSpawn(delay, fn) { delayedSpawns.push({ t: delay, fn }); }
+  // 跨局清理（12-ui resetGame 调用，2026-10-12 bug 修复）：延迟出场队列 + 破片批次状态均为模块私有，
+  // 原先不随重开清空——上一局的排队机会在新局开头到点补放、破片复用上局最后一批停留高度
+  function resetSpawnWaveState() {
+    delayedSpawns.length = 0;
+    popianBatch.t = -9; popianBatch.tpY = 0;
+  }
   function updateDelayedSpawns(dt) {
     for (let i = delayedSpawns.length - 1; i >= 0; i--) {
       const q = delayedSpawns[i];
@@ -254,7 +260,6 @@
         && !(state.challenge.kind === 'boss' && type === 'side')) {
       e.hp = e.maxHp = TEST_HP;
     }
-    if (!Number.isFinite(e.hp) || !Number.isFinite(e.maxHp)) console.error('[hpNaN哨兵-gen]', type, variant ? variant.id : '', e.hp, e.maxHp, cfg.hp, hpMul);   // 临时插桩：生成即 NaN 排查（2026-10-12，验收后删）
     enemies.push(e);
     return e;
   }
@@ -561,7 +566,7 @@
 
   // BOSS 战期间定时强制的 1类波次（小组 / 长队各 50%，全难度）——不走压力系统，场上存怪不影响刷新；
   // 本波敌人标记 minionDrop：击杀不加分、不掉水晶（增生侧翼艇分裂的卫护飞船随标记传播同样无奖励）；
-  // 道具掉率 ×0.3 照常（结算见 06-enemy rollItemDrops）
+  // 道具掉率走通用 1类修正链——×0.3 削减已于 2026-10-12 用户定稿取消（结算见 06-enemy rollItemDrops）
   function spawnBossMinionWave() {
     const n0 = enemies.length;
     (Math.random() < 0.5 ? spawnSideGroup : spawnSideColumn)();
@@ -676,34 +681,18 @@
     }
   }
 
+  // 旧编队整波刷新（兜底专用）：诗篇主波已接入设计卡（14-main spawnPoemMainWave 编排 pickDesignedWaveCard
+  // → spawnDesignedWave），本函数仅在该路径抽不到卡（表全零/卡缺失，正常不可达）时兜底；
+  // 原诗篇「波次附加炮火先兆者」（harbingerExtra 阈值表）已删除——先兆者额外生成改由真额外三项
+  // 概率卡（h*1/h*2 互斥）驱动，见 01-config-spawn pickPoemTrueExtra
   function spawnWave() {
     levelFlow.waveSeq++;
     if (isPoem() && !state.challenge) levelFlow.poemWaveIdx++;   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）
     const before = enemies.length;
     spawnWaveBody();
-    // 诗篇：波次附加炮火先兆者（阈值表 WAVE_POEM.harbingerExtra，取 ≤当前等级的最高档）——
-    //   属本波一部分（打上 waveTag），须击毁/离场才放下一波
-    if (isPoem() && !state.challenge) spawnPoemExtraHarbinger();
     for (let i = before; i < enemies.length; i++) enemies[i].waveTag = levelFlow.waveSeq;
     // 诗篇：加血套件每 N 波限 1——每波刷新递减节流计数（实际掉落时在 06-enemy 置满）
     if (isPoem() && levelFlow.hpKitWaveCd > 0) levelFlow.hpKitWaveCd--;
-  }
-
-  // 诗篇：波次附加炮火先兆者——取 ≤当前等级的最高阈值档（WAVE_POEM.harbingerExtra）；
-  //   先判 two 再判 one（互斥阶梯：Lv31 起 5%×2 优先于 10%×1，任一命中本波至多多出 1~2 台）；
-  //   入场位置为屏幕靠左/靠右（各 50%）边缘区顶部、固定横位（staticX），悬停高度与常规先兆者一致
-  function spawnPoemExtraHarbinger() {
-    let one = 0, two = 0;
-    for (const t of WAVE_POEM.harbingerExtra) {
-      if (levelFlow.level >= t.lv) { one = t.one; two = t.two; }
-    }
-    if (two > 0 && Math.random() < two) { spawnPoemSideHarbinger(); spawnPoemSideHarbinger(); return; }
-    if (one > 0 && Math.random() < one) spawnPoemSideHarbinger();
-  }
-
-  function spawnPoemSideHarbinger() {
-    const x = Math.random() < 0.5 ? rand(40, 130) : rand(CANVAS_W - 130, CANVAS_W - 40);
-    spawnHarbinger(x, { staticX: true, hoverY: rand(75, 110) });
   }
 
   // 编队权重表：每波按权重随机抽取编队（与「数值与机制图鉴-怪物权重」单一数据源同步）
@@ -843,7 +832,7 @@
     return Math.random() < chance;
   }
   // 特殊2类：破片 —— 三连发导弹无人机：直线飞向选定点急停锁停（除非被击毁不再移动）→
-  // 索敌范围内锁定玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；20% 概率侧翼入场。
+  // 索敌范围内锁定玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；20% 概率侧翼入场。
   // o.tpX/tpY：强制停留点（2*7 整队替换用——V 形停驻、行程相等同时停稳），强制时不掷侧翼入场。
   // type='popianU'（破片U型，诗篇新敌）：同流程，差异见 POPIAN_U——首攻延迟改为入场后 1.8~2s 随机
   //（诗篇 1.6~2s，atkT 自入场即计时、无需锁停），攻击门控/途中瞄准在 06-enemy popian 分支按类型分叉
@@ -892,11 +881,19 @@
         CANVAS_W * POPIAN.stopMarginX, CANVAS_W * (1 - POPIAN.stopMarginX));
     }
     // 生成点距移动终点 ≤250px（2026-10-11 用户定稿）：超限沿 spawn→tp 方向把生成点拉近到 250px 处；
-    // 战争幽灵半血召唤的破片U（生成点距终点约 110~200px）天然在限内不受影响；
-    // 侧翼卡 flankFrom 分支自行保证行程 150~250px 不触发拉近
+    // 侧翼卡 flankFrom 分支自行保证行程 150~250px 不触发拉近；
+    // ⚠️ 拉近不得越过入场轴屏外线（2026-10-12 用户定稿，修「破片凭空刷新在屏内」）：停留线较深时拉近点
+    // 会落进屏内（顶部入场 tpY∈0.3~0.8 屏高 / sy=-50 → 纵距恒>250 必触发，y=tpY-250 最深 ≈384px 凭空出现）——
+    // 按入场轴把拉近点夹回原生成坐标（顶部/顶部卡夹回原 sy，侧翼夹回原 sx），屏外生成优先：
+    // 250px 行程上限仅对自由轴生效（顶部限制水平分量、侧翼限制纵向分量），深批次行程自然超 250；
+    // 战争幽灵召唤的破片U（06-enemy 顶部入场）同受此夹取，全程屏外俯冲
     if (!o.flankFrom) {
+      const ox = sx, oy = sy;   // 原始生成坐标（入场轴基准；屏内 by-design 召唤位三支均不命中、不受夹取）
       const ddx = tpX - sx, ddy = tpY - sy, dist = Math.hypot(ddx, ddy);
       if (dist > 250) { sx = tpX - ddx / dist * 250; sy = tpY - ddy / dist * 250; }
+      if (oy <= -46) sy = Math.min(sy, oy);                       // 顶部入场：y 不许深入原生成线之下（落进屏内）
+      else if (ox <= -50) sx = Math.min(sx, ox);                  // 左翼入场：x 不许越过屏外线
+      else if (ox >= CANVAS_W + 50) sx = Math.max(sx, ox);        // 右翼入场
     }
     const e = makeEnemy(type, sx, sy, {});
     e.tpX = tpX;
@@ -1544,19 +1541,20 @@
   // 波次测试：整波生成（图鉴「旧怪物权重 · 波次」行测试按钮入口；WAVE_FORMATIONS 纯编队，不含特殊3类随波附赠）。
   // 两个入口：进页首刷 / 场上清空后自动补刷（updateChallenge）；按 = 额外刷出一整波（不清场，14-main）
   function spawnChallengeWave(ch) {
-    if (ch.waveTest3) { spawnT3Wave(ch.waveTest3.f, ch.waveTest3.roll()); return; }   // 测试3（波次示意）：每次刷新按刷怪权重重新抽取
+    if (ch.waveTest3) { delayedSpawns.length = 0; spawnT3Wave(ch.waveTest3.f, ch.waveTest3.roll()); return; }   // 测试3（波次示意）：每次刷新按刷怪权重重新抽取（清延迟队列——原在 spawnT3Wave 开头，已移各调用外壳）
     const f = WAVE_FORMATIONS[ch.wave];
     if (f) f.fn();
   }
 
   // 测试3（波次示意）波次测试整波生成（图鉴「权重-波次示意」卡片「▶ 测试」按钮入口，challenge.kind 'wave' + waveTest3）。
-  // 敌人清单由 13-encyclopedia 的 buildT3SpawnPlan 按「波次刷怪权重」完整抽取（类别 → 职能池权重随机大类 →
+  // 敌人清单由 13-encyclopedia 的 buildT3SpawnPlan 按「刷怪权重」（原「波次刷怪权重」，2026-10-12 更名）完整抽取（类别 → 职能池权重随机大类 →
   // 整组 8% 同种 → 池内按职能表当前等级档权重随机 → 回退链），plan 元素携带所属 dot 槽位索引。
   // 入场以预览图为标准（2026-10-11 用户定稿）：位置按卡 dots 映射；侧翼卡（pos==='side'）的 1类走正常侧翼斜插，
-  // 其余卡的 1类一律顶部竖直下压（不要斜向角度）；2/3/4类/先兆者顶部入场、停留高度按卡；特殊3类走专属入场（随机位置）。
+  // 其余卡的 1类顶部下压，方向与竖直偏 8~20° 向中线汇聚（2026-10-12 用户定稿，取消竖直朝下）；2/3/4类/先兆者顶部入场、停留高度按卡；特殊3类走专属入场（随机位置）。
   // 血量走 makeEnemy 测试环境（challenge 在场非 BOSS 统一 20000）。
   function spawnT3Wave(f, plan) {
-    delayedSpawns.length = 0;   // 新波生成前清空上一波的延迟出场队列（z*8 单点排队等），防跨波残留
+    // 延迟出场队列由各调用外壳清理（spawnDesignedWave / updateChallenge 测试3 路径）——
+    // 本函数不再自行清空：组合波多卡、诗篇附加波（spawnPoemExtraWave）不得互清前一卡的 z*8 单点排队
     const flankCard = f.role === '侧翼';   // 侧翼卡（1类小队 / 1*10 / 双侧斜扫等）：1类侧翼斜插
     // ★ 铁律（2026-10-11 用户定稿）：生成与预览 dots 彻底一致——
     //   同一行（dots y 相同）→ 同帧同 y 同步入场；不同行 → **y 降序行序（靠下的行先入场）**：先出现的停留在
@@ -1602,6 +1600,14 @@
     if (f.sideAmbig && '3' in clsSide && Math.random() < 0.5) clsSide['3'] = Math.random() < 0.5 ? -1 : 1;
     let y4Rect = null;    // y*4 幽暮矩形（每波随机一次：两列 x + 顶行 y——同列同 x、同行同 y 构成矩形）
     for (const p of plan) {
+      // 兜底（2026-10-12 用户定稿）：计划解析出「不存在的敌人」——类型不在注册表（防御性）或命中
+      // WIP_PLACEHOLDER_TYPES 占位清单（如战争矩阵：图鉴职能表预留条目带真我/诗篇权重，池抽取不滤
+      // reserved 会漏入正式波次）→ 统一更换为 3类赤红炮艇（gunship crimson），占位白方块不再入常。
+      // 图鉴挑战直召路径（ch.kind 'enemy' → spawnChallengeTargetOne）不走本入口，占位机挑战测试照常。
+      if (!ENEMY_TYPES[p.type] || WIP_PLACEHOLDER_TYPES.includes(p.type)) {
+        p.type = 'gunship';
+        p.variant = 'crimson';
+      }
       const d = f.dots[p.dot];
       const rk = hasSeq ? String(d[3]) : d[1].toFixed(2);
       const row = rowMap[rk];                                        // 行号：同 seq/y 同行同帧；行号大出生更高、更晚入场
@@ -1655,12 +1661,17 @@
             sy = CANVAS_H * (f.sideY ? sideYBase[key] + (d[1] - 0.35) * 0.3 : (0.08 + d[1] * 0.42));
             vel = sideVelocity(dirX * rand(99, 117), rand(54, 69));
           } else {
-            // 其余卡：顶部竖直下压——同行同帧同 y、行间按行号阶梯（预览横排 = 同帧等速整排推进）；
+            // 其余卡：顶部下压——同行同帧同 y、行间按行号阶梯（预览横排 = 同帧等速整排推进）；
+            // 方向不再竖直朝下（2026-10-12 用户定稿）：与竖直方向偏 8~20°（逐机随机），
+            // 左半场生成往右偏、右半场往左偏（向中线汇聚，按生成点 x 判侧——randX 卡逐机判定）；
+            // 生成时一次定方向、飞行中恒速直线（入场冲刺 _entryMul 仅放大模量不改方向）→ 无中途速度切换；
             // 卡带 stagger（增生急行/紫电急行等）：行内按序追加错峰（快速连续出现）；
             // 卡带 randX：每架 x 独立随机（可重叠，预览 dots 仅示意数量）
             sx = f.randX ? rand(60, CANVAS_W - 60) : tx;
             sy = -46 - row * 64 - (f.stagger ? inRow * f.stagger : 0);
-            vel = sideVelocity(0, 1, true);
+            const tiltDeg = rand(8, 20) * Math.PI / 180;   // 与竖直方向夹角 8~20°（逐机随机）
+            const tiltDir = sx < CANVAS_W / 2 ? 1 : -1;    // 左半场 +1（往右偏）/ 右半场 −1（往左偏）
+            vel = sideVelocity(Math.sin(tiltDeg) * tiltDir, Math.cos(tiltDeg), true);   // 模长归一快速档 200，仅方向改斜
           }
           const e = makeEnemy(p.type, sx, sy, p.type === 'side' ? { behavior: p.behavior || 'pass' } : {});
           e._sideVel = vel;
@@ -1668,7 +1679,7 @@
         }
         case 'striker':
           if (p.variant === 'dusk') {
-            // 幽暮浮现：y*1/y*2/y*2b 水平随机 10%~90%、高度按卡 yRange 随机；
+            // 幽暮浮现：y*1/y*2/y*4 水平随机 10%~90%、高度按卡 yRange 随机；
             // y*4（诗篇）四点成矩形（每波随机两列 xl/xr + 顶行 yt，前两 dots=80% 行、后两 dots=yt 行）
             let dx, ty;
             if (f.id === 'y*4') {
@@ -1826,16 +1837,29 @@
     }
   }
 
-  // 设计波次刷新外壳（非诗篇替换旧编队，2026-10-12 用户定稿）：14-main 每个刷怪周期先经
+  // 设计波次刷新外壳（2026-10-12 起）：14-main 每个刷怪周期先经
   // 01-config-spawn pickDesignedWaveCard 抽卡、13-encyclopedia buildT3SpawnPlan 生成清单，
-  // 再调本函数整波落地——职责同 spawnWave 外壳（waveSeq / waveTag 打标），但不做诗篇分支
-  //（poemWaveIdx / 附加先兆者 / hpKitWaveCd 均诗篇专属）；特殊3类随波附赠保留（波次卡只负责编队构成）。
+  // 再调本函数整波落地——职责同 spawnWave 外壳（waveSeq / waveTag 打标），诗篇分支照常生效
+  //（poemWaveIdx / hpKitWaveCd 诗篇专属计数在此处理）；特殊3类随波附赠保留（波次卡只负责编队构成）。
   // list = [{ f, plan }]：1 张常规 / 2 张组合波（同 waveTag 同波，2026-10-12 组合波机制恢复）
   function spawnDesignedWave(list) {
+    delayedSpawns.length = 0;   // 新波生成前清空上一波的延迟出场队列（z*8 单点排队等），防跨波残留（原在 spawnT3Wave 开头，移到此外壳：组合波/诗篇附加波不再互清队列）
     levelFlow.waveSeq++;
+    if (isPoem() && !state.challenge) levelFlow.poemWaveIdx++;   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）
     const before = enemies.length;
     for (const it of list) spawnT3Wave(it.f, it.plan);
     if (Math.random() < SPECIAL3_WAVE_CHANCE) spawnWaveSpecial3();
+    for (let i = before; i < enemies.length; i++) enemies[i].waveTag = levelFlow.waveSeq;
+    // 诗篇：加血套件每 N 波限 1——每波刷新递减节流计数（实际掉落时在 06-enemy 置满）
+    if (isPoem() && levelFlow.hpKitWaveCd > 0) levelFlow.hpKitWaveCd--;
+  }
+
+  // 诗篇附加波落地（2026-10-12 用户定稿：侧翼波次 / 额外波次 / 真额外三项的整波生成外壳）——
+  // 不推进 waveSeq / poemWaveIdx（不占前/后波名额），敌人打上当前波 waveTag；
+  // 不清空延迟出场队列——侧翼附加卡 z*8 自身带单点排队，后续附加卡不得清掉其待出场队列
+  function spawnPoemExtraWave(list) {
+    const before = enemies.length;
+    for (const it of list) spawnT3Wave(it.f, it.plan);
     for (let i = before; i < enemies.length; i++) enemies[i].waveTag = levelFlow.waveSeq;
   }
 
@@ -1845,11 +1869,12 @@
     spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
     capitalMaxWait, SPECIAL3_POOL, special3Weight, spawnWave, WAVE_FORMATIONS, pickFormation, spawnDesignedWave, comboWaveChance,
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
+    spawnPoemExtraWave,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, enemyFrostZoneMoveMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,
     spawnChallengeWave, spawnPopianU, spawnWarGhost, spawnEliteMinion, spawnRevivedElite, spawnPulseMatrix,
-    updateChallenge, updateDelayedSpawns,
+    updateChallenge, updateDelayedSpawns, resetSpawnWaveState,
   };

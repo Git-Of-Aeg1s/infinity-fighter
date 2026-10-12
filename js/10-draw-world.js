@@ -31,6 +31,143 @@
     return g;
   }
 
+  // ---------- 敌方子弹精灵烘焙（2026-10-12 风暴编织者卡顿优化） ----------
+  // 技能4 蛇形雷条 + 雷环同屏百余发时，每弹每帧 createXxxGradient + shadowBlur 填充为线性放大热点——
+  // 静态观感（渐变+辉光）按参数键预烘焙 2x 精灵，逐帧一次 drawImage；
+  // 动态部分（锯齿电弧内芯 / 消散 globalAlpha / arcTint 变色 / streak 拖尾）照常实时绘制。
+  // 烘焙底板取整数边长（canvas 宽高必须整数），运行时按精确逻辑尺寸 drawImage 还原——无累积偏差。
+
+  // 圆弹主体+辉光精灵（键 = 风味|颜色|r）：风味与 drawOneEBullet 圆弹分支一一对应、烘焙 painter 逐字复刻
+  const rbSpriteCache = new Map();
+  function getRoundBulletSprite(flavor, color, r) {
+    const key = flavor + '|' + color + '|' + r;
+    let spr = rbSpriteCache.get(key);
+    if (!spr) {
+      if (rbSpriteCache.size > 128) rbSpriteCache.clear();   // 防御性上限（同 cachedGrad）
+      const pad = 20;                        // shadowBlur 10 的辉光余量（2×blur，边缘 alpha 已趋近 0）
+      const S = (r + pad) * 2;               // 精确逻辑边长（中心对称）
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(S * 2)); cv.height = cv.width;   // 2x 超采样
+      const g = cv.getContext('2d');
+      g.scale(cv.width / S, cv.width / S);
+      g.translate(S / 2, S / 2);
+      g.shadowColor = flavor === 'd166' ? '#ff3b30' : color;
+      g.shadowBlur = 10;
+      if (flavor === 'plain') {
+        g.fillStyle = color;   // 平涂主色
+      } else {
+        const bg = g.createRadialGradient(0, 0, 0, 0, 0, r);
+        if (flavor === 'dhdark') {
+          bg.addColorStop(0, '#43434e');       // 微亮暗芯（保留体积感）
+          bg.addColorStop(0.45, '#0b0b11');    // 黑主体
+          bg.addColorStop(0.82, '#14141c');    // 黑体向边缘过渡
+          bg.addColorStop(1, color);           // 边缘红一小圈
+        } else if (flavor === 'bround') {
+          bg.addColorStop(0, '#ffffff');
+          bg.addColorStop(0.45, '#ffffff');
+          bg.addColorStop(1, color);
+        } else if (flavor === 'big') {
+          bg.addColorStop(0, '#ffffff');
+          bg.addColorStop(0.42, color);
+          bg.addColorStop(0.8, 'rgba(205, 50, 0, 0.92)');   // 内圈红区加宽
+          bg.addColorStop(1, 'rgba(180, 40, 0, 0.9)');
+        } else if (flavor === 'gradHR') {
+          bg.addColorStop(0, '#1c0408');
+          bg.addColorStop(0.45, '#701018');
+          bg.addColorStop(1, 'rgba(224, 36, 36, 0.95)');
+        } else if (flavor === 'gradYR') {
+          bg.addColorStop(0, '#ffffff');
+          bg.addColorStop(0.4, color);
+          bg.addColorStop(1, 'rgba(198, 20, 8, 0.96)');
+        } else if (flavor === 'grad') {
+          bg.addColorStop(0, '#ffffff');
+          bg.addColorStop(0.4, color);
+          bg.addColorStop(1, 'rgba(205, 60, 10, 0.92)');
+        } else {   // 'd166'：低级小怪黄弹（外圈红 + 内部黄）
+          bg.addColorStop(0, '#fff6b0');
+          bg.addColorStop(0.5, '#ffd166');
+          bg.addColorStop(0.78, '#ff5a3c');
+          bg.addColorStop(1, '#e01b1b');
+        }
+        g.fillStyle = bg;
+      }
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fill();
+      if (r >= 10) {
+        // 大子弹外圈发光描边（原路径 shadowBlur=10 尚在时描边——描边同样带辉光，逐字复刻）
+        g.strokeStyle = 'rgba(255, 200, 160, 0.7)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.arc(0, 0, r, 0, Math.PI * 2);
+        g.stroke();
+      }
+      spr = { cv, size: S };
+      rbSpriteCache.set(key, spr);
+    }
+    return spr;
+  }
+
+  // bolt 雷电长条弹辉光胶囊精灵（键 = len|r）：外辉光 + 尾淡头亮渐变烘焙，锯齿电弧内芯动态照常
+  const boltSpriteCache = new Map();
+  function getBoltBarSprite(len, r) {
+    const key = len + '|' + r;
+    let spr = boltSpriteCache.get(key);
+    if (!spr) {
+      if (boltSpriteCache.size > 128) boltSpriteCache.clear();
+      const pad = 28;                        // shadowBlur 14 的辉光余量（2×blur）
+      const w = len + pad * 2, h = r * 2 + pad * 2;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(w * 2)); cv.height = Math.max(1, Math.round(h * 2));
+      const g = cv.getContext('2d');
+      g.scale(cv.width / w, cv.height / h);
+      g.translate(w / 2, h / 2);
+      g.shadowColor = '#6fb8ff';
+      g.shadowBlur = 14;
+      const half = len / 2;
+      const bg = g.createLinearGradient(-half, 0, half, 0);
+      bg.addColorStop(0, 'rgba(143, 212, 255, 0.20)');
+      bg.addColorStop(0.55, '#9fd4ff');
+      bg.addColorStop(1, '#e8f5ff');
+      g.fillStyle = bg;
+      g.beginPath();
+      g.arc(-half, 0, r, Math.PI / 2, -Math.PI / 2);
+      g.lineTo(half, -r);
+      g.arc(half, 0, r, -Math.PI / 2, Math.PI / 2);
+      g.closePath();
+      g.fill();
+      spr = { cv, w, h };
+      boltSpriteCache.set(key, spr);
+    }
+    return spr;
+  }
+
+  // trail 短拖尾光晕精灵（键 = r）：暗紫径向辉光静态烘焙（色标固定、半径 = r×2.8 精确映射）
+  const trailSpriteCache = new Map();
+  function getTrailHaloSprite(r) {
+    let spr = trailSpriteCache.get(r);
+    if (!spr) {
+      if (trailSpriteCache.size > 128) trailSpriteCache.clear();
+      const R = r * 2.8;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(R * 4)); cv.height = cv.width;   // 2x 超采样（逻辑边长 2R）
+      const g = cv.getContext('2d');
+      g.scale(cv.width / (R * 2), cv.width / (R * 2));
+      g.translate(R, R);
+      const halo = g.createRadialGradient(0, 0, r * 0.3, 0, 0, R);
+      halo.addColorStop(0, 'rgba(168, 108, 255, 0.55)');
+      halo.addColorStop(0.5, 'rgba(109, 40, 217, 0.30)');
+      halo.addColorStop(1, 'rgba(109, 40, 217, 0)');
+      g.fillStyle = halo;
+      g.beginPath();
+      g.arc(0, 0, R, 0, Math.PI * 2);
+      g.fill();
+      spr = { cv, R };
+      trailSpriteCache.set(r, spr);
+    }
+    return spr;
+  }
+
   // 巨大蛋挞黑色剪影（2026-10-03 性能修复）：生长动画原用 ctx.filter='brightness(gp²)' 逐帧滤镜，
   // 与黑暗之手本体滤镜叠加造成战斗段卡顿。改为一次性烘焙纯黑剪影（source-in 保留原 alpha），
   // 生长时黑剪影打底 + 真色按 gp² 做 globalAlpha 叠加——亮度缩放与 filter 在数学上等价
@@ -1778,15 +1915,10 @@
       if (b.fadeT != null) ctx.globalAlpha = clamp(b.fadeT / (b.lifeFade || 0.28), 0, 1);
       else ctx.globalAlpha = 1;
       if (b.trail) {
-        // 暗紫光芒包裹：弹体外围径向辉光（源头与轨迹衔接处最亮）
-        const halo = ctx.createRadialGradient(b.x, b.y, b.r * 0.3, b.x, b.y, b.r * 2.8);
-        halo.addColorStop(0, 'rgba(168, 108, 255, 0.55)');
-        halo.addColorStop(0.5, 'rgba(109, 40, 217, 0.30)');
-        halo.addColorStop(1, 'rgba(109, 40, 217, 0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r * 2.8, 0, Math.PI * 2);
-        ctx.fill();
+        // 暗紫光芒包裹：弹体外围径向辉光（源头与轨迹衔接处最亮）——精灵烘焙（2026-10-12 优化，
+        // 原每弹每帧 createRadialGradient+fill；风暴编织者雷环同屏百余枚时为最大热点之一）
+        const th = getTrailHaloSprite(b.r);
+        ctx.drawImage(th.cv, b.x - th.R, b.y - th.R, th.R * 2, th.R * 2);
       }
       if (b.bolt) {
         if (b.path && b.path.length > 1) {
@@ -1854,20 +1986,10 @@
         ctx.translate(b.x, b.y);
         ctx.rotate(ang);
         const half = (b.len || 40) / 2;
-        // 外辉光胶囊：尾淡 → 头白蓝（头部不再纯白，电弧感由锯齿内芯承担）
-        ctx.shadowColor = '#6fb8ff';
-        ctx.shadowBlur = 14;
-        const bg = ctx.createLinearGradient(-half, 0, half, 0);
-        bg.addColorStop(0, 'rgba(143, 212, 255, 0.20)');
-        bg.addColorStop(0.55, '#9fd4ff');
-        bg.addColorStop(1, '#e8f5ff');
-        ctx.fillStyle = bg;
-        ctx.beginPath();
-        ctx.arc(-half, 0, b.r, Math.PI / 2, -Math.PI / 2);
-        ctx.lineTo(half, -b.r);
-        ctx.arc(half, 0, b.r, -Math.PI / 2, Math.PI / 2);
-        ctx.closePath();
-        ctx.fill();
+        // 外辉光胶囊：尾淡 → 头白蓝——精灵烘焙（2026-10-12 优化：原每弹每帧 createLinearGradient
+        // + shadowBlur=14 胶囊填充；风暴编织者技能4 连射 40~70 发时为最大热点）
+        const bsp = getBoltBarSprite(b.len || 40, b.r);
+        ctx.drawImage(bsp.cv, -bsp.w / 2, -bsp.h / 2, bsp.w, bsp.h);
         ctx.shadowBlur = 0;
         // 锯齿电弧内芯：蓝晕宽线 + 白热内芯双层描线
         let sd = ((Math.floor(state.time * 12) * 7 + (b.seed || 1) * 131) * 9973 + 479) % 233280;
@@ -2009,7 +2131,8 @@
         ctx.restore();
       } else {
         // 圆弹：大子弹用径向渐变（白核 → 主色 → 暗边）；低级小怪黄弹改为外圈红+内部黄；其余小子弹平涂
-        // 径向渐变以弹心为圆心、与坐标无关 → 平移到弹位置后用缓存渐变绘制
+        // 主体+辉光按（风味|颜色|r）键精灵烘焙逐帧一次 drawImage（2026-10-12 优化，见 getRoundBulletSprite）；
+        // 仅 arcTint 动态变色保留实时绘制
         ctx.save();
         ctx.translate(b.x, b.y);
         if (b.tart && tartImg) {
@@ -2075,89 +2198,23 @@
           ctx.stroke();
           ctx.globalAlpha = ga;
         }
-        if (b.dhDark) {
-          // 黑暗之手暗核弹（2026-10-01 用户定稿）：黑色主体、边缘一小圈红（accent = b.color；2026-10-03 三轮定稿黑紫改黑红）径向渐变
-          ctx.fillStyle = cachedGrad(`dhdark|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#43434e');      // 微亮暗芯（保留体积感）
-            bg.addColorStop(0.45, '#0b0b11');   // 黑主体
-            bg.addColorStop(0.82, '#14141c');   // 黑体向边缘过渡
-            bg.addColorStop(1, b.color);        // 边缘红一小圈
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.bossRound) {
-          // BOSS 圆形弹幕（真我·旧日之歌技能4 扇形弹）：白核 → 主色径向渐变，
-          // 与长条弹的"白热中段 → 主色头端"同色系，避免平涂主色 + 红辉光造成的偏红观感
-          ctx.fillStyle = cachedGrad(`bround|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#ffffff');
-            bg.addColorStop(0.45, '#ffffff');
-            bg.addColorStop(1, b.color);
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.r >= 10) {
-          ctx.fillStyle = cachedGrad(`big|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#ffffff');
-            bg.addColorStop(0.42, b.color);
-            bg.addColorStop(0.8, 'rgba(205, 50, 0, 0.92)');   // 内圈红区加宽（2026-10-09 用户反馈：红色部分略微更宽）
-            bg.addColorStop(1, 'rgba(180, 40, 0, 0.9)');
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.grad === 'hr') {
-          // 黑红渐变弹（夏勇核心膨胀分裂弹，2026-10-03 用户定稿由白红改黑红）：黑芯 → 暗红 → 亮红边径向渐变
-          ctx.fillStyle = cachedGrad(`gradHR|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#1c0408');
-            bg.addColorStop(0.45, '#701018');
-            bg.addColorStop(1, 'rgba(224, 36, 36, 0.95)');
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.grad === 'yr') {
-          // 黄红渐变弹（战争幽灵技能3 弹幕，2026-10-02 用户定稿）：白核 → 黄(#ffd24a) → 红边径向渐变
-          //（2026-10-09 用户反馈：外圈更红）
-          ctx.fillStyle = cachedGrad(`gradYR|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#ffffff');
-            bg.addColorStop(0.4, b.color);
-            bg.addColorStop(1, 'rgba(198, 20, 8, 0.96)');
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.grad) {
-          // 渐变圆弹（橙焰巨型弹分裂子弹等）：白核 → 主色 → 暗橙红边径向渐变（非平涂）
-          ctx.fillStyle = cachedGrad(`grad|${b.color}|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#ffffff');
-            bg.addColorStop(0.4, b.color);
-            bg.addColorStop(1, 'rgba(205, 60, 10, 0.92)');
-            return bg;
-          });
-          ctx.shadowColor = b.color;
-        } else if (b.color === '#ffd166') {
-          // 低级小怪（1/2类）圆弹：外圈红 + 内部黄，更醒目
-          ctx.fillStyle = cachedGrad(`d166|${b.r}`, () => {
-            const bg = ctx.createRadialGradient(0, 0, 0, 0, 0, b.r);
-            bg.addColorStop(0, '#fff6b0');      // 中心亮黄
-            bg.addColorStop(0.5, '#ffd166');    // 黄
-            bg.addColorStop(0.78, '#ff5a3c');   // 橙红过渡
-            bg.addColorStop(1, '#e01b1b');      // 外圈红
-            return bg;
-          });
-          ctx.shadowColor = '#ff3b30';        // 红色辉光，增强辨识度
-        } else if (b.arcTint) {
-          // 旧日之歌旋转弧线弹（2026-10-09 用户定稿）：出生深紫，随存活时间 1.5s 漂移至弧线绿（见 arcTintColor）
-          const col = arcTintColor(b.age || 0);
-          ctx.fillStyle = col;
-          ctx.shadowColor = col;
-        } else {
-          ctx.fillStyle = b.color;
-          ctx.shadowColor = b.color;
+        // 主体+辉光精灵烘焙（2026-10-12 优化）：原各风味分支每弹每帧 createRadialGradient/cachedGrad
+        // + shadowBlur=10 圆体填充——风暴编织者雷环 4~9 圈 ×14~20 枚同屏百余发时为最大热点；
+        // 按（风味|颜色|r）键预烘焙 2x 精灵逐帧一次 drawImage（风味判定顺序与原分支链逐字一致）。
+        const rbF = b.dhDark ? 'dhdark' : b.bossRound ? 'bround' : b.r >= 10 ? 'big'
+          : b.grad === 'hr' ? 'gradHR' : b.grad === 'yr' ? 'gradYR' : b.grad ? 'grad'
+          : b.color === '#ffd166' ? 'd166' : b.arcTint ? null : 'plain';
+        if (rbF) {
+          const rs = getRoundBulletSprite(rbF, b.color, b.r);
+          ctx.drawImage(rs.cv, -rs.size / 2, -rs.size / 2, rs.size, rs.size);
+          ctx.restore();
+          return;
         }
+        // 旧日之歌旋转弧线弹（2026-10-09 用户定稿）：出生深紫，随存活时间 0.6s 漂移至弧线绿——
+        // 颜色逐帧动态变化不走精灵，保留原实时绘制（见 arcTintColor）
+        const col = arcTintColor(b.age || 0);
+        ctx.fillStyle = col;
+        ctx.shadowColor = col;
         ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.arc(0, 0, b.r, 0, Math.PI * 2);

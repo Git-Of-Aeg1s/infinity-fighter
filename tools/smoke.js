@@ -327,10 +327,22 @@ async function sceneEncyclopedia() {
   sample('打开数值与机制图鉴');
 }
 
+// 图鉴导航到「权重 → 波次权重 → 旧怪物权重」（2026-10-12 二次迁移：旧怪物权重并入波次权重子页等级行末，
+// 外层行不再有该 chip）——三级 chips 均为动态创建，按 createdElements 累积池 reverse 取最新重建版本点击
+async function navToOldWeightsTab() {
+  const tabBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-tab') && el.textContent === '权重');
+  if (tabBtn) { tabBtn.click(); frames(2); }
+  const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-chip') && el.textContent === '波次权重');
+  if (waveChip) { waveChip.click(); frames(2); }
+  const chip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-chip') && el.textContent === '旧怪物权重');
+  if (chip) { chip.click(); frames(2); }
+}
+
 async function sceneWaveTest() {
-  // 波次测试按钮：权重表 →「波次」子页 → 行内「▶ 试波」→ 波次挑战开局
+  // 波次测试按钮：权重 → 「旧怪物权重」子页 →「波次」子页 → 行内「▶ 试波」→ 波次挑战开局
   //（updateChallenge 整波驱动 / 场上清空自动补刷 / = 额外追加一整波——14-main 键盘入口）
   elements.infoEntryBtn.click(); frames(10);   // 前置：打开权重表（openInfoModal 幂等重建，全量/单跑皆可）
+  await navToOldWeightsTab();                  // 2026-10-12：旧怪物权重页签已迁入权重组，先导航到子页
   const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent === '波次');
   if (waveChip) {
     waveChip.click();
@@ -349,6 +361,8 @@ async function sceneSwarm() {
   // 持续刷怪测试（Lv20 无限刷怪）回归：
   // （2026-09-30 事故：正常刷怪通道 !state.challenge 门控把 swarm 一并跳过 → 开局空场一只怪都没有）
   // 覆盖：图鉴按钮进入 swarm 挑战 / 14-main 正常通道放行 + 锁 Lv20 / 04-spawn swarm 分支不误补刷
+  elements.infoEntryBtn.click(); frames(10);    // 打开图鉴（单跑时构建 DOM；openInfoModal 幂等）
+  await navToOldWeightsTab();                   // 2026-10-12：旧怪物权重页签已迁入权重组，先导航到子页
   const swarmBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent.includes('持续刷怪测试'));
   if (swarmBtn) {
     swarmBtn.click();                             // 开局持续刷怪测试（challenge.kind==='swarm'）
@@ -416,10 +430,11 @@ async function scenePoem() {
 }
 
 async function sceneStarslayer() {
-  // 群星之杀暴走三线斩击回归（2026-10-12 用户报告：金色 4 类 / 其他敌人概率血条消失且无敌——
-  // 症状指纹 = e.hp 变 NaN：06-enemy barT 比较 `e.hp < e.maxHp` 恒 false → 血条渐隐消失；
-  // `hp -= dmg` 对 NaN 无效 → 永不掉血无敌。本场景 = 定向复现：群星之杀 + 暴走三线 + swarm 持续刷怪，
-  // 逐帧断言场上全部敌人 hp 有限性——红则记录首个 NaN 实体（type/variant/hp/maxHp/帧号）。
+  // 群星之杀暴走三线斩击 hp 有限性回归哨兵（常驻）：2026-10-12 用户报告金色 4 类 / 其他敌人概率血条消失且无敌
+  // （症状指纹 = e.hp 变 NaN：barT 比较 `e.hp < e.maxHp` 恒 false → 血条渐隐；`hp -= dmg` 对 NaN 无效 → 永不掉血无敌）。
+  // 根因（2026-10-12 已修复）：01-config-enemies BAOLING_G 漏配 playerDmg / enemyDmgBase / enemyDmgRatio / enemyDmgCap 四键
+  // —— 暴鸰·G 殉爆波及与炸弹落地爆炸全走 NaN。本场景保留为常驻回归：逐帧断言场上全部敌人 hp 有限性，
+  // 红则记录首个 NaN 实体（type/variant/hp/maxHp/帧号）。
   if (isModules) {
     const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
@@ -434,30 +449,6 @@ async function sceneStarslayer() {
     const uiMod = await import(pathToFileURL(join(jsDir, '12-ui.js')).href);
     if (uiMod.resetGame) uiMod.resetGame(true, { challenge: { kind: 'swarm', name: '持续刷怪测试' } });
     frames(420);                                  // ≈7s：swarm Lv20 出怪（编队入场 / 停留线就位）
-    // hp 写入拦截（临时插桩）：wrap enemies.push + 已在场敌人，给每个敌挂 hp setter——写入 NaN 时抓
-    // Error().stack 直接指认写入行（写入侧比读取侧断言多一层堆栈信息）。验收修复后整段删除。
-    const wrapHp = (e) => {
-      if (!e || typeof e !== 'object' || e.hp == null || e._hpWrapped) return;
-      e._hpWrapped = true;
-      let _hp = e.hp;
-      Object.defineProperty(e, 'hp', {
-        configurable: true,
-        get() { return _hp; },
-        set(v) {
-          if (!Number.isFinite(v)) {
-            // 无条件报：NaN 写入一律抓栈（含 _hp 已 NaN 的持续写入——stack 即活跃写入点）
-            errors.push({ key: 'hpNaN写入@' + e.type + '/' + (e.variant || '') + '/hp=' + String(_hp), stack: new Error().stack });
-          }
-          _hp = v;
-        },
-      });
-    };
-    for (const e of core.enemies) wrapHp(e);   // 含出怪期已生成的敌人
-    const origPush = core.enemies.push.bind(core.enemies);
-    core.enemies.push = (...es) => {
-      for (const e of es) wrapHp(e);
-      return origPush(...es);
-    };
     core.player.invuln = 1e9;                     // 防玩家死亡中断复现
     core.player.weapon = 5;                       // 暴走 Lv5：三线独立斩击（2026-10-12 改动面）
     core.player.berserk = 1e9;                    // 暴走常驻（不触发暴走结束掉级/澄月结算）
@@ -471,8 +462,7 @@ async function sceneStarslayer() {
           const dump = [];
           for (const k in e) {
             const v = e[k];
-            if (k === '_hpWrapped') dump.push('_wrapped=' + v);
-            else if (typeof v === 'number' && !Number.isFinite(v)) dump.push(k + '=NaN');
+            if (typeof v === 'number' && !Number.isFinite(v)) dump.push(k + '=NaN');
             else if (typeof v === 'number') dump.push(k + '=' + v.toFixed(1));
           }
           bad = { type: e.type, variant: e.variant || '', bossId: e.bossId || '', hp: String(e.hp), maxHp: String(e.maxHp), frame: Math.round((NOW - START) / (1000 / 60)), dump: dump.join(' ') };

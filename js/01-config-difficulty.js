@@ -26,8 +26,7 @@
   //   dropClassNoReduce      true：1/2类敌人道具掉率的额外减少修正（×0.5 / ×0.75）不再生效
   //   dropClassLowWeaken     true：低火力减免——掉落判定等级（攻击等级+场上升级套件数+4×场上暴走道具数）
   //                          为 1 时 1/2类掉率削减修正失效、为 2 时效果减弱 50%、≥3 不减免
-  //                          （1类 ×0.5→×0.75 / 2类 ×0.75→×0.875；BOSS 战 1类波 ×0.3 削减不受影响）
-  //   bossMinionDropNoReduce true：BOSS 战 1类强制波道具掉率降低修正（×0.30）不再生效
+  //                          （1类 ×0.5→×0.75 / 2类 ×0.75→×0.875）
   //   bossDmgMul             BOSS 所有伤害倍率（含弹幕/接触/区域打击/导弹）
   //   bossFireIntervalMul    BOSS 技能释放间隔倍率（2026-10-10 定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
   //                          诗篇 wip 走 05-boss bossSkillIv isPoem 硬分支，实装时落地 poem.mods，见《诗篇难度修正.md》#44）
@@ -45,7 +44,7 @@
       desc: '轻松难度<br>适合新玩家',   // 一句一行（<br> 分行；"设计中"由卡片角标展示）
       wip: false,
       // 虚象修正表：相对真我（刷怪框架同具象基准）总刷怪量/同屏数量约 -50~60%；
-      // 非BOSS 血量 -20%、首次攻击延迟 +0.5~1.8s、攻击间隔 +25%；1/2类与 BOSS 战 1类波的掉率削减修正失效；
+      // 非BOSS 血量 -20%、首次攻击延迟 +0.5~1.8s、攻击间隔 +25%；1/2类掉率削减修正失效；
       // BOSS 伤害 -40%、技能间隔 +50%、不连发同种技能；玩家无敌 +50%、导弹固定 50 伤害、受击不掉武器等级；得分 ×0.8
       mods: {
         enemyHpMul: 0.8, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 0.8, bossSkillMods: {},
@@ -54,7 +53,6 @@
         enemyFirstFireAdd: [0.5, 1.8],
         enemyFireIntervalMul: 1.25,
         dropClassNoReduce: true,
-        bossMinionDropNoReduce: true,
         bossDmgMul: 0.6,
         bossFireIntervalMul: 1.5,
         bossNoRepeat: true,
@@ -76,7 +74,6 @@
         enemyFireIntervalMul: 1,
         dropClassNoReduce: false,
         dropClassLowWeaken: true,   // 掉落判定等级（攻击等级+场上套件+4×暴走道具）1：修正失效；2：减弱 50%
-        bossMinionDropNoReduce: false,
         bossDmgMul: 1,
         bossFireIntervalMul: 1,
         bossNoRepeat: false,
@@ -101,7 +98,6 @@
         enemyFireIntervalMul: 1,
         dropClassNoReduce: false,
         dropClassLowWeaken: true,   // 掉落判定等级（攻击等级+场上套件+4×暴走道具）1：修正失效；2：减弱 50%
-        bossMinionDropNoReduce: false,
         bossDmgMul: 1,
         bossFireIntervalMul: 0.7,   // 2026-10-10 用户定稿 1→0.7（四档 1.5/1/0.7/0.5）；取代原 STORM2_SHIP/SONG_SHIP 真我专属 skillCdMul
         bossNoRepeat: false,
@@ -131,7 +127,6 @@
         enemyFireIntervalMul: 1,
         dropClassNoReduce: false,
         dropClassLowWeaken: true,   // 掉落判定等级（攻击等级+场上套件+4×暴走道具）1：修正失效；2：减弱 50%
-        bossMinionDropNoReduce: false,
         bossDmgMul: 1,
         bossFireIntervalMul: 1,   // 诗篇 BOSS 技能间隔 ×0.5 经 bossSkillIv() isPoem 硬分支（表 #44；迁移时改 0.5 并删硬分支）
         bossNoRepeat: false,
@@ -153,11 +148,8 @@
     capitalWaveChance: 0.20,   // 4类随波附带概率（Lv5 起每波独立判定，走常规主力舰/法术阵列选取；4类槽位通道诗篇关闭）——待调参数，随强化参数批次定稿
     healWaveGap: 2,            // 加血套件波次节流：实际掉落后 N 波内不再掉（每 2 波限 1）
     scoreMul: 2,               // 得分倍率（波次制总刷怪量大幅减少的补偿；实装时同步落地 DIFFICULTIES.poem.mods.scoreMul）
-    harbingerExtra: [          // 波次附加炮火先兆者阈值表：取 ≤当前等级的最高档；先判 two 再判 one（互斥阶梯）
-      { lv: 3,  one: 0.05, two: 0 },      // Lv3 起：5% 多刷 1 台
-      { lv: 21, one: 0.10, two: 0 },      // Lv21 起：10% 多刷 1 台（2026-10-08 轮次重排后第三轮 Lv21~30 生效；强度暂与 Lv20 一致，波次设计进行中）
-      { lv: 31, one: 0.10, two: 0.05 },   // Lv31 起：10% 多刷 1 台 + 5% 多刷 2 台
-    ],
+    // 波次附加炮火先兆者阈值表（harbingerExtra）已删除（2026-10-12 用户定稿）：先兆者额外生成改由「真额外三项」
+    // 概率卡驱动——单导弹 h*1 / 双导弹 h*2（互斥），概率取 WAVE_SPAWN_DRAW_W（01-config-spawn），见 pickPoemTrueExtra。
   };
   // 难度写入入口：与 setPlane/setWingman 同约定——顶层 let 的写操作必须经由 setter
   function setDifficulty(d) { currentDifficulty = d; }

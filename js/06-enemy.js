@@ -8,9 +8,9 @@
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, PILOTS, PLAYER_CFG, currentArmor, hasPilot, starsSeriesCount } from './01-config-loadout.js';
   import { ANVIL, BAOLING, BAOLING_G, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SHIP_ENTRY, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, UNREAL, WAR_GHOST, WEILONG, YU4 } from './01-config-enemies.js';
-  import { BOSS, BOSS_BULLET, BOSS_MINION_WAVE, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
+  import { BOSS, BOSS_BULLET, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
   import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul } from './01-config-difficulty.js';
-  import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_PURPLE, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_YELLOW, DROP_SHIELD_BLUE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
+  import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
   import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
@@ -1600,21 +1600,21 @@
       }
       return;
     }
-    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；
-    // 破片U型：无需锁停（入场 atkT 1.8~2s / 诗篇 1.6~2s 计时即门控），导弹 10/7/7（POPIAN_U），其余同破片
+    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；
+    // 破片U型：无需锁停（入场 atkT 1.8~2s / 诗篇 1.6~2s 计时即门控），导弹 8×3（POPIAN_U），其余同破片
     if (e.type === 'popian' || e.type === 'popianU') {
       if (e.leaving || (e.type !== 'popianU' && !e.arrived)) return;   // 未停稳不攻击（U型除外：无需就位）
       // 红圈预警进行中：倒计时结束即锁定红圈中心、发起三连发
       if (e.warn) {
         e.warn.t += dt;
         if (e.warn.t >= POPIAN.warnTime) {
-          e.popBurst = { count: POPIAN.burstCount, shots: 0, gap: POPIAN.burstGap, tx: e.warn.tx, ty: e.warn.ty, firstHit: false };
+          e.popBurst = { count: POPIAN.burstCount, shots: 0, gap: POPIAN.burstGap, tx: e.warn.tx, ty: e.warn.ty, counted: false };
           e.popBurstTimer = 0;   // 首立即发
           e.warn = null;
         }
         return;
       }
-      // 三连发进行中：按间隔逐发射出（共享 burst.firstHit 状态）
+      // 三连发进行中：按间隔逐发射出（共享 burst.counted 受击计数门控）
       if (e.popBurst) {
         e.popBurstTimer -= dt;
         if (e.popBurstTimer <= 0) {
@@ -1923,7 +1923,7 @@
           }
         }
       } else if (e.skill === 'ring') {
-        // 金：三技能循环 —— 10 发环形爆发（诗篇 12）/ 两轮 6 发环形爆发 / 三方向 3×3 加速长条弹（诗篇 5 方向）
+        // 金：三技能循环 —— 10 发环形爆发（诗篇 12）/ 两轮 6 发环形爆发 / 三方向 3×3 加速长条弹（诗篇 5 方向、波间旋转 180°）
         switch (e.pattern % 3) {
           case 0: {
             // 技能1：原紫晶 8 发环形爆发的强化版——10 发（诗篇 12 发）随机相位环形爆发
@@ -1949,14 +1949,16 @@
           case 2: {
             // 技能3：三方向（互夹 120°）三波加速长条弹——首轮方向随机竖直朝上或朝下，后续两轮依次旋转 60° 跟随；
             // 每发均为两发连射（同向 0.07s 追发）；出弹点以施放瞬间为准快照（后发不随机体移动漂移）；
-            // 诗篇（2026-10-12 用户定稿）：每波改 5 方向均分整圆（互夹 72°），连射节奏与 3 波结构照旧；首轮方向完全随机
+            // 诗篇（2026-10-12 用户定稿）：每波改 5 方向均分整圆（互夹 72°），波间依次旋转 180°（同日回调，原 60°），
+            // 连射节奏与 3 波结构照旧；首轮方向完全随机
             const ox = e.x, oy = e.y + e.h / 2;
             const poem = isPoem();
             const base0 = poem ? Math.random() * Math.PI * 2 : (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
             const dirsN = poem ? 5 : 3;
+            const rotStep = poem ? Math.PI : Math.PI / 3;   // 波间旋转步长：诗篇 180°（用户定稿）/ 常态 60°
             const maxSp = cfg.bulletSpeed * 1.8;
             for (let v = 0; v < 3; v++) {
-              const base = base0 + v * Math.PI / 3;
+              const base = base0 + v * rotStep;
               e.scheduled.push({ t: v * 0.4, fn: () => {
                 for (let k = 0; k < dirsN; k++) {
                   const ang = base + k * Math.PI * 2 / dirsN;
@@ -2036,7 +2038,8 @@
           }
           case 1: {
             // 技能2：朝 360° 随机方向发射屏障支援弹（常态 2 发 / 诗篇 4 发，用户 2026-10-01 指定；登记《诗篇难度修正.md》）
-            // ——命中敌机加 200 屏障（诗篇同）；命中玩家机身（大判定、无需核心）加 24（诗篇 28）屏障，持续 10s、重复命中刷新
+            // ——命中敌机加 200 屏障（诗篇同）；命中玩家机身（大判定、无需核心）加 24（诗篇 28）屏障，
+            // 持续 10s、重复命中叠加（barrier/barrierMax 同步增长，2026-10-12 用户定稿）并刷新持续时间
             const n = isPoem() ? 4 : 2;
             for (let k = 0; k < n; k++)
               pushEBullet(e, Math.random() * Math.PI * 2, cfg.bulletSpeed * 0.9, cfg, { r: 7, len: 0, support: true, color: '#9ff0e0' });
@@ -2155,8 +2158,7 @@
           if ((e.ringsLeft || 0) > 0) {
             e.ringsLeft--;
             e.ringWave = { r: e.w * 0.22, t: 0, dur: 1.2 };
-            spawnParticles(e.x, e.y, '#ffd166', 18, 220);
-            shake(4, 0.2);
+            spawnParticles(e.x, e.y, '#ffd166', 18, 220);   // 金环扩散：无震屏（2026-10-12 用户定稿）
           } else {
             // 双环耗尽：退化为瞄准双发
             const ang = Math.atan2(player.y - e.y, player.x - e.x);
@@ -2496,8 +2498,8 @@
   }
   
   // ---------- 破片三连发导弹 ----------
-  // 从破片下方炮管射出，高速飞向锁定的红圈中心；不可被击毁（护盾仍可免疫）；命中按首发/后两发规则结算
-  // 伤害按机型取值：破片 8/5（POPIAN）、破片U型 10/7（POPIAN_U），随导弹携带（dmgF/dmgW）供命中结算读取
+  // 从破片下方炮管射出，高速飞向锁定的红圈中心；不可被击毁（护盾仍可免疫）；命中统一结算（前两发不授予无敌、后一发正常授予）
+  // 伤害按机型取值（三发同值——2026-10-12 用户定稿）：破片 7（POPIAN）、破片U型 8（POPIAN_U），随导弹携带（dmg）供命中结算读取
   function spawnPopianMissile(e, tx, ty, idx, burst) {
     const ox = e.x + (idx === 0 ? 0 : (idx === 1 ? -7 : 7));   // 三发略错开出射点（中/左/右炮管感）
     const oy = e.y + 12;
@@ -2505,7 +2507,7 @@
     const d = Math.hypot(dx, dy) || 1;
     const isU = e.type === 'popianU';
     popianMissiles.push({ x: ox, y: oy, ux: dx / d, uy: dy / d, spd: POPIAN.missileSpeed, r: POPIAN.missileR, tx, ty, idx, burst,
-      dmgF: isU ? POPIAN_U.firstDmg : POPIAN.firstDmg, dmgW: isU ? POPIAN_U.followDmg : POPIAN.followDmg });
+      dmg: isU ? POPIAN_U.missileDmg : POPIAN.missileDmg });
     spawnParticles(ox, oy, '#ff7a45', 5, 120);
   }
 
@@ -2520,7 +2522,7 @@
         popianMissiles.splice(i, 1);
         continue;
       }
-      // 命中玩家判定点（不预先判无敌：由 popianMissileHit 依首发/后两发规则结算）
+      // 命中玩家判定点（不预先判无敌：由 popianMissileHit 统一结算——无敌帧内三发均免疫）
       if (player.alive &&
           Math.hypot(m.x - player.x, m.y - (player.y + PLAYER_CFG.hitOffsetY)) < PLAYER_CFG.hitRadius + m.r) {
         popianMissileHit(m);
@@ -2546,22 +2548,15 @@
     }
   }
 
-  // 破片导弹命中结算：首发伤害（dmgF：破片 8 / U型 10，正常无敌判定）；首发命中后，后两发无视无敌各
-  // followDmg（破片 5 / U型 7）；若首发未命中/玩家无敌，后两发命中则无敌时间 -30%（invulnMul 0.7）
+  // 破片导弹命中结算（2026-10-12 用户定稿改版：移除原「首发命中→后两发无视无敌」穿透机制）：
+  // 三连发全部正常无敌判定——无敌帧内三发均免疫；前两发（idx 0/1）命中不授予受击无敌（可被连续命中），
+  // 后一发（idx 2）命中按通用口径授予受击无敌（伤害三发同值：破片 7 / U型 8——2026-10-12 用户定稿）；
   // 破片导弹计入武器等级的受击计数，但一轮三连发（无论命中几发）仅计一次（b.counted 门控，经 accumulateWeaponDropHit 显式累加）
   function popianMissileHit(m) {
     const b = m.burst;
-    let hitLanded = false;
-    if (m.idx === 0) {
-      if (damagePlayer(m.dmgF * enemyDmgMul(), 1, false, true, 'aoe')) { b.firstHit = true; hitLanded = true; }   // 首发成功造成伤害 → 标记，后两发无视无敌（瞬时区域伤害：可莉 -30% 挂点）
-    } else if (b.firstHit) {
-      damagePlayer(m.dmgW * enemyDmgMul(), 1, true, true, 'aoe');   // 无视玩家无敌时间
-      hitLanded = true;
-    } else {
-      damagePlayer(m.dmgW * enemyDmgMul(), POPIAN.invulnCutMul, false, true, 'aoe');   // 该次受击无敌时间 -30%
-      hitLanded = true;
+    if (damagePlayer(m.dmg * enemyDmgMul(), 1, m.idx < 2, true, 'aoe')) {
+      if (!b.counted) { b.counted = true; accumulateWeaponDropHit(); }   // 整轮仅计一次命中（仅在伤害真结算时计）
     }
-    if (hitLanded && !b.counted) { b.counted = true; accumulateWeaponDropHit(); }   // 整轮仅计一次命中
     // 命中爆炸：三层粒子（不再震屏）
     spawnParticles(m.x, m.y, '#ff5a3c', 22, 320);
     spawnParticles(m.x, m.y, '#ffb545', 14, 260);
@@ -3099,8 +3094,7 @@
           damagePlayer((isPoem() ? c.poemBombDmg : c.bombDmg) * enemyDmgMul(), 1, false, false, null);
         }
         spawnParticles(b.x, b.y, '#ff4652', 20, 300);
-        spawnBlastRing(b.x, b.y, xgBlastR, '#ff5a6a', 0.3);
-        shake(4, 0.2);
+        spawnBlastRing(b.x, b.y, xgBlastR, '#ff5a6a', 0.3);   // 辛国栋地毯轰炸落点爆炸：无震屏（2026-10-12 用户定稿）
         e.xgBombs.splice(i, 1);
       }
     }
@@ -3122,8 +3116,7 @@
           damagePlayer((isPoem() ? c.poemBombDmg : c.bombDmg) * enemyDmgMul(), 1, false, false, null);
         }
         spawnParticles(b.x, b.y, '#ff4652', 20, 300);
-        spawnBlastRing(b.x, b.y, blastR, '#ff5a6a', 0.3);
-        shake(4, 0.2);
+        spawnBlastRing(b.x, b.y, blastR, '#ff5a6a', 0.3);   // 辛国栋残留地毯爆炸：无震屏（2026-10-12 用户定稿）
         state.xgLooseBombs.splice(i, 1);
       }
     }
@@ -3370,7 +3363,6 @@
       if (Math.hypot(t.x - e.x, t.y - e.y) > BLC.deathBlastR) continue;   // 仅波及自爆点周围（暴鸰 250 / 暴鸰·G 325 / 虚幻 250）内的敌方单位
       // 非真实伤害：可被御4防御光环削减；敌人伤害封顶（暴鸰系 2000 / 虚幻 1400）
       const blastDmg = Math.min(BLC.enemyDmgCap, BLC.enemyDmgBase + t.maxHp * BLC.enemyDmgRatio) * yu4AuraMul(t) * pxpfChargeHurtMul(t);
-      if (!Number.isFinite(blastDmg)) console.error('[hpNaN哨兵-blast]', e.type, t.type, 'maxHp=' + t.maxHp, 'hp=' + t.hp, 'dmg=' + blastDmg);   // 临时插桩（2026-10-12，验收后删）
       t.hp -= blastDmg;
     }
     // 结算被炸毁的敌人（重入由 killEnemy 的 _deathSettled 拦截；身份删除防索引错位；
@@ -3468,9 +3460,10 @@
     applyRewardItem(it.id);
   }
 
-  // 敌人颜色标记：决定道具掉落规则（1类按行为 / 2·3·4类按变体 / 特殊舰船与 BOSS 按固定标记）
-  //   red=套件×1.5 | purple=套件×1.2 | yellow=套件×1.2（含金）| blue=护盾6% | green=加血固定值（增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%）| orange=爆弹1%（整场一次）
-  //   gray / white / black 无专属掉落规则，仅作分类（gray=灰黑系特殊无人机/炮兵）
+  // 敌人颜色标记（1类按行为 / 2·3·4类按变体 / 特殊舰船与 BOSS 按固定标记）：
+  //   2026-10-12 用户定稿：套件/护盾不再吃颜色倍率——仅 green=加血固定值（增生侧翼艇 4% / 青时炮艇 8% / 铁砧 10%）
+  //   与 orange=爆弹 0.5%（整场一次）仍有掉落意义；red / purple / yellow / blue / gray / white / black 仅作分类
+  //   （gray=灰黑系特殊无人机/炮兵——炽心火环对灰黑 +50% 等非掉落效果仍按标记判定）
   function enemyColorTags(e) {
     switch (e.type) {
       case 'side':      // 1类：白=pass 无规则 / 黄=shoot / 紫=kamikaze（橙旋 swirl 数值沿用紫电，掉落标记同为 purple）
@@ -3518,7 +3511,6 @@
     // 低火力减免（真我/具象，mods.dropClassLowWeaken）：判定等级 = 攻击等级 + 场上升级套件数 + 4×场上暴走道具数——
     //   判定等级 1 时削减修正失效；判定等级 2 时效果减弱 50%（1类 ×0.5→×0.75 / 2类 ×0.75→×0.875）；
     //   判定等级 ≥3（含场上有暴走道具的任意情形）不减免。
-    //   BOSS 战 1类强制波的 ×0.3 削减（下方 minionDrop）不受此影响、照常生效。
     // 高能爆弹为橙色标记的独立判定（见函数末尾），不在此修正范围内
     const dMods = diffMods();
     let dropMul = 1;
@@ -3535,14 +3527,9 @@
         dropMul = clsMul;
       }
     }
-    // BOSS 战期间强制波次（全难度）的 1类敌人——所有道具掉率 ×0.3（标记见 04-spawn spawnBossMinionWave；虚象不生效）
-    if (e.minionDrop && !dMods.bossMinionDropNoReduce) dropMul *= BOSS_MINION_WAVE.dropMul;
-    // 升级套件：基础 9% → 红 ×1.5 / 紫 ×1.2 / 黄（含金）×1.2；
+    // 升级套件：基础 9%（全敌人统一——颜色倍率 2026-10-12 用户定稿取消）；
     // 再按「场上已有套件数 + 我方火力等级」统一降率：===4 全体 ×0.5、>=5 全体 ×0.3
     let kitRate = DROP_KIT_RATE;
-    if (tags.includes('red')) kitRate *= DROP_KIT_RED;
-    if (tags.includes('purple')) kitRate *= DROP_KIT_PURPLE;
-    if (tags.includes('yellow')) kitRate *= DROP_KIT_YELLOW;
     // 火力等级补偿：Lv1/Lv2/Lv3 时升级套件掉率分别 +30% / +20% / +10%（×1.3/×1.2/×1.1；Lv4+ 无修正）
     if (player.weapon === 1) kitRate *= 1.3;
     else if (player.weapon === 2) kitRate *= 1.2;
@@ -3551,8 +3538,8 @@
     if (kitLoad >= 5) kitRate *= 0.3;
     else if (kitLoad === 4) kitRate *= 0.5;
     kitRate *= dropMul;
-    // 量子护盾：基础 2% / 蓝色 6%；场上已有护盾道具或我方已带盾时 ×0.35
-    let shieldRate = tags.includes('blue') ? DROP_SHIELD_BLUE : DROP_SHIELD_RATE;
+    // 量子护盾：基础 2%（全敌人统一——蓝色 6% 专属 2026-10-12 用户定稿取消）；场上已有护盾道具或我方已带盾时 ×0.35
+    let shieldRate = DROP_SHIELD_RATE;
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
     shieldRate *= dropMul;
     // 加血套件：普通敌人走互斥链（按敌机类别 1类 0.5% / 2类 1% / 3类 2% / 4类 6%；绿标记固定值不吃类别表——
@@ -3849,7 +3836,7 @@
           const colorKey = roll.giant ? 'g' + Math.floor(Math.random() * CRYSTAL_GIANT_COLORS.length) : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS.length);   // BOSS 专属掉落：三色均分（青 / 水蓝 / 粉）+ 巨型双色均分（粉巨型仅 BOSS 可出，2026-09-27 定稿）
           crystals.push({
             x: clampDropX(e.x + rand(-200, 200), def.r), y: e.y + rand(-40, 40),
-            vx: 0, vy: rand(150, 200),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除）
+            vx: 0, vy: rand(180, 250),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除；掉速 2026-10-12 用户定稿 150~200 → 180~250）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant, firstBoss: firstBossCry,
             fromBoss: true,   // BOSS 掉落水晶标记（炼金璃隐藏计数表不计入，见 08-entities updateCrystals）
@@ -4013,7 +4000,7 @@
       if (!e.blThrown) detonateBaoling(e);
     }
     spawnParticles(e.x, e.y, e.color, 22, 260);
-    // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率 ×0.3 照常，见 rollItemDrops）
+    // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率走通用 1类修正链——×0.3 削减已取消）
     if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
     // 群星守望：击杀 1/2/3/4 类敌人时按概率消弹——
     // 常规战斗 5%/8%/15%/50% 清除离自身最近的一颗敌弹（无内置冷却）；
@@ -4200,7 +4187,7 @@
           const colorKey = roll.giant ? 'g0' : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS_NORMAL.length);   // 日常掉落：双色均分（青 / 水蓝）——粉色仅 BOSS 掉落（2026-09-27 定稿）；转巨型固定青（粉巨型同为 BOSS 专属）
           crystals.push({
             x: clampDropX(e.x + rand(-10, 10), def.r), y: e.y + rand(-6, 6),
-            vx: 0, vy: rand(150, 200),
+            vx: 0, vy: rand(180, 250),   // 垂直下坠（不乱飞；掉速 2026-10-12 用户定稿 150~200 → 180~250，与 BOSS 掉落同速）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant,
             phase: Math.random(),

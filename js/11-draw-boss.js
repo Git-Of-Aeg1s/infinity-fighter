@@ -1032,10 +1032,13 @@
         ctx.lineTo(sd * 14, 28);
         ctx.lineTo(sd * 6.2, 25);
         ctx.closePath();
-        const kg = ctx.createLinearGradient(sd * 6, 12, sd * 15, 28);
-        kg.addColorStop(0, '#4d5876');
-        kg.addColorStop(1, '#232c44');
-        ctx.fillStyle = kg; ctx.fill();
+        ctx.fillStyle = cachedBossGrad('s2armClamp|' + sd, () => {   // 静态渐变缓存（2026-10-12 优化，原每帧每臂重建）
+          const kg = ctx.createLinearGradient(sd * 6, 12, sd * 15, 28);
+          kg.addColorStop(0, '#4d5876');
+          kg.addColorStop(1, '#232c44');
+          return kg;
+        });
+        ctx.fill();
         ctx.strokeStyle = '#1c2130'; ctx.lineWidth = 1; ctx.stroke();
         // 内缘能量亮线（球体能量延伸的辉光缝）
         ctx.strokeStyle = '#8fd4ff';
@@ -1056,12 +1059,16 @@
       const arcL = L * 0.36;                       // 钩腹纵向跨度（占臂长 36%）
       const cxh = -6.6, cyh = L - arcL;            // 钩腹椭圆弧：圆心 / 半径
       const rxh = 30, ryh = arcL;
-      const ag = ctx.createLinearGradient(-10.5, 0, 24, 0);
-      ag.addColorStop(0, '#eef1f5');
-      ag.addColorStop(0.14, '#b9bfc9');
-      ag.addColorStop(0.42, '#6a6f7a');
-      ag.addColorStop(0.75, '#454a53');
-      ag.addColorStop(1, '#31353d');
+      // 臂干+钩形尾一体渐变：静态 → cachedBossGrad 缓存（2026-10-12 优化，原每帧每臂重建）
+      const ag = cachedBossGrad('s2armBody', () => {
+        const g2 = ctx.createLinearGradient(-10.5, 0, 24, 0);
+        g2.addColorStop(0, '#eef1f5');
+        g2.addColorStop(0.14, '#b9bfc9');
+        g2.addColorStop(0.42, '#6a6f7a');
+        g2.addColorStop(0.75, '#454a53');
+        g2.addColorStop(1, '#31353d');
+        return g2;
+      });
       ctx.beginPath();
       ctx.moveTo(-8.2, -3);                        // 臂根背侧
       ctx.lineTo(8.2, -3);                         // 臂根腹侧
@@ -1159,12 +1166,16 @@
     // ---- (2) 中央机体：拉丝金属装甲椭圆（高对比切面 + 曲率明暗弧 + 左上高光）----
     ctx.save();
     ctx.translate(BX, BY);
-    const bg = ctx.createLinearGradient(0, -30, 0, 24);
-    bg.addColorStop(0, '#eef2f7');
-    bg.addColorStop(0.22, '#c2c8d2');
-    bg.addColorStop(0.48, '#878d99');
-    bg.addColorStop(0.72, '#4a505c');
-    bg.addColorStop(1, '#292d36');
+    // 拉丝金属装甲椭圆渐变：静态 → cachedBossGrad 缓存（2026-10-12 优化，原每帧重建）
+    const bg = cachedBossGrad('s2hull', () => {
+      const g2 = ctx.createLinearGradient(0, -30, 0, 24);
+      g2.addColorStop(0, '#eef2f7');
+      g2.addColorStop(0.22, '#c2c8d2');
+      g2.addColorStop(0.48, '#878d99');
+      g2.addColorStop(0.72, '#4a505c');
+      g2.addColorStop(1, '#292d36');
+      return g2;
+    });
     ctx.beginPath();
     ctx.ellipse(0, 0, 34, 25, 0, 0, Math.PI * 2);
     ctx.fillStyle = bg; ctx.fill();
@@ -1181,9 +1192,13 @@
     ctx.beginPath(); ctx.ellipse(0, 1, 31.5, 23, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
     ctx.beginPath(); ctx.ellipse(0, 2.5, 29, 20, 0, 0, Math.PI * 2); ctx.stroke();
-    const spec = ctx.createRadialGradient(-12, -13, 1, -12, -13, 22);
-    spec.addColorStop(0, 'rgba(255, 255, 255, 0.30)');
-    spec.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    // 左上受光高光晕：静态 → cachedBossGrad 缓存（2026-10-12 优化，原每帧重建）
+    const spec = cachedBossGrad('s2spec', () => {
+      const g2 = ctx.createRadialGradient(-12, -13, 1, -12, -13, 22);
+      g2.addColorStop(0, 'rgba(255, 255, 255, 0.30)');
+      g2.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      return g2;
+    });
     ctx.fillStyle = spec;
     ctx.fillRect(-34, -25, 68, 50);
     ctx.restore();
@@ -1785,10 +1800,16 @@
     ctx.globalAlpha = alpha;
     const w0 = root ? halfW * 0.22 : halfW;   // 根部宽度（root 时收为细点）
     const tw = root ? Math.min(len * 0.6, halfW * 3.2) : 0;   // 收束段长度（至全宽）
-    const g = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
-    g.addColorStop(0, 'rgba(' + C.glow + ', 0)');
-    g.addColorStop(0.5, 'rgba(' + C.glow + ', 0.45)');
-    g.addColorStop(1, 'rgba(' + C.glow + ', 0)');
+    // 横截面渐变仅依赖（配色， halfW）→ cachedBossGrad 按键缓存（2026-10-12 技能6 优化：重现光束峰值
+    // 8-12 条同屏 × 每条逐帧 4 个渐变；技能1/2 同函数受益）。渐变坐标在光束局部空间解析（fill 时按当前
+    // CTM 变换），跨调用复用与逐帧重建逐像素等价；halfW 现役取值仅 s1R/s2R/s6R，缓存键空间极小。
+    const g = cachedBossGrad(`s2beamGlow|${C.glow}|${halfW}`, () => {
+      const g1 = ctx.createLinearGradient(0, -halfW * 1.9, 0, halfW * 1.9);
+      g1.addColorStop(0, 'rgba(' + C.glow + ', 0)');
+      g1.addColorStop(0.5, 'rgba(' + C.glow + ', 0.45)');
+      g1.addColorStop(1, 'rgba(' + C.glow + ', 0)');
+      return g1;
+    });
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0, -w0 * 1.9);
@@ -1809,10 +1830,13 @@
       ctx.arc(0, 0, w0 * 1.9, Math.PI / 2, Math.PI * 1.5);
       ctx.fill();
     }
-    const g2 = ctx.createLinearGradient(0, -halfW, 0, halfW);
-    g2.addColorStop(0, 'rgba(' + C.core + ', 0.85)');
-    g2.addColorStop(0.5, 'rgb(' + C.hot + ')');
-    g2.addColorStop(1, 'rgba(' + C.core + ', 0.85)');
+    const g2 = cachedBossGrad(`s2beamCore|${C.core}|${C.hot}|${halfW}`, () => {
+      const gc = ctx.createLinearGradient(0, -halfW, 0, halfW);
+      gc.addColorStop(0, 'rgba(' + C.core + ', 0.85)');
+      gc.addColorStop(0.5, 'rgb(' + C.hot + ')');
+      gc.addColorStop(1, 'rgba(' + C.core + ', 0.85)');
+      return gc;
+    });
     ctx.fillStyle = g2;
     ctx.beginPath();
     ctx.moveTo(0, -w0);
@@ -1830,11 +1854,14 @@
       ctx.fill();
     }
     if (root) {
-      // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出
-      const rg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
-      rg.addColorStop(0, 'rgba(' + C.hot + ', 0.9)');
-      rg.addColorStop(0.45, 'rgba(' + C.mid + ', 0.45)');
-      rg.addColorStop(1, 'rgba(' + C.core + ', 0)');
+      // 核心辉光：起点处白蓝热斑，光束看起来自核心（电弧能量球）喷涌而出——渐变在局部原点，直接缓存
+      const rg = cachedBossGrad(`s2beamRoot|${C.hot}|${C.mid}|${C.core}|${halfW}`, () => {
+        const rr = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.6);
+        rr.addColorStop(0, 'rgba(' + C.hot + ', 0.9)');
+        rr.addColorStop(0.45, 'rgba(' + C.mid + ', 0.45)');
+        rr.addColorStop(1, 'rgba(' + C.core + ', 0)');
+        return rr;
+      });
       ctx.fillStyle = rg;
       ctx.beginPath();
       ctx.arc(0, 0, halfW * 1.6, 0, Math.PI * 2);
@@ -1844,14 +1871,22 @@
     ctx.beginPath();
     ctx.arc(len, 0, halfW, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
-    const hgl = ctx.createRadialGradient(len, 0, 1, len, 0, halfW * 1.7);
-    hgl.addColorStop(0, 'rgba(' + C.hot + ', 0.95)');
-    hgl.addColorStop(0.45, 'rgba(' + C.mid + ', 0.5)');
-    hgl.addColorStop(1, 'rgba(' + C.core + ', 0)');
+    // 头端白蓝热斑：坐标依赖 len（增长/飞行中逐帧变化，渐变对象不可按 len 缓存）→
+    // 平移到头端后用局部原点缓存渐变绘制（数学等价，2026-10-12 技能6 优化）
+    ctx.save();
+    ctx.translate(len, 0);
+    const hgl = cachedBossGrad(`s2beamHead|${C.hot}|${C.mid}|${C.core}|${halfW}`, () => {
+      const hg = ctx.createRadialGradient(0, 0, 1, 0, 0, halfW * 1.7);
+      hg.addColorStop(0, 'rgba(' + C.hot + ', 0.95)');
+      hg.addColorStop(0.45, 'rgba(' + C.mid + ', 0.5)');
+      hg.addColorStop(1, 'rgba(' + C.core + ', 0)');
+      return hg;
+    });
     ctx.fillStyle = hgl;
     ctx.beginPath();
-    ctx.arc(len, 0, halfW * 1.7, 0, Math.PI * 2);
+    ctx.arc(0, 0, halfW * 1.7, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
     if (len > 12) {
       // 锯齿电弧：沿光束主轴双 pass（配色层外弧 + 白热细芯），每 1/12s 换一次形状
       const seg = Math.max(4, Math.floor(len / 26));

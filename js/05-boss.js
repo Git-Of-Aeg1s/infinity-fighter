@@ -498,8 +498,7 @@
       if (!s.charged && s.t >= 0.7) {
         s.charged = true;
         makeEnemy('tornado', e.x, e.y + e.h * 0.30);
-        spawnParticles(e.x, e.y + e.h * 0.3, '#ffffff', 26, 260);
-        shake(6, 0.3);
+        spawnParticles(e.x, e.y + e.h * 0.3, '#ffffff', 26, 260);   // 召唤龙卷：无震屏（2026-10-12 用户定稿）
       }
     } else if (s.id === 2) {
       // 技能3：连续布置风柱标记（具象：每 0.32s 一处，各 1.3s 后降下打击）
@@ -840,6 +839,7 @@
       bossRound: opts.bossRound || false,   // BOSS 圆形弹幕：白核→主色渐变渲染（见 10-draw-world）
       arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 0.6s（2026-10-10 用户反馈 1.5s 太慢改快，见 10-draw-world arcTintColor）
       dhDark: opts.dhDark || false,   // 黑暗之手暗核弹：黑主体 + 边缘一小圈红（accent = color）渐变渲染（见 10-draw-world）
+      grad: opts.grad || null,   // 渐变风味键（'hr' 黑红 / 'yr' 黄红 / 其他 = 白核→主色→暗橙红边，见 10-draw-world 圆弹 grad 分支）
       tart: opts.tart || false,   // 蛋挞弹：水彩蛋挞贴图渲染（tartImg 烘焙贴图，见 10-draw-world；未加载回退渐变弹）
       tartSpin: opts.tartSpin,           // 巨大蛋挞自旋相位（黑暗之手技能3；有此字段 = 大蛋挞形态：判定半径即视觉半径、持续自旋）
       tartSpinSpd: opts.tartSpinSpd || 0,   // 自旋角速度（rad/s，08-entities 逐帧推进相位）
@@ -1058,8 +1058,11 @@
     // 航点扫动移动：moveRate 降档时期望速度上限随之归零（分轴转向曲线内平滑减速至停）
     if (e.skill && e.skill.id === 0 && e.s1LockY != null && e.wp) {
       // 技能1全程（蓄力+激光）：纵向锁定在起手高度、仅左右移动——激光竖直带随机体横向扫动，
-      // 纵向漂移会让激光带高度变化、预警失真；覆盖航点 ty（含技能期间新取航点），换段照常
+      // 纵向漂移会让激光带高度变化、预警失真；覆盖航点 ty（含技能期间新取航点），换段照常；
+      // 纵向速度经大减速平滑归零（指数衰减 ≈0.3s 衰减至 <5%、低速阈值 2px/s 归零，
+      // 2026-10-12 用户定稿，替代起手一帧清零瞬停）
       e.wp.ty = e.s1LockY;
+      e.bvy = Math.abs(e.bvy) < 2 ? 0 : e.bvy * Math.exp(-8 * dt);
     }
     bossMoveUpdate(e, STORM2.move, dt, e.moveRate);
 
@@ -1100,9 +1103,9 @@
 
     switch (id) {
       case 0:   // 技能1：电弧球蓄力 → 向下强力电弧激光；真我：移动中连续射出 5 次（预警跨发重叠，2~5 次预警圈与首发同规格）。
-        //   起手锁定纵向高度（s1LockY）并清零纵向速度：激光竖直带随机体横向扫动——技能全程仅左右移动，纵向不飘
+        //   起手锁定纵向高度（s1LockY）：激光竖直带随机体横向扫动——技能全程仅左右移动，纵向不飘；
+        //   纵向速度经移动更新处大减速平滑归零（2026-10-12 用户定稿，替代起手一帧清零瞬停）
         e.s1LockY = e.y;
-        e.bvy = 0;
         e.skill = isRealme()
           ? { id: 0, t: 0, dur: 1e9, realme: true, shot: 0, st: 0, pt: 0, nextAt: 0, gap: 0, fired: false }
           : { id: 0, t: 0, dur: STORM2.s1Charge + STORM2.s1BeamDur, fired: false };
@@ -1980,9 +1983,11 @@
       // 等弧长回采样，见 dhMakeTart/dhUpdateTart），带出现期粒子与暖金拖尾，伤害/节奏同原光束（dmg 50 ×
       // bossDmgMul、命中一次、白盾无影响）；真我/诗篇触左右屏缘逐节反弹（头部折返写入轨迹，非整条瞬弹）；
       // 居中机制（2026-10-03 用户定稿）：释放瞬间记录起点，本体以 smoothstep 剖面（初速/末速均为 0，加速度连续
-      // ——速度曲线铁律：不瞬起不瞬停）水平移向屏幕中线并停稳（moveDur 1.6s < 第二轮发射 2.4s——四轮定稿预警 1.2s），第三轮发射
-      // 时本体必居中 → 双后翼蛋挞必然左右对称；释放期间常规移动由 updateBossDarkhand 跳过（本技能接管位置）
+      // ——速度曲线铁律：不瞬起不瞬停）水平移向屏幕中线并停稳（moveDur 1.6s ≤ 第二轮发射时刻（2×预警时长：基准/真我
+      // 2.4→2.0s、诗篇 1.6s 恰好停稳——预警时长 2026-10-12 用户定稿难度分档），第三轮发射时本体必居中 → 双后翼蛋挞
+      // 必然左右对称；释放期间常规移动由 updateBossDarkhand 跳过（本技能接管位置）
       const c = DARKHAND.s4;
+      const warnDur = isPoem() ? c.poemWarnDur : isRealme() ? c.realmeWarnDur : c.warnDur;   // 每组预警时长按难度（基准/虚象/具象 1.2 / 真我 1.0 / 诗篇 0.8）
       if (s.mx0 == null) { s.mx0 = e.x; s.my0 = e.y; s.mdist = CANVAS_W / 2 - e.x; s.mt = 0; }
       if (Math.abs(s.mdist) > 0.5 && s.mt < c.moveDur) {
         s.mt += dt;
@@ -1992,7 +1997,7 @@
       }
       if (s.st === 'warn') {
         s.pt += dt;
-        if (s.pt >= c.warnDur) {
+        if (s.pt >= warnDur) {
           for (const gm of c.groups[s.gi]) {
             const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);
             s.tarts.push(dhMakeTart(sx, sy, gm.ang));
@@ -2211,7 +2216,7 @@
           const gx = e.x + side * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;   // 前爪位置（同 s4 groups[1]）
           const dir = s.round === 0 ? side : -side;   // 第一轮向外 / 第二轮向内（dir 决定偏离竖直的方向）
           const ang = Math.PI / 2 + dir * i * step;
-          pushBossBullet(gx, gy, ang, pc.bulletSpeed, { r: pc.bulletR, dmg: isPoem() ? pc.poemDmg : pc.dmg, color: '#e02424', dhDark: true });
+          pushBossBullet(gx, gy, ang, pc.bulletSpeed, { r: pc.bulletR, dmg: isPoem() ? pc.poemDmg : pc.dmg, color: '#e02424', grad: 'hr' });   // 黑红渐变（2026-10-12 用户反馈：原 dhDark 暗核弹太黑看不清——改朴学峰精英本体同款 gradHR 风味，红色明显）
           spawnParticles(gx, gy, '#ff4632', 2, 90);
         }
       }
@@ -2586,13 +2591,16 @@
     if (e.hpTrail == null) e.hpTrail = e.hp;
     e.hpTrail += (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
 
-    // 技能1（主技能或连携技能1）：具象/虚象与连携技能1期间停止移动（停移期间清零速度，
+    // 技能1（主技能或连携技能1）：具象/虚象与连携技能1期间停止移动（停移期间速度经大减速平滑归零——
+    // 指数衰减 ≈0.3s 衰减至 <5%、低速阈值 2px/s 归零，2026-10-12 用户定稿替代一帧清零瞬停；
     // 技能结束从静止平滑加速）；真我/诗篇主技能1不再停顿——移速 ×s1MoveSlow（-75%），期望速度
     // 经转向加速度平滑过渡，无骤降/骤停（航点保持原样，技能结束从当前位置继续当前段）
     const s1Main = !!(e.skill && e.skill.id === 0);
     const s1Link = !!(e.link && e.link.id === 0);
     if (s1Link || (s1Main && !songRealmeTier())) {
-      e.bvx = 0; e.bvy = 0;
+      const dec = Math.exp(-8 * dt);
+      e.bvx = Math.abs(e.bvx) < 2 ? 0 : e.bvx * dec;
+      e.bvy = Math.abs(e.bvy) < 2 ? 0 : e.bvy * dec;
     } else {
       bossMoveUpdate(e, BOSS.move, dt, s1Main ? SONG_SHIP.s1MoveSlow : 1);
     }

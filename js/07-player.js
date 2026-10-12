@@ -419,7 +419,6 @@
     for (const { e, isMain } of targets) {
       let dmg = lvl.dmg * (berserk ? BERSERK.subDmgMul : 1) * dmgMul * enemyDamageMul(e, false) * rewardOutMul();   // 暴走全局修正：斩击伤害 +50%（连斩节奏不变）；暴风之眼战其余伤害削减已取消（2026-10-02 用户定稿：非风暴伤害不再削减，暴风之眼血量 ×2 代偿）
       e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e));   // 空间斩击为常规直击伤害：先被夏勇屏障吸收（技能3，2026-10-03 二轮定稿）；朴学峰冲刺易伤 ×2
-      if (!Number.isFinite(e.hp)) console.error('[hpNaN哨兵]', 'slash', e.type, e.variant || '', e.hp, dmg);   // 临时插桩：定位 hp NaN 写入源（2026-10-12，验收后删）
       // 斩击击碎虚化护盾：护盾碎裂消散、立即恢复可伤（斩击本就无视虚化；特效与镰刀共用 breakPhaseShield）
       if (e.phase > 0) breakPhaseShield(e);
       // 命中粒子仅主目标（2026-10-12 用户定稿：斩击无「闪白反馈+贯穿白线」——该反馈已整体删除，副目标只掉血零特效）
@@ -483,14 +482,16 @@
     // 连斩队列推进：队列元素 = 待释放的线序（0 中线 / -1 左刃线 / +1 右刃线）。
     // 同一攻击全部斩击按「中→左→右」排列依次释放（不同时落下，2026-10-10 用户定稿），
     // 逐击即时锁定该线当前目标——两次斩击可落不同目标；暴走每击间隔 0.05s / 非暴走 0.1s；
-    // 某线无目标则该击空过（无特效无伤害，间隔照走——三线独立判定，各线是否斩击互不关联）
+    // 某线无目标则该击空过（无特效无伤害，间隔照走——三线独立判定，各线是否斩击互不关联）。
+    // 攻击周期口径（2026-10-12 用户定稿）：首击瞬间即起算下一轮 interval——连斩间隔与攻击冷却
+    // **并行流逝**（队列处理不再冻结 slashCd），总周期恒 = interval、连斩不延长周期，
+    // 持续 DPS 与图鉴表值一致（2×dmg/interval；原实现周期 = interval + 连斩尾巴，-6%/-20% 折损已消除）
     if (player.slashQueue.length > 0) {
       player.slashGapT -= dt;
       if (player.slashGapT <= 0) {
         doSlashLine(lvl, player.slashQueue.shift());
         player.slashGapT = player.weapon === 5 ? STARSLAYER.slashGapBerserk : STARSLAYER.slashGapBase;
       }
-      return;
     }
 
     player.slashCd -= dt * playerFrostSlowMul() * hasteMul();
@@ -498,6 +499,9 @@
     // 锁定中 / 无目标：保持就绪，解锁 / 出现目标后立即斩击（暴走任一线有目标即触发一轮）
     const anyLineT = player.slashTarget || (player.slashSideT && (player.slashSideT[0] || player.slashSideT[1]));
     if (playerFireLocked() || !anyLineT) { player.slashCd = 0; return; }
+    // 防御（当前配置数学不可达：暴走 interval 1.0s > 队列排空 0.25s）：到点发起新一轮时若队列仍残留，
+    // 丢弃残留防两轮击数叠加（DPS 恒定优先；若未来 interval 调短于连斩尾巴，以新一轮为准截断）
+    player.slashQueue.length = 0;
     player.slashCd = lvl.interval;
     player.slashPrevDeg = null;   // 夹角链按攻击重置（连续斩击两两夹角 ≥ slashAngleGapMin）
     doSlashLine(lvl, 0);   // 首击 = 中线
@@ -1090,8 +1094,7 @@
             bl.done = true;
           }
         }
-        spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 22, 220);
-        shake(4, 0.2);
+        spawnParticles(player.x, player.y, ARMOR_SKILLS.lanxin.color, 22, 220);   // 到期冲击波：无震屏（2026-10-12 用户定稿）
       }
     }
     // 炽心：火环持续灼烧周围敌人——每 0.125s 对火环半径内的敌人造成 10 伤害（BOSS 战演出停手期间同样暂停）
@@ -1207,7 +1210,7 @@
     player.slashCd = 0; player.slashTarget = null; player.slashSideT = null; player.slashQueue = []; player.slashPrevDeg = null; player.slashGapT = 0;   // 群星之杀斩击运行态重置
     player.subCooldown = 0;      // 副武器冷却就绪
     feijianWaves.length = 0;     // 无界飞剑：未发射的飞剑波随重生清除（否则冻结在阵亡位置）
-    xinRings.length = 0;         // 辛国栋之怒：灼烧火环随重生清除
+    // 辛国栋之怒火环死亡不消失（2026-10-12 用户定稿：灼烧火环跨命保留，死亡期间随 updatePlayer 冻结、重生后继续转；仅重开/金陨口径见 12-ui resetGame 与金陨段）
   }
 
   // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 3 次掉 1 级火力
@@ -1230,16 +1233,14 @@
   //   可莉：'aoe' / 'stormAoe' 瞬时区域伤害 -30%、'missile' 导弹伤害 -30%
     //   （长条激光 / 持续灼烧 / 撞击伤害不打标，天然不适用）；哈基米闪避对所有来源生效
   // cause = 成就系统死亡原因标记（02-achievements achvOnDeath；见该文件头部 cause 取值表），仅掉命时消费
-  function damagePlayer(amount, invulnMul = 1, ignoreInvuln = false, isMissile = false, src = null, cause = null) {
+  function damagePlayer(amount, invulnMul = 1, noInvulnGrant = false, isMissile = false, src = null, cause = null) {
     if (!player.alive) return false;
     // 作弊无敌（0 键）：伤害归零但受击结算照常——子弹正常命中消耗、受击闪白/震屏/红晕、受击无敌帧、
     // 受击掉级计数与驾驶员/装甲受击衍生（闪避 / 圣守窗口 / 减半）全部照常，仅血量不掉
     //（屏障消耗块有 amount>0 门控自动跳过，不会白白消耗屏障；2026-10-11 用户定稿）
     if (state.cheatInvuln) amount = 0;
-    if (!ignoreInvuln && player.invuln > 0) return false;   // 无敌帧内免疫（ignoreInvuln=true 时穿透无敌，如破片后两发导弹）
-    // 天枢圣卫：无敌期间免疫破片导弹的"无视无敌"穿透（ignoreInvuln 仅破片后续导弹使用）
-    if (ignoreInvuln && player.invuln > 0 && currentArmor.id === 'tianshu') return false;
-    if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（无视无敌 ≠ 无视护盾）
+    if (player.invuln > 0) return false;   // 无敌帧内免疫（2026-10-12 用户定稿：移除破片导弹"无视无敌"穿透——一切来源均不可穿透无敌帧）
+    if (player.shield > 0 || player.crystalShield > 0) return false;   // 量子护盾 / 七日澜心结晶护盾期间免疫（护盾同不可穿透）
     // 奖励道具·哦哦！抽卡！：原石汇集→陨石坠落全套演出期间无敌（伤害与受击全部免疫，演出结束即恢复）
     if (state.gachaFx) return false;
     // 奖励道具·酒客之影：透明化 + 30s 内 100% 闪避——每当成功闪避一次，闪避概率 -20%
@@ -1251,8 +1252,7 @@
         state.jiukeDodgePct = Math.max(0, state.jiukeDodgePct - 20);
         player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;
         player.hitFxT = 0.28;
-        shake(3, 0.15);
-        playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.4, r: 16, seed: Math.random() * 10 });
+        playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.4, r: 16, seed: Math.random() * 10 });   // 闪避成功：无震屏（2026-10-12 用户定稿）
         spawnParticles(player.x, player.y, '#cfd8ff', 12, 180);
         return true;   // 闪避成功：有受击反馈、无血量结算、不计入受击掉级计数
       }
@@ -1287,8 +1287,7 @@
       player.tianshuCycleT = 0;   // 触发后等无敌结束再重新计时（updatePlayer 以 invuln<=0 门控）
       player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;
       spawnArmorGlyphFx('⬡', currentArmor.hexWhite, 0.8, 'pulse', true);   // 核心处白色六边图案扩散渐隐（技能生效反馈，与窗口开启演出同构）
-      spawnParticles(player.x, player.y, currentArmor.color, 14, 190);
-      shake(3, 0.15);
+      spawnParticles(player.x, player.y, currentArmor.color, 14, 190);   // 天枢圣卫窗口开启：无震屏（2026-10-12 用户定稿）
       return true;   // 镜像哈基米闪避：有受击反馈、无血量结算、不计入受击掉级计数
     }
     // 天秀忧郁王子：暴风之眼伤害削减（在任何结算前套用削减）
@@ -1311,8 +1310,7 @@
     if (hasPilot('hajimi') && (player.weapon === 5 || state.hajimiTailT > 0)) {
       if (Math.random() < PILOTS.hajimi.dodgeBase + state.hajimiDodgeBonus) {
         state.hajimiDodgeBonus = 0;
-        player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;
-        shake(3, 0.15);
+        player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;   // 闪避成功：无震屏（2026-10-12 用户定稿）
         player.hitFxT = 0.28;
         state.hurt = Math.min(1, state.hurt + 0.3);
         playerHitFx.push({ x: player.x, y: player.y, t: 0, max: 0.4, r: 16, seed: Math.random() * 10 });
@@ -1333,7 +1331,7 @@
     // 测试模式（图鉴挑战）：玩家不再无敌 —— 照常扣血，但不掉命、不掉武器等级；血量 ≤0 立刻重置为满（视为不死）
     if (state.challenge) {
       player.hp -= amount;
-      player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示（虚象：无敌时间 +50%）
+      if (!noInvulnGrant) { player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true; }   // 受击无敌：闪动提示（虚象：无敌时间 +50%；noInvulnGrant=破片前两发命中不触发无敌，2026-10-12 用户定稿）
       shake(3, 0.15);   // 受击震屏较弱
       player.hitFxT = 0.28;   // 机体受击闪白
       state.hurt = Math.min(1, state.hurt + 0.4);   // 屏幕边缘红晕（较弱）
@@ -1347,7 +1345,7 @@
     }
     player.hp -= amount;
     achvNoteDamage();   // 成就：本局已受伤（无伤成就 / BOSS 战无伤标记）
-    player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true;   // 受击无敌：闪动提示（虚象：无敌时间 +50%）
+    if (!noInvulnGrant) { player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() * invulnMul; player.invulnBlink = true; }   // 受击无敌：闪动提示（虚象：无敌时间 +50%；noInvulnGrant=破片前两发命中不触发无敌，2026-10-12 用户定稿）
     shake(4, 0.2);   // 受击震屏较弱（掉命时的强震屏另行处理）
     player.hitFxT = 0.28;   // 机体受击闪白
     state.hurt = Math.min(1, state.hurt + 0.6);   // 屏幕边缘红晕（叠加有上限）
@@ -1380,6 +1378,13 @@
   //   埃逸：任何掉命都先置蓄力自爆（updatePlayer 推进）；最后一条命不进失败结算——
   //         延后到自爆结算完成后，若自爆击杀 BOSS 带来胜利（bossFlow.victoryDelay）则跳过失败结算
   function handlePlayerDeath() {
+    // 道具死亡口径（2026-10-12 用户定稿，三条死亡路径统一收口）：
+    // 酒客闪避 / 轰轰炸弹 / 牢大特饮死亡即失去效果（复位同 resetGame 口径）；
+    // 寒霜发生器力场死亡时立即转为发射态朝上离场（不消失——死亡期间 updateRewardFx 冻结，重生后继续上飘出屏）
+    state.jiukeT = 0; state.jiukeDodgePct = 0;
+    state.honghongT = 0;
+    state.laodaT = 0; state.laodaMul = 1;
+    if (state.frostField && !state.frostField.launched) { state.frostField.launched = true; state.frostField.vy = -80; }
     if (hasPilot('aiyi')) {
       player.aiyiChargeT = state.lives <= 0 ? PILOTS.aiyi.chargeDurFinal : PILOTS.aiyi.chargeDur;
       if (state.lives <= 0) state.aiyiFinalDeath = true;
@@ -1503,7 +1508,7 @@
   }
 
   // 澄月：触发暴走（新触发与暴走续时均判定一次）时概率获得量子护盾——
-  // 常规 15% / BOSS 战 40%（每个 BOSS 限一次；时长 6s 与通用量子护盾一致，走注册表 ARMORS.chengyue.shieldDur）
+  // 常规 22.5%（2026-10-12 用户定稿，原 15%）/ BOSS 战 40%（每个 BOSS 限一次；时长 6s 与通用量子护盾一致，走注册表 ARMORS.chengyue.shieldDur）
   function tryChengyueShield() {
     if (currentArmor.id !== 'chengyue') return;
     const bossFight = bossFlow.stage === 'fight';
@@ -1547,8 +1552,7 @@
     if (currentArmor.id === 'lanxin') {
       player.crystalShield = crystalShieldDur();   // 结晶护盾时长（炼金璃 6s / 基准 4.8s，01-config 单一入口）
       achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
-      spawnParticles(player.x, player.y, def.color, 20, 180);
-      shake(3, 0.15);
+      spawnParticles(player.x, player.y, def.color, 20, 180);   // 澜心护盾开启：无震屏（2026-10-12 用户定稿）
     }
     return true;
   }
@@ -1759,8 +1763,8 @@
       case 'laodaDrink':   // 牢大特饮：移速目标 ×1.40，15s（乘数指数逼近 ≈0.5s 平滑过渡——速度曲线铁律）
         state.laodaT = 15;
         break;
-      case 'magnetShroom': // 磁力菇：水晶拾取半径 +50（一整局、可叠加；08-entities 水晶吸附读取）
-        state.magnetBonus += 50;
+      case 'magnetShroom': // 磁力菇：水晶拾取半径 +75（2026-10-12 用户定稿 +50→+75；一整局、可叠加；08-entities 水晶吸附读取）
+        state.magnetBonus += 75;
         break;
       case 'noLingluo':    // 不再陵落：9s 螺旋飞剑风暴（32 发/s，起始朝上每发 +25°，每圈自带 25° 偏移）
         state.swordStormT = 9;
@@ -1778,8 +1782,10 @@
         state.jiukeT = 30;
         state.jiukeDodgePct = 100;
         break;
-      case 'xinguodongFury':   // 辛国栋大怒：固定位置生成扩散火环，6s 后全屏灼烧，再 4s 渐隐；多道并存（重复拾取不清除此前火环与效果，2026-10-11 用户定稿）
-        state.xinFuryRings.push({ x: player.x, y: player.y, r: 10, rMax: Math.hypot(CANVAS_W, CANVAS_H) * 0.6, t: 0, expandDur: 6, burnDur: 4, dps: 200, tick: 0.2, tickT: 0, burnt: false, alpha: 1 });
+      case 'xinguodongFury':   // 辛国栋大怒：固定位置生成扩散怒意之环，环带持续灼烧扫过的敌人，6s 扩至最大后再停留 6s 渐隐；多道并存（重复拾取不清除此前火环与效果，2026-10-11 用户定稿）
+        // dps 200 = 辛国栋之怒（副武器）火力 Lv4 灼烧秒伤（01-config-loadout SUB_WEAPONS.xinring fire.levels.4，2026-10-12 用户定稿对齐）；
+        // tick 统一 0.1s（与副武器同款，单跳 = dps × tick = 20）；burnDur 停留 6s（2026-10-12 用户定稿 4 → 6）
+        state.xinFuryRings.push({ x: player.x, y: player.y, r: 10, rMax: Math.hypot(CANVAS_W, CANVAS_H) * 0.6, t: 0, expandDur: 6, burnDur: 6, dps: 200, tick: 0.1, tickT: 0, alpha: 1 });
         break;
       case 'honghongBomb':     // 轰轰炸弹：20s 内击败敌人触发连锁爆炸（06-enemy killEnemy 读取 state.honghongT）
         state.honghongT = 20;
@@ -1815,7 +1821,8 @@
   }
 
   // 不再陵落：单发螺旋飞剑。伤害/外观取当前火力等级的无界飞剑参数（SUB_WEAPONS.feijian.fire）；
-  // 直向飞行（无 homing）；可穿透 2 个敌人（mainPierce 2），每次穿透伤害 -20%（pierceDmgMul 自带衰减率，
+  // 直向飞行（无 homing）；可穿透 2 个敌人（mainPierce 2），每次穿透伤害 -20% 基准线性衰减
+  // （pierceStep 0.2 + pierceBase 基准：100% → 80% → 60%，2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；
   // 08-entities 结算；对 BOSS / 4类主力舰·法术阵列不穿透）；
   // 射出方向在水平线以下（vy>0）标记 lowArc，对 BOSS 仅 50% 伤害（08-entities 命中结算读取）
   function fireSwordStormOne() {
@@ -1825,7 +1832,7 @@
     pBullets.push({
       x: player.x, y: player.y - 6,
       vx: Math.cos(ang) * f.speed, vy: Math.sin(ang) * f.speed,
-      r: f.r, dmg: lv.dmg, len: f.len, sword: true, sub: true, mainPierce: 2, pierceDmgMul: 0.8,
+      r: f.r, dmg: lv.dmg, len: f.len, sword: true, sub: true, mainPierce: 2, pierceStep: 0.2, pierceBase: lv.dmg,
       ...(Math.sin(ang) > 0 ? { lowArc: true } : {}),
     });
     state.swordStormAng += 25 * Math.PI / 180;   // 顺时针偏转 25°（每圈转完自带 25° 偏移）
@@ -1885,36 +1892,44 @@
     // 轰轰炸弹：倒计时（连锁爆炸结算见 06-enemy killEnemy）
     if (state.honghongT > 0) state.honghongT = Math.max(0, state.honghongT - dt);
 
-    // 辛国栋大怒：固定位置扩散火环（不移动）。0~6s 半径扩张至全屏，6s 时对全场灼烧一次，再 4s 渐隐；
-    // 多道并存：每道独立计时——重复拾取不清除此前火环（含其尚未发生的全屏灼烧），2026-10-11 用户定稿
+    // 辛国栋大怒：固定位置扩散怒意之环（不移动），持续灼烧（2026-10-12 用户定稿，原 6s 一次性全场灼烧）：
+    // 0~6s 半径 10 → rMax 线性扩张，环带扫过之处每 0.1s 对带内敌人灼烧一跳（dps × tick = 20，辛国栋 ×5，
+    // BOSS 免疫同原口径）——敌人随环带外扩被陆续反复烧到；6s 后半径停在 rMax 再停留 6s 渐隐（环带已出屏，
+    // 无伤害对象）；多道并存：每道独立计时——重复拾取不清除此前火环
     for (let i = state.xinFuryRings.length - 1; i >= 0; i--) {
       const xr = state.xinFuryRings[i];
       xr.t += dt;
       if (xr.t < xr.expandDur) {
         // 扩张阶段：半径从 10 → rMax（线性）
         xr.r = 10 + (xr.rMax - 10) * (xr.t / xr.expandDur);
-      } else if (!xr.burnt) {
-        // 6s 到达：对全场敌人灼烧一次（对辛国栋 ×5）
-        xr.burnt = true;
-        xr.r = xr.rMax;
-        achvSetKillSrc('xinguodong');
-        const killed = [];
-        for (const e of enemies) {
-          if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
-          if (e.type === 'boss') continue;   // BOSS 不被这次全场灼烧（避免直接秒杀）
-          const dmg = e.type === 'xinguodong' ? xr.dps * 5 : xr.dps;
-          e.hp -= dmg * rewardOutMul() * pxpfChargeHurtMul(e);
-          spawnParticles(e.x, e.y, '#ff8fab', 3, 100);
-          if (e.hp <= 0) killed.push(e);
-        }
-        for (const t of killed) { const j = enemies.indexOf(t); if (j >= 0) killEnemy(j); }
-        achvClearKillSrc();
       } else {
-        // 渐隐阶段：4s 内 alpha 1→0
+        // 渐隐阶段：半径停在 rMax，6s 内 alpha 1→0
         const fadeT = xr.t - xr.expandDur;
         xr.alpha = Math.max(0, 1 - fadeT / xr.burnDur);
-        if (fadeT >= xr.burnDur) state.xinFuryRings.splice(i, 1);
+        if (fadeT >= xr.burnDur) { state.xinFuryRings.splice(i, 1); continue; }   // 到期移除，不再结算灼烧
       }
+      // 环带持续灼烧：每 0.2s 一跳；判定 = 敌人中心与环心距离落在环带（当前半径 ±24px 贴合视觉火舌带
+      // 0.88r~r ± 波动 7px，再放敌人半尺寸）内；击杀归属辛国栋（achv 击杀来源）
+      xr.tickT += dt;
+      if (xr.tickT < xr.tick) continue;
+      xr.tickT = 0;
+      achvSetKillSrc('xinguodong');
+      const killed = [];
+      for (const e of enemies) {
+        if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+        if (e.type === 'boss') continue;   // BOSS 免疫（同原一次性灼烧口径）
+        const band = 24 + Math.min(e.w, e.h) / 2;
+        if (Math.abs(Math.hypot(e.x - xr.x, e.y - xr.y) - xr.r) > band) continue;
+        const dmg = xr.dps * xr.tick * (e.type === 'xinguodong' ? 5 : 1) * rewardOutMul() * pxpfChargeHurtMul(e);
+        // 一般伤害口径（2026-10-12 用户定稿，同炽心灼烧 L1115）：可被御4防御光环削减；
+        // xiayongBarAbsorb 仅对夏勇精英（type xiayong）生效——其技能3 铜皮屏障（红色护盾量表 xyBarHp）
+        // 先行吸收，其余敌人直接透传原伤害
+        e.hp -= xiayongBarAbsorb(e, dmg * yu4AuraMul(e));
+        spawnParticles(e.x, e.y, '#ff8fab', 2, 100);
+        if (e.hp <= 0) killed.push(e);
+      }
+      for (const t of killed) { const j = enemies.indexOf(t); if (j >= 0) killEnemy(j); }
+      achvClearKillSrc();
     }
   }
 
@@ -1988,7 +2003,7 @@
     clearEnemyBullets();     // 敌方子弹（全场）
     pBullets.length = 0;     // 我方子弹（全场，含未发射的悬浮飞剑波一并收束）
     feijianWaves.length = 0;
-    xinRings.length = 0;     // 辛国栋之怒火环
+    // 辛国栋之怒火环金陨不清（2026-10-12 用户定稿：清不掉火环，灼烧跨金陨保留——道具怒意之环 xinFuryRings 本就不在此清）
     clearMissiles();         // 导弹/预警线/破片导弹/斩击流/正方体/zoneMarks/风流/风柱/涡流
     cancelBossWarns();       // BOSS 预警技能中断 + 登场中的战争幽灵击杀
     // 秒杀类通道置位（仅金陨）：结算循环（含暴鸰殉爆等连锁击杀）内禁召唤型亡语；循环结束即复位
@@ -2032,8 +2047,7 @@
     if (hasPilot('tianxiu') && keyName === 'q') {
       if (state.princeGauge < 1) return false;
       state.princeGauge = 0;
-      launchFriendStorm();
-      shake(5, 0.25);
+      launchFriendStorm();   // 忧郁王子 Q 友方风暴：无震屏（2026-10-12 用户定稿）
       achvNotePilotSkillUsed();   // 成就：忘了——天秀 Q 技能已使用
       return true;
     }

@@ -10,10 +10,10 @@
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
-  import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
+  import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns } from './04-spawn.js';
+  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -300,6 +300,18 @@
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
         // 大狗：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
+        // 非诗篇：升级判定特殊级/额外级附加波（2026-10-12 用户定稿，概率/权重同诗篇额外通道）——
+        // 额外波次（特殊定位全池 50%/100%/100%）+ 真额外三项（单/双导弹互斥 + 增益无人舰）；
+        // BOSS 战 / 结算窗口内升级不判定（避免乱入）；诗篇不走此分支（诗篇每波判定，见诗篇分支额外生成三连）
+        if (!isPoem() && !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
+            bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+          const lvUp = levelFlow.level;
+          for (const extra of [pickPoemExtraCard(lvUp), pickPoemTrueExtra(lvUp)]) {
+            if (!extra) continue;
+            const f = t3SpawnCardById(extra.id);
+            if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
+          }
+        }
       } else if (levelFlow.level < levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
       }
@@ -333,10 +345,12 @@
       // BOSS 流程状态机：none → wait(等清场) → warn(警报演出) → fight(BOSS战) → none
       // 关卡节奏：刷怪 50s → 旧日之歌 → 击败后 2s + 固定首波 + 4s → 再刷怪 50s → 黑暗之手 → 同上衔接 → 再刷怪 50s → 暴风之眼 → 风暴编织者 → 胜利结算
       // 达到登场条件后不再出怪；场上清空后播放警报，演出结束 BOSS 中速进场并展开
+      // 延迟出场队列（z*8 单点排队等）逐帧倒计时到点生成——通用推进（2026-10-12 bug 修复：
+      // 原仅在挑战分支调用，正常波抽到 z*8 且命中排队侧时该侧敌机入队后永不生成、整侧静默丢失）
+      updateDelayedSpawns(dt);
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
-        updateDelayedSpawns(dt);   // 延迟出场队列（z*8 单点排队等）：仅测试波会入队，逐帧倒计时到点生成
       } else if (bossFlow.stage === 'none') {
         // BOSS 击败后的 2s 缓冲与首波 4s 观察期不计入关卡推进（冻结 bossTimer，等级不增长）
         if (bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) bossFlow.timer += dt;
@@ -411,19 +425,47 @@
         }
       }
 
-      // ---------- 诗篇波次制刷怪（登记见《诗篇难度修正.md》深度改版 #1） ----------
+      // ---------- 诗篇波次制刷怪（登记见《诗篇难度修正.md》深度改版 #1；2026-10-12 主波接入设计卡） ----------
       // 每级一波：上一波全部击毁/离场 → clearDelay 计时 → 刷下一波（波 N = 等级 N）；
-      // 不走压力系统 / 波次间隔 / 4类槽位通道（4类随波附带，见 04-spawn spawnWaveBody）；
+      // 不走压力系统 / 波次间隔 / 4类槽位通道（4类随主战卡出现，场上已有主力舰排除 4类卡）；
       // 特殊刷新不受影响：BOSS 战强制波 / BOSS 后固定首波 / Lv13 焦香一次性（下方同步保留）
       if (isPoem() && !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
           bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+        // 诗篇主战波 + 额外生成三连（2026-10-12 用户定稿）：每等级固定 1前波 + 1后波——
+        // 前波位 = 等级权重抽 tier → tier 内「前波/前后均可」按「波次权重」当前档列抽卡；
+        // 后波位 = 等级权重抽 tier → tier 内「后波/前后均可」同法（各自独立抽取，共享 16s 恢复期/同定位 ×0.35）；
+        // 无「场上已有主力舰排除 4类卡」限制（44/22422 等按表登场）、无随机组合波（固定双卡结构取代）。
+        // 抽不到卡（表全零/卡缺失）兜底走旧编队 spawnWave（正常不可达）
+        const spawnPoemMainWave = () => {
+          const lv = levelFlow.level;
+          const list = [];
+          for (const roles of [['前波', '前后均可'], ['后波', '前后均可']]) {
+            const card = pickDesignedWaveCard(state.time, lv, { roles });
+            const f3 = card && t3SpawnCardById(card.id);
+            if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
+          }
+          if (list.length) spawnDesignedWave(list);
+          else spawnWave();   // 兜底：旧编队路径（表全零/卡缺失；正常不可达）
+          // 额外生成三连：①侧翼波次（许凯狗冲刺两侧不刷怪 → 冲刺期跳过，同非诗篇 noSide 规则）
+          //               ②额外波次（特殊波已并入，权重不变）③真额外三项（单/双导弹互斥 + 增益无人舰）
+          const extras = [
+            state.pilotDashT > 0 ? null : pickPoemFlankCard(lv),
+            pickPoemExtraCard(lv),
+            pickPoemTrueExtra(lv),
+          ];
+          for (const extra of extras) {
+            if (!extra) continue;
+            const f = t3SpawnCardById(extra.id);
+            if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
+          }
+        };
         const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
         if (state.pilotDashT > 0) {
           // 许凯狗冲刺（诗篇）：固定 1s 一波、不等清场（冲刺即秒）——6s 冲刺刷出并冲死第 1~6 波，
           // 结束时波次计数 = 6、clearNext 保持 0 → 立即衔接第 7 波（Lv7，即冲刺终点等级）
           levelFlow.poemClearT -= dt;
           if (levelFlow.poemClearT <= 0 && levelFlow.poemWaveIdx < phaseWaves) {
-            spawnWave();
+            spawnPoemMainWave();
             levelFlow.poemClearT = 1;
           }
         } else if (levelFlow.poemWaveIdx < phaseWaves) {
@@ -431,7 +473,7 @@
           if (!enemies.some(en => !en.elRevive)) {
             levelFlow.poemClearT += dt;
             if (levelFlow.poemClearT >= levelFlow.poemClearNext) {
-              spawnWave();
+              spawnPoemMainWave();
               levelFlow.poemClearT = 0;
               levelFlow.poemClearNext = rand(WAVE_POEM.clearDelay[0], WAVE_POEM.clearDelay[1]);
               levelFlow.level = lvCfg.base + levelFlow.poemWaveIdx - 1;   // 波 N = 等级 N（与帧首计算同式）
@@ -474,7 +516,7 @@
 
         // 波次通道（设计波次表整波刷新，2026-10-12 用户定稿）：不再走旧编队抽取（pickFormation 退役）——
         // 01-config-spawn pickDesignedWaveCard 按剩余权重+角色平衡抽一张设计卡（等级门槛/冲刺排除侧翼/场上主力舰排除 4类卡），
-        // 13-encyclopedia buildT3SpawnPlan 按波次刷怪权重生成敌机清单，04-spawn spawnDesignedWave 整波落地；
+        // 13-encyclopedia buildT3SpawnPlan 按刷怪权重（原「波次刷怪权重」）生成敌机清单，04-spawn spawnDesignedWave 整波落地；
         // 压力节奏（rush / 间隔 / 阈值放大）保持不变；特殊3类随波附赠在 spawnDesignedWave 内保留
         levelFlow.spawnTimer -= dt * rush;
         if (levelFlow.spawnTimer <= 0) {
@@ -555,7 +597,7 @@
       updateMissiles(dt);
       updateBaolingBombs(dt);   // 暴鸰：炸弹下坠 / 加速冲向预警区中心 / 爆炸
       updateFrostZones(dt);     // 虚幻：寒冷区域倒计时 / 间歇雪花特效（减速判定在 04-spawn / 06-enemy 逐帧挂钩）
-      updatePopianMissiles(dt); // 破片：三连发导弹飞行 / 命中结算（条件性无视无敌）
+      updatePopianMissiles(dt); // 破片：三连发导弹飞行 / 命中结算（前两发命中不授予受击无敌——2026-10-12 用户定稿）
       updateWgSlashes(dt);      // 战争幽灵：技能1/2双刃斩击流飞行 / 命中结算（每道命中一次）
       updateXgLooseBombs(dt);   // 辛国栋击毁后残留的地毯轰炸落点：独立倒计时爆炸（不随实体消失）
       updateSpellCubes(dt);     // 法术矩阵：发光正方体飞行 / 限程减速黯淡 / 停留 / 渐隐 / 命中结算

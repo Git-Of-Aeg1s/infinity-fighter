@@ -77,7 +77,8 @@
   // ---------- 子弹 ----------
   function updateBullets(dt) {
   // 玩家屏障（青时炮艇支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
-  // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿），重复命中刷新由支援弹命中处重置
+  // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿）；
+  // 重复命中叠加（barrier/barrierMax 同步增长，2026-10-12 用户定稿）并刷新持续时间，由支援弹命中处重置
   if (player.barrierT > 0) {
     player.barrierT -= dt;
     player.barrier = Math.min(player.barrier,
@@ -190,18 +191,18 @@
           // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
           // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
           e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e));   // 朴学峰冲刺易伤 ×2（守愿者对大型龙卷双判定已删除——2026-10-11 用户定稿）
-          if (!Number.isFinite(e.hp)) console.error('[hpNaN哨兵]', 'bullet wing=' + !!b.wing, e.type, e.variant || '', e.hp, dmg);   // 临时插桩：定位 hp NaN 写入源（2026-10-12，验收后删）
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
           // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，
-          // 不再陵落螺旋飞剑（mainPierce 2 + pierceDmgMul 自带衰减率）：每次穿透伤害 -20%（100% → 80% → 64%，
-          // 衰减直接乘进 b.dmg，并记 lastHit 防同机重复结算）；无 pierceDmgMul 的弹穿透后伤害减半（b.weakened）
+          // 不再陵落螺旋飞剑（mainPierce 2 + pierceStep 线性衰减）：每次穿透伤害 -20% 基准（100% → 80% → 60%，
+          // 2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；衰减按 pierceBase 重算进 b.dmg，并记 lastHit 防同机重复结算）；
+          // 无 pierceStep 的弹穿透后伤害减半（b.weakened）
           let pierce = false;
-          if (b.pierce != null && e.type === 'escort') pierce = true;
+          if (b.pierce != null && e.type === 'escort') { pierce = true; b.lastHit = e; }   // 无限穿透不耗次数，但仍记 lastHit 防重叠帧对同一机体重复结算（2026-10-12 bug 修复）
           else if (b.pierce > 0 && (e.type === 'side' || e.type === 'prolifera')) { pierce = true; b.pierce--; }
           else if (b.mainPierce > 0 && e.type !== 'boss' && e.type !== 'capital' && e.type !== 'fashiArray') {
             pierce = true; b.mainPierce--;
-            if (b.pierceDmgMul != null) { b.dmg *= b.pierceDmgMul; b.lastHit = e; }
+            if (b.pierceStep != null) { b.pierceHitN = (b.pierceHitN || 0) + 1; b.dmg = Math.max(0, b.pierceBase * (1 - b.pierceStep * b.pierceHitN)); b.lastHit = e; }   // Math.max(0,…) 下限：未来 mainPierce 调大到 ≥5 时防负伤害（负数即给敌人回血）
             else b.weakened = true;
           }
           if (!pierce) pBullets.splice(i, 1);
@@ -414,12 +415,15 @@
       if (b.y > CANVAS_H + 20 + trailPad + bigPad || b.y < -40 - trailPad - bigPad || b.x < -20 - bigPad || b.x > CANVAS_W + 20 + bigPad) {
         eBullets.splice(i, 1); continue;
       }
-      // 青时炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）持续 10s；对双方均无伤害
+      // 青时炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）
+      // 持续 10s（2026-10-12 用户定稿：重复命中叠加——barrier/barrierMax 同步增长，被伤害消耗过的量不回填，并刷新持续时间）；对双方均无伤害
       if (b.support) {
         let hit = false;
         if (player.alive && Math.abs(b.x - player.x) < player.w / 2 + b.r && Math.abs(b.y - player.y) < player.h / 2 + b.r) {
-          player.barrierMax = isPoem() ? 28 : 24;
-          player.barrier = player.barrierMax; player.barrierT = 10;
+          const barrierAdd = isPoem() ? 28 : 24;   // 单枚支援弹屏障量（诗篇 28，《诗篇难度修正.md》#21）
+          player.barrierMax += barrierAdd;         // 叠加：总量增长（原为固定覆写 24/28）
+          player.barrier = Math.min(player.barrier + barrierAdd, player.barrierMax);
+          player.barrierT = 10;                    // 每次命中刷新持续时间
           spawnParticles(b.x, b.y, '#9ff0e0', 10, 160);
           hit = true;
         }
@@ -616,7 +620,7 @@
   }
 
   // ---------- 道具 ----------
-  const POWERUP_MAGNET_RADIUS = 170;   // 道具磁吸半径（比水晶 110 更大，更易被吸引吃到）
+  const POWERUP_MAGNET_RADIUS = 170;   // 道具磁吸半径（比水晶 150 更大，更易被吸引吃到）
 
   // 生成道具（非水晶类通用）：下落 + 随机左右漂移（碰边反弹）+ 易被磁吸
   function spawnPowerup(x, y, kind, r) {
@@ -726,8 +730,8 @@
 
   // ---------- 水晶 ----------
   function updateCrystals(dt) {
-    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 132 → 198）；
-    // 奖励道具·磁力菇：叠加固定加成 +50px/个（state.magnetBonus，一整局可叠加）
+    // 有效磁吸半径：击败第一个 BOSS（旧日之歌）后永久 ×1.5（基础 150 → 225，2026-10-12 用户定稿 132→150）；
+    // 奖励道具·磁力菇：叠加固定加成 +75px/个（state.magnetBonus，一整局可叠加，2026-10-12 用户定稿 +50→+75）
     const magR = PLAYER_CFG.magnetRadius * (state.crystalMagnetMul || 1) + (state.magnetBonus || 0);
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];

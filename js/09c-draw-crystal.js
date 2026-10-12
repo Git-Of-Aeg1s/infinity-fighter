@@ -406,8 +406,20 @@
     g.shadowBlur = 0;
   }
 
+  // 防御（2026-10-12）：tier/colorKey 归一化——非法 tier（CRYSTAL3D_R 无键 → R undefined → 画布边长 NaN
+  // 落盘为 0）或非法 colorKey（查表 undefined → 烘焙抛错被 catch 吞掉后标 __baked，静默缺帧）时回退默认档；
+  // 生成端（06-enemy 水晶掉落）当前只产合法组合，此防御覆盖未来扩展新档位时的笔误
+  function normalizeCrystal3DKey(tier, colorKey) {
+    if (!CRYSTAL3D_R[tier]) { console.warn('[crystal3D] 未知 tier，回退 small:', tier); tier = 'small'; }
+    const ck = String(colorKey);
+    const tbl = ck[0] === 'g' ? CRYSTAL_GIANT_COLORS : CRYSTAL_COLORS;
+    if (!tbl[Number(ck.slice(1))]) { console.warn('[crystal3D] 未知 colorKey，回退默认色:', colorKey); colorKey = ck[0] === 'g' ? 'g0' : 'c0'; }
+    return [tier, colorKey];
+  }
+
   // 烘焙单帧（幂等）：对应组不存在则先建占位画布组；烘焙失败标记已烘并打日志，避免反复重试
   function bakeCrystal3DFrame(tier, colorKey, f) {
+    [tier, colorKey] = normalizeCrystal3DKey(tier, colorKey);
     const key = tier + ':' + colorKey;
     let set = crystal3DSprites.get(key);
     if (!set) {
@@ -470,6 +482,7 @@
 
   // 取帧：按需同步补烘缺失的单帧（单帧 ≈0.3ms 无感；异步队列只负责预取其余帧）
   function getCrystal3DSprite(tier, colorKey, phaseFrac) {
+    [tier, colorKey] = normalizeCrystal3DKey(tier, colorKey);   // 防御：非法键归一后再取帧，防 map.get(undefined键) 为 undefined
     const f = Math.floor((((phaseFrac % 1) + 1) % 1) * CRYSTAL3D_FRAMES) % CRYSTAL3D_FRAMES;
     bakeCrystal3DFrame(tier, colorKey, f);
     return crystal3DSprites.get(tier + ':' + colorKey).frames[f];

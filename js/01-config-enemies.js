@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(33 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(6 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -180,7 +180,7 @@
     },
     // 特殊2类：破片（三连发导弹无人机）—— 造型类铁砧但更小、灰白金属主导（边框+核心）；中心两条黑杠（头部红、下方缩短）；
     // 下方两根黑色炮管（前部加粗、图层最底）；只沿直线飞到选定点后急停锁停（除非被击毁不再移动），停稳后才攻击；
-    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（8/5/5，条件性无视无敌）；lv11 前低权重
+    // 索敌范围 30% 屏高起步、每秒 +5%；攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；lv11 前低权重
     popian: {
       w: 55, h: 48, hp: 200, score: 160, color: '#cfd6e0', drawScale: 1.2,   // 体型同常规 2 类突击艇 ×1.2
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,   // 碰撞 24（2026-09 批次：取消分段）
@@ -416,6 +416,10 @@
     speedPost: BAOLING.speedPost * 0.85,     // 投弹后俯冲速度（204 = 240 × 0.85）
     blastR: BAOLING.blastR * 1.3,            // 爆炸半径（94.9 = 73 × 1.3；红色预警圈 / 玩家伤害半径）
     deathBlastR: BAOLING.deathBlastR * 1.3,  // 亡语自爆对周围敌方单位的波及半径（325 = 250 × 1.3）
+    playerDmg: BAOLING.playerDmg,            // 炸弹爆炸对玩家伤害（同暴鸰 40）——缺此键曾致炸弹落地 damagePlayer(NaN)（2026-10-12 hpNaN 根因修复）
+    enemyDmgBase: BAOLING.enemyDmgBase,      // 殉爆对敌人基础伤害（同暴鸰 600）——缺此键曾致殉爆波及 dmg=NaN（2026-10-12 hpNaN 根因修复）
+    enemyDmgRatio: BAOLING.enemyDmgRatio,    // 殉爆 + 目标最大生命 20%（同暴鸰）
+    enemyDmgCap: BAOLING.enemyDmgCap,        // 殉爆对敌人伤害上限（同暴鸰 2000）
   };
 
   // 虚幻参数（特殊3类冰霜投弹机，2026-09-29 实装）：机体与各项数值全部与暴鸰一致（引用 BAOLING 原值自动跟随），仅——
@@ -577,9 +581,7 @@
     burstGap: 0.09,        // 三发间隔（快速连发）
     missileSpeed: 880,     // 导弹速度（较快）
     missileR: 5,           // 导弹半径
-    firstDmg: 8,           // 首发导弹伤害
-    followDmg: 5,          // 后两发导弹伤害
-    invulnCutMul: 0.7,     // 首发未命中/玩家无敌时，后两发命中带来的无敌时间 -30%
+    missileDmg: 7,         // 三连发导弹伤害（三发同值——2026-10-12 用户定稿，原 8/5/5）
     firstDelay: 0.4,       // 停稳后首次攻击延迟
     fireInterval: [1.6, 2.4],   // 停稳后攻击间隔
     maxTurn: 3.2,          // 最大转向角速度（rad/s）：抵达时刻的满角速度（减速段追踪玩家）
@@ -592,10 +594,9 @@
   // 破片U型参数（诗篇新敌，特殊2类）：移动/攻击流程与破片同（06-enemy popian 分支 + spawnPopian），
   // 差异项在此覆盖——① 入场途中即旋转瞄准玩家（无需锁停就位即可索敌攻击，尾焰改随移动方向）；
   // ② 入场后 firstDelay 区间随机后才可射击（诗篇难度取 firstDelayPoem，登记《诗篇难度修正.md》）；
-  // ③ 三连发导弹伤害各 +2（10/7/7）。其余（移速/停留区间/红圈预警/间隔/爆炸半径等）全部沿用 POPIAN
+  // ③ 三连发导弹伤害 +1（8×3，破片 7×3——2026-10-12 用户定稿三发同值）。其余（移速/停留区间/红圈预警/间隔/爆炸半径等）全部沿用 POPIAN
   const POPIAN_U = {
-    firstDmg: 10,               // 首发导弹伤害（破片 8 +2）
-    followDmg: 7,               // 后两发导弹伤害（破片 5 +2）
+    missileDmg: 8,              // 三连发导弹伤害（三发同值，破片 7 +1——2026-10-12 用户定稿，原 10/7/7）
     firstDelay: [1.8, 2.0],     // 入场后可射击延迟（逐架随机，s）
     firstDelayPoem: [1.6, 2.0], // 诗篇难度同延迟
   };

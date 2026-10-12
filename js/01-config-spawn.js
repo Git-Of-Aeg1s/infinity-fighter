@@ -1,7 +1,7 @@
 // 01-config-spawn：刷怪分段 / 压力权重 / 掉落率 / 奖励道具池 / 水晶体系（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(24 名) 07-player(1 名) 08-entities(2 名) 09c-draw-crystal(2 名) 12-ui(1 名) 13-encyclopedia(7 名) 14-main(11 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(20 名) 07-player(1 名) 08-entities(2 名) 09c-draw-crystal(2 名) 12-ui(1 名) 13-encyclopedia(7 名) 14-main(14 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { hasPilot } from './01-config-loadout.js';
@@ -146,35 +146,31 @@
   const REWARD_ITEMS = {
     // ---- 普通（白色）----
     laodaDrink:   { id: 'laodaDrink',   rarity: 'normal', name: '牢大特饮', glyph: '🥤',
-                    desc: '移速 +40%，持续 15s。饮用与结束均有加速过渡（非瞬间变速）。' },
+                    desc: '移速 +40%，持续 15s。' },
     magnetShroom: { id: 'magnetShroom', rarity: 'normal', name: '磁力菇', glyph: '🍄',
-                    desc: '水晶拾取半径 +50，持续一整局，可叠加。' },
+                    desc: '水晶拾取半径 +75，持续一整局，可叠加。' },
     noLingluo:    { id: 'noLingluo',    rarity: 'normal', name: '不再陵落', glyph: '🗡',
-                    desc: '持续 9s：以 32 发/s 向周身螺旋射出无界飞剑（起始朝上、每发顺时针偏转 25°，每圈自带 25° 偏移）；飞剑可穿透 2 个敌人，每次穿透伤害 -20%（100% → 80% → 64%，对 BOSS / 4类主力舰·法术阵列不穿透）；射出方向在水平线以下的飞剑对 BOSS 只造成 50% 伤害。' },
+                    desc: '以 32 发/s 向周身螺旋射出无界飞剑，持续 9s；飞剑可穿透 2 个敌人，每次穿透伤害 -20%；射出方向在水平线以下的飞剑对 BOSS 只造成 50% 伤害。' },
     frostGen:     { id: 'frostGen',     rarity: 'normal', name: '寒霜发生器', glyph: '❄',
-                    desc: '周身 160px 寒霜力场（青白色半透明）：力场内敌机射速/移速 -60%、敌方子弹弹速 -30%，持续 12s；到期后力场朝正上方以 80px/s 发射离场。力场内焦香螺旋桨的火环失效，其机体在力场内每 0.1s 受 30 点灼烧（每次递增 1，离场重置）。' },
+                    desc: '周身160px内围绕寒霜力场，力场内敌机射速/移速 -60%、敌方子弹弹速 -30%，持续 12s；到期后力场朝正上方以80px/s发射离场。力场内焦香螺旋桨的火环失效且持续受到伤害。' },
     xinguodongFury: { id: 'xinguodongFury', rarity: 'normal', name: '辛国栋大怒', glyph: '🔥',
-                    desc: '以使用瞬间自身位置为中心生成一个不移动的辛国栋同款火环，半径持续扩大，6s 后几乎布满全屏并对全体敌人造成一次灼烧伤害，随后再持续 4s 渐隐消失。火环对辛国栋造成 5 倍伤害。' },
+                    desc: '以自身位置为中心生成一个辛国栋的怒意之环，半径持续扩大、6s 后达到最大，随后再持续6s。怒意之环持续灼烧所有敌人，且对暴怒辛国栋造成 5 倍伤害。' },
     honghongBomb: { id: 'honghongBomb', rarity: 'normal', name: '轰轰炸弹', glyph: '💣',
-                    desc: '持续 20s：击败敌人后立刻对其周围一定距离内的敌人造成相当于该机最大生命值 20% 的伤害（红橙色冲击波），可连锁爆炸。1/2/3/4 类敌人的扩散距离分别为 40/50/60/70px；BOSS 战中 1 类敌人的伤害 ×10（即最大生命值 200%）；BOSS 本身不触发该效果。' },
+                    desc: '击败敌人后立刻对其周围一定距离内的敌人造成相当于该机最大生命值 20% 的伤害，可连锁爆炸，持续20s。1/2/3/4 类敌人的扩散距离分别为 40/50/60/70px；BOSS 战中 1 类敌人的伤害 ×10。' },
     // ---- 稀有（金色）----
     bengbag:      { id: 'bengbag',      rarity: 'rare', name: '绷绷背包', glyph: '🎒',
                     desc: '高能爆弹 / 绷绷炸弹携带上限 +1 并立刻补充 1 枚，持续一整局；该道具一局限掉落一次。' },
     jiukeShadow:  { id: 'jiukeShadow',  rarity: 'rare', name: '酒客之影', glyph: '🍶',
-                    desc: '机体透明化加深，30s 内获得 100% 闪避——但每成功闪避一次，闪避概率就减少 20%（100 → 80 → 60 → 40 → 20 → 0），直到归零或持续时间结束；闪避成功不掉血、不计受击，仅触发短暂受击无敌与受击反馈；闪避失败照常受伤（不解除效果、不扣概率）。' },
+                    desc: '获得 100% 闪避，机体透明化加深，持续30s。但每成功闪避一次，闪避概率就减少 20%，直到归零或持续时间结束。' },
     gacha:        { id: 'gacha',        rarity: 'rare', name: '哦哦！抽卡！', glyph: '🎲', noDrop: true,
                     desc: '不入赞助无人舰掉落池——原石（巨型水晶）为萧杨专属：萧杨每收集 16 颗原石充满一次该技能（击坠无人机获得的道具直接生效，无槽位概念），充满后按副驾驶员技能键 <b>Q</b> 释放（其他驾驶员不收集原石、无法使用）。<br>释放效果：16 颗原石自四面八方随机先后汇集机体（约 2.5s，期间无敌、我方输出 -60%），收束后清除周身 300px 敌弹并抽卡：70% 蓝 / 25% 紫 / 5% 金——场中巨影闪现，同色陨石轰击场心（蓝 6000 / 紫 16000 全场伤害；金秒杀全场敌方单位——与埃逸殉爆同款：禁用增生分裂 / 法术矩阵爆发等召唤型亡语、无法秒杀二阶段风暴编织者）；陨石同时清除全场敌我弹幕与预警（暴风之眼风波/风柱、风暴编织者雷霆/激光预警、战争幽灵登场——登场的战争幽灵直接被砸死）。' },
     bottleSpirit: { id: 'bottleSpirit', rarity: 'rare', name: '瓶中精灵', glyph: '🧪',
-                    desc: '获得 50% 最大生命值的独立永久屏障（血条上青色段，位于普通屏障右侧；被动免死已于 2026-10-01 移除）。同时拥有屏障与永久屏障时优先消耗屏障；拥有屏障时被击中只要没掉血即算无伤；屏障到期消散不影响永久屏障；永久屏障具备抵御效果——若该次伤害大于永久屏障+屏障总量，仅扣除两个屏障、不扣血（吃掉一次溢出伤害）。' },
+                    desc: '获得 50% 最大生命值的独立永久屏障。同时拥有屏障与永久屏障时优先消耗屏障；屏障到期消散不影响永久屏障；永久屏障能够吸收溢出伤害。' },
   };
 
-  /* ---------- 道具掉落规则（颜色标签驱动，见 enemyColorTags / rollItemDrops） ---------- */
-  const DROP_KIT_RATE = 0.09;      // 升级套件基础掉率
-  const DROP_KIT_RED = 1.5;        // 红色敌人套件倍率
-  const DROP_KIT_PURPLE = 1.2;     // 紫色敌人套件倍率
-  const DROP_KIT_YELLOW = 1.2;     // 黄色（含 3类金曜）敌人套件倍率
-  const DROP_SHIELD_RATE = 0.02;   // 量子护盾基础掉率
-  const DROP_SHIELD_BLUE = 0.06;   // 蓝色敌人护盾掉率
+  /* ---------- 道具掉落规则（见 rollItemDrops；2026-10-12 用户定稿：套件/护盾不再吃颜色倍率，全敌人统一基础值） ---------- */
+  const DROP_KIT_RATE = 0.09;      // 升级套件基础掉率（全敌人统一）
+  const DROP_SHIELD_RATE = 0.02;   // 量子护盾基础掉率（全敌人统一）
   const DROP_SHIELD_STACK = 0.35;  // 场上已有护盾道具或我方已带盾时的降率倍数
   const DROP_HP_BY_CLASS = { 1: 0.005, 2: 0.01, 3: 0.02, 4: 0.06 };   // 加血套件按敌机类别基础掉率（1类 0.5% / 2类 1% / 3类 2% / 4类 6%，2026-10-08 用户定稿）
   const DROP_HP_PROLIFERA = 0.04;  // 增生侧翼艇（淡青绿）加血掉率（固定值，不随类别表；2026-10-08 用户定稿 10%→4%）
@@ -186,7 +182,7 @@
   const DROP_BOMB_ORANGE = 0.005;  // 橙色敌人爆弹掉率（整场战斗最多触发一次，不影响 4类 5% 与 BOSS 20%）
   const DROP_KIT_BERSERK = 0.05;   // 升级套件变为暴走道具的概率
 
-  // ---------- 波次刷怪权重（诗篇波次制 · 规划数据，承接测试3各波次；自 13-encyclopedia 迁入 2026-10-12）----------
+  // ---------- 刷怪权重（原「波次刷怪权重」，2026-10-12 用户定稿更名；诗篇波次制 · 规划数据，承接测试3各波次；自 13-encyclopedia 迁入 2026-10-12）----------
   // 每波按 1/2/3/4 类别设定职能池权重（池成员见 13-encyclopedia 怪物权重页职能表）：刷怪时按权重随机一个池，
   // 再在池内按职能表权重随机具体敌人。系统规则（2026-10-11 用户定稿）：
   //   ① 多个同类敌人的波次：整组先随机一个池（大类），该组同类敌人全部只从该池刷新；随后整组 8% 概率锁定为同一种具体敌人；
@@ -239,11 +235,16 @@
     '1*12防': { 1: [['1类防御', 1]] },                          // 具象前波：12 个增生依次快速下压
     '1*7攻': { 1: [['1类攻击', 1]] },                           // 具象前波：7 架紫电依次快速下压
     '2侧*2': { 2: [['2类侧位', 1]] },                           // 真我侧辅：两侧各 1 个 2类侧位
-    '1*8攻': { 1: [['1类攻击', 1]] },                           // 真我前波：8 架紫电依次快速下压
     '3侧': { 3: [['3类攻击压制', 10], ['3类削弱辅助', 25]] },   // 具象侧翼：1 个 3类（压制=暴鸰系 / 削弱辅助=交响系）
     '3侧*2': { 3: [['3类攻击压制', 10], ['3类削弱辅助', 25]] }, // 真我侧翼：2 个 3类（50% 同侧不同位 / 50% 异侧）
     'h*1': { 3: [['3类攻击后位', 1]] },                         // 额外特殊·单导弹：召唤 1 个 3类攻击后位（现池仅炮火先兆者）
     'h*2': { 3: [['3类攻击后位', 1]] },                         // 额外特殊·双导弹：召唤 2 个 3类攻击后位（现池仅炮火先兆者）
+    // 特7~特10（2类直落系，2026-10-12 用户定稿）：职能池限定「2类突击」＝2类攻击组内 5 个突击艇变体
+    //（赤红/烈橙/幽蓝/紫晶/霜白，按各自职能表档位权重抽取）——去掉法术矩阵 / 法术大师A1（组定义见 13-encyclopedia INFO_T1_GROUPS）
+    '特7': { 2: [['2类突击', 20]] },
+    '特8': { 2: [['2类突击', 20]] },
+    '特9': { 2: [['2类突击', 20]] },
+    '特10': { 2: [['2类突击', 20]] },
   };
   // 展示清单（与测试3波次同步维护；fixed = 不走职能池的固定敌波；classes = 该波刷新的类别，默认波按此套默认权重）
   const WAVE_SPAWN_LIST = [
@@ -254,7 +255,7 @@
     { id: '131', name: '', tier: '虚象级', role: '后波', comp: '2×1类+1×3类', classes: ['1', '3'] },
     { id: '1类小队', name: '', tier: '虚象级', role: '侧翼', comp: '3~5×1类', classes: ['1'] },
     { id: '22', name: '', tier: '虚象级', role: '前后均可', comp: '2×2类', classes: ['2'] },
-    { id: 'y*1', name: '单幽暮', tier: '虚象级', role: '特殊', comp: '1×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×1（30%~70% 高度随机浮现）' },
+    { id: 'y*1', name: '单幽暮', tier: '特殊级', role: '特殊', comp: '1×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×1（30%~70% 高度随机浮现）' },
     { id: '222', name: '三机横排', tier: '具象级', role: '前后均可', comp: '3×2类', classes: ['2'] },
     { id: '22·22', name: '双组错位', tier: '具象级', role: '前后均可', comp: '4×2类', classes: ['2'] },
     { id: '2*5', name: '波浪五机', tier: '具象级', role: '前波', comp: '5×2类', classes: ['2'] },
@@ -268,7 +269,7 @@
     { id: '1类长队', name: '', tier: '具象级', role: '侧翼', comp: '4~7×1类', classes: ['1'] },
     { id: '2侧+1*2', name: '侧卫掩护', tier: '具象级', role: '侧翼', comp: '1×2类侧位+2×1类', classes: ['2', '1'] },
     { id: '3侧', name: '侧翼压制', tier: '具象级', role: '侧翼', comp: '1×3类', classes: ['3'] },
-    { id: 'y*2', name: '双幽暮', tier: '具象级', role: '特殊', comp: '2×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×2（30%~70% 高度随机浮现）' },
+    { id: 'y*2', name: '双幽暮', tier: '特殊级', role: '特殊', comp: '2×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×2（30%~70% 高度随机浮现）' },
     { id: '1*12防', name: '增生急行', tier: '具象级', role: '前波', comp: '12×1类防御', classes: ['1'] },
     { id: '1*7攻', name: '紫电急行', tier: '具象级', role: '前波', comp: '7×1类攻击', classes: ['1'] },
     { id: '232111', name: '', tier: '具象级', role: '前波', comp: '2×2类+1×3类+6×1类', classes: ['1', '2', '3'] },
@@ -283,8 +284,6 @@
     { id: '32223', name: '', tier: '真我级', role: '前后均可', comp: '2×3类+3×2类', classes: ['2', '3'] },
     { id: '2侧*2', name: '双侧破片', tier: '真我级', role: '侧翼', comp: '两侧各1×2类侧位', classes: ['2'] },
     { id: '3侧*2', name: '侧翼压制×2', tier: '真我级', role: '侧翼', comp: '2×3类', classes: ['3'], sideAmbig: true },
-    { id: 'y*2b', name: '双幽暮', tier: '真我级', role: '特殊', comp: '2×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×2（30%~80% 高度随机浮现）' },
-    { id: '1*8攻', name: '紫电纵队', tier: '真我级', role: '前波', comp: '8×1类攻击', classes: ['1'] },
     { id: '2*10', name: '双V梯队', tier: '诗篇级', role: '前波', comp: '10×2类', classes: ['2'] },
     { id: '3*4', name: '四艇横阵', tier: '诗篇级', role: '前波', comp: '4×3类', classes: ['3'] },
     { id: '22422', name: '旗舰横阵', tier: '诗篇级', role: '后波', comp: '4×2类+1×4类', classes: ['2', '4'] },
@@ -292,11 +291,11 @@
     { id: '3*5', name: '五艇横阵', tier: '诗篇级', role: '前波', comp: '5×3类', classes: ['3'] },
     { id: '1234321', name: '金字塔横阵', tier: '诗篇级', role: '后波', comp: '2×1类+2×2类+2×3类+1×4类', classes: ['1', '2', '3', '4'] },
     { id: 'w*1', name: '战争幽灵', tier: '诗篇级', role: '前波', comp: '1×战争幽灵', classes: ['w'], fixed: '固定敌人：战争幽灵×1（目标点 50%~70% 高度随机）' },
-    { id: 'z*8', name: '双侧自爆对冲', tier: '诗篇级', role: '特殊', comp: '两侧各7~10×紫电/白影', classes: ['z'], fixed: '固定敌人：紫电7:白影3，两侧各7~10只，斜向对侧边缘偏下' },
-    { id: 'y*4', name: '幽暮四角', tier: '诗篇级', role: '特殊', comp: '4×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×4（前两架 80% 高度、后两架 50%~60% 随机）' },
-    { id: 'h*1', name: '单导弹', tier: '额外级', role: '特殊', comp: '1×3类攻击后位', classes: ['3'] },
-    { id: 'h*2', name: '双导弹', tier: '额外级', role: '特殊', comp: '2×3类攻击后位', classes: ['3'] },
-    { id: '2R', name: '增益无人舰', tier: '额外级', role: '特殊', comp: '1×2R类', classes: ['r'], fixed: '固定敌人：斗志昂扬10 / 赞助无人舰8 / 豪华赞助无人舰2（侧翼横穿）' },
+    { id: 'z*8', name: '双侧自爆对冲', tier: '诗篇级', role: '侧翼', comp: '两侧各7~10×紫电/白影', classes: ['z'], fixed: '固定敌人：紫电7:白影3，两侧各7~10只，斜向对侧边缘偏下' },
+    { id: 'y*4', name: '幽暮四角', tier: '特殊级', role: '特殊', comp: '4×幽暮', classes: ['y'], fixed: '固定敌人：幽暮×4（前两架 80% 高度、后两架 50%~60% 随机）' },
+    { id: 'h*1', name: '单导弹', tier: '额外级', role: '特殊', prob: true, comp: '1×3类攻击后位', classes: ['3'] },
+    { id: 'h*2', name: '双导弹', tier: '额外级', role: '特殊', prob: true, comp: '2×3类攻击后位', classes: ['3'] },
+    { id: '2R', name: '增益无人舰', tier: '额外级', role: '特殊', prob: true, comp: '1×2R类', classes: ['r'], fixed: '固定敌人：斗志昂扬10 / 赞助无人舰8 / 豪华赞助无人舰2（侧翼横穿）' },
     { id: '特1', name: '单点1类', tier: '额外级', role: '特殊', comp: '1×1类', classes: ['1'] },
     { id: '特2', name: '双点1类', tier: '额外级', role: '特殊', comp: '2×1类', classes: ['1'] },
     { id: '特3', name: '五点均分', tier: '额外级', role: '特殊', comp: '5×1类', classes: ['1'] },
@@ -313,84 +312,87 @@
     { id: '特13', name: '相邻双3', tier: '额外级', role: '特殊', comp: '2×3类', classes: ['3'] },
   ];
 
-  // 波次卡抽取权重（id → [Lv1, Lv11, Lv21, Lv31, Lv41]；0 = 该等级档不刷出，2026-10-12 用户定稿）——
-  // 「波次权重」子页展示 + pickDesignedWaveCard 消费（基础权重按当前等级档取值，替代原 tier 硬门槛）。
-  // ⚠️ 数值全部待填（当前全 0 占位）：某等级档下全表均 0 时抽取器按等权 1 兜底（刷怪不停摆），
-  // 任一非零填入后该档即严格按表抽取——数值直接在本表每行填入
+  // 波次卡抽取权重（id → [Lv1, Lv11, Lv21, Lv31, Lv41]；0 = 该等级档不刷出）——
+  // 「波次权重」子页展示 + 双消费端（2026-10-12 用户定稿，数值以桌面《波次权重填数表.xlsx》为准）：
+  //   · 非诗篇：pickDesignedWaveCard 按当前等级档取列（替代 tier 硬门槛）；
+  //   · 诗篇：主战卡（前波/后波/前后均可）主波抽取 + 侧翼/额外额外生成按档取列（见 pickPoemFlankCard / pickPoemExtraCard）。
+  // 特殊级 = 幽暮系特殊波 y*1/y*2/y*4（原列虚象/具象/真我级，2026-10-12 用户定稿抽出为独立区块；role 仍为「特殊」，
+  // 生成走诗篇额外波次通道——pickWaveCardByRole 只按 role 过滤、不受 tier 迁移影响）。
+  // 诗篇仅三阶段（波 N = 等级 N：Lv1~10 / Lv11~20 / Lv21~30）→ 只填列 0~2，列 3/4 恒 0；
+  // 概率卡（h*1/h*2/2R，prob: true）表内数值为「每波触发概率」而非权重——不入任何权重池（真额外三项，见 pickPoemTrueExtra）。
   const WAVE_SPAWN_DRAW_W = {
     // —— 虚象级 ——
-    '1111': [0, 0, 0, 0, 0],
-    '1*6': [0, 0, 0, 0, 0],
-    '11': [0, 0, 0, 0, 0],
-    '121': [0, 0, 0, 0, 0],
-    '131': [0, 0, 0, 0, 0],
-    '1类小队': [0, 0, 0, 0, 0],
-    '22': [0, 0, 0, 0, 0],
-    'y*1': [0, 0, 0, 0, 0],
+    '1111': [5, 1, 1, 0, 0],
+    '1*6': [5, 1, 1, 0, 0],
+    '11': [5, 1, 1, 0, 0],
+    '121': [10, 5, 5, 0, 0],
+    '131': [10, 10, 10, 0, 0],
+    '1类小队': [10, 5, 5, 0, 0],
+    '22': [10, 10, 10, 0, 0],
     // —— 具象级 ——
-    '222': [0, 0, 0, 0, 0],
-    '22·22': [0, 0, 0, 0, 0],
-    '2*5': [0, 0, 0, 0, 0],
-    '23': [0, 0, 0, 0, 0],
-    '33': [0, 0, 0, 0, 0],
-    '3-2-3': [0, 0, 0, 0, 0],
-    '2222': [0, 0, 0, 0, 0],
-    '12321': [0, 0, 0, 0, 0],
-    '11211': [0, 0, 0, 0, 0],
-    '1*10': [0, 0, 0, 0, 0],
-    '1类长队': [0, 0, 0, 0, 0],
-    '2侧+1*2': [0, 0, 0, 0, 0],
-    '3侧': [0, 0, 0, 0, 0],
-    'y*2': [0, 0, 0, 0, 0],
-    '1*12防': [0, 0, 0, 0, 0],
-    '1*7攻': [0, 0, 0, 0, 0],
-    '232111': [0, 0, 0, 0, 0],
+    '222': [10, 2, 2, 0, 0],
+    '22·22': [10, 2, 2, 0, 0],
+    '2*5': [5, 10, 10, 0, 0],
+    '23': [10, 3, 3, 0, 0],
+    '33': [10, 5, 5, 0, 0],
+    '3-2-3': [10, 10, 10, 0, 0],
+    '2222': [10, 5, 5, 0, 0],
+    '12321': [10, 10, 10, 0, 0],
+    '11211': [20, 2, 1, 0, 0],
+    '1*10': [5, 10, 10, 0, 0],
+    '1类长队': [10, 20, 20, 0, 0],
+    '2侧+1*2': [0, 20, 10, 0, 0],
+    '3侧': [0, 10, 20, 0, 0],
+    '1*12防': [0, 3, 5, 0, 0],
+    '1*7攻': [0, 3, 5, 0, 0],
+    '232111': [10, 10, 10, 0, 0],
     // —— 真我级 ——
-    '333': [0, 0, 0, 0, 0],
-    '3223': [0, 0, 0, 0, 0],
-    '4': [0, 0, 0, 0, 0],
-    '4+1*4': [0, 0, 0, 0, 0],
-    '2*7+3': [0, 0, 0, 0, 0],
-    '2*7': [0, 0, 0, 0, 0],
-    '232232': [0, 0, 0, 0, 0],
-    '双侧斜扫': [0, 0, 0, 0, 0],
-    '32223': [0, 0, 0, 0, 0],
-    '2侧*2': [0, 0, 0, 0, 0],
-    '3侧*2': [0, 0, 0, 0, 0],
-    'y*2b': [0, 0, 0, 0, 0],
-    '1*8攻': [0, 0, 0, 0, 0],
+    '333': [10, 10, 10, 0, 0],
+    '3223': [10, 10, 10, 0, 0],
+    '4': [10, 10, 10, 0, 0],
+    '4+1*4': [10, 10, 10, 0, 0],
+    '2*7+3': [5, 10, 10, 0, 0],
+    '2*7': [10, 10, 10, 0, 0],
+    '232232': [5, 10, 10, 0, 0],
+    '双侧斜扫': [10, 20, 20, 0, 0],
+    '32223': [10, 10, 10, 0, 0],
+    '2侧*2': [0, 20, 10, 0, 0],
+    '3侧*2': [0, 10, 20, 0, 0],
     // —— 诗篇级 ——
-    '2*10': [0, 0, 0, 0, 0],
-    '3*4': [0, 0, 0, 0, 0],
-    '22422': [0, 0, 0, 0, 0],
-    '44': [0, 0, 0, 0, 0],
-    '3*5': [0, 0, 0, 0, 0],
-    '1234321': [0, 0, 0, 0, 0],
-    'w*1': [0, 0, 0, 0, 0],
-    'z*8': [0, 0, 0, 0, 0],
-    'y*4': [0, 0, 0, 0, 0],
-    // —— 额外级 ——
-    'h*1': [0, 0, 0, 0, 0],
-    'h*2': [0, 0, 0, 0, 0],
-    '2R': [0, 0, 0, 0, 0],
-    '特1': [0, 0, 0, 0, 0],
-    '特2': [0, 0, 0, 0, 0],
-    '特3': [0, 0, 0, 0, 0],
-    '特3.5': [0, 0, 0, 0, 0],
-    '特4': [0, 0, 0, 0, 0],
-    '特5': [0, 0, 0, 0, 0],
-    '特6': [0, 0, 0, 0, 0],
-    '特7': [0, 0, 0, 0, 0],
-    '特8': [0, 0, 0, 0, 0],
-    '特9': [0, 0, 0, 0, 0],
-    '特10': [0, 0, 0, 0, 0],
-    '特11': [0, 0, 0, 0, 0],
-    '特12': [0, 0, 0, 0, 0],
-    '特13': [0, 0, 0, 0, 0],
+    '2*10': [10, 10, 10, 0, 0],
+    '3*4': [10, 10, 8, 0, 0],
+    '3*5': [2, 10, 10, 0, 0],
+    '22422': [0, 8, 8, 0, 0],
+    '44': [0, 8, 8, 0, 0],
+    '1234321': [2, 10, 10, 0, 0],
+    'w*1': [0, 0, 10, 0, 0],
+    'z*8': [5, 5, 5, 0, 0],
+    // —— 特殊级（幽暮系特殊波 y*1/y*2/y*4，原列虚象/具象/真我级，2026-10-12 用户定稿抽出；诗篇经额外波次通道生成）——
+    'y*1': [2, 3, 1, 0, 0],
+    'y*2': [0, 5, 3, 0, 0],
+    'y*4': [0, 2, 5, 0, 0],
+    // —— 额外级（特N = 权重；前三张 prob 卡 = 每波触发概率）——
+    'h*1': [0.02, 0.02, 0, 0, 0],
+    'h*2': [0, 0.03, 0.05, 0, 0],
+    '2R': [0.06, 0.06, 0.06, 0, 0],
+    '特1': [5, 3, 2, 0, 0],
+    '特2': [5, 3, 2, 0, 0],
+    '特3': [5, 3, 2, 0, 0],
+    '特3.5': [5, 3, 2, 0, 0],
+    '特4': [10, 8, 8, 0, 0],
+    '特5': [10, 8, 8, 0, 0],
+    '特6': [10, 8, 8, 0, 0],
+    '特7': [3, 5, 7, 0, 0],
+    '特8': [3, 5, 7, 0, 0],
+    '特9': [3, 5, 7, 0, 0],
+    '特10': [3, 5, 7, 0, 0],
+    '特11': [5, 8, 10, 0, 0],
+    '特12': [5, 8, 10, 0, 0],
+    '特13': [5, 8, 10, 0, 0],
   };
 
   // ---------- 设计波次抽取（非诗篇替换旧编队系统，2026-10-12 用户定稿）----------
-  // 波次刷怪权重表全部设计卡替换旧 WAVE_FORMATIONS 编队：场面压力节奏保留（spawnTimer / rush 不变），
+  // 刷怪权重表全部设计卡替换旧 WAVE_FORMATIONS 编队：场面压力节奏保留（spawnTimer / rush 不变），
   // 每次刷新从本表抽一张卡整波刷出（生成见 04-spawn spawnDesignedWave）。抽取规则：
   //   · 基础权重按当前等级档取 WAVE_SPAWN_DRAW_W（Lv1~10→列0 / Lv11~20→列1 / Lv21~30→列2 / Lv31~40→列3 / Lv41+→列4）；
   //     该档权重 0 = 不刷出（等级门槛由权重表表达，各档均有非零卡保证不空档）；
@@ -408,6 +410,40 @@
     DW_LAST.clear();
     dwLastRole = '';
   }
+  // 等级（tier）先行抽取权重（2026-10-12 用户定稿，诗篇主战 / 非诗篇主池共用）：
+  // 先按阶段选 tier（虚象/具象/真我/诗篇），tier 内再按「波次权重」当前档列抽卡——
+  //   Lv1~10 = 10/10/8/5   Lv11~20 = 5/10/15/8   Lv21~30 = 2/5/20/10；
+  // 游戏等级上限 31（lv31 = 终局 BOSS 关）——Lv31 走兜底档（列 3 全零）+ 沿用 Lv21~30 行等级权重；Lv41+ 档不存在；
+  // 特殊级（幽暮系）/ 额外级（特N + 概率卡）不经此通道：诗篇经额外波次/真额外概率通道生成（pickPoemExtraCard / pickPoemTrueExtra），
+  // 非诗篇经升级判定走同款通道（14-main 关卡提升分支，概率/权重同诗篇）。
+  const WAVE_TIER_STAGE_W = [
+    [10, 10, 8, 5],
+    [5, 10, 15, 8],
+    [2, 5, 20, 10],
+  ];
+  const WAVE_TIER_NAMES = ['虚象级', '具象级', '真我级', '诗篇级'];
+
+  // 单 tier 可刷卡池：过滤（prob/定位/4类）+ 权重（严格表或定位兜底）+ 恢复期衰减 + 同定位乘数
+  function dwBuildTierPool(tier, col, hasW, opts, now) {
+    const pool = [];
+    for (const w of WAVE_SPAWN_LIST) {
+      if (w.tier !== tier) continue;
+      // 等权兜底按定位加权（2026-10-12 用户反馈真我刷怪总量大幅降低后调整）：
+      // 主战卡（前波/后波/前后均可）1.2 / 侧翼 0.9 / 特殊 0.35——表填入非零后按表、不受此影响
+      const baseW = hasW ? ((WAVE_SPAWN_DRAW_W[w.id] || [])[col] || 0)
+        : (w.role === '特殊' ? 0.35 : w.role === '侧翼' ? 0.9 : 1.2);
+      if (baseW <= 0) continue;   // 该等级档权重 0 = 不刷出
+      if (w.prob) continue;   // 概率型真额外卡（单导弹/双导弹/增益无人舰）不入权重池（2026-10-12 用户定稿）
+      if (opts.roles && !opts.roles.includes(w.role)) continue;   // 定位限定池：诗篇主波前波位 ['前波','前后均可'] / 后波位 ['后波','前后均可']（2026-10-12 用户定稿：每等级固定 1前波+1后波）
+      if (opts.noSide && w.role === '侧翼') continue;
+      if (opts.noCapital && w.classes && w.classes.includes('4')) continue;
+      const last = DW_LAST.get(w.id);
+      const rem = last == null ? 1 : Math.min(1, (now - last) / DW_RECOVER_T);
+      const wt = baseW * (0.02 + 0.98 * rem) * (w.role === dwLastRole ? DW_SAME_ROLE_MUL : 1);
+      pool.push({ w, wt });
+    }
+    return pool;
+  }
   function pickDesignedWaveCard(now, lv, opts) {
     opts = opts || {};
     // 该等级档是否有任何非零权重：有 → 严格按表（0 = 不刷出）；全 0（数值待填占位）→ 等权 1 兜底不停摆
@@ -416,27 +452,31 @@
     for (const w of WAVE_SPAWN_LIST) {
       if (((WAVE_SPAWN_DRAW_W[w.id] || [])[col] || 0) > 0) { hasW = true; break; }
     }
-    let total = 0;
-    const pool = [];
-    for (const w of WAVE_SPAWN_LIST) {
-      // 等权兜底按定位加权（2026-10-12 用户反馈真我刷怪总量大幅降低后调整）：
-      // 主战卡（前波/后波/前后均可）1.2 / 侧翼 0.9 / 特殊（特N 散点、幽暮、补给等小波）0.35——
-      // 否则 17 张额外级小卡与主战卡同权，小波占比 ~30% 拉低平均波规模；表填入非零后按表、不受此影响
-      const baseW = hasW ? ((WAVE_SPAWN_DRAW_W[w.id] || [])[col] || 0)
-        : (w.role === '特殊' ? 0.35 : w.role === '侧翼' ? 0.9 : 1.2);
-      if (baseW <= 0) continue;   // 该等级档权重 0 = 不刷出
-      if (opts.noSide && w.role === '侧翼') continue;
-      if (opts.noCapital && w.classes && w.classes.includes('4')) continue;
-      const last = DW_LAST.get(w.id);
-      const rem = last == null ? 1 : Math.min(1, (now - last) / DW_RECOVER_T);
-      const wt = baseW * (0.02 + 0.98 * rem) * (w.role === dwLastRole ? DW_SAME_ROLE_MUL : 1);
-      pool.push({ w, wt });
-      total += wt;
+    // 等级先行（2026-10-12 用户定稿）：4 主战等级按阶段权重抽 tier，tier 内无可刷卡（全 0/被过滤）则该 tier 不参与抽取；
+    // 非诗篇不限定位（无 1前1后配对要求——侧翼随池，冲刺期 noSide 排除）；诗篇主波 mainOnly 限主战卡
+    const stage = Math.min(col, WAVE_TIER_STAGE_W.length - 1);   // 非诗篇 Lv31+ 沿用 Lv21~30 行
+    const tierW = WAVE_TIER_STAGE_W[stage];
+    const tierPool = [];
+    let tierTotal = 0;
+    for (let ti = 0; ti < WAVE_TIER_NAMES.length; ti++) {
+      const pool = dwBuildTierPool(WAVE_TIER_NAMES[ti], col, hasW, opts, now);
+      if (!pool.length) continue;
+      tierPool.push({ pool, wt: tierW[ti] });
+      tierTotal += tierW[ti];
     }
-    if (!pool.length) return null;
+    if (!tierPool.length) return null;
+    let tr = Math.random() * tierTotal;
+    let sel = tierPool[tierPool.length - 1];
+    for (const tp of tierPool) {
+      tr -= tp.wt;
+      if (tr <= 0) { sel = tp; break; }
+    }
+    // tier 内按卡权重抽取（池已含恢复期 2% 保底 + 同定位 ×0.35 衰减）
+    let total = 0;
+    for (const it of sel.pool) total += it.wt;
     let r = Math.random() * total;
-    let pick = pool[pool.length - 1].w;
-    for (const it of pool) {
+    let pick = sel.pool[sel.pool.length - 1].w;
+    for (const it of sel.pool) {
       r -= it.wt;
       if (r <= 0) { pick = it.w; break; }
     }
@@ -445,16 +485,92 @@
     return pick;
   }
 
+  // ---------- 诗篇额外生成（2026-10-12 用户定稿，登记《诗篇难度修正.md》）----------
+  // 诗篇三阶段（波 N = 等级 N）：Lv1~10 / Lv11~20 / Lv21~30 → 档位列 0/1/2（诗篇只填三列）。
+  // 每波主战卡落地后依次独立掷三串（互不影响、均不推进 waveSeq/poemWaveIdx）：
+  //   ①侧翼波次额外生成：先掷本波概率 → 按「等级权重」选 tier → tier 内「侧翼」定位卡按「波次权重」当前档列加权抽取 → 按卡构成出怪；
+  //   ②额外波次生成：先掷本波概率 → 「特殊」定位全池（特N + 并入的幽暮系特殊波，权重不变）按当前档列求和抽取；
+  //     ——原「特殊波次」生成类别（5%/8%/10%）随并入作废，之后不再有特殊波次生成通道；
+  //   ③真额外三项（prob 卡）：单导弹/双导弹（互斥——单导弹命中则本波不再判双导弹）/ 增益无人舰，表内数值即每波触发概率，
+  //     独立于①②，也不会被①②的权重池随机到（pickDesignedWaveCard / pickWaveCardByRole 均排除 prob 卡）。
+  const POEM_FLANK_EXTRA = {
+    chance: [0.50, 0.80, 0.80],   // 本波触发概率（Lv1~10 / Lv11~20 / Lv21~30 档）
+    tierW: [                       // 等级（波次卡 tier）选择权重：虚象 / 具象 / 真我 / 诗篇
+      [10, 5, 5, 1],               // Lv1~10 档
+      [5, 10, 8, 5],               // Lv11~20 档
+      [1, 10, 10, 5],              // Lv21~30 档
+    ],
+  };
+  const POEM_EXTRA_CHANCE = [0.50, 1, 1];   // 额外波次本波触发概率（Lv1~10 / Lv11~20 / Lv21~30 档）
+  const POEM_TIERS = ['虚象级', '具象级', '真我级', '诗篇级'];
+  function poemStageIdx(lv) { return lv < 11 ? 0 : lv < 21 ? 1 : 2; }
+
+  // 通用：限 tier（null = 全部）/ 限定位 / 限阶段列的波次卡加权抽取（0 = 不刷出；prob 卡排除；不触 DW_LAST 恢复期）
+  function pickWaveCardByRole(tier, roles, stage) {
+    let total = 0;
+    const pool = [];
+    for (const w of WAVE_SPAWN_LIST) {
+      if (tier && w.tier !== tier) continue;
+      if (!roles.includes(w.role)) continue;
+      if (w.prob) continue;
+      const base = ((WAVE_SPAWN_DRAW_W[w.id] || [])[stage] || 0);
+      if (base <= 0) continue;
+      pool.push({ w, wt: base });
+      total += base;
+    }
+    if (!pool.length) return null;
+    let r = Math.random() * total;
+    for (const it of pool) {
+      r -= it.wt;
+      if (r <= 0) return it.w;
+    }
+    return pool[pool.length - 1].w;
+  }
+
+  // ①侧翼波次额外生成抽取：返回波次卡或 null（本波不触发 / 所选 tier 侧翼池为空）
+  function pickPoemFlankCard(lv) {
+    const s = poemStageIdx(lv);
+    if (Math.random() >= POEM_FLANK_EXTRA.chance[s]) return null;
+    const tw = POEM_FLANK_EXTRA.tierW[s];
+    let total = 0;
+    for (const w of tw) total += w;
+    let r = Math.random() * total;
+    let tier = POEM_TIERS[POEM_TIERS.length - 1];
+    for (let i = 0; i < POEM_TIERS.length; i++) {
+      r -= tw[i];
+      if (r <= 0) { tier = POEM_TIERS[i]; break; }
+    }
+    return pickWaveCardByRole(tier, ['侧翼'], s);
+  }
+
+  // ②额外波次抽取：返回波次卡或 null
+  function pickPoemExtraCard(lv) {
+    const s = poemStageIdx(lv);
+    if (Math.random() >= POEM_EXTRA_CHANCE[s]) return null;
+    return pickWaveCardByRole(null, ['特殊'], s);
+  }
+
+  // ③真额外三项抽取：返回波次卡或 null（表内概率逐项独立掷，单/双导弹互斥）
+  function pickPoemTrueExtra(lv) {
+    const s = poemStageIdx(lv);
+    const p1 = ((WAVE_SPAWN_DRAW_W['h*1'] || [])[s]) || 0;
+    const p2 = ((WAVE_SPAWN_DRAW_W['h*2'] || [])[s]) || 0;
+    const pr = ((WAVE_SPAWN_DRAW_W['2R'] || [])[s]) || 0;
+    if (p1 > 0 && Math.random() < p1) return WAVE_SPAWN_LIST.find(w => w.id === 'h*1');
+    if (p2 > 0 && Math.random() < p2) return WAVE_SPAWN_LIST.find(w => w.id === 'h*2');
+    if (pr > 0 && Math.random() < pr) return WAVE_SPAWN_LIST.find(w => w.id === '2R');
+    return null;
+  }
+
   export {
     CRYSTAL_TIERS, CRYSTAL_GIANT_CHANCE, rollCrystalGiant, CRYSTAL_COLORS,
     CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, convertCrystalDrop, CHAOS_SMALL_DMG_MUL,
     PIERCE_WEAKEN_MUL, SPAWN_PHASE_TIMES, SPAWN_PHASE_LEVEL, REWARD_DRONES,
     rewardDroneChance, pickRewardDroneType, ELITE_REVIVE, PRESSURE_W,
     PRESSURE_CAPACITY, SPAWN_SLOW_MUL, SPAWN_RUSH, SPAWN_RUSH_CAP,
-    REWARD_ITEMS, DROP_KIT_RATE, DROP_KIT_RED, DROP_KIT_PURPLE,
-    DROP_KIT_YELLOW, DROP_SHIELD_RATE, DROP_SHIELD_BLUE, DROP_SHIELD_STACK,
+    REWARD_ITEMS, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK,
     DROP_HP_BY_CLASS, DROP_HP_PROLIFERA, DROP_HP_CYAN, DROP_HP_GREEN,
     DROP_HP_ELITE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_BOMB_ORANGE, DROP_KIT_BERSERK,
     WAVE_SPAWN_W_DEFAULT, WAVE_SPAWN_W, WAVE_SPAWN_LIST, WAVE_SPAWN_DRAW_W,
-    resetDesignedWaveState, pickDesignedWaveCard,
+    resetDesignedWaveState, pickDesignedWaveCard, pickPoemFlankCard, pickPoemExtraCard, pickPoemTrueExtra,
   };
