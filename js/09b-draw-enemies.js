@@ -192,7 +192,11 @@
     const first = (e.chargeWave || 0) === 0;
     const chargeDur = first ? (e.chargeFirstDur || HARBINGER.chargeFirstMin) : HARBINGER.charge;
     const coverDur = first ? HARBINGER.coverFirst : HARBINGER.reset;
-    const t = (e.chargeT || 0) % HARBINGER.cycle;   // 入场即充能：视觉不再等待就位（预览对象无 chargeT 时回退 0）
+    // 视觉相位直接用 chargeT、不取模（2026-10-12 用户定稿修复：逻辑周期 = cycle + cycleJit 0~0.9s，
+    // 且首波红相 1.5~2.5s + 3s 覆盖最长达 5.5s 本就超 4.5s——旧 `% HARBINGER.cycle` 会在周期尾段把
+    // 变红/复位动画中途卷回起点，观感 = 播到一半重新播放一次）。各相按自身时长播完，剩余时间保持
+    // 全灰静止——grayHold 段视觉自动吸收 cycleJit 富余，充满即召唤的对齐不受影响
+    const t = e.chargeT || 0;   // 入场即充能：视觉不再等待就位（预览对象无 chargeT 时回退 0；逻辑在 cycle+cycleJit 处归零）
     const coverR = R + 8;
     let redR = 0, grayR = 0;
     if (t < chargeDur) {
@@ -3342,7 +3346,8 @@
     };
     if ((phase === 0 || phase === 1) && e.wgStay && e.wgDir) {
       // 入场两段式预警（2026-10-01 用户定稿）：先「从远处出现」——流带自屏外远端沿来向朝停留点延伸而来
-      //（前 55% 时长），抵达后「出现预警圈」——与机体等大的双环预警圈在停留点浮现（后 45% 时长）；
+      //（entryWarnBand 1.2s，2026-10-12 改值），抵达后「出现预警圈」——与机体等大的双环预警圈在停留点浮现
+      //（entryWarnCircle 0.9s，2026-10-12 改值）；
       // 相位 1 冲刺期预警不整体消失——「冲刺到哪、哪段预警熄灭」（2026-10-03 用户定稿，黑暗之手
       // 阴影掠过同口径）：流带以 cutFrom=已冲距离 裁掉身后段、白芒继续流动，预警圈保持至本体抵达
       const L = 1300;                                  // 流带全长：覆盖任意停留点 → 屏外来向全程（屏高 0.92 + 横向余量）
@@ -3350,8 +3355,8 @@
       ctx.save();
       if (phase === 0) {
         const p = clamp(e.wgWarnT / WAR_GHOST.entryWarn, 0, 1);
-        const sweep = clamp(p / 0.55, 0, 1);            // 流带自远端向停留点生长进度
-        cp = clamp((p - 0.55) / 0.45, 0, 1);            // 预警圈浮现进度
+        const sweep = clamp(e.wgWarnT / WAR_GHOST.entryWarnBand, 0, 1);                              // 流带自远端向停留点生长进度（按时长，2026-10-12 两段改值后比例不再 55/45）
+        cp = clamp((e.wgWarnT - WAR_GHOST.entryWarnBand) / WAR_GHOST.entryWarnCircle, 0, 1);          // 预警圈浮现进度（流带完毕后起算）
         if (sweep > 0.01) {
           // 流带：起点 = 停留点沿来向回退全长，长度随 sweep 向停留点生长（自远端出现）；带内无箭头（用户指令）
           const fx = e.wgStay.x - e.wgDir.x * L, fy = e.wgStay.y - e.wgDir.y * L;

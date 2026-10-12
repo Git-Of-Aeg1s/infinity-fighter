@@ -1,14 +1,14 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(38 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(96 名) 13-encyclopedia(19 名) 14-main(38 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(40 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
   import { CANVAS_H, CANVAS_W, STAR_COUNT } from './01-config-core.js';
-  import { PILOTS, PLAYER_CFG, currentArmor } from './01-config-loadout.js';
+  import { PILOTS, PLAYER_CFG, currentArmor, hasPilot } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
-  import { diffMods, invulnDiffMul } from './01-config-difficulty.js';
+  import { diffMods, invulnDiffMul, isPoem } from './01-config-difficulty.js';
 
 
   // ---------- DOM ----------
@@ -24,6 +24,7 @@
   ctx.scale(DPR, DPR);
 
   const hpFill = document.getElementById('hpFill');
+  const hpBar = document.getElementById('hpBar');   // 血条轨道：迪奥 Q 扣生命上限时右侧缩短（12-ui updateHUD 驱动宽度 = 当前 maxHp / 满血 armorMaxHp）
   const hpBarrier = document.getElementById('hpBarrier');   // 青时炮艇支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
   const hpPermBarrier = document.getElementById('hpPermBarrier');   // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；12-ui updateHUD 驱动宽度）
   const scoreText = document.getElementById('scoreText');
@@ -127,6 +128,7 @@
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
+    poemBombDropped: 0,    // 诗篇爆弹掉落计数：本局已掉出的高能爆弹颗数（上限 2；02-core bombDropGate 读写、resetGame 归零——绷绷背包补弹不走 gate 不计数）
     hpKitLastLv: -999,     // 加血套件等级窗口节流（2026-10-10）：上次普通敌人实际掉落加血套件的关卡等级（-999 = 未登记；06-enemy rollItemDrops 读写，resetGame 归位）
     hpKitLastPhase: -1,    // 加血套件等级窗口节流：上次掉落时的 bossFlow.phase（窗口不跨 BOSS 轮——换轮即失效；06-enemy rollItemDrops 读写，resetGame 归位）
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
@@ -228,6 +230,7 @@
     poemWaveIdx: 0,     // 诗篇波次制：本阶段已刷波数（波 N = 等级 N；spawnWave 递增，BOSS 阶段推进归零）
     poemClearT: 0,      // 诗篇波次制：清场计时（许凯狗冲刺期复用为下一波倒计时）
     poemClearNext: 0,   // 诗篇波次制：清场后到下一波的间隔（rand clearDelay；0 = 立即，开局首波即刷）
+    poemWaveKitDone: false,  // 诗篇 Lv1~4 套件保底：本波已掉落升级套件（04-spawn 每波重置 / 06-enemy 通用套件分支登记与击坠保底判定；12-ui resetGame 归位）
   };
 
   const player = {
@@ -276,7 +279,7 @@
     bladeFlashT: 0,    // 双刃攻击闪光计时（doSlashLine 置位，updateStarslayer 衰减，paintStarslayer 读取）
     berserkSpread: 0,  // 暴走刃帆变形进度 0~1（updateStarslayer 驱动，paintStarslayer 读取）
     aiyiChargeT: 0,    // 埃逸：死亡蓄力自爆倒计时（damagePlayer 掉命时置位，updatePlayer 递减，归零触发自爆）
-    lingluoMaxDebt: 0, // 迪奥：被扣除的生命上限余量（每秒回 2 直至清零——单次触发恰好 20s 回满 40；重生/重开复原）
+    lingluoMaxDebt: 0, // 迪奥：被扣除的生命上限余量（每秒回 2 直至清零——单次触发 15s 回满 30，2026-10-12 用户定稿 40→30；重生/重开复原）
   };
 
   /** @type {Array} */ const enemies = [];
@@ -531,6 +534,26 @@
     return e.type === 'boss' ? 0.70 : 0.40;
   }
 
+  // 诗篇爆弹掉落门控（2026-10-12 用户定稿）：击坠掉落途径（BOSS 击败 20% / 4类主力舰 5% / 橙色敌人 0.5%）统一经此判定，
+  // 返回 true = 本次判定通过、调用方 spawnPowerup('bomb')：
+  //   ①每局最多掉 2 颗（state.poemBombDropped 计数；绷绷背包补弹不走本 gate、不占名额，照常生效可突破上限 1）
+  //   ②掉过 1 颗且尚未使用（库存 >0 或掉落物仍在场未拾取）→ 不掉第 2 颗
+  //   ③第 1 颗离手（使用 / 掉落物超时消失）后：掉第 2 颗概率 ×0.35（BOSS 20%→7% / 4类 5%→1.75% / 橙 0.5%→0.175%）
+  //     ——携带可莉免乘区（绷绷炸弹不受衰减，hasPilot('keli')）
+  // 非诗篇 / 挑战局（state.challenge 永驻测试）不走限流，照常按原概率判定。
+  // 调用点：06-enemy 四处击坠掉落判定（与 orangeBombUsed 整场一次旗标正交叠加）。
+  const POEM_BOMB_DROP_CUT = 0.35;   // 第 2 颗掉率乘区（2026-10-12 用户定稿「概率减少到原值的 35%」）
+  function bombDropGate(baseChance) {
+    if (!isPoem() || state.challenge) return Math.random() < baseChance;
+    const dropped = state.poemBombDropped || 0;
+    if (dropped >= 2) return false;
+    if (dropped >= 1 && (state.bombs > 0 || powerups.some(p => p.kind === 'bomb'))) return false;
+    const mul = dropped >= 1 && !hasPilot('keli') ? POEM_BOMB_DROP_CUT : 1;
+    if (Math.random() >= baseChance * mul) return false;
+    state.poemBombDropped = dropped + 1;
+    return true;
+  }
+
   // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器伤害乘区）。
   // 调用点：08-entities 我方弹命中 / 捣蛋与叮咚导弹 / 辛国栋火环灼烧等伤害结算处乘算
   function rewardOutMul() {
@@ -614,14 +637,24 @@
   // ---------- 装甲共享辅助（02-core 持有 eBullets/player，避免 06↔07 循环依赖） ----------
 
   // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失 / 量子护盾到期 / 炼金璃淡粉冲击波共用）。
-  // 巨大蛋挞（b.tart）豁免（2026-10-08 用户定稿：不再被任何护盾扩散波消除——仅能被依的镰刀斩碎，斩击流程见 07-player updateMeiScythes）；
-  // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）可被消除（同日定稿）：任一身体节点进入半径即整条消散。
+  // 巨大蛋挞（b.tart）可被扩散波消散（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）——
+  // 置 tartHitT 走镰刀同款「颤动→碎裂迸粒→渐隐」管线（状态机见 08-entities），起始补水蓝火花；仅首次触发计数。
+  // 群星守望两通道（clearNearestEnemyBullet / clearEnemyBulletsByOwner）与守愿者白盾对蛋挞仍豁免（10-08 口径收窄后保留）。
+  // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）可被消除（2026-10-08 定稿）：任一身体节点进入半径即整条消散。
   // 返回实际清除数（成就：清除空气 / 云心）
   function clearEnemyBulletsNear(x, y, radius) {
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
-      if (b.tart) continue;   // 巨大蛋挞免疫扩散波消弹（2026-10-08 用户定稿）
+      if (b.tart) {
+        // 巨大蛋挞：扩散波消散（不立即移除，走消散管线；已消散中不重复计数）
+        if (b.tartHitT == null) {
+          b.tartHitT = 0;
+          spawnParticles(b.x, b.y, '#9be7ff', 10, 170);
+          n++;
+        }
+        continue;
+      }
       if (Math.hypot(b.x - x, b.y - y) <= radius) {
         spawnParticles(b.x, b.y, '#9be7ff', 3, 80);
         eBullets.splice(i, 1);
@@ -681,7 +714,7 @@
   function clearNearestEnemyBullet(x, y) {
     let best = -1, bestD = Infinity;
     for (let k = 0; k < eBullets.length; k++) {
-      if (eBullets[k].tart) continue;   // 巨大蛋挞免疫消弹（2026-10-08 用户定稿：仅镰刀可斩）——不作为消除目标
+      if (eBullets[k].tart) continue;   // 巨大蛋挞对群星守望仍豁免（2026-10-12 口径收窄：仅护盾碰触/扩散波/镰刀可消）——不作为消除目标
       const d = Math.hypot(eBullets[k].x - x, eBullets[k].y - y);
       if (d < bestD) { bestD = d; best = k; }
     }
@@ -701,7 +734,7 @@
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
-      if (b.owner !== owner || b.tart) continue;   // 巨大蛋挞免疫消弹（2026-10-08 用户定稿：仅镰刀可斩）
+      if (b.owner !== owner || b.tart) continue;   // 巨大蛋挞对群星守望仍豁免（2026-10-12 口径收窄）
       spawnWatchClearFx(player.x, player.y, b);
       eBullets.splice(i, 1);
       n++;
@@ -721,8 +754,9 @@
   }
 
   // 爆炸冲击圈：蓝色扩散环自爆点扩散至波及半径（指示实际溅射范围，绘制见 10-draw-world drawBlastRings）
-  function spawnBlastRing(x, y, r, color = '#7fb8ff', dur = 0.35) {
-    blastRings.push({ x, y, r, color, t: 0, dur });
+  // opts（可选）：lw 主环线宽（缺省 2）/ alphaMul 透明度倍率（缺省 1）——不传时与既有调用视觉完全一致
+  function spawnBlastRing(x, y, r, color = '#7fb8ff', dur = 0.35, opts = null) {
+    blastRings.push({ x, y, r, color, t: 0, dur, lw: opts && opts.lw, alphaMul: opts && opts.alphaMul });
   }
 
   // 最终壁垒：每条命一次的免死判定——致死伤害改为存活（同样生效于导弹等强制击杀路径）。
@@ -802,7 +836,7 @@
   }
 
   export {
-    canvas, ctx, setCtx, DPR, hpFill, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
+    canvas, ctx, setCtx, DPR, hpFill, hpBar, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
     douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,
@@ -819,7 +853,7 @@
     slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
-    enemyFireIv, enemyFieldFireMul, rewardOutMul,
+    enemyFireIv, enemyFieldFireMul, rewardOutMul, bombDropGate,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBursts, bulwarkBurst, spawnBlastRing,

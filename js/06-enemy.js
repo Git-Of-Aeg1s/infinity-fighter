@@ -11,7 +11,7 @@
   import { BOSS, BOSS_BULLET, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
   import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul } from './01-config-difficulty.js';
   import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
-  import { blBombs, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
+  import { blBombs, bombDropGate, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
@@ -116,7 +116,7 @@
           if (Math.random() < 0.5) spawnSideGroup();
           else spawnStrikerGroup();
         }
-        // 赤金主力舰「金环扩散」：圆环扩大 1.2s，环带上的我方与敌方子弹瞬间消散；到范围后停止并淡出消散
+        // 赤金主力舰「金环扩散」：圆环扩大 1.2s，环带上的我方与敌方子弹、我方导弹瞬间消散；到范围后停止并淡出消散
         if (e.variant === 'crgold') {
           // 旋转双环显现：机翼展开完成后（unfoldT 归零）逐渐淡入
           if (e.arrived && !(e.unfoldT > 0)) e.ringT = (e.ringT || 0) + dt;
@@ -145,6 +145,11 @@
                 const eb = eBullets[i];
                 if (Math.abs(Math.hypot(eb.x - e.x, eb.y - e.y) - w.r) <= band) eBullets.splice(i, 1);
               }
+              // 我方导弹一并消散（2026-10-12 用户定稿：捣蛋来袭/驾驶员召唤/连射链全员——dagouMissiles 均为玩家侧）
+              for (let i = dagouMissiles.length - 1; i >= 0; i--) {
+                const dm = dagouMissiles[i];
+                if (Math.abs(Math.hypot(dm.x - e.x, dm.y - e.y) - w.r) <= band) dagouMissiles.splice(i, 1);
+              }
             } else {
               e.ringWave = null;   // 到达最大范围即刻消散（无停顿）
             }
@@ -152,12 +157,18 @@
         }
       }
   
-      // 飞出屏幕（仅穿越型会触发）；横向边界 ±460：各长队编队（BOSS 后固定首波 / 1类长队 /
-      // 紫自爆流等）队尾在屏外最深处约 -431，旧 ±120 边界会把尚未入场的队尾整排在第一帧就移除；
+      // 飞出屏幕（仅穿越型会触发）。横向边界分档（2026-10-12 用户定稿「侧离及时移除」）：
+      //   未入场敌人 ±460——各长队编队（BOSS 后固定首波 / 1类长队 / 紫自爆流等）队尾在屏外最深处约 -431，
+      //     边界过窄会把尚未入场的队尾整排在第一帧就移除（±120 旧案）；
+      //   已入场敌人（e.entered：中心进入屏幕内任意一帧即置位）收紧为「完全出屏 +60px」——
+      //     穿越型侧离敌人原受 ±460 拖累，视觉出屏后还要再飞 ≈460px（≈2.3s）才被移除、拖住诗篇清场计时。
       // 顶部出界仅限 leaving（法术阵列 30s 后向上飞离），入场中的敌人不受影响；
       // 朴学峰流星穿刺的技能相位（10~15 贯穿）出屏是设计行为、由技能收口管理，不走此处
+      if (!e.entered && e.x > 0 && e.x < CANVAS_W && e.y > 0 && e.y < CANVAS_H) e.entered = true;
       const pxSkillPhase = e.type === 'puxuefeng' && e.elPhase != null && e.elPhase >= 10 && e.elPhase <= 15;
-      if (!pxSkillPhase && (e.y - e.h / 2 > CANVAS_H || e.x < -460 || e.x > CANVAS_W + 460 ||
+      const xOutL = e.entered ? -(60 + e.w / 2) : -460;
+      const xOutR = CANVAS_W + (e.entered ? 60 + e.w / 2 : 460);
+      if (!pxSkillPhase && (e.y - e.h / 2 > CANVAS_H || e.x < xOutL || e.x > xOutR ||
           (e.leaving && e.y + e.h / 2 < 0))) {
         enemies.splice(i, 1);
         continue;
@@ -171,17 +182,17 @@
         if (e.type === 'warGhost' && e.wgPhase === 1) {
           // 战争幽灵入场冲撞特例：50 伤害 + 强力击退（复用风暴风流击退 knockbackPlayer，沿冲刺方向推开）；
           // 幽灵本体不受撞机反伤（这是刻意的突击攻击而非普通碰撞）
-          damagePlayer(WAR_GHOST.entryDmg * enemyDmgMul(), 1, false, false, null);
+          const wgTookHit = damagePlayer(WAR_GHOST.entryDmg * enemyDmgMul(), 1, false, false, null);
           knockbackPlayer(e.wgDir.x, e.wgDir.y, WAR_GHOST.knockback);
-          shake(8, 0.35);
+          if (wgTookHit) shake(8, 0.35);   // 屏障/护盾吸收（damagePlayer 返回 false）不震屏（2026-10-12 用户定稿）
           spawnParticles(player.x, player.y, '#ffd24a', 14, 240);
         } else if (e.type === 'puxuefeng' && e.elPhase != null && (e.elPhase === 11 || e.elPhase === 13 || e.elPhase === 15)) {
           // 朴学峰冲刺贯穿特例：接触伤害 + 沿冲刺方向击退（2026-10-02 用户定稿：是击退不是击飞、不旋转；
           // 复用 05-boss knockbackPlayer，同战争幽灵入场冲撞口径）；本体不受撞机反伤（刻意突击攻击）；
           // 外层 invuln 门控保证单冲至多命中一次
-          damagePlayer((isPoem() ? ENEMY_TYPES.puxuefeng.crashDmgPoem : ENEMY_TYPES.puxuefeng.crashDmg) * enemyDmgMul(), 1, false, false, null);
+          const pxfTookHit = damagePlayer((isPoem() ? ENEMY_TYPES.puxuefeng.crashDmgPoem : ENEMY_TYPES.puxuefeng.crashDmg) * enemyDmgMul(), 1, false, false, null);
           knockbackPlayer(Math.cos(e.elSkill.ang), Math.sin(e.elSkill.ang), ELITES.puxuefeng.dashKbV);
-          shake(8, 0.35);
+          if (pxfTookHit) shake(8, 0.35);   // 屏障/护盾吸收（damagePlayer 返回 false）不震屏（2026-10-12 用户定稿）
           spawnParticles(player.x, player.y, '#ffd24a', 14, 240);
         } else {
         // 卫护飞船（invulnMul 0.4）：撞击造成的无敌时间仅为常规的 40%
@@ -232,7 +243,7 @@
   
   // 战争幽灵光环（驻留期全场生效）：场上存在存活战争幽灵时，破片/破片U型/铁砧——
   // 移速 ×auraSpdMul、加速度（速度逼近率）×auraAccMul（当前 ×2 = +100%，同步乘算，防止高速下逼近率不足冲过停留锚点）；
-  // 破片（非U型）攻击无视索敌距离（对齐角度门控保留，见 updateEnemyFire popian 分支）
+  // 原第三效果「破片（非U型）攻击无视索敌距离」已随 2026-10-12 破片攻击距离限制整体移除而作废（见 updateEnemyFire popian 分支）
   function warGhostAura() {
     for (const g of enemies) {
       if (g.type === 'warGhost' && !g.dying && g.hp > 0) return WAR_GHOST.auraSpdMul;
@@ -244,6 +255,44 @@
       if (g.type === 'warGhost' && !g.dying && g.hp > 0) return WAR_GHOST.auraAccMul;
     }
     return 1;
+  }
+
+  // 停留期轻微避让（2026-10-12 用户定稿「停留线上随机移动时轻微倾向于不重叠」）：
+  // 已就位停留的敌机与近邻水平净距不足时，返回微弱水平推开速度（由调用方叠加进横移）。
+  // 推力是关于位置的连续函数（k² 剖面：接触边界为 0、越近越大），无瞬跳；峰值 SEP_SPD 仅 26px/s——
+  // 只作「倾向」不构成硬约束。仅水平推开（混编波停留线已按类分层，跨带 y 差大不会误推；
+  // 固定编队同层间距 ≥ 缓冲值，不受影响）。完全重叠（dx=0）按 wobble 相位稳定分向，防同向卡死。
+  const SEP_SPD = 26;   // 避让峰值速度 px/s（轻微量级）
+  function separationVx(e) {
+    let vx = 0;
+    for (const o of enemies) {
+      if (o === e || o.type === 'boss' || o.leaving || o.dying) continue;
+      // 「停留中」判定：常规敌机按 arrived（下降到 hoverY 置位）；
+      // striker 无 arrived 字段——已到前锋停留线且停留倒数未结束才算（下降途中不推，防破坏入位）
+      const oStay = o.type === 'striker'
+        ? (o.holdTimer > 0 && !o.vNoHold && o.holdY != null && o.y >= o.holdY - 0.5)
+        : o.arrived;
+      if (!oStay) continue;
+      const dy = Math.abs(e.y - o.y);
+      if (dy >= (e.h + o.h) * 0.5) continue;              // 垂直投影不交叠：无需避让
+      const need = (e.w + o.w) * 0.5 + 10;                // 期望最小水平净距（+10px 缓冲）
+      const dx = e.x - o.x;
+      const adx = Math.abs(dx);
+      if (adx >= need) continue;
+      const k = 1 - adx / need;                           // 0（贴边界）→ 1（完全重叠）连续
+      vx += (dx > 0 || (dx === 0 && e.wobble >= o.wobble) ? 1 : -1) * k * k * SEP_SPD;
+    }
+    return vx;
+  }
+
+  // 场上仅剩 2类防御（坚垒护卫艇）判定（2026-10-12 用户定稿）：除自身外的存活敌人（濒死 dying / 已离场 leaving
+  // 者不计——不再构成威胁）全部为坚垒时返回 true——届时全体坚垒立刻终止停留 / 未到停留线者不再停留
+  function fortressOnlyField(e) {
+    for (const t of enemies) {
+      if (t === e || t.hp <= 0 || t.dying || t.leaving) continue;
+      if (!(t.type === 'striker' && t.variant === 'fortress')) return false;
+    }
+    return true;
   }
 
   function updateEnemyMovement(e, dt) {
@@ -316,8 +365,9 @@
         if (t >= 1 || (remain <= 1.5 && vel <= 10)) { e.y = e.duskTY; e.duskPhase = 2; e.duskT = 0; }
       } else if (e.duskPhase === 2) {
         // 瞄准停顿 0.2s，结束时开火：以随机方向为基准，向四周正六边形(6)或正八边形(8)的均匀方向各射 1 发
+        // （诗篇固定 8 发正八边形——2026-10-12 用户定稿，取 DUSK.poemN；其余难度 6/8 各半随机）
         if (e.duskT >= DUSK.aimWait) {
-          e.duskN = Math.random() < 0.5 ? 6 : 8;
+          e.duskN = isPoem() ? DUSK.poemN : (Math.random() < 0.5 ? 6 : 8);
           e.duskBaseA = Math.random() * Math.PI * 2;
           const cfg = ENEMY_TYPES.striker;
           for (let k = 0; k < e.duskN; k++) {
@@ -341,6 +391,10 @@
       // 入位/冲锋基准速度逐变体定义（VARIANTS.striker entry/charge，幽暮不适用）；各变体停留规则已统一（无额外修正）
       const holdY = e.holdY != null ? e.holdY : 210;
       const descend = e.entrySpd != null ? e.entrySpd : 140;   // 入位下降速度
+      // 仅剩 2类防御（2026-10-12 用户定稿）：场上除坚垒外无其他存活敌人（濒死/离场者不计）时——
+      // 全体坚垒立刻终止停留（holdTimer 清零转入冲锋分支：vy 自当前值指数平滑加速，无瞬跳）；
+      // 尚未到停留线者计时归零后自然不停线（冲锋分支不吸附 holdY）。挑战模式不生效（保留停留表现供观察）
+      if (!state.challenge && e.holdTimer > 0 && fortressOnlyField(e)) e.holdTimer = 0;
       // 「2*7」无停留直通（50% 波次）：下降段保持入位速度越过前锋停留线，越过 holdY 后
       // 平滑衰减到 descend × vNoHoldSpdMul（基准 0.8 / 诗篇 0.6）——指数逼近保证速度曲线连续，不瞬变；
       // 全程无横移（全波 holdY 按出生偏移差异化 → 行程相等、同时越线，阵型保持）
@@ -368,9 +422,11 @@
           e.y += e.vy * dt;
           if (dist <= 0.5) { e.y = holdY; e.vy = 0; }
         }
-        // 停留期横摆（入位/冲锋无横移；各架独立相位）；横摆幅度 0.6s 缓入——到位瞬间无横向速度突变
+        // 停留期横摆（入位/冲锋无横移；各架独立相位）；横摆幅度 0.6s 缓入——到位瞬间无横向速度突变；
+        // 叠加轻微避让（separationVx 位置连续函数）并同乘 holdSwayT 缓入——避让速度同样从 0 平滑起、无瞬跳
         e.holdSwayT = (e.holdSwayT || 0) + dt;
-        e.x += Math.sin(e.wobble) * 14 * Math.min(1, e.holdSwayT / 0.6) * dt;
+        const sepIn = Math.min(1, e.holdSwayT / 0.6);
+        e.x = clamp(e.x + (Math.sin(e.wobble) * 14 * sepIn + separationVx(e) * sepIn) * dt, e.w / 2, CANVAS_W - e.w / 2);
         return;
       }
       // 冲锋启动：较短时间内从 0 平滑加速到冲锋速度（无横移）
@@ -533,8 +589,8 @@
       // 各相位切换处位置与速度严格连续
       if (e.wgPhase === 0) {
         // 入场风波预警：本体静驻屏外起点，仅推进预警计时（绘制见 09-draw-ships drawWarGhostWarns）；
-        // 预警全部出现完毕后再停登场延迟（普通 entryDelay 0.35 / 真我 entryDelayRealme 0.25 / 诗篇 entryDelayPoem 0.1，
-        // 2026-10-03 用户定稿三档各 -0.1/-0.2/-0.25s 再各 -0.05s）才冲刺——延迟期预警保持全显（绘制端 p 封顶 1）
+        // 预警全部出现完毕后再停登场延迟（普通 entryDelay 0.15 / 真我 entryDelayRealme 0.05 / 诗篇 entryDelayPoem 0，
+        // 2026-10-03 用户定稿三档各 -0.1/-0.2/-0.25s 再各 -0.05s；2026-10-12 再各 -0.2s：0.35/0.25/0.1→0.15/0.05/0）才冲刺——延迟期预警保持全显（绘制端 p 封顶 1）
         e.wgWarnT += dt;
         if (e.wgWarnT >= WAR_GHOST.entryWarn) {
           e.wgDelayT += dt;
@@ -1181,9 +1237,8 @@
       // 破片U型：同移动流程，差异——① 入场途中即旋转瞄准玩家（不对齐飞行方向，尾焰随移动方向绘制）；
       // ② 无需锁停即可攻击（首攻延迟 = 入场后 atkT 1.8~2s 随机，诗篇 1.6~2s，见 POPIAN_U）
       e.entryT += dt;
-      // 索敌范围随时间增长（30% 屏高起步、每秒 +5% 屏高，封顶 detectMax）——体现为攻击范围增大
-      e.detectR = Math.min(CANVAS_H * POPIAN.detectMax,
-        CANVAS_H * (POPIAN.detectBase + POPIAN.detectGrow * e.entryT));
+      // 登场计时仅用于碰撞分段与入场初速衰减；攻击距离限制已整体移除（2026-10-12 用户定稿）——
+      // 原「索敌半径随时间增长（30% 屏高起步、每秒 +5%、封顶 120%）」与 e.detectR 字段一并作废
       if (!e.arrived) {
         const dx = e.tpX - e.x, dy = e.tpY - e.y;
         const dist = Math.hypot(dx, dy) || 1;
@@ -1441,11 +1496,12 @@
           const wantHold = (e.variant === 'crgold' && e.crgoldHold > 0) ? 0 : 1;
           if (e.crgoldHold > 0) e.crgoldHold -= dt;
           e.holdEase += (wantHold - e.holdEase) * Math.min(1, dt * 6);
-          e.x = clamp(e.x + Math.sin(e.wobble * 0.35) * 30 * e.holdEase * swayIn * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
+          // 叠加轻微避让（separationVx）并同乘 swayIn——避让速度同样从 0 平滑起（连续、无瞬跳）
+          e.x = clamp(e.x + (Math.sin(e.wobble * 0.35) * 30 * e.holdEase * swayIn + separationVx(e) * swayIn) * dt, e.w / 2 + 6, CANVAS_W - e.w / 2 - 6);
         } else if (!e.staticX) {
-        // gunship / harbinger：轻幅左右巡航（先兆者幅度更小，稳居后排）
+        // gunship / harbinger：轻幅左右巡航（先兆者幅度更小，稳居后排）+ 轻微避让（同乘 swayIn 缓入）
         // staticX：BOSS 召唤的先兆者固定在最左/最右，不巡航，避免被 BOSS 机体挡住打不到
-        e.x += Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * swayIn * dt;
+        e.x += (Math.sin(e.wobble * 0.6) * (e.type === 'harbinger' ? 24 : 50) * e.speedMul * swayIn + separationVx(e) * swayIn) * dt;
       }
       // 御4 / 铁砧：到位后在左右巡航之外叠加小幅上下浮动——
       // 位置公式：相位 bobT 在到位瞬间从 0 起（t=0 偏移严格 = 0，位置与前一帧连续），
@@ -1505,16 +1561,18 @@
   }
   
   // ---------- 驻留增压（2026-10-11 用户定稿）：会停留的敌人登场一段时间后攻击间隔 -50% ----------
-  //   2 类（突击艇 / 破片 / 法术矩阵等）登场 6s 后 / 4 类登场 14s 后——
+  //   2 类（突击艇 / 破片 / 法术矩阵等）登场 6s 后 / 3 类普通炮艇登场 10s 后 / 4 类登场 14s 后——
   //   实现为攻击冷却流速 ×2（与间隔 -50% 等价，与寒霜力场减速同乘区叠加）。
-  //   **3 类整体排除（2026-10-12 用户定稿）：所有 3 类攻击单位都不吃本 buff，之后新增的 3 类同样不生效**
-  //   （DWELL_FIRE_AFTER 无 3 档 → dwellFireAmp 天然返回 1，规则性排除、无需逐个列名单）。
+  //   **诗篇难度阈值缩短（2026-10-12 用户定稿）：2 类 5s / 3 类 7.5s / 4 类 10s**（DWELL_FIRE_AFTER_POEM 选表）。
+  //   **3 类仅普通炮艇纳入（2026-10-12 用户定稿回调）**：威龙 / 先兆者 / 脉冲矩阵 / 大型龙卷等其余 3 类
+  //   仍不吃本 buff（无表项 → dwellFireAmp 天然返回 1，规则性排除、无需逐个列名单）。
   //   不计入：2类防御（坚垒护卫艇，不开火）、不停留的 2 类法术大师 A1/A2（其 fa1/fa2FireTimer 不经本乘区）、
   //   BOSS 召唤物大型龙卷（不在 ENEMY_CLASS 表内天然排除）、奖励无人舰（无攻击天然不生效）。
   //   战争幽灵（4 类技能间隔）按所属类别阈值同享加速；4S 精英技能间隔不受影响（2026-10-11 用户定稿）。
-  const DWELL_FIRE_AFTER = { 2: 6, 4: 14 };   // 各类别登场秒数阈值（s，自 makeEnemy bornT 起算；3 类整体排除）
+  const DWELL_FIRE_AFTER = { 2: 6, 3: 10, 4: 14 };        // 常规阈值（s，自 makeEnemy bornT 起算）
+  const DWELL_FIRE_AFTER_POEM = { 2: 5, 3: 7.5, 4: 10 };  // 诗篇阈值（s，2026-10-12 用户定稿缩短）
   function dwellFireAmp(e) {
-    const after = DWELL_FIRE_AFTER[ENEMY_CLASS[e.type]];
+    const after = (isPoem() ? DWELL_FIRE_AFTER_POEM : DWELL_FIRE_AFTER)[ENEMY_CLASS[e.type]];
     if (after == null || e.bornT == null) return 1;
     if (e.type === 'striker' && e.variant === 'fortress') return 1;   // 2类防御例外
     return (state.time - e.bornT >= after) ? 2 : 1;
@@ -1555,8 +1613,8 @@
     // 充能与召唤均在 updateEnemyFire 内进行，不影响 updateEnemyMovement 的移动（下降/悬停巡航照常）
     if (e.type === 'harbinger') {
       if (e.leaving) return;   // 已离场：停止充能
-      // 虚象：攻击间隔 +25% —— 充能序列整体时间膨胀（红相充满更慢 → 召唤导弹更稀疏）；3 类不吃驻留增压（2026-10-12 用户定稿）
-      e.chargeT += dt * dwellFireAmp(e) / (diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1);
+      // 虚象：攻击间隔 +25% —— 充能序列整体时间膨胀（红相充满更慢 → 召唤导弹更稀疏）；先兆者不吃驻留增压（3 类仅普通炮艇纳入，2026-10-12 用户定稿回调）
+      e.chargeT += dt / (diffMods().enemyFireIntervalMul != null ? diffMods().enemyFireIntervalMul : 1);   // 不乘 dwellFireAmp：先兆者不吃驻留增压（原 3 类整体排除时该乘区恒 1 空转，炮艇档恢复后须显式移除——2026-10-12 用户定稿回调）
       // 首波红相 1.5~2.5s（逐机随机 e.chargeFirstDur）、后续波红相 2s；充满即召唤（chargeWave 整波保持不变，避免召唤后动画参数跳变）
       const cd = (e.chargeWave || 0) === 0 ? (e.chargeFirstDur || HARBINGER.chargeFirstMin) : HARBINGER.charge;
       if (!e.firedThisCycle && e.chargeT >= cd && e.missilesGuided < HARBINGER.maxMissiles) {
@@ -1585,7 +1643,7 @@
         }
         return;
       }
-      e.fireTimer -= dt * enemyFieldFireMul(e);   // 奖励道具·寒霜发生器：力场内射速 -60%（BOSS 减半）；3 类不吃驻留增压（2026-10-12 用户定稿）
+      e.fireTimer -= dt * enemyFieldFireMul(e);   // 奖励道具·寒霜发生器：力场内射速 -60%（BOSS 减半）；威龙不吃驻留增压（3 类仅普通炮艇纳入，2026-10-12 用户定稿回调）
       if (e.fireTimer <= 0) {
         const cfg = ENEMY_TYPES.weilong;
         e.fireTimer = enemyFireIv(cfg);
@@ -1600,7 +1658,7 @@
       }
       return;
     }
-    // 破片：停稳锁停后，索敌范围内 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；
+    // 破片：停稳锁停后 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；
     // 破片U型：无需锁停（入场 atkT 1.8~2s / 诗篇 1.6~2s 计时即门控），导弹 8×3（POPIAN_U），其余同破片
     if (e.type === 'popian' || e.type === 'popianU') {
       if (e.leaving || (e.type !== 'popianU' && !e.arrived)) return;   // 未停稳不攻击（U型除外：无需就位）
@@ -1626,15 +1684,14 @@
         }
         return;
       }
-      // 攻击间隔计时：仅当玩家处于索敌范围内、且机身已朝向玩家（对齐阈值内）才发起预警
-      // （未朝向玩家时无法发射——等待转向完成，短暂重试）；
-      // 战争幽灵光环：破片无视索敌距离（对齐角度门控保留；破片U型本就无需锁停、不受此门控影响）
+      // 攻击间隔计时：机身已朝向玩家（对齐阈值内）即发起预警——攻击距离限制已整体移除（2026-10-12 用户定稿，
+      // 原索敌半径 30%→120% 屏高随时间增长与战争幽灵光环「无视索敌距离」通道随之作废）；
+      // 未朝向玩家时无法发射——等待转向完成，短暂重试
       e.atkT -= dt * enemyFieldFireMul(e) * dwellFireAmp(e);   // 寒霜力场 -60%（BOSS 减半）+ 驻留增压（2 类 6s 后 ×2）
       if (e.atkT <= 0) {
         const wantFace = Math.atan2(player.y - e.y, player.x - e.x) - Math.PI / 2;
         const df = Math.atan2(Math.sin(wantFace - e.faceAng), Math.cos(wantFace - e.faceAng));
-        if (player.alive && Math.abs(df) <= POPIAN.fireAlign &&
-            (warGhostAura() > 1 || Math.hypot(player.x - e.x, player.y - e.y) <= e.detectR)) {
+        if (player.alive && Math.abs(df) <= POPIAN.fireAlign) {
           // 锁定玩家当前位置（含少量随机偏移）为红圈中心，预警期间不再跟踪
           e.warn = {
             tx: clamp(player.x + rand(-POPIAN.warnOffset, POPIAN.warnOffset), 12, CANVAS_W - 12),
@@ -1743,7 +1800,7 @@
           damagePlayer(PULSE_MATRIX.pulseDmg * enemyDmgMul(), 1, false, false, null);
         }
       }
-      e.fireTimer -= dt * enemyFieldFireMul(e);   // 奖励道具·寒霜发生器：力场内射速 -60%（BOSS 减半）；3 类不吃驻留增压（2026-10-12 用户定稿）
+      e.fireTimer -= dt * enemyFieldFireMul(e);   // 奖励道具·寒霜发生器：力场内射速 -60%（BOSS 减半）；脉冲矩阵不吃驻留增压（3 类仅普通炮艇纳入，2026-10-12 用户定稿回调）
       if (e.fireTimer <= 0) {
         const iv = isPoem() ? PULSE_MATRIX.fireIntervalPoem : PULSE_MATRIX.fireInterval;
         e.fireTimer = iv;
@@ -1775,7 +1832,7 @@
       if (e.wgPhase !== 3) return;   // 仅驻留相位施放技能（入场/离场/演出期不攻击）
       if (e.wgSkill) { advanceWarGhostSkill(e, dt); }
       else {
-        e.wgGapT -= dt * dwellFireAmp(e);   // 驻留增压（4 类 14s 后技能间隔 -50%）
+        e.wgGapT -= dt;   // 直减 dt——战争幽灵不吃驻留增压（停留敌人攻击间隔减半修正不生效，2026-10-12 用户定稿）
         if (e.wgGapT <= 0) startWarGhostSkill(e);
       }
       // 技能3 弹幕排入定时子射击队列：此处自行推进（专用分支提前 return，不落入通用 scheduled 段）
@@ -1839,7 +1896,7 @@
       return;
     }
   
-    e.fireTimer -= dt * enemyFieldFireMul(e) * dwellFireAmp(e);   // 寒霜力场 -60%（BOSS 减半）+ 驻留增压（按类别阈值：2 类 6s / 4 类 14s 后 ×2；3 类整体排除）
+    e.fireTimer -= dt * enemyFieldFireMul(e) * dwellFireAmp(e);   // 寒霜力场 -60%（BOSS 减半）+ 驻留增压（按类别阈值：2 类 6s / 3 类炮艇 10s / 4 类 14s 后 ×2，诗篇 5/7.5/10；其余 3 类无表项排除）
     if (e.fireTimer > 0) return;
     const cfg = ENEMY_TYPES[e.type];
     e.fireTimer = enemyFireIv(cfg);
@@ -2072,14 +2129,15 @@
             // 同向两发出射角 ±0.03 + 垂直错位 ±6px（初始间距 12px，不再重叠）
             const ox = e.x, oy = e.y;
             const base = Math.atan2(player.y - oy, player.x - ox);
-            const maxSp = cfg.bulletSpeed * 1.8;
+            // 加速弹参数 ×1.6（2026-10-12 用户定稿）：accel 300→480、maxSpeed ×1.8→×2.88 倍弹速（仅本技能 2*5；技能3 扫射仍 300/×1.8）
+            const maxSp = cfg.bulletSpeed * 2.88;
             for (let wv = 0; wv < 5; wv++) {
               e.scheduled.push({ t: wv * 0.12, fn: () => {
                 for (const dir of [base, base + Math.PI])
                   for (const o of [-0.03, 0.03]) {
                     const px = Math.cos(dir), py = Math.sin(dir), nx = -py, ny = px;
                     const sgn = o < 0 ? -1 : 1;
-                    pushEBullet(e, dir + o, 2, cfg, { accel: 300, maxSpeed: maxSp, x: ox + nx * sgn * 6, y: oy + ny * sgn * 6 });
+                    pushEBullet(e, dir + o, 2, cfg, { accel: 480, maxSpeed: maxSp, x: ox + nx * sgn * 6, y: oy + ny * sgn * 6 });
                   }
               }});
             }
@@ -2258,6 +2316,8 @@
       dmg: opts.dmg != null ? opts.dmg : cfg.bulletDmg,
       color: opts.color || (isShip ? SHIP_BULLET_COLOR : '#ffd166'),
       grad: !!opts.grad,          // 橙红渐变圆弹标记（白核 → 主色 → 暗橙红边径向渐变，见 10-draw-world eBullet grad 分支）
+      streak: opts.streak || 0,     // 短拖尾长度（px，0=无；战争幽灵技能3 散弹，10-draw-world streak 渐隐线段拖尾）
+      taper: !!opts.taper,          // 拖尾锥状化标记（头宽尾尖三角填充；无标记走等宽线段——BOSS 大子弹 streak 不受影响）
       split: opts.split || null,    // 分裂弹配置（飞行一段→减速→分裂）
       support: !!opts.support,      // 青时炮艇支援弹标记（命中加屏障、不造成伤害，见 08-entities；此前 opts.support 未透传导致整条屏障链路失效）
       weave: opts.weave || null,    // 蛇行弹配置 { amp, om, ph }（朝向绕 baseAng 正弦摆动、恒速前进，见 08-entities）
@@ -2410,12 +2470,14 @@
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
       return;
     }
-    // 走标准 damagePlayer（isMissile=true：不计入常规受击计数、不触发掉级累计）；命中后武器等级 -1、暴走中断
-    if (damagePlayer(dmg, 1, false, true, 'missile')) {
+    // 走标准 damagePlayer（isMissile=true：不计入常规受击计数、不触发掉级累计）；命中后武器等级 -1、暴走中断；
+    // 屏障/护盾吸收（返回 false）不震屏（2026-10-12 用户定稿）——爆炸粒子照常（导弹本体命中演出）
+    const tookHit = damagePlayer(dmg, 1, false, true, 'missile');
+    if (tookHit) {
       if (player.weapon > 1) player.weapon--;
       player.berserk = 0;
+      shake(8, 0.35);
     }
-    shake(8, 0.35);
     spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
   }
 
@@ -2565,7 +2627,15 @@
 
   /* ---------- 战争幽灵：技能循环与斩击流 ---------- */
   // 技能调度：首个 = e.wgFirst（入场随机 2 或 3），之后固定 1→2→3 循环（e.wgNext 跟踪下一个待释放技能）；
-  // 每次释放后由 advanceWarGhostSkill 结算并重置 e.wgGapT = skillGap
+  // 每次释放后由 advanceWarGhostSkill 结算并经 warGhostNextGap 重置 e.wgGapT
+  // 间隔结算（2026-10-12 用户定稿）：基准 1.6s（真我/诗篇 1.3s），每释放一次技能 -0.1s、下限 0.3s——
+  // wgGapCur 懒初始化为难度档基准（入场首技能走 spawnWarGhost 的固定 1.2s，不受递减），此后逐次收口递减
+  function warGhostNextGap(e) {
+    const base = e.wgGapCur != null ? e.wgGapCur
+      : ((isRealme() || isPoem()) ? WAR_GHOST.skillGapRealme : WAR_GHOST.skillGap);
+    e.wgGapCur = Math.max(WAR_GHOST.skillGapMin, base - WAR_GHOST.skillGapCut);
+    return e.wgGapCur;
+  }
   function startWarGhostSkill(e) {
     const kind = e.wgNext == null ? e.wgFirst : e.wgNext;
     e.wgNext = kind % 3 + 1;
@@ -2591,8 +2661,10 @@
           const dirAng = base + rot + d * (Math.PI * 2 / g.barrageDirs);
           for (let k = 0; k < g.barragePerDir; k++) {
             const ang = dirAng + (k - (g.barragePerDir - 1) / 2) * fanStep;
-            // 黄红渐变弹（2026-10-02 用户定稿）：grad:'yr' 标记走白核→黄(#ffd24a)→红边(rgba(224,44,18,0.95))径向渐变渲染（10-draw-world gradYR 分支）
-            e.scheduled.push({ t: wave * g.barrageWaveGap, fn: () => pushEBullet(e, ang, cfg.bulletSpeed, cfg, { r: g.barrageR, dmg: g.barrageDmg, color: '#ffd24a', grad: 'yr' }) });
+            // 黄红渐变弹（2026-10-02 用户定稿）：grad:'yr' 标记走白核→黄(#ffd24a)→红边(rgba(224,44,18,0.95))径向渐变渲染（10-draw-world gradYR 分支）；
+            // streak：短拖尾（2026-10-12 用户定稿「一定拖尾、不要过长」，复用 BOSS 大子弹 streak 机制）；
+            // taper：锥状（2026-10-12 用户定稿「尾部收缩」——头宽尾尖三角填充）
+            e.scheduled.push({ t: wave * g.barrageWaveGap, fn: () => pushEBullet(e, ang, cfg.bulletSpeed, cfg, { r: g.barrageR, dmg: g.barrageDmg, color: '#ffd24a', grad: 'yr', streak: g.barrageTrail, taper: true }) });
           }
         }
       }
@@ -2630,7 +2702,7 @@
         }
         if (s.sweepT >= g.arriveFxDur - g.arriveGrowDur) {
           // 收口：清技能 + 重置间隔 + 清扫斩时钟（演出总长 = 扫斩 0.185 + 斩后停持 0.10 + 缓速归鞘 0.5 = 0.785s，2026-10-03 定稿停持缩短 + 扫斩提速 +70%）
-          e.wgSkill = null; e.wgGapT = g.skillGap; e.wgSweepT = null;
+          e.wgSkill = null; e.wgGapT = warGhostNextGap(e); e.wgSweepT = null;
         }
       }
     } else if (s.kind === 2) {
@@ -2649,11 +2721,11 @@
           });
         }
         spawnParticles(e.x, e.y, '#ffd24a', 10, 180);
-        e.wgSkill = null; e.wgGapT = g.skillGap;
+        e.wgSkill = null; e.wgGapT = warGhostNextGap(e);
       }
     } else {
       // 技能3：弹幕已全部排入 scheduled（分支内推进），此处仅等最后一发出膛后结束技能
-      if (s.t >= s.dur) { e.wgSkill = null; e.wgGapT = g.skillGap; }
+      if (s.t >= s.dur) { e.wgSkill = null; e.wgGapT = warGhostNextGap(e); }
     }
   }
 
@@ -2743,7 +2815,10 @@
           // 锚点，advanceEliteMinions 生成）→ 反向绕行整一圈（bladeDur）原地湮灭收口；轨道中心 =
           // 施放瞬间本体位置下移 bladeCyOff（下缘掠过玩家高度带），本体保持驻留（含水平追踪）不额外移动
           e.elSkill.cx = e.x; e.elSkill.cy = e.y + c.bladeCyOff;
-          e.elSkill.ry = c.bladeRy + Math.random() * c.bladeRyRand * CANVAS_H;   // 轨道纵向半径随机增长 0~20% 屏高（bladeRyRand，2026-10-03 四轮定稿），预警椭圆与刃体同步
+          // 轨道纵向半径：下缘（cy+ry）锚定玩家高度带 ±10% 屏高内取值（2026-10-12 用户定稿，取代原 bladeRyRand
+          // 0~20% 屏高随机增长），钳制不出界——下限 bladeRy（防轨道退化）、下缘不越过屏底安全边距 24px；
+          // 预警椭圆与刃体同步（ry 施放期快照不变）
+          e.elSkill.ry = clamp(player.y + (Math.random() * 2 - 1) * CANVAS_H * 0.10 - e.elSkill.cy, c.bladeRy, CANVAS_H - 24 - e.elSkill.cy);
           e.xyBlades = null;
         } else {
           // 核心膨胀：一次推出三颗能量球（基准朝玩家方向、相邻夹角 60°），方向锁定施放瞬间玩家方位
@@ -3169,12 +3244,19 @@
     spawnParticles(e.x, e.y, '#ffd9d9', 4, 90);
   }
 
-  // 大正方体分裂：原地裂为 3 枚常规法术矩阵正方体——1 枚沿原方向、2 枚垂直于原方向；
+  // 大正方体分裂：常规原地裂为 3 枚常规法术矩阵正方体——1 枚沿原方向、2 枚垂直于原方向；
+  // 诗篇（2026-10-12 用户定稿）：裂为 5 枚、均分 360°（每枚间隔 72°），其中 1 枚与大正方体原方向一致；
   // 射程继承剩余射程、以最大尺寸直接出现；伴随微弱冲击波爆炸特效（k 缩放 drawCubeHitFx 扩散半径）；
   // 二类·穿透标记 swPen 由母体继承（母体已穿盾时，分裂体在盾后生成，不再触盾也应保持减伤一致性）
   function splitSpellCube(c, i) {
     const rem = Math.max(60, c.maxRange - c.traveled);
-    const dirs = [[c.ux, c.uy], [-c.uy, c.ux], [c.uy, -c.ux]];
+    // 诗篇 5 枚均分 360°（k=0 恰为原方向）、常规 3 枚（1 同向 + 2 垂直）
+    const dirs = isPoem()
+      ? [0, 1, 2, 3, 4].map(k => {
+          const a = Math.atan2(c.uy, c.ux) + k * Math.PI * 2 / 5;
+          return [Math.cos(a), Math.sin(a)];
+        })
+      : [[c.ux, c.uy], [-c.uy, c.ux], [c.uy, -c.ux]];
     for (const [nx, ny] of dirs) {
       spellCubes.push({
         x: c.x, y: c.y, ux: nx, uy: ny,
@@ -3341,7 +3423,7 @@
   }
 
   // 暴鸰 / 暴鸰·G / 虚幻 亡语：炸弹尚未投出即被击毁 → 原地爆炸，仅对周围敌方单位造成伤害（不伤玩家）
-  // （周围 250px 内敌人 600 + 20% 最大生命（虚幻 ×0.7：420 + 14%，封顶 1400），敌人伤害封顶见各自常量；可连锁引爆其它未投弹暴鸰；不抖屏）
+  // （周围 200px 内敌人 600 + 20% 最大生命（虚幻 ×0.7：420 + 14%，封顶 1400），敌人伤害封顶见各自常量；可连锁引爆其它未投弹暴鸰；不抖屏）
   // 虚幻：殉爆原地留下寒冷区域——只对敌人生效（诗篇对双方生效，见 UNREAL 注释）
   function detonateBaoling(e) {
     const BLC = e.type === 'baolingG' ? BAOLING_G : e.type === 'unreal' ? UNREAL : BAOLING;   // 暴鸰·G：亡语波及半径 ×1.3，伤害同暴鸰；虚幻：伤害 ×0.7
@@ -3355,12 +3437,13 @@
       spawnParticles(e.x, e.y, '#ff5a3c', 36, 360);
       spawnParticles(e.x, e.y, '#ffd166', 24, 300);
       spawnParticles(e.x, e.y, '#ffffff', 12, 240);
-      // 扩散爆炸波：红色冲击环自爆点扩张至波及半径后渐隐（指示实际波及范围）
-      spawnBlastRing(e.x, e.y, BLC.deathBlastR, '#ff5a3c');
+      // 扩散爆炸波：红色冲击环自爆点扩张至波及半径后渐隐（指示实际波及范围）——
+      // 2026-10-12 用户定稿（二次回调）：0.45s 总时长 + 3px 主环（原增强版 0.6s/5px——扩散更快、更短更细）
+      spawnBlastRing(e.x, e.y, BLC.deathBlastR, '#ff5a3c', 0.45, { lw: 3, alphaMul: 1.25 });
     }
     for (const t of enemies) {
       if (t === e) continue;
-      if (Math.hypot(t.x - e.x, t.y - e.y) > BLC.deathBlastR) continue;   // 仅波及自爆点周围（暴鸰 250 / 暴鸰·G 325 / 虚幻 250）内的敌方单位
+      if (Math.hypot(t.x - e.x, t.y - e.y) > BLC.deathBlastR) continue;   // 仅波及自爆点周围（三机统一 200——2026-10-12 用户定稿，原 250/325/250）内的敌方单位
       // 非真实伤害：可被御4防御光环削减；敌人伤害封顶（暴鸰系 2000 / 虚幻 1400）
       const blastDmg = Math.min(BLC.enemyDmgCap, BLC.enemyDmgBase + t.maxHp * BLC.enemyDmgRatio) * yu4AuraMul(t) * pxpfChargeHurtMul(t);
       t.hp -= blastDmg;
@@ -3501,6 +3584,36 @@
 
   // 通用道具掉落（普通敌人与 BOSS 共用；依 升级套件 → 量子护盾 → 加血 顺序互斥判定）
   // 高能爆弹不在此池：仅 4类（5%）与 BOSS（20%）固定掉落，另有橙色敌人 0.5%（整场最多一次）独立判定
+  // 诗篇 Lv1~4 每波保底一个升级套件（2026-10-12 用户定稿）：本波无任何套件掉落时，波内最后一个敌人被击坠必掉
+  //（killEnemy 末敌强制，含 5% 暴走变体）；最后一个敌人离场则保底作废不补偿。旗标 levelFlow.poemWaveKitDone
+  // 由 04-spawn 每波刷新重置、本函数通用套件分支登记；挑战 / BOSS 试炼局豁免（等级锁定语义不适用）。
+  // 同日改版：保底统一加「低火力判定」门槛（kitPityJudgeOk ≤ 4，与进 BOSS 前末敌保底同门槛）
+  function poemKitGuaranteeActive() {
+    return isPoem() && !state.challenge && !state.testBoss && levelFlow.level <= 4 && kitPityJudgeOk();
+  }
+
+  // 套件保底判定门槛（2026-10-12 用户定稿）：火力等级 + 场上升级套件数 + 5×场上暴走道具数 ≤ 4——
+  // 保底是低火力处境的补偿，火力已经起来（或场上有待捡的套件/暴走道具）就不再触发
+  function kitPityJudgeOk() {
+    let kits = 0, berserks = 0;
+    for (const pu of powerups) {
+      if (pu.kind === 'kit') kits++;
+      else if (pu.kind === 'berserk') berserks++;
+    }
+    return player.weapon + kits + 5 * berserks <= 4;
+  }
+
+  // 「即将进 BOSS」判定（进 BOSS 前末敌保底用，2026-10-12 用户定稿）：与 14-main BOSS 触发口径同源——
+  // 非诗篇 = bossFlow.stage === 'wait'（停怪期等清场，清空即警报）；诗篇 = 本阶段波次已刷满
+  //（poemWaveIdx ≥ phaseWaves，最后一波清空后 stage 翻 'wait' 的同一帧内、killEnemy 仍处 'none'）
+  function bossApproaching() {
+    if (isPoem()) {
+      const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
+      return levelFlow.poemWaveIdx >= phaseWaves;
+    }
+    return bossFlow.stage === 'wait';
+  }
+
   function rollItemDrops(e, x, y) {
     const tags = enemyColorTags(e);
     const isBoss = e.type === 'boss';
@@ -3567,6 +3680,7 @@
     const pr = Math.random();
     if (pr < kitRate) {
       // 升级套件；其中 5% 变为暴走道具（红橙大 S，吃到攻击等级立刻满级）
+      if (poemKitGuaranteeActive()) levelFlow.poemWaveKitDone = true;   // 保底登记：本波已有套件掉落，末敌不再强制
       if (Math.random() < DROP_KIT_BERSERK) spawnPowerup(x, y, 'berserk', 15);
       else spawnPowerup(x, y, 'kit', 12);
     } else if (pr < kitRate + shieldRate) {
@@ -3583,25 +3697,28 @@
       if (hr < DROP_HP_BOSS + DROP_HP_BOSS2 && hpKitWaveGap !== Infinity) levelFlow.hpKitWaveCd = hpKitWaveGap;   // 诗篇：BOSS 加血后同样进入波次节流
     }
     // 橙色敌人（烈橙突击艇 / 威龙）：0.5% 掉爆弹 —— 整场战斗最多触发一次（不影响 4类 5% 与 BOSS 20%）
-    if (tags.includes('orange') && !state.orangeBombUsed && Math.random() < DROP_BOMB_ORANGE) {
+    // 诗篇经 bombDropGate 限流（每局 2 颗 / 未使用不掉第 2 / 离手后 ×0.35——可莉免乘区，见 02-core）
+    if (tags.includes('orange') && !state.orangeBombUsed && bombDropGate(DROP_BOMB_ORANGE)) {
       state.orangeBombUsed = true;
       spawnPowerup(x, y, 'bomb', 12);
     }
   }
 
-  // 铁砧治疗光环：登场 auraDelay 后激活；每 healInterval 秒，对正方形光环内所有敌人（含自身、含 BOSS）
-  // 回复 maxHp×healRatio + healFlat（各自不超过 maxHp）。判定以敌机中心是否落在正方形范围内。
+  // 铁砧治疗光环：登场 auraDelay 后激活；每 healInterval 秒（0.1s 一跳，2026-10-12 用户定稿，单跳量同步 ÷10、每秒总量不变），
+  // 对正方形光环内所有敌人（含自身、含 BOSS）回复 maxHp×healRatio + healFlat（各自不超过 maxHp）。判定以敌机中心是否落在正方形范围内。
   function anvilHealTick(e, dt) {
     if (e.auraT < ANVIL.auraDelay) return;   // 光环未显现不治疗
     e.healT = (e.healT || 0) + dt;
     if (e.healT < ANVIL.healInterval) return;
     e.healT -= ANVIL.healInterval;
+    e.healTickN = (e.healTickN || 0) + 1;
+    const fxTick = e.healTickN % 10 === 0;   // 治疗粒子每 10 跳（=1s）一次——保持 1s 跳频时代的视觉节奏，不随跳频 ×10 刷屏
     const R = ANVIL.auraR;
     for (const t of enemies) {
       if (t.hp <= 0 || t.hp >= t.maxHp) continue;
       if (Math.abs(t.x - e.x) <= R && Math.abs(t.y - e.y) <= R) {
-        t.hp = Math.min(t.maxHp, t.hp + t.maxHp * ANVIL.healRatio + (isPoem() ? ANVIL.healFlatPoem : ANVIL.healFlat));   // 固定回复诗篇 100 / 常规 50（2026-10-10 用户定稿）
-        spawnParticles(t.x, t.y, '#8ce36b', 3, 60);   // 轻微治疗粒子
+        t.hp = Math.min(t.maxHp, t.hp + t.maxHp * ANVIL.healRatio + (isPoem() ? ANVIL.healFlatPoem : ANVIL.healFlat));   // 单跳 0.15%+5（诗篇 +10），每秒总量 1.5%+50/100 不变
+        if (fxTick) spawnParticles(t.x, t.y, '#8ce36b', 3, 60);   // 轻微治疗粒子（0.1s 跳频下节流为每秒一次）
       }
     }
   }
@@ -3706,6 +3823,18 @@
     // 其它暴鸰的殉爆波及会再次调用 killEnemy——不拦截会造成两只暴鸰互相重入引爆（无限递归、海量爆炸卡死）
     if (e._deathSettled) return;
     e._deathSettled = true;
+    // 套件保底两连（均置于通用掉落链之前，覆盖 escort / noReward 等无掉落体提前 return 的路径）：
+    // ① 诗篇 Lv1~4 每波保底（2026-10-12 用户定稿，判定门槛见 poemKitGuaranteeActive）：本波尚无套件掉落时，
+    //    波内最后一个敌人被击坠必掉（离场不击坠则不走此处，保底自然作废）；
+    // ② 进 BOSS 前末敌保底（2026-10-12 用户定稿）：停怪/波满等清场期（bossApproaching）清空场上的最后一杀，
+    //    判定门槛 ≤ 4 时必掉——确保低火力玩家进 BOSS 前至少有一次补强机会
+    const kitLastOnField = !enemies.some(en => en !== e && !en.elRevive);
+    if (!testMode && poemKitGuaranteeActive() && !levelFlow.poemWaveKitDone && kitLastOnField) {
+      levelFlow.poemWaveKitDone = true;
+      spawnPowerup(e.x, e.y, Math.random() < DROP_KIT_BERSERK ? 'berserk' : 'kit', 12);   // 与通用套件同款（5% 暴走变体）
+    } else if (!testMode && kitPityJudgeOk() && bossApproaching() && kitLastOnField) {
+      spawnPowerup(e.x, e.y, Math.random() < DROP_KIT_BERSERK ? 'berserk' : 'kit', 12);
+    }
     // 脉冲矩阵震荡波孤儿化（2026-10-10 用户定稿）：本体被击坠时若波仍在扩散，波脱离本体继续扩散至
     // 自然结束且仍可造成伤害（每波至多命中一次，逻辑见 updateOrphanPmWaves）；孤儿波存于 02-core pmWaves
     //（不经 eBullets——不可被群星守望套装效果 / 爆弹波等任何消弹效果消除）。
@@ -3821,7 +3950,7 @@
       //（各 BOSS 击杀得分：旧日之歌 3000 / 暴风之眼 9000 / 风暴编织者 5000 / 黑暗之手 4000，见 01-config-boss score 字段）
       // 无伤通关（2026-10-11 用户定稿）：水晶单位数 ×1.2——300/400/350 → 360/480/420（判定 bossFlawless 见上方得分处）
       // 不再强制吸收（原 absorbDelay 到期后无视距离全数吸走）：与普通掉落一致由磁吸 / 追逐拾取；
-      // 与普通掉落同速（150~200）垂直下坠、无横向速度（不乱飞）——原 ×0.6 慢速留场修正于 2026-09-27 移除（正常速度），
+      // 与普通掉落同速（230~300，2026-10-12 用户定稿）垂直下坠、无横向速度（不乱飞）——原 ×0.6 慢速留场修正于 2026-09-27 移除（正常速度），
       // 未收集水晶由胜利结算前 0.8s 的统一收集兜底（见 08-entities collectAllCrystals / 14-main victoryDelay 窗口）
       if (!testMode && e.bossId !== 'storm') {
         const nCry = Math.round((e.bossId === 'song' ? 300 : e.bossId === 'storm2' ? 400 : 350) * (bossFlawless ? 1.2 : 1));   // 无伤通关 ×1.2：300/400/350 → 360/480/420
@@ -3836,7 +3965,7 @@
           const colorKey = roll.giant ? 'g' + Math.floor(Math.random() * CRYSTAL_GIANT_COLORS.length) : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS.length);   // BOSS 专属掉落：三色均分（青 / 水蓝 / 粉）+ 巨型双色均分（粉巨型仅 BOSS 可出，2026-09-27 定稿）
           crystals.push({
             x: clampDropX(e.x + rand(-200, 200), def.r), y: e.y + rand(-40, 40),
-            vx: 0, vy: rand(180, 250),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除；掉速 2026-10-12 用户定稿 150~200 → 180~250）
+            vx: 0, vy: rand(230, 300),   // 垂直下坠（不乱飞）；与普通掉落同速（原 ×0.6 慢速修正已移除；掉速 2026-10-12 用户定稿 180~250 → 230~300）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant, firstBoss: firstBossCry,
             fromBoss: true,   // BOSS 掉落水晶标记（炼金璃隐藏计数表不计入，见 08-entities updateCrystals）
@@ -3847,8 +3976,8 @@
         for (let k = 0; k < mix.small; k++) spawnTier('small');
         for (let k = 0; k < mix.mid; k++) spawnTier('mid');
         for (let k = 0; k < mix.big; k++) spawnTier('big');
-        // 击败 BOSS 20% 掉落高能爆弹
-        if (Math.random() < 0.20) spawnPowerup(e.x, e.y, 'bomb', 12);
+        // 击败 BOSS 20% 掉落高能爆弹（诗篇经 bombDropGate 限流，见 02-core）
+        if (bombDropGate(0.20)) spawnPowerup(e.x, e.y, 'bomb', 12);
         // BOSS 死亡：掉落一个暴走道具（短暂下坠后被战机强制吸收；功能性拾取，不受水晶取消强制吸收影响）
         powerups.push({
           x: e.x, y: e.y, kind: 'berserk', r: 15,
@@ -3983,17 +4112,6 @@
       spliceSelf();
       return;
     }
-    // 1类亡语 variants：阵亡时向下垂直射击（弹速 230，与常规 1类子弹一致）
-    if (e.deathShot) {
-      const cfg = ENEMY_TYPES[e.type];
-      pushEBullet(e, Math.PI / 2, cfg.bulletSpeed, cfg);
-    }
-    // 赤月亡语：尚未发射过子弹即被击毁时，12% 概率向顶角方向（航向正前方）补射一枚（与常规发射同弹速）
-    if (e.type === 'side' && e.behavior === 'moon' && !e.moonFired && Math.random() < SIDE_MOON.deathShotChance) {
-      const v = e._sideVel || { vx: 0, vy: 60 };
-      const cfg = ENEMY_TYPES.side;
-      pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
-    }
     // 暴鸰 / 暴鸰·G / 虚幻 亡语分派：炸弹在停车锁定瞬间即脱离（blWarn 与 blThrown 同帧置位，锁定后不存在「已预警未投弹」状态）——
     // 锁定后被击毁均无亡语、炸弹仍将抵达目标位置并爆炸（击杀无法终止）；预警区形成前（尚未锁定）被击毁 → 原地殉爆（虚幻另留对敌生效的寒冷区域）
     if (e.type === 'baoling' || e.type === 'baolingG' || e.type === 'unreal') {
@@ -4025,6 +4143,21 @@
     // 脉冲矩阵震荡波为独立孤儿波（pmWaves），同样不可被消除（见本函数顶部孤儿化段）
     if (!testMode && player.weapon >= 5 && starsSeriesCount() >= 3) {
       achvNoteWatchClear(clearEnemyBulletsByOwner(e));
+    }
+    // 1类亡语 variants：阵亡时向下垂直射击（弹速 230，与常规 1类子弹一致）——
+    // 【2026-10-12 移序】置于守望消弹 / 套装清弹之后：亡语弹带 owner 标记，原先在消弹前入场，
+    // 会被同一次击杀的 clearEnemyBulletsByOwner(e)（BOSS 战 40% / 群星三件套+暴走 100% 无概率）
+    // 或 clearNearestEnemyBullet（常规按最近）当场吞掉——表现为「部分紫电没有亡语」（概率性）。
+    // 移后天然豁免同击消弹；后续其他击杀触发的消弹仍可正常消除该弹（彼时它已是普通在场弹，符合守望设计）
+    if (e.deathShot) {
+      const cfg = ENEMY_TYPES[e.type];
+      pushEBullet(e, Math.PI / 2, cfg.bulletSpeed, cfg);
+    }
+    // 赤月亡语：尚未发射过子弹即被击毁时，12% 概率向顶角方向（航向正前方）补射一枚（与常规发射同弹速）——同上移序口径
+    if (e.type === 'side' && e.behavior === 'moon' && !e.moonFired && Math.random() < SIDE_MOON.deathShotChance) {
+      const v = e._sideVel || { vx: 0, vy: 60 };
+      const cfg = ENEMY_TYPES.side;
+      pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
     }
     // 七日澜心：BOSS 战期间击杀敌人直接给量表充能 1%~3%（随机；不依赖水晶拾取，量表满后按 F 释放）
     if (!testMode && bossFight && ARMOR_SKILLS[currentArmor.id]) {
@@ -4067,7 +4200,8 @@
     if (e.type === 'capital') {
       spawnParticles(e.x, e.y, '#ffd166', 30, 340);
       // 高能爆弹：击败 4 类主力舰 5% 掉落（BOSS 为 20%；橙色敌人另有 0.5%，整场最多一次，见 rollItemDrops）
-      if (!testMode && Math.random() < 0.05) spawnPowerup(e.x, e.y, 'bomb', 12);
+      // 诗篇经 bombDropGate 限流（每局 2 颗 / 未使用不掉第 2 / 离手后 ×0.35——可莉免乘区，见 02-core）
+      if (!testMode && bombDropGate(0.05)) spawnPowerup(e.x, e.y, 'bomb', 12);
     }
     // 威龙击毁：高血量精英，较大爆炸演出（不抖屏）
     if (e.type === 'weilong') {
@@ -4187,7 +4321,7 @@
           const colorKey = roll.giant ? 'g0' : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS_NORMAL.length);   // 日常掉落：双色均分（青 / 水蓝）——粉色仅 BOSS 掉落（2026-09-27 定稿）；转巨型固定青（粉巨型同为 BOSS 专属）
           crystals.push({
             x: clampDropX(e.x + rand(-10, 10), def.r), y: e.y + rand(-6, 6),
-            vx: 0, vy: rand(180, 250),   // 垂直下坠（不乱飞；掉速 2026-10-12 用户定稿 150~200 → 180~250，与 BOSS 掉落同速）
+            vx: 0, vy: rand(230, 300),   // 垂直下坠（不乱飞；掉速 2026-10-12 用户定稿 180~250 → 230~300，与 BOSS 掉落同速）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant,
             phase: Math.random(),

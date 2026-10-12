@@ -1902,19 +1902,27 @@
       ctx.translate(z.x, z.y);
       ctx.globalAlpha = base * (0.78 + 0.22 * Math.sin(state.time * 2.2 + z.seed));
       // 主体光环：外缘亮、内部渐透明的径向渐变（冰圈质感，同寒霜）
-      const halo = ctx.createRadialGradient(0, 0, ar * 0.30, 0, 0, ar);
-      halo.addColorStop(0, 'rgba(143, 216, 255, 0)');
-      halo.addColorStop(0.55, 'rgba(143, 216, 255, 0.10)');
-      halo.addColorStop(0.82, 'rgba(170, 226, 255, 0.22)');
-      halo.addColorStop(0.96, 'rgba(224, 246, 255, 0.30)');
-      halo.addColorStop(1, 'rgba(143, 216, 255, 0)');
+      // （2026-10-12 性能：ar=UNREAL.frostR 全区域恒定 → 几何/配色固定，cachedLoadoutGrad 缓存复用，逐帧零渐变重建）
+      const halo = cachedLoadoutGrad(`fz-halo-${ar}`, () => {
+        const g0 = ctx.createRadialGradient(0, 0, ar * 0.30, 0, 0, ar);
+        g0.addColorStop(0, 'rgba(143, 216, 255, 0)');
+        g0.addColorStop(0.55, 'rgba(143, 216, 255, 0.10)');
+        g0.addColorStop(0.82, 'rgba(170, 226, 255, 0.22)');
+        g0.addColorStop(0.96, 'rgba(224, 246, 255, 0.30)');
+        g0.addColorStop(1, 'rgba(143, 216, 255, 0)');
+        return g0;
+      });
       ctx.fillStyle = halo;
       ctx.beginPath(); ctx.arc(0, 0, ar, 0, TAU); ctx.fill();
       // 白色雾气：中心常驻雾核（喷发源头）+ 8 个雾团自中心沿随机方位外扩（错相循环，同寒霜）
       const coreR = ar * 0.34;
-      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
-      core.addColorStop(0, 'rgba(255, 255, 255, 0.20)');
-      core.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      // （2026-10-12 性能：几何/配色固定 → 缓存复用）
+      const core = cachedLoadoutGrad(`fz-core-${coreR}`, () => {
+        const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+        g0.addColorStop(0, 'rgba(255, 255, 255, 0.20)');
+        g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        return g0;
+      });
       ctx.fillStyle = core;
       ctx.beginPath(); ctx.arc(0, 0, coreR, 0, TAU); ctx.fill();
       for (let k = 0; k < 8; k++) {
@@ -1924,11 +1932,22 @@
         const mrad = ar * (0.09 + 0.21 * cyc);            // 雾团随扩散逐渐变大
         const mistA = Math.sin(cyc * Math.PI) * 0.22;     // 中段最浓、首尾淡出
         const mx = Math.cos(ma) * mr, my = Math.sin(ma) * mr;
-        const mist = ctx.createRadialGradient(mx, my, 0, mx, my, mrad);
-        mist.addColorStop(0, `rgba(255, 255, 255, ${mistA.toFixed(3)})`);
-        mist.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        // （2026-10-12 性能：r0=0 单位渐变峰值烘焙 → translate/scale(mrad) 复用；浓度 mistA 相对峰值 0.22
+        //   线性 → globalAlpha 缩放，逐帧零渐变重建——原逐帧 createRadialGradient(mx,my,…,mrad) 为多区域卡顿热点）
+        const mist = cachedLoadoutGrad('fz-mist', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+          g0.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.scale(mrad, mrad);
+        const mga0 = ctx.globalAlpha;
+        ctx.globalAlpha = mga0 * (mistA / 0.22);
         ctx.fillStyle = mist;
-        ctx.beginPath(); ctx.arc(mx, my, mrad, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+        ctx.restore();
       }
       // 喷发雾粒层：10 粒确定性伪随机雾粒（方位含区域种子错相；时间驱动外扩+变大，首尾淡出循环再生，同寒霜）
       for (let k = 0; k < 10; k++) {
@@ -1944,12 +1963,23 @@
         const rr = ar * (0.05 + spd * tt);
         const prad = ar * (0.07 + 0.13 * pr);
         const px = Math.cos(ma) * rr, py = Math.sin(ma) * rr;
-        const puff = ctx.createRadialGradient(px, py, 0, px, py, prad);
-        puff.addColorStop(0, `rgba(255, 255, 255, ${(0.26 * fade).toFixed(3)})`);
-        puff.addColorStop(0.6, `rgba(230, 248, 255, ${(0.10 * fade).toFixed(3)})`);
-        puff.addColorStop(1, 'rgba(230, 248, 255, 0)');
+        // （2026-10-12 性能：r0=0 单位渐变峰值烘焙 → translate/scale(prad) 复用；两档亮度均为 fade
+        //   线性同族 → 峰值烘焙 + globalAlpha=fade 缩放）
+        const puff = cachedLoadoutGrad('fz-puff', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(255, 255, 255, 0.26)');
+          g0.addColorStop(0.6, 'rgba(230, 248, 255, 0.10)');
+          g0.addColorStop(1, 'rgba(230, 248, 255, 0)');
+          return g0;
+        });
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.scale(prad, prad);
+        const pga0 = ctx.globalAlpha;
+        ctx.globalAlpha = pga0 * fade;
         ctx.fillStyle = puff;
-        ctx.beginPath(); ctx.arc(px, py, prad, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+        ctx.restore();
       }
       // 外侧虚线霜环（缓慢流转，冰面纹路感）
       ctx.strokeStyle = 'rgba(190, 232, 255, 0.5)';

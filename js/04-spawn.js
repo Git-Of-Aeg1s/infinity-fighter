@@ -28,7 +28,7 @@
     return VARIANTS.striker.map(v => ({ id: v.id, w: tier[v.id] }));
   }
 
-  // 非BOSS敌人首攻延迟的难度加成（虚象：初始攻击间隔 +0.5~1.8s）——
+  // 非BOSS敌人首攻延迟的难度加成（虚象：初始攻击间隔 +0~0.4s，2026-10-12 用户定稿，原 0.5~1.8s）——
   // mods.enemyFirstFireAdd 为 [min, max] 秒区间（rand 取值）或固定秒数，0/缺省 = 不加；
   // 覆盖全部非BOSS敌人：makeEnemy 的 fireTimer 与不走 fireTimer 的状态机型（法术大师A1/A2 的 firstAt、破片的 atkT）
   function firstFireAdd() {
@@ -100,7 +100,7 @@
     const diff = diffMods();
     // 血量难度倍率（虚象：所有非BOSS怪物血量 -20%）；不再有关卡血量加成
     const hpMul = diff.enemyHpMul != null ? diff.enemyHpMul : 1;
-    // 首次攻击延迟难度加成（虚象：所有非BOSS怪物初始攻击间隔 +0.5~1.8s，见 firstFireAdd）
+    // 首次攻击延迟难度加成（虚象：所有非BOSS怪物初始攻击间隔 +0~0.4s，2026-10-12 用户定稿，见 firstFireAdd）
     const ffa = firstFireAdd();
     // 2/3/4 类选取变体（不同颜色 + 不同技能）；opts.variant 可强制指定（图鉴挑战用）
     const variant = (type === 'striker' || type === 'gunship' || type === 'capital')
@@ -573,25 +573,32 @@
     for (let k = n0; k < enemies.length; k++) enemies[k].minionDrop = true;
   }
 
-  // BOSS 击败后的固定首波：一群 1类排成长队从左或从右入场、横穿战场自另一侧离场；
+  // BOSS 击败后的固定首波（2026-10-12 用户定稿改版）：同侧同时刷出三条同款长队、竖直高度互不相同
+  //（首波基准 0.30H±8px 抖动，相邻波纵向间距随机 50~100px（用户定稿）——三条共用同一组方向基值 vx/vy，
+  // 横穿过程保持平行、间距恒定，速度曲线无瞬变）；
+  // 每条仍是一群 1类排成长队、从左或右入场横穿战场自另一侧离场；
   // 本波不出现紫电（kamikaze）与橙旋（swirl）1类（白影/增生/黄芒/赤月按权重混入）；
   // BOSS 战结束后 6s 内的特殊波次：不限入场位置一律快速 200（显式传 fast）
   function spawnPostBossWave() {
     const fromLeft = Math.random() < 0.5;
-    const count = 5 + Math.floor(Math.random() * 3);   // 5~7：长队
-    const gap = 54;                                    // 队列间距（沿行进反方向排开）
     const dirX = fromLeft ? 1 : -1;
-    const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（快速 200 归一）
+    const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场（三条共用同一侧）
+    const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（快速 200 归一），三条共用
     const vy = rand(54, 84);
-    const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
-    const startY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);  // 入场高度：场地中部略偏上
-    for (let k = 0; k < count; k++) {
-      const behavior = pickSideSpawn(['kamikaze', 'swirl']);   // 固定首波无紫电/橙旋
-      // 排成长队：队尾依次靠外、靠上，形成一列斜线
-      const x = edgeX - dirX * k * gap;
-      const y = startY - k * gap * 0.5;
-      spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6), true);
-      enemies[enemies.length - 1].postBossWave = true;   // 标记 BOSS 后固定首波：水晶必掉 + 掉量翻倍
+    let nextY = CANVAS_H * 0.30 + rand(-8, 8);         // 首波入场高度基准 + 抖动
+    for (let w = 0; w < 3; w++) {
+      const startY = nextY;
+      nextY += rand(50, 100);                          // 与相邻波的纵向间距：随机 50~100px（用户定稿）
+      const count = 5 + Math.floor(Math.random() * 3);   // 5~7：长队
+      const gap = 54;                                    // 队列间距（沿行进反方向排开）
+      for (let k = 0; k < count; k++) {
+        const behavior = pickSideSpawn(['kamikaze', 'swirl']);   // 固定首波无紫电/橙旋
+        // 排成长队：队尾依次靠外、靠上，形成一列斜线
+        const x = edgeX - dirX * k * gap;
+        const y = startY - k * gap * 0.5;
+        spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6), true);
+        enemies[enemies.length - 1].postBossWave = true;   // 标记 BOSS 后固定首波：水晶必掉 + 掉量翻倍
+      }
     }
   }
 
@@ -687,7 +694,7 @@
   // 概率卡（h*1/h*2 互斥）驱动，见 01-config-spawn pickPoemTrueExtra
   function spawnWave() {
     levelFlow.waveSeq++;
-    if (isPoem() && !state.challenge) levelFlow.poemWaveIdx++;   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）
+    if (isPoem() && !state.challenge) { levelFlow.poemWaveIdx++; levelFlow.poemWaveKitDone = false; }   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）+ 新波重置套件保底旗标
     const before = enemies.length;
     spawnWaveBody();
     for (let i = before; i < enemies.length; i++) enemies[i].waveTag = levelFlow.waveSeq;
@@ -760,9 +767,10 @@
     }
     // 特殊3类随波登场：每波 SPECIAL3_WAVE_CHANCE 概率附带一台，按 SPECIAL3_POOL 权重抽取（寒霜/御4/铁砧 同种限 1）
     if (Math.random() < SPECIAL3_WAVE_CHANCE) spawnWaveSpecial3();
-    // 诗篇：4类并入波次——Lv5 起每波 capitalWaveChance 概率随波附带（走常规主力舰/法术阵列槽位选取规则）；
+    // 诗篇：4类并入波次——Lv6 起每波 capitalWaveChance 概率随波附带（走常规主力舰/法术阵列槽位选取规则；
+    // 2026-10-12 用户定稿：Lv5 及之前所有难度不出现 4 类，原门槛 Lv5 → Lv6）；
     // 诗篇下 4类槽位通道关闭（14-main 门控），4类只随波出现，不再单独判定刷新（用户 2026-09-27 指定）
-    if (isPoem() && levelFlow.level >= 5 && Math.random() < WAVE_POEM.capitalWaveChance) spawnCapitalSlot();
+    if (isPoem() && levelFlow.level >= 6 && Math.random() < WAVE_POEM.capitalWaveChance) spawnCapitalSlot();
   }
 
   // 3类：炮艇，上方悬停很久后才缓慢下压
@@ -904,7 +912,6 @@
     // 生成时即朝向飞行方向（2026-10-12 用户定稿）：faceAng 约定同 06-enemy（速度方向 −π/2），
     // 顶部入场 = 0 朝下不变；侧翼/水平入场开局机头即对齐航向，无开局转向过程
     e.faceAng = Math.atan2(tpY - sy, tpX - sx) - Math.PI / 2;
-    e.detectR = CANVAS_H * POPIAN.detectBase;
     e.vx = 0; e.vy = 0;
     e.warn = null;
     e.popBurst = null;
@@ -1149,7 +1156,8 @@
     return e;
   }
 
-  // 4类槽位出场：Lv5 起 4类才会出现（由 14-main 的槽位通道门控）；Lv11 起有 slotChance 概率出场法术阵列（其余为主力舰）
+  // 4类槽位出场：Lv6 起 4类才会出现（由 14-main 的槽位通道门控，2026-10-12 用户定稿 Lv5 及之前不出现 4 类）；
+  // Lv11 起有 slotChance 概率出场法术阵列（其余为主力舰）
   function spawnCapitalSlot() {
     if (levelFlow.level >= 11 && Math.random() < FASHI_ARRAY.slotChance) spawnFashiArray();
     else spawnCapital();
@@ -1441,7 +1449,7 @@
           spawnSideUnit(-36, rand(CANVAS_H * 0.35, CANVAS_H * 0.45),
             { vx: rand(90, 120), vy: rand(54, 84) }, ch.behavior || 'shoot', 1.0);
         } else {
-          makeEnemy('side', cx - 130, -40, { behavior: ch.behavior || 'shoot', fireTimer: 1.0 })._sideVel = sideVelocity(24, rand(90, 111), true);
+          makeEnemy('side', cx - 130, -40, { behavior: ch.behavior || 'shoot', deathShot: ch.behavior === 'kamikaze', fireTimer: 1.0 })._sideVel = sideVelocity(24, rand(90, 111), true);
         }
         break;
       case 'prolifera':
@@ -1640,7 +1648,7 @@
             const tdx = (fromLeft ? 1 : -1) * (CANVAS_W + 80);     // 横穿到对侧边缘的水平位移
             const vel = sideVelocity(tdx, drop, true);             // sideVelocity 内部按模长归一 × 快速档
             const mk = () => {
-              const e = makeEnemy(p.type, sx, sy, p.type === 'side' ? { behavior: p.behavior || 'pass' } : {});
+              const e = makeEnemy(p.type, sx, sy, p.type === 'side' ? { behavior: p.behavior || 'pass', deathShot: p.behavior === 'kamikaze' } : {});
               e._sideVel = vel;
             };
             if (p.queue && p.delay > 0) queueDelayedSpawn(p.delay, mk);
@@ -1673,7 +1681,7 @@
             const tiltDir = sx < CANVAS_W / 2 ? 1 : -1;    // 左半场 +1（往右偏）/ 右半场 −1（往左偏）
             vel = sideVelocity(Math.sin(tiltDeg) * tiltDir, Math.cos(tiltDeg), true);   // 模长归一快速档 200，仅方向改斜
           }
-          const e = makeEnemy(p.type, sx, sy, p.type === 'side' ? { behavior: p.behavior || 'pass' } : {});
+          const e = makeEnemy(p.type, sx, sy, p.type === 'side' ? { behavior: p.behavior || 'pass', deathShot: p.behavior === 'kamikaze' } : {});
           e._sideVel = vel;
           break;
         }
@@ -1737,7 +1745,8 @@
         case 'unreal': {
           // 暴鸰系侧翼生成（2026-10-12 用户定稿，「3侧 / 3侧*2」卡）：屏外水平入场、横越全场直到自对侧离场
           // （06-enemy blSideFly 分支消费）；入场 1.2s（诗篇 1s）后才能投弹（blArmDelay 覆盖常规 armDelay），
-          // 投弹后额外移速加成减半（06-enemy phase3）；同侧多机按屏外序排开 64px 防重叠；高度走 0.18~0.72H 带
+          // 投弹后额外移速加成减半（06-enemy phase3）；同侧多机按屏外序排开 64px 防重叠；
+          // 高度走 0.5~0.72H 带（2026-10-12 用户定稿：侧翼入场不高于场地中线；上限 0.72H 维持原值）
           if (!flankCard) { spawnChallengeTargetOne(p); break; }   // 非侧翼卡：维持默认专属入场骨架
           const sideSel = clsSide[p.cls];
           const fromLeft = (sideSel === 0 ? (tx < CANVAS_W / 2) : (sideSel < 0));
@@ -1745,7 +1754,7 @@
           const key = '3' + (fromLeft ? 'L' : 'R');
           const k = sideSeq[key] || 0; sideSeq[key] = k + 1;
           const e = makeEnemy(p.type, (fromLeft ? -50 : CANVAS_W + 50) - dirX * k * 64,
-            clamp(CANVAS_H * (0.18 + d[1] * 0.55), 90, CANVAS_H * 0.72), {});
+            clamp(CANVAS_H * (0.5 + d[1] * 0.22), CANVAS_H * 0.5, CANVAS_H * 0.72), {});
           e.blSideFly = dirX;
           e.blArmDelay = isPoem() ? 1.0 : 1.2;
           break;
@@ -1845,7 +1854,7 @@
   function spawnDesignedWave(list) {
     delayedSpawns.length = 0;   // 新波生成前清空上一波的延迟出场队列（z*8 单点排队等），防跨波残留（原在 spawnT3Wave 开头，移到此外壳：组合波/诗篇附加波不再互清队列）
     levelFlow.waveSeq++;
-    if (isPoem() && !state.challenge) levelFlow.poemWaveIdx++;   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）
+    if (isPoem() && !state.challenge) { levelFlow.poemWaveIdx++; levelFlow.poemWaveKitDone = false; }   // 诗篇波次制：本阶段波次计数（波 N = 等级 N，14-main 清场驱动）+ 新波重置套件保底旗标
     const before = enemies.length;
     for (const it of list) spawnT3Wave(it.f, it.plan);
     if (Math.random() < SPECIAL3_WAVE_CHANCE) spawnWaveSpecial3();

@@ -173,6 +173,9 @@
   // fire.kind：jixing=极夜流光（标记直射激光）/ daodan=捣蛋来袭（叮咚鸡同款导弹）/ feijian=无界飞剑（全屏均分分裂连射）/ xinring=辛国栋之怒（恒速穿透灼烧火环）
   // 副武器矢量图标（iconSvg，同 PILOTS.higanbanaSvg 路线）：内联 SVG 字符串——
   // 渐变/配色在 SVG 内部固化（贴合弹体涂装），外层 span 的 currentColor（注册色）仅承担 .glyph-svg 辉光。
+  // ⚠️ 带内部 defs 渐变 id 的图标（flameRingSvg）必须以**函数引用**入注册表、渲染点按
+  // 「typeof iconSvg === 'function' ? iconSvg() : iconSvg」调用——每次渲染生成唯一 defs id；
+  // 静态字符串多挂载点会重复 id，url(#) 解析到 display:none 面板内的首份定义致图标不可见（2026-10-12 修复）。
   let subGradSeq = 0;   // 渐变 id 计数：同一页面多处渲染图标时保证 defs id 唯一
   function flameRingSvg() {   // 辛国栋之怒「焰环」：环身焰舌，玫红→粉渐变贴合弹体涂装（用户 2026-09-27 定稿）
     const id = 'xrGrad' + (++subGradSeq);

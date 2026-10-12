@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(2 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(13 名) 07-player(5 名) 08-entities(8 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(3 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(13 名) 07-player(6 名) 08-entities(8 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg } from './01-config-core.js';
@@ -44,13 +44,13 @@
       desc: '轻松难度<br>适合新玩家',   // 一句一行（<br> 分行；"设计中"由卡片角标展示）
       wip: false,
       // 虚象修正表：相对真我（刷怪框架同具象基准）总刷怪量/同屏数量约 -50~60%；
-      // 非BOSS 血量 -20%、首次攻击延迟 +0.5~1.8s、攻击间隔 +25%；1/2类掉率削减修正失效；
+      // 非BOSS 血量 -20%、首次攻击延迟 +0~0.4s（2026-10-12 用户定稿，原 0.5~1.8s）、攻击间隔 +25%；1/2类掉率削减修正失效；
       // BOSS 伤害 -40%、技能间隔 +50%、不连发同种技能；玩家无敌 +50%、导弹固定 50 伤害、受击不掉武器等级；得分 ×0.8
       mods: {
         enemyHpMul: 0.8, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 0.8, bossSkillMods: {},
         spawnIntervalMul: 2.3,
         pressureCapacityMul: 0.75,
-        enemyFirstFireAdd: [0.5, 1.8],
+        enemyFirstFireAdd: [0, 0.4],
         enemyFireIntervalMul: 1.25,
         dropClassNoReduce: true,
         bossDmgMul: 0.6,
@@ -58,7 +58,7 @@
         bossNoRepeat: true,
         invulnMul: 1.5,
         noWeaponDropOnHit: true,
-        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
+        bombStart: 1, bombCap: 2, bombBossDmgMul: 1,   // 爆弹虚象档（2026-10-12 用户定稿）：上限 3→2；绷绷背包 +1（bombCapAdd）/ 可莉初始额外 +1（bombStartAdd）不受影响
       },
     },
     form: {
@@ -79,19 +79,19 @@
         bossNoRepeat: false,
         invulnMul: 1,
         noWeaponDropOnHit: false,
-        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,
+        bombStart: 1, bombCap: 2, bombBossDmgMul: 1,   // 爆弹具象档（2026-10-12 用户定稿）：上限 3→2；绷绷背包 +1（bombCapAdd）/ 可莉初始额外 +1（bombStartAdd）不受影响
       },
     },
     realme: {
       id: 'realme', name: '真我',
       desc: '直面疯狂',
       wip: false,
-      // 真我修正表：非BOSS敌人伤害 +35%（enemyDmgMul，覆盖弹幕/碰撞/破片三连发/法术正方体/暴鸰爆炸/焦香灼烧等非BOSS结算入口；
-      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与）；BOSS 血量 ×1.6；
+      // 真我修正表：非BOSS敌人伤害 +60%（enemyDmgMul，覆盖弹幕/碰撞/破片三连发/法术正方体/暴鸰爆炸/焦香灼烧等非BOSS结算入口；
+      // 大型龙卷为暴风之眼召唤物、走 BOSS 侧伤害口径不参与；2026-10-12 用户定稿 +35% → +60%）；BOSS 血量 ×1.6；
       // 高能爆弹初始 0 枚、上限 2 枚、对 BOSS 伤害 -25%；刷怪框架与具象基准一致（spawnIntervalMul 1）；得分 ×1.2
       //（原「加血套件 8s 节流 + 预触发必掉」hpKitGap/hpKitBankChance 已于 2026-10-11 用户定稿删除）
       mods: {
-        enemyHpMul: 1, enemyDmgMul: 1.35, enemySpeedMul: 1, scoreMul: 1.2, bossSkillMods: {},
+        enemyHpMul: 1, enemyDmgMul: 1.6, enemySpeedMul: 1, scoreMul: 1.2, bossSkillMods: {},
         spawnIntervalMul: 1,
         pressureCapacityMul: 1,
         enemyFirstFireAdd: 0,
@@ -113,14 +113,14 @@
       desc: '更高难度<br>波次制刷怪',
       wip: false,
       // 诗篇难度：波次制刷怪（见 WAVE_POEM）+ 全敌人诗篇血量表（POEM_HP，绝对值覆盖，不走 enemyHpMul 乘区）。
-      // mods 已落地（2026-10-10 用户定稿「这两项」收尾；结构同真我条目）——生效差异键：scoreMul 2（表 #3 得分 ×2）、
-      // princeGaugeFull 36000（表 #25 天秀量表）；其余键与具象基准同值显式化（diffMods() 的回退是整体对象替换，
+      // mods 已落地（2026-10-10 用户定稿「这两项」收尾；结构同真我条目）——生效差异键：scoreMul 2.2（表 #3 得分 +120%，
+      // 2026-10-12 用户定稿由 +100% 上调）、princeGaugeFull 36000（表 #25 天秀量表）；其余键与具象基准同值显式化（diffMods() 的回退是整体对象替换，
       // 部分落键会丢具象继承，故必须全量）。真我专属键不落：bossHpMul（诗篇 BOSS 血量走 hpByDiff.poem 绝对值，
       // 落 1.6 会二次乘算；hpKitGap/hpKitBankChance 已随 2026-10-11 真我 8s 节流删除不复存在——诗篇加血节流走波次制 healWaveGap）；
       // BOSS 技能间隔诗篇 ×0.5 仍走 bossSkillIv() isPoem 硬分支（表 #44，迁移时改落 bossFireIntervalMul: 0.5 并删硬分支）。
       // ★ 诗篇全部特殊修正的设计目标值与登记规则见仓库根目录《诗篇难度修正.md》——实装/修改诗篇时必须同步维护该文档。
       mods: {
-        enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 2, bossSkillMods: {},   // scoreMul ×2（表 #3：波次制总刷怪量大幅减少的补偿）
+        enemyHpMul: 1, enemyDmgMul: 1, enemySpeedMul: 1, scoreMul: 2.2, bossSkillMods: {},   // scoreMul +120%（表 #3：波次制总刷怪量大幅减少的补偿；2026-10-12 用户定稿由 +100% 上调）
         spawnIntervalMul: 1.3,
         pressureCapacityMul: 1,
         enemyFirstFireAdd: 0,
@@ -132,7 +132,7 @@
         bossNoRepeat: false,
         invulnMul: 1,
         noWeaponDropOnHit: false,
-        bombStart: 1, bombCap: 3, bombBossDmgMul: 1,   // 爆弹与具象同档（诗篇专属爆弹档未登记）
+        bombStart: 0, bombCap: 1, bombBossDmgMul: 1,   // 爆弹诗篇档（2026-10-12 用户定稿）：初始 0 / 上限 1；掉落侧限流走 02-core bombDropGate（每局 2 颗 / 未使用不掉第 2 / 离手后 ×0.35——可莉免乘区），绷绷背包照常可突破上限
         princeGaugeFull: 36000,   // 天秀忧郁王子白色量表所需非水晶分数（表 #25，与真我同值）
       },
     },
@@ -144,7 +144,7 @@
   // 诗篇 wip 不可选期间不生效，图鉴「旧怪物权重 · 诗篇波次」子页读取本表做设计展示。
   const WAVE_POEM = {
     wavesPerPhase: [10, 10, 10],   // 每阶段波次数（= 阶段内等级数）：第一轮 Lv1~10 / 第二轮 Lv11~20 / 第三轮 Lv21~30（Lv21~30 暂与 Lv20 同强度——常规波次设计进行中，2026-10-08 随 BOSS 轮次重排扩为三段），清完进 BOSS
-    clearDelay: [1.2, 2.0],    // 上一波全部击毁/离场到下一波刷出的随机间隔（s）
+    clearDelay: [0.3, 0.8],    // 上一波全部击毁/离场到下一波刷出的随机间隔（s）（2026-10-12 用户定稿 1.2~2.0 → 0.3~0.8）
     capitalWaveChance: 0.20,   // 4类随波附带概率（Lv5 起每波独立判定，走常规主力舰/法术阵列选取；4类槽位通道诗篇关闭）——待调参数，随强化参数批次定稿
     healWaveGap: 2,            // 加血套件波次节流：实际掉落后 N 波内不再掉（每 2 波限 1）
     scoreMul: 2,               // 得分倍率（波次制总刷怪量大幅减少的补偿；实装时同步落地 DIFFICULTIES.poem.mods.scoreMul）
@@ -219,7 +219,7 @@
     capital_crimson: 9000, capital_azure: 9000, capital_crgold: 10000,
     harbinger: 3000, weilong: 9000, hanshuang: 2000, yu4: 2000, anvil: 2000,
     baoling: 1200, baolingG: 1400, unreal: 1200, jiaoxiang: 2800,
-    douzhi: 400, sponsor: 400, sponsorDeluxe: 400,
+    douzhi: 280, sponsor: 280, sponsorDeluxe: 280,   // 三 2R 敌诗篇不再加血（2026-10-12 用户定稿 400→280 = 与基准 hp 一致；原 400 = 280×1.43）
     fashiA1: 360, popian: 500, popianU: 500, fashiMatrix: 360,
     fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 4000,
     warMatrix: 10000,

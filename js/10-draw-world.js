@@ -5,7 +5,7 @@
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP, puxuefengImg, hanxixianImg, xiayongImg, xinguodongImg, scytheImg, tartImg, tartStripImg } from './01-config-core.js';
   import { PILOTS, PRINCE_STORM, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, CAPITAL_PALETTE, ELITES, ENEMY_TYPES, GUNSHIP_PALETTE, WIP_PLACEHOLDER_TYPES } from './01-config-enemies.js';
+  import { ANVIL, CAPITAL_PALETTE, ELITES, ENEMY_CLASS, ENEMY_TYPES, GUNSHIP_PALETTE, WIP_PLACEHOLDER_TYPES } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { currentDifficulty, isPoem, isRealme } from './01-config-difficulty.js';
   import { blastRings, bossFlow, bulwarkBurst, clamp, crystalBursts, crystals, ctx, dashKillFx, ddjMissiles, drawNebulae, drawStars, eBullets, enemies, feijianWaves, friendStorms, pBullets, particles, phaseFx, player, playerHitFx, pmWaves, powerups, rand, state, trailGhosts, watchClearFx, xinRings, meiScythes } from './02-core.js';
@@ -188,6 +188,29 @@
       tartDarkImg = c;
     } catch (err) { tartDarkImg = null; }
     return tartDarkImg;
+  }
+
+  // 生长辉光精灵（2026-10-12 生成卡顿修复）：巨大蛋挞生长期原先每帧对黑剪影 drawImage 挂
+  // shadowBlur=16×(1-gp)——大图逐帧阴影是「生成大蛋挞」段的卡顿热点。改为一次性烘焙
+  // 「黑剪影 + 峰值暗红辉光」精灵，逐帧按 (1-gp) 缩 alpha 先画辉光、再压不透明黑剪影
+  // （精灵中的剪影像素被盖住、仅外圈辉光透出——观感等价、零逐帧滤镜）。烘焙失败回退原逐帧阴影路径
+  const TART_GLOW_PAD = 16;   // 辉光烘焙外边距 = 峰值 shadowBlur（与原 16×(1-gp) 上限同值）
+  let tartGlowImg = null, tartGlowTried = false;
+  function ensureTartGlow() {
+    if (tartGlowTried) return tartGlowImg;
+    tartGlowTried = true;
+    const dark = ensureTartDark();
+    if (!dark) return null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = dark.width + TART_GLOW_PAD * 2; c.height = dark.height + TART_GLOW_PAD * 2;
+      const g = c.getContext('2d');
+      g.shadowColor = '#ff4632';
+      g.shadowBlur = TART_GLOW_PAD;
+      g.drawImage(dark, TART_GLOW_PAD, TART_GLOW_PAD);
+      tartGlowImg = c;
+    } catch (err) { tartGlowImg = null; }
+    return tartGlowImg;
   }
 
   // 诗篇占位敌人（wip）：统一白色方块占位造型（碰撞盒同尺寸，清单见 01-config WIP_PLACEHOLDER_TYPES；
@@ -1235,6 +1258,37 @@
     }
   }
 
+  // 自定义色拖尾残影精灵（2026-10-12 用户定稿方案C）：单位长度（基准 16px）双层线段预烘焙——
+  // 主色宽层 rgba(col,0.5) × r×2.4 + 白热内芯 rgba(255,255,255,0.75) × r×0.9（两层 alpha 比例烘进精灵，
+  // 整体渐隐走 globalAlpha=a，与原逐层 alpha 乘算完全一致）。风暴编织者技能4 雷环拖尾原每帧每条 2 次
+  // stroke（诗篇同屏千余条 ≈3000+ stroke/帧为帧耗大头），改 drawImage 后渲染成本降 ~90%。
+  // 绘制时 scale(len/16, w) 实现段长自适应 + 锥形宽度（0.1+0.9a²），圆帽随缩放轻微变形（残影存活
+  // 仅 0.16s、观感差异可忽略）。键 = col|r，缓存走 gradCache 同款上限策略。
+  const TRAIL_GHOST_BASE_W = 16;   // 精灵基准长度 px（对应逻辑段长 16px）
+  const ghostSpriteCache = new Map();
+  function getTrailGhostSprite(col, r) {
+    const key = col + '|' + r;
+    let sp = ghostSpriteCache.get(key);
+    if (!sp) {
+      if (ghostSpriteCache.size > 64) ghostSpriteCache.clear();
+      const h = Math.ceil(r * 2.4) + 4;   // 主色层满宽 + 圆帽余量
+      const cv = document.createElement('canvas');
+      cv.width = TRAIL_GHOST_BASE_W; cv.height = h;
+      const c = cv.getContext('2d');
+      c.lineCap = 'round';
+      const mid = h / 2;
+      c.strokeStyle = `rgba(${col}, 0.5)`;
+      c.lineWidth = r * 2.4;
+      c.beginPath(); c.moveTo(1, mid); c.lineTo(TRAIL_GHOST_BASE_W - 1, mid); c.stroke();
+      c.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      c.lineWidth = r * 0.9;
+      c.beginPath(); c.moveTo(1, mid); c.lineTo(TRAIL_GHOST_BASE_W - 1, mid); c.stroke();
+      sp = { cv, h };
+      ghostSpriteCache.set(key, sp);
+    }
+    return sp;
+  }
+
   // 暗紫轨迹残影：两边紫色 + 中心黑色 + 随机星芒闪耀，随 life 渐隐
   function drawTrailGhosts() {
     for (const g of trailGhosts) {
@@ -1243,20 +1297,19 @@
       // 锥形尾迹：源头最宽（平方衰减，锥形明显），越老的残影段越细；同时随 life 渐隐
       const w = 0.1 + 0.9 * a * a;
       if (g.col) {
-        // 自定义色拖尾（风暴编织者雷电子弹白蓝短拖尾等）：主色宽线 + 白热内芯
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = `rgba(${g.col}, ${(0.5 * a).toFixed(3)})`;
-        ctx.lineWidth = g.r * 2.4 * w;
-        ctx.beginPath();
-        ctx.moveTo(g.x1, g.y1);
-        ctx.lineTo(g.x2, g.y2);
-        ctx.stroke();
-        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.75 * a).toFixed(3)})`;
-        ctx.lineWidth = g.r * 0.9 * w;
-        ctx.beginPath();
-        ctx.moveTo(g.x1, g.y1);
-        ctx.lineTo(g.x2, g.y2);
-        ctx.stroke();
+        // 自定义色拖尾（风暴编织者雷电子弹白蓝短拖尾等）：双层线段精灵一次 drawImage
+        //（2026-10-12 优化：原主色宽线 + 白热内芯 2 次 stroke，见 getTrailGhostSprite）
+        const dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+        const len = Math.hypot(dx, dy) || 0.001;
+        const sp = getTrailGhostSprite(g.col, g.r);
+        ctx.save();
+        ctx.translate((g.x1 + g.x2) / 2, (g.y1 + g.y2) / 2);
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.scale(len / TRAIL_GHOST_BASE_W, w);
+        ctx.globalAlpha = a;
+        ctx.drawImage(sp.cv, -TRAIL_GHOST_BASE_W / 2, -sp.h / 2, TRAIL_GHOST_BASE_W, sp.h);
+        ctx.restore();
+        ctx.globalAlpha = 1;
         continue;
       }
       // 两边紫色（宽线）
@@ -1887,12 +1940,18 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // 巨大蛋挞（b.tart，黑暗之手技能3）置底（2026-10-10 用户定稿：蛋挞是底层大弹幕，不遮盖其他敌方子弹）：
-    // 主循环先画蛋挞、再画常规弹——蛋挞始终绘制在全部常规敌弹之下（不再受数组 push 顺序影响遮挡）
-    for (const b of eBullets) if (b.tart) drawOneEBullet(b);
+    // 巨大蛋挞（b.tart）不再在敌弹层绘制——已抽出独立低图层通道 drawGiantTarts()（2026-10-12
+    // 用户定稿：蛋挞贴图置于全部敌机之下，render() 在 BOSS 层之后、常规敌机之前调用）
     for (const b of eBullets) if (!b.tart) drawOneEBullet(b);
     ctx.globalAlpha = 1;   // 清除消散期子弹的渐隐透明度
     ctx.shadowBlur = 0;
+  }
+
+  // 巨大蛋挞独立低图层通道（2026-10-12 用户定稿：蛋挞贴图置于全部敌机之下——此前仅在敌弹层内置底、
+  // 仍盖住敌机；现 render() 于 BOSS 层之后、常规敌机层之前调用本函数。绘制体仍走 drawOneEBullet
+  // 的 b.tart 分支，与图鉴预览/实机永远同一份代码）
+  function drawGiantTarts() {
+    for (const b of eBullets) if (b.tart) drawOneEBullet(b);
   }
 
   // 单发敌方子弹渲染（drawBullets 的 eBullets 循环体原样抽取成函数，热路径逐弹调用）：
@@ -1900,11 +1959,12 @@
   // fadeT 消散透明度在函数内自管（原循环开头逻辑）；bolt 闪频 / 风条波动等读 state.time 的动效照常生效
   // 长条弹头端增红映射（2026-10-09 用户反馈「最头部更加红」）：家族色 → 更红变体；未登记色原样使用
   const LONG_HEAD_RED = { '#ff4d2e': '#ff2512', '#ff7a45': '#ff4b1c', '#8a1018': '#a80f16' };
-  // 弧线弹出生色漂移（2026-10-09 用户定稿；2026-10-10 用户反馈变色太慢、生命末尾才完全变色 → 漂移期 1.5s → 0.6s）：
-  // 出生黑紫（取旧日之歌紫弹系 #c9a0ff 同色相压暗 → #3f1464），随存活时间 0.6s 线性漂移至弧线绿 #a5ffd6
+  // 弧线弹出生色漂移（2026-10-09 用户定稿；2026-10-10 用户反馈变色太慢、生命末尾才完全变色 → 漂移期 1.5s → 0.6s；
+  // 2026-10-12 用户定稿总时长翻倍 → 1.2s）：
+  // 出生黑紫（取旧日之歌紫弹系 #c9a0ff 同色相压暗 → #3f1464），随存活时间 1.2s 线性漂移至弧线绿 #a5ffd6
   const ARC_TINT_FROM = [63, 20, 100];
   const ARC_TINT_TO = [165, 255, 214];
-  const ARC_TINT_T = 0.6;
+  const ARC_TINT_T = 1.2;
   function arcTintColor(age) {
     const t = clamp(age / ARC_TINT_T, 0, 1);
     const c = ARC_TINT_FROM.map((v, i) => Math.round(v + (ARC_TINT_TO[i] - v) * t));
@@ -2159,14 +2219,23 @@
           const gp = b.tartGrowDur ? clamp((b.tartGrow || 0) / b.tartGrowDur, 0, 1) : 1;
           const d = b.tartSpin != null ? b.r * 2 : b.r * 3.2;
           if (gp < 1) {
-            // 生长期：黑剪影（带暗红辉光）打底 + 真色 gp² alpha 叠加，替代逐帧 ctx.filter
-            //（数学等价 brightness(gp²)，2026-10-03 性能修复）；剪影烘焙失败回退真色直接渐显
+            // 生长期：黑剪影打底 + 暗红辉光（辉光烘焙精灵按 (1-gp) 缩 alpha——2026-10-12 移除逐帧
+            // shadowBlur 大图阴影，「生成大蛋挞」段卡顿热点）+ 真色 gp² alpha 叠加（数学等价
+            // brightness(gp²)，2026-10-03 性能修复）；辉光/剪影烘焙失败回退原逐帧阴影路径
             const dark = ensureTartDark();
             if (dark) {
-              ctx.shadowColor = '#ff4632';
-              ctx.shadowBlur = 16 * (1 - gp);
-              ctx.drawImage(dark, -d / 2, -d / 2, d, d);
-              ctx.shadowBlur = 0;
+              const glow = ensureTartGlow();
+              if (glow) {
+                ctx.globalAlpha = (1 - gp) * tartAlpha;
+                ctx.drawImage(glow, -d / 2 - TART_GLOW_PAD, -d / 2 - TART_GLOW_PAD, d + TART_GLOW_PAD * 2, d + TART_GLOW_PAD * 2);
+                ctx.globalAlpha = tartAlpha;
+                ctx.drawImage(dark, -d / 2, -d / 2, d, d);
+              } else {
+                ctx.shadowColor = '#ff4632';
+                ctx.shadowBlur = 16 * (1 - gp);
+                ctx.drawImage(dark, -d / 2, -d / 2, d, d);
+                ctx.shadowBlur = 0;
+              }
               ctx.globalAlpha = gp * gp * tartAlpha;
               ctx.drawImage(tartImg, -d / 2, -d / 2, d, d);
               ctx.globalAlpha = tartAlpha;
@@ -2179,8 +2248,9 @@
           return;
         }
         if (b.streak && (b.vx || b.vy)) {
-          // 大子弹简化拖尾（streak：沿速度反向的同色渐隐圆帽线段，长度 ≈1.5× 直径，
-          // 值见 05-boss 大子弹散射两处赋值点；过短会被弹体辉光完全盖住）
+          // 简化拖尾（streak：沿速度反向的同色渐隐拖尾，长度见赋值点；过短会被弹体辉光完全盖住）：
+          // taper=锥状（战争幽灵技能3 散弹，2026-10-12 用户定稿「尾部收缩」——头端宽 1.1r 垂直于速度方向、尾端收为尖点的三角填充）；
+          // 无 taper=等宽圆帽线段（05-boss 大子弹散射两处赋值点维持原观感）
           ctx.shadowBlur = 0;
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const tx = -b.vx / sp * b.streak, ty = -b.vy / sp * b.streak;
@@ -2189,13 +2259,24 @@
           sg.addColorStop(1, b.color + '00');
           const ga = ctx.globalAlpha;
           ctx.globalAlpha = ga * 0.75;   // 拖尾亮度（叠加消散期 alpha），弹体压在上面
-          ctx.strokeStyle = sg;
-          ctx.lineWidth = b.r * 1.1;
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(tx, ty);
-          ctx.stroke();
+          if (b.taper) {
+            const hw = b.r * 0.7;   // 头端半宽（合成后全宽 1.4r——比弹体辉光略宽、拖尾可见；2026-10-12 用户定稿原 0.55r 被盖基本看不见）
+            ctx.fillStyle = sg;
+            ctx.beginPath();
+            ctx.moveTo(b.vy / sp * hw, -b.vx / sp * hw);    // 头端上沿（速度方向法线）
+            ctx.lineTo(-b.vy / sp * hw, b.vx / sp * hw);    // 头端下沿
+            ctx.lineTo(tx, ty);                             // 尾尖
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            ctx.strokeStyle = sg;
+            ctx.lineWidth = b.r * 1.1;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+          }
           ctx.globalAlpha = ga;
         }
         // 主体+辉光精灵烘焙（2026-10-12 优化）：原各风味分支每弹每帧 createRadialGradient/cachedGrad
@@ -2684,24 +2765,24 @@
     ctx.restore();
   }
 
-  // 爆炸冲击圈（叮咚鸡导弹雨 / 捣蛋来袭）：蓝色扩散环自爆点扩张至波及半径后渐隐，
-  // 直观指示溅射范围（生成见 07-player dagouMissileBlast / 02-core spawnBlastRing，推进见 14-main）
+  // 爆炸冲击圈（叮咚鸡导弹雨 / 捣蛋来袭 / 暴鸰殉爆增强波）：扩散环自爆点扩张至波及半径后渐隐，
+  // 直观指示波及范围（生成见 02-core spawnBlastRing，推进见 14-main；环可带可选 lw/alphaMul 覆写默认线宽与峰值透明度）
   function drawBlastRings() {
     for (const r of blastRings) {
       const p = clamp(r.t / r.dur, 0, 1);
       const rad = r.r * (0.35 + 0.65 * p);
-      const a = 0.8 * (1 - p);
+      const a = 0.8 * (1 - p) * (r.alphaMul || 1);
       ctx.save();
       ctx.globalAlpha = a;
       ctx.strokeStyle = r.color;
       ctx.shadowColor = r.color;
       ctx.shadowBlur = 8;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = r.lw || 2;
       ctx.beginPath();
       ctx.arc(r.x, r.y, rad, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = a * 0.25;
-      ctx.lineWidth = 5;
+      ctx.lineWidth = (r.lw || 2) * 2.5;
       ctx.stroke();
       ctx.restore();
     }
@@ -3331,8 +3412,13 @@
     drawPlayerFireRing();   // 炽心：自身火环（低图层——位于实体与子弹之下，不遮挡任何单位）
     for (const o of pmWaves) drawPmOrphanWave(o);   // 脉冲矩阵震荡波孤儿波（本体被击坠后残留，低图层：活体敌机之下）
     for (const e of enemies) if (e.type === 'boss') drawBoss(e);   // BOSS 体型最大，最底层
-    // 常规敌机按体型（半径）降序绘制：大机先画在底层、小机浮上层——4类不遮挡 3/2/1类（2026-10-12 用户定稿）
-    for (const e of [...enemies].sort((a, b) => b.r - a.r)) {
+    drawGiantTarts();   // 巨大蛋挞（黑暗之手技能3）：全部敌机之下（2026-10-12 用户定稿——BOSS 层之上、敌机层之下）
+    // 常规敌机按体型（碰撞盒面积）降序绘制：大机先画在底层、小机浮上层——4类不遮挡 3/2/1类（2026-10-12 用户定稿）。
+    // 等面积时按类层级降序（4类先画更靠底）。⚠️ 敌机无 r 属性（碰撞统一用 w/h 半宽半高）——
+    // 旧实现 b.r - a.r 恒 NaN、排序空转，图层实际退化为生成顺序（青时炮艇被后生成的 4类遮挡即此根因，2026-10-12 修复）
+    for (const e of [...enemies].sort((a, b) =>
+      ((b.w * b.h) - (a.w * a.h)) || ((ENEMY_CLASS[b.type] || 0) - (ENEMY_CLASS[a.type] || 0))
+    )) {
       if (e.type !== 'boss') drawEnemy(e);
     }
     drawStarslayerBeam();   // 群星之杀：机头淡白锁定光束（敌机之上、玩家之下）

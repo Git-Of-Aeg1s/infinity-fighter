@@ -222,7 +222,8 @@
       // updateBullets 演示弹道共用路径会把场上残留敌弹（蛋挞）继续推下屏
       if (state.mode === 'gameover') break;
       b.age = (b.age || 0) + dt;   // 存在时长（弧线弹出生色漂移 / 蛇行相位共用；weave 分支不再单独推进）
-      // 蛋挞被依的镰刀斩中（2026-10-04 用户定稿）：颤动 hitShudderT → 碎裂（迸散粒子一次）→ 渐隐 hitFadeT → 移除；
+      // 蛋挞消散管线（b.tart && tartHitT != null，2026-10-04 镰刀斩中引入；2026-10-12 起护盾碰触 /
+      // 护盾扩散波消散共用）：颤动 hitShudderT → 碎裂（迸散粒子一次）→ 渐隐 hitFadeT → 移除；
       // 全程冻结移动 / 自旋 / 碰撞（continue 跳过本帧全部推进；颤动抖动与渐隐 alpha 由渲染端按 tartHitT 取值）
       if (b.tart && b.tartHitT != null) {
         b.tartHitT += dt;
@@ -395,17 +396,25 @@
       }
       if (b.trail) {
         // 轨迹残影：记录帧间线段（缺省暗紫；b.trailCol 自定义色 + b.trailLife 短拖尾；
-        // b.trailR 拖尾显示半径——大子弹等大弹径弹用较小半径绘制更纤细的锥形尾，缺省同弹体半径）
-        if (b.px != null) {
-          trailGhosts.push({
-            x1: b.px, y1: b.py, x2: b.x, y2: b.y,
-            life: b.trailLife || 1.0, max: b.trailLife || 1.0,
-            r: b.trailR || b.r,
-            seed: Math.random() * 10, spark: Math.random() < 0.2,
-            col: b.trailCol || null,
-          });
+        // b.trailR 拖尾显示半径——大子弹等大弹径弹用较小半径绘制更纤细的锥形尾，缺省同弹体半径）。
+        // 性能（2026-10-12 用户定稿方案C）：①采样降频——按时间每 1/30s 压 1 条（段长自动 ×2、视觉几乎不变，
+        // 风暴编织者技能4 诗篇 9 圈雷环同屏百余枚时残影量减半）；②去零长——位移 <0.5px 不压
+        //（雷环停留期静止弹不再产生零长残影白白 stroke；px/py 照常更新不积累）
+        b.trailCd = (b.trailCd || 0) + dt;
+        if (b.trailCd >= 1 / 30) {
+          b.trailCd = 0;
+          const gd = b.px != null ? Math.hypot(b.x - b.px, b.y - b.py) : 0;
+          if (b.px != null && gd >= 0.5) {
+            trailGhosts.push({
+              x1: b.px, y1: b.py, x2: b.x, y2: b.y,
+              life: b.trailLife || 1.0, max: b.trailLife || 1.0,
+              r: b.trailR || b.r,
+              seed: Math.random() * 10, spark: Math.random() < 0.2,
+              col: b.trailCol || null,
+            });
+          }
+          b.px = b.x; b.py = b.y;
         }
-        b.px = b.x; b.py = b.y;
       }
       // 出界移除：折线光束（beamTrail，技能3 "<"弹）的可见轨迹自头部向后延伸 b.len——
       // 头部出界后整条"<"轨迹继续滑出屏幕，直至尾端也越过边界才消失（不再头部一出界就整条闪没）
@@ -559,6 +568,17 @@
       if (!b.laser && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r &&
           (player.shield > 0 || player.crystalShield > 0)) {
+        // 巨大蛋挞（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）：量子/结晶护盾碰触可消散——
+        // 置 tartHitT 走镰刀同款「颤动→碎裂迸粒→渐隐」管线（状态机见本文件上方 b.tart 分支；消散期
+        // 冻结移动/自旋/碰撞），起始补一轮护盾色火花；仅首次触发计数，防管线存续期逐帧重复
+        if (b.tart) {
+          if (b.tartHitT == null) {
+            b.tartHitT = 0;
+            if (player.crystalShield > 0) achvNoteLanxinAbsorb();
+            spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 10, 170);
+          }
+          continue;
+        }
         if (player.crystalShield > 0) achvNoteLanxinAbsorb();
         spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 6, 140);
         eBullets.splice(i, 1);
@@ -599,7 +619,7 @@
           hitPlayer = Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < PLAYER_CFG.hitRadius + b.r;
         }
       }
-      // 巨大蛋挞成型阶段免伤（2026-10-04 用户定稿：仅虚象/具象——生成时打 tartGrowNoHit 标志）：
+      // 巨大蛋挞成型阶段免伤（全难度——2026-10-12 用户定稿，原仅虚象/具象——生成时打 tartGrowNoHit 标志）：
       // 生长未完成 → 命中无效（不伤害、不消失，弹继续前进成型后再正常判定）
       if (hitPlayer && b.tartGrowNoHit && b.tartGrow < b.tartGrowDur) hitPlayer = false;
       if (hitPlayer) {
@@ -632,12 +652,12 @@
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
   function applyPowerupPickup(p) {
     achvNotePickup();   // 成就：UPUPUP——道具拾取计数（水晶不走本路径不计）
-    // 小艺：拾取任意道具（水晶不走本路径）恢复生命——血量低于 60 回复 5% 生命、低于 40 改为 10%
-    //（2026-10-08 用户定稿：阈值为血量点数、回复量按最大生命百分比；血量 ≥60 时拾取不回血）
+    // 小艺：拾取任意道具（水晶不走本路径）恢复生命——任意血量均回 5%，低于 40 改为 10%
+    //（2026-10-12 用户定稿：取消原「血量低于 60 才回 5%、≥60 不回」门槛；阈值为血量点数、回复量按最大生命百分比）
     if (hasPilot('xiaoyi') && player.alive) {
       const maxHp = player.maxHp || PLAYER_CFG.maxHp;
       const heal = player.hp < PILOTS.xiaoyi.pickupHealHpGateLow ? maxHp * PILOTS.xiaoyi.pickupHealPctLow
-        : player.hp < PILOTS.xiaoyi.pickupHealHpGate ? maxHp * PILOTS.xiaoyi.pickupHealPct : 0;
+        : maxHp * PILOTS.xiaoyi.pickupHealPct;
       if (heal > 0) {
         player.hp = Math.min(maxHp, player.hp + heal);
         spawnParticles(player.x, player.y - 12, '#8ce36b', 6, 120);

@@ -3128,7 +3128,16 @@
 
     // 登场演出（2026-10-01 四段式，替换旧黑洞入场；状态机见 05-boss updateBossDarkhand，时长参数见 01-config DARKHAND.entrance）：
     //   lurk 潜伏不可见 → sweep 黑色阴影沿中线飞速掠过 → outline 白主体红边轮廓 → reveal 渐变深邃黑（结束释放震荡波）
-    if (e.phase === 'lurk') return;
+    if (e.phase === 'lurk') {
+      // 登场潜伏期预烘焙（2026-10-12 卡顿修复）：本体三形态滤镜烘焙（ensureDhBakes）与红色饰条掩码
+      // （ensureDhRedMask——1536×1456 逐像素扫描 + 高画质缩放）原先在 combat 首帧惰性构建，与血条
+      // 首绘/震荡波/四角消散粒子同帧叠加——正是「本体实体形成、连携阴影消散」一瞬的卡顿尖峰。
+      // 提前到 lurk（机体不可见，距显形尚有 sweep/outline/reveal ≈2s 余量）一次做完；
+      // 素材未就绪时本轮跳过、后续帧重试（两函数自带一次性完成守卫，幂等）
+      ensureDhBakes();
+      ensureDhRedMask();
+      return;
+    }
 
     // 登场连携黑暗凝聚（2026-10-01 用户定稿，纯渲染演出）：白红轮廓开始浮现后，黑暗之手四周四个角
     // 出现四名连携精英的黑暗形态（立绘黑剪影 + 暗红辉光，由小放大凝聚成形）；黑暗之手显形完成
@@ -3372,10 +3381,10 @@
   }
 
   // 黑暗之手「额外技能」特效层（2026-10-10 用户定稿实装；drawBoss 调用、紧随 drawDarkhandBoss 机体层——
-  // 视觉口径全同对应精英原版技能）：id5 夏勇碎翼回旋镖（预警轨道虚线 + 爪→锚迸出线 / 月牙刃 + 拖尾）、
+  // 视觉口径全同对应精英原版技能）：id5 夏勇碎翼回旋镖（预警轨道虚线 + 爪→锚迸出弧线 / 月牙刃 + 拖尾）、
   // id7 辛国栋边界轰炸（落点预警全同辛国栋精英：波浪外环 + 红罩 + 旋转虚线中环 + 首拍强调圈，
-  // 2026-10-10 用户回调）、id8 韩希先旋眼火螺（三塔核绕锚公转，半径 ×orbitRMul 同源收缩）、
-  // id9 双标记导弹（标记点红色收缩圈短暂提示）
+  // 2026-10-10 用户回调）、id8 韩希先旋眼火螺（三塔核绕锚公转，半径 ×orbitRMul 同源收缩）
+  //（id9 双标记导弹的落点预警已按 2026-10-12 用户定稿移除——标记点不再绘制收缩圈）
   function drawDarkhandSkillFx(e) {
     const s = e.skill;
     if (!s) return;
@@ -3389,12 +3398,20 @@
         ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2;
         ctx.setLineDash([12, 9]); ctx.lineDashOffset = -state.time * 60;
         ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.ellipse(s.cx, s.cy, xc.bladeRx, s.ry, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(s.cx, s.cy, s.rx || xc.bladeRx, s.ry, 0, 0, Math.PI * 2); ctx.stroke();
+        // 爪→锚迸出弧线（2026-10-12 用户定稿切向化 2.1）：预警线即实际飞行路径——P1=爪→P2 中点、
+        // P2=锚−切向·dist/2，与 05-boss 出弧控制点同源（切向化后中后段贴椭圆切线直线段）
         for (const dir of [1, -1]) {
           const a0 = dir > 0 ? -Math.PI / 4 : Math.PI + Math.PI / 4;
+          const ax0 = s.cx + Math.cos(a0) * (s.rx || xc.bladeRx), ay0 = s.cy + Math.sin(a0) * s.ry;
+          const gx = e.x + dir * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;
+          let tdx = dir * -Math.sin(a0) * (s.rx || xc.bladeRx), tdy = dir * Math.cos(a0) * s.ry;
+          const tl = Math.hypot(tdx, tdy) || 1; tdx /= tl; tdy /= tl;
+          const dist = Math.hypot(ax0 - gx, ay0 - gy);
+          const px2 = ax0 - tdx * dist * 0.5, py2 = ay0 - tdy * dist * 0.5;
           ctx.beginPath();
-          ctx.moveTo(e.x + dir * 0.27 * e.w, e.y + 0.30 * e.h - 50);
-          ctx.lineTo(s.cx + Math.cos(a0) * xc.bladeRx, s.cy + Math.sin(a0) * s.ry);
+          ctx.moveTo(gx, gy);
+          ctx.bezierCurveTo(gx + (px2 - gx) * 0.5, gy + (py2 - gy) * 0.5, px2, py2, ax0, ay0);
           ctx.stroke();
         }
         ctx.setLineDash([]); ctx.shadowBlur = 0;
@@ -3490,18 +3507,9 @@
           ctx.restore();
         }
       }
-    } else if (s.id === 9 && s.mark && s.markT < 0.9) {
-      // 双标记导弹：两个标记点红色收缩圈（0.9s 收缩渐隐——落点提示）
-      const prog = clamp(s.markT / 0.9, 0, 1);
-      ctx.save();
-      ctx.globalAlpha = 0.85 * (1 - prog);
-      ctx.strokeStyle = '#ff3a30'; ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 8;
-      for (const mk of [s.mark, s.mark2]) {
-        ctx.beginPath(); ctx.arc(mk.x, mk.y, 46 * (1 - prog) + 10, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.restore();
     }
+    // （id9 双标记导弹：落点预警已按 2026-10-12 用户定稿移除——标记点不再绘制红色收缩圈，
+    // s.mark / s.mark2 仅作弹道分配逻辑字段保留）
   }
 
   // 技能4 超长蛋挞顶层绘制入口（2026-10-10 用户定稿：蛋挞是底层大弹幕不遮盖其他子弹——弹体由

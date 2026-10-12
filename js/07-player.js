@@ -9,7 +9,7 @@
   import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
   import { ENEMY_CLASS, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
-  import { diffMods, invulnDiffMul, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
+  import { diffMods, invulnDiffMul, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
   import { REWARD_ITEMS } from './01-config-spawn.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
@@ -2092,14 +2092,14 @@
       achvNotePilotSkillUsed();   // 成就：忘了——大狗 Q 技能已使用
       return true;
     }
-    // 迪奥：按 Q 触发暴走——立刻损失 40 生命（不会致死）；冷却 40s（开局技力条为空不能释放）。
+    // 迪奥：按 Q 触发暴走——立刻损失 30 生命（不会致死）；冷却 40s（开局技力条为空不能释放）。
     // 暴走中再次触发（剩余 x 秒）：暴走时间重设为 默认持续 + y（y = min{1, x}），比单纯续时略多、不至溢出
     if (hasPilot('diao') && keyName === 'q') {
       if (!player.alive || state.lingluoCdT > 0) return false;
       state.lingluoCdT = PILOTS.diao.cd;
       achvNoteLingluoSkill();   // 成就：疯狂杀戮——迪奥 Q 释放计数；忘了——技能已使用
       achvNotePilotSkillUsed();
-      // 代价：扣除 40 生命上限（血条缩短，下限 1）并至少扣除 40 当前生命（不低于 1，
+      // 代价：扣除 30 生命上限（血条缩短，下限 1）并至少扣除 30 当前生命（不低于 1，
       // 超出新上限的部分裁剪）；上限随后每秒回 2（不回当前血量，重生/重开复原）
       const cut = Math.min(PILOTS.diao.hpCost, player.maxHp - 1);
       player.maxHp -= cut;
@@ -2174,6 +2174,7 @@
 
   // 依：击杀计数结算（06-enemy killEnemy 调用）——cls 1~5（5 类 = BOSS）；
   // BOSS 战期间计数 ×2，击败黑暗之手四精英改为 ×3（替换 ×2）（2026-10-10 用户定稿，原 ×3/×4+额外30 废止）；
+  // 诗篇难度击杀充能统一 ×1.2（2026-10-12 用户定稿，PILOTS.mei.poemKillMul——在上述乘区之上乘算）；
   // 挑战 / 测试模式不计
   function meiNoteKill(cls, type) {
     if (state.challenge || !hasPilot('mei')) return;
@@ -2181,6 +2182,7 @@
     let gain = cfg.killGain[cls] || 0;
     if (!gain) return;
     if (bossFlow.stage === 'fight') gain *= cfg.elites.includes(type) ? cfg.eliteKillMul : cfg.bossKillMul;
+    if (isPoem()) gain *= cfg.poemKillMul;
     state.meiCounter = Math.min(cfg.counterMax, state.meiCounter + gain);
   }
 

@@ -10,7 +10,7 @@
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpBar, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { resetSpawnWaveState } from './04-spawn.js';
@@ -43,7 +43,7 @@
   // HUD 脏检查缓存（2026-10-10 A级性能优化）：updateHUD 随 rAF 每帧执行，绝大多数帧数值不变——
   // 值相同则跳过 DOM 写入（省 JS↔DOM 桥与样式解析成本；classList.toggle 幂等成本低，不缓存）。
   // 这些 HUD 元素仅本模块写入（bombIcons innerHTML 同理），值缓存无失同步风险。
-  let _hudHpW = '', _hudBarW = '', _hudPermW = '', _hudScoreDisp = '', _hudScore = -1,
+  let _hudHpW = '', _hudTrackW = '', _hudTrackBase = null, _hudBarW = '', _hudBarRight = '', _hudPermW = '', _hudScoreDisp = '', _hudScore = -1,
       _hudLivesN = -1, _hudDiffName = null, _hudBerserkW = '', _hudShieldW = '', _hudDouzhiW = '', _hudJingdunW = '',
       _hudSkillFrac = -1, _hudSkillColor = null, _hudPilotFrac = -1, _hudPilotMode = null,
       _hudPilotCnt = null, _hudKing = -1, _hudBombInf = false;
@@ -54,18 +54,29 @@
     // 手柄连接指示（右上角 FPS 读数下方）：随每帧轮询结果显隐（gamepad 状态由 14-main pollGamepad 刷新）
     padIndicator.classList.toggle('hidden', !gamepad.connected);
     const maxHp = player.maxHp || PLAYER_CFG.maxHp;
+    // 血条轨道随当前生命上限缩短（2026-10-12 用户定稿）：迪奥 Q 扣上限 → 轨道右侧同步缩短；
+    // 上限每秒回 2 时轨道随之变宽复原。宽度用 **px** 而非百分比：.hp-row 处于内容收缩布局
+    //（原靠 .hp-bar 固定 180px 撑宽），子项 width:100% 会反向依赖行宽造成循环塌缩
+    //（实机复现：整行缩到 20px、血条 2px 不可见）——首帧捕获 CSS 基准宽后按比例缩放
+    const maxFull = armorMaxHp() || PLAYER_CFG.maxHp;
+    if (_hudTrackBase == null) _hudTrackBase = hpBar.offsetWidth || 180;   // 首帧捕获（写内联宽前测量，style.css 固定 180px；offsetWidth = 布局像素，不受舞台 transform 缩放污染；DOM 桩测出 0 时回退）
+    const trackW = (Math.round(clamp(maxHp / maxFull, 0, 1) * _hudTrackBase * 100) / 100) + 'px';
+    if (trackW !== _hudTrackW) { hpBar.style.width = trackW; _hudTrackW = trackW; }
     const ratio = player.hp / maxHp;
     const hpW = (ratio * 100) + '%';
     if (hpW !== _hudHpW) { hpFill.style.width = hpW; _hudHpW = hpW; }
-    // 青时炮艇支援弹屏障：HP 条右缘白蓝覆盖条（宽度 = 条宽 × barrier / max(barrierMax, 生命上限)；
-    // 末 1s player.barrier 自动线性衰减 → 覆盖条等比缩短，无需额外动画）
-    const barRatio = (player.barrier || 0) > 0
-      ? clamp(player.barrier / Math.max(player.barrierMax || 0, maxHp), 0, 1) : 0;
-    const barW = (barRatio * 100) + '%';
-    if (barW !== _hudBarW) { hpBarrier.style.width = barW; _hudBarW = barW; }
-    // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；不随时间衰减）
+    // 青时炮艇支援弹屏障：贴永久屏障左缘向左展示（右缘偏移 = 永久屏障宽度，2026-10-12 用户定稿——
+    // 原两屏障均右缘锚定、永久屏障盖住普通屏障）；末 1s player.barrier 自动线性衰减 → 覆盖条等比缩短。
+    // 与永久屏障合计显示宽度钳制 ≤ 血量条宽（超出截断，两屏障条不超出血条范围）
     const permRatio = (player.permBarrier || 0) > 0
       ? clamp(player.permBarrier / maxHp, 0, 1) : 0;
+    const barRatio = (player.barrier || 0) > 0
+      ? clamp(player.barrier / Math.max(player.barrierMax || 0, maxHp), 0, 1) : 0;
+    const barW = (Math.min(barRatio, 1 - permRatio) * 100) + '%';
+    const barRight = (permRatio * 100) + '%';   // 普通屏障右缘 = 永久屏障左缘
+    if (barW !== _hudBarW) { hpBarrier.style.width = barW; _hudBarW = barW; }
+    if (barRight !== _hudBarRight) { hpBarrier.style.right = barRight; _hudBarRight = barRight; }
+    // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（普通屏障贴其左侧展示；不随时间衰减）
     const permW = (permRatio * 100) + '%';
     if (permW !== _hudPermW) { hpPermBarrier.style.width = permW; _hudPermW = permW; }
     hpFill.classList.toggle('warn', ratio <= 0.55 && ratio > 0.25);
@@ -233,9 +244,11 @@
     levelFlow.bossMinionNext = rand(6, 12);
     levelFlow.hpKitWaveCd = 0;           // 诗篇：加血套件波次节流剩余波数归零
     levelFlow.poemWaveIdx = 0;        // 诗篇波次制：本阶段波次计数归零
+    levelFlow.poemWaveKitDone = false;   // 诗篇 Lv1~4 套件保底旗标归位（新局首波未掉落状态）
     levelFlow.poemClearT = 0;         // 诗篇波次制：清场计时归零
     levelFlow.poemClearNext = 0;      // 诗篇波次制：清场间隔归零（0 = 开局立即首波）
     state.orangeBombUsed = false;
+    state.poemBombDropped = 0;   // 诗篇爆弹掉落计数归零（每局最多掉 2 颗 / 未使用不掉第 2，见 02-core bombDropGate）
     state.hpKitLastLv = -999; // 加血套件等级窗口节流归位（未登记状态）
     state.hpKitLastPhase = -1;// 加血套件等级窗口节流：boss 轮归属清空
     state.crystalMagnetMul = 1;   // 水晶磁吸倍率重开归 1（击败旧日之歌后再 ×1.5）
@@ -511,8 +524,8 @@
     const subGlyph = document.getElementById('loadoutSubGlyph');
     if (subGlyph) {
       if (currentSubWeapon.iconSvg) {
-        subGlyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色
-        subGlyph.innerHTML = currentSubWeapon.iconSvg;
+        subGlyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色；焰环为函数引用（每次渲染生成唯一渐变 defs id，防多挂载点重复 id 失效）
+        subGlyph.innerHTML = typeof currentSubWeapon.iconSvg === 'function' ? currentSubWeapon.iconSvg() : currentSubWeapon.iconSvg;
         subGlyph.style.transform = 'translateX(-50%)';   // CSS 基准居中保留
         subGlyph.style.fontWeight = '';
       } else {
@@ -957,8 +970,8 @@
       const glyph = document.createElement('div');
       glyph.className = 'armor-card-glyph';
       if (w.iconSvg) {
-        glyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色
-        glyph.innerHTML = w.iconSvg;
+        glyph.classList.add('glyph-svg');   // 矢量图标（焰环 / 狗耳导弹）：内联 SVG，辉光走注册色；焰环为函数引用（每次渲染生成唯一渐变 defs id）
+        glyph.innerHTML = typeof w.iconSvg === 'function' ? w.iconSvg() : w.iconSvg;
       } else {
         glyph.textContent = w.glyph || '□';
         if (w.glyphTransform) glyph.style.transform = w.glyphTransform;   // 无界飞剑：字形倒转 180° + 加宽（注册表 glyphTransform）
@@ -1004,8 +1017,8 @@
         const glyph = document.createElement('div');
         glyph.className = 'armor-card-glyph';
         if (p.iconSvg) {
-          glyph.classList.add('glyph-svg');   // 矢量图标（迪奥彼岸花）：内联 SVG，currentColor 继承注册色
-          glyph.innerHTML = p.iconSvg;
+          glyph.classList.add('glyph-svg');   // 矢量图标（迪奥彼岸花）：内联 SVG，currentColor 继承注册色（函数引用条目同副武器口径每次渲染调用）
+          glyph.innerHTML = typeof p.iconSvg === 'function' ? p.iconSvg() : p.iconSvg;
         } else {
           glyph.textContent = p.glyph;
           if (p.glyphTransform) glyph.style.transform = p.glyphTransform;   // 胡笛客：ω 倒转 180°（与哈基米成对）

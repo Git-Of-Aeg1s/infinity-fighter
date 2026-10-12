@@ -327,23 +327,29 @@ async function sceneEncyclopedia() {
   sample('打开数值与机制图鉴');
 }
 
-// 图鉴导航到「权重 → 波次权重 → 旧怪物权重」（2026-10-12 二次迁移：旧怪物权重并入波次权重子页等级行末，
-// 外层行不再有该 chip）——三级 chips 均为动态创建，按 createdElements 累积池 reverse 取最新重建版本点击
+// 图鉴导航到「权重 → 旧怪物权重」（2026-10-12 用户定稿：旧怪物权重提升为权重组外层页签、置于「波次」右侧）——
+// chips 均为动态创建，按 createdElements 累积池 reverse 取最新重建版本点击
 async function navToOldWeightsTab() {
   const tabBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-tab') && el.textContent === '权重');
   if (tabBtn) { tabBtn.click(); frames(2); }
-  const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-chip') && el.textContent === '波次权重');
-  if (waveChip) { waveChip.click(); frames(2); }
   const chip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && String(el.className).includes('info-chip') && el.textContent === '旧怪物权重');
   if (chip) { chip.click(); frames(2); }
 }
 
 async function sceneWaveTest() {
-  // 波次测试按钮：权重 → 「旧怪物权重」子页 →「波次」子页 → 行内「▶ 试波」→ 波次挑战开局
+  // 波次测试按钮：权重 → 「旧怪物权重」页签 →「波次」档位 → 行内「▶ 试波」→ 波次挑战开局
   //（updateChallenge 整波驱动 / 场上清空自动补刷 / = 额外追加一整波——14-main 键盘入口）
   elements.infoEntryBtn.click(); frames(10);   // 前置：打开权重表（openInfoModal 幂等重建，全量/单跑皆可）
-  await navToOldWeightsTab();                  // 2026-10-12：旧怪物权重页签已迁入权重组，先导航到子页
-  const waveChip = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent === '波次');
+  await navToOldWeightsTab();                  // 2026-10-12：旧怪物权重为权重组外层页签，先导航过去
+  // 档位行「波次」chip：外层页签「波次」（原「波次示意」，2026-10-12 更名）与之重名——假 DOM parentElement 为共享桩
+  // 无法按行消歧，改按创建顺序：档位行「波次」必创建于最近一个「虚象级」档位 chip 之后（renderInfoWeights 先建行、
+  // renderInfoWeightGroup 后建外层 chips 行），取其后首个「波次」按钮
+  let lastXwIdx = -1;
+  for (let i = 0; i < createdElements.length; i++) {
+    const el = createdElements[i];
+    if (el.tagName === 'BUTTON' && el.textContent === '虚象级') lastXwIdx = i;
+  }
+  const waveChip = createdElements.find((el, i) => i > lastXwIdx && el.tagName === 'BUTTON' && el.textContent === '波次');
   if (waveChip) {
     waveChip.click();
     const testBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.className === 'ency-challenge-btn wave-test');
@@ -362,7 +368,16 @@ async function sceneSwarm() {
   // （2026-09-30 事故：正常刷怪通道 !state.challenge 门控把 swarm 一并跳过 → 开局空场一只怪都没有）
   // 覆盖：图鉴按钮进入 swarm 挑战 / 14-main 正常通道放行 + 锁 Lv20 / 04-spawn swarm 分支不误补刷
   elements.infoEntryBtn.click(); frames(10);    // 打开图鉴（单跑时构建 DOM；openInfoModal 幂等）
-  await navToOldWeightsTab();                   // 2026-10-12：旧怪物权重页签已迁入权重组，先导航到子页
+  await navToOldWeightsTab();                   // 2026-10-12：旧怪物权重为权重组外层页签，先导航过去
+  // 持续刷怪测试按钮在「波次」档位分支（renderInfoWeights else）——外层页签导航后 infoWeightKind 仍为默认 'side'，
+  // 须再点「波次」档位 chip（与 sceneWaveTest 同款顺序消歧：取最近「虚象级」chip 之后的首个「波次」按钮）
+  let lastXwIdx2 = -1;
+  for (let i = 0; i < createdElements.length; i++) {
+    const el = createdElements[i];
+    if (el.tagName === 'BUTTON' && el.textContent === '虚象级') lastXwIdx2 = i;
+  }
+  const waveChip2 = createdElements.find((el, i) => i > lastXwIdx2 && el.tagName === 'BUTTON' && el.textContent === '波次');
+  if (waveChip2) { waveChip2.click(); frames(2); }
   const swarmBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent.includes('持续刷怪测试'));
   if (swarmBtn) {
     swarmBtn.click();                             // 开局持续刷怪测试（challenge.kind==='swarm'）
@@ -630,7 +645,10 @@ async function sceneWarGhost() {
             errors.push({ key: '召唤身侧间距异常', stack: 'anvil.x=' + aS.x.toFixed(1) + '（期望 ' + expAnvilX.toFixed(1) + '）U.tpX=' + uS.tpX + '（期望 ' + expUX + '）' });
           }
           if (!((aS.x - e.x) * (uS.x - e.x) < 0)) {
-            errors.push({ key: '召唤物未分居两侧', stack: 'anvil.x=' + aS.x.toFixed(1) + ' U.x=' + uS.x.toFixed(1) + ' ghost.x=' + e.x.toFixed(1) });
+            // 幽灵贴边（|x±70| 出界）时召唤位被 clamp 到 [46, W-46] 可被迫同侧——代码兜底合法，仅在任一召唤位触 clamp 边界时豁免
+            const clamped = Math.abs(aS.x - 46) < 1 || Math.abs(aS.x - (W - 46)) < 1
+              || Math.abs(uS.x - 46) < 1 || Math.abs(uS.x - (W - 46)) < 1;
+            if (!clamped) errors.push({ key: '召唤物未分居两侧', stack: 'anvil.x=' + aS.x.toFixed(1) + ' U.x=' + uS.x.toFixed(1) + ' ghost.x=' + e.x.toFixed(1) });
           }
         }
 

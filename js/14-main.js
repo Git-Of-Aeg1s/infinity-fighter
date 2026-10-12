@@ -408,7 +408,7 @@
         }
       }
 
-      // BOSS 击败后的刷新序列：2s 缓冲 → 固定首波（1类长队横扫、无紫色）→ 4s 观察期 → 恢复正常刷怪
+      // BOSS 击败后的刷新序列：2s 缓冲 → 固定首波（同侧三条 1类长队横扫、无紫色、竖直高度互不相同）→ 4s 观察期 → 恢复正常刷怪
       // 期间压力/槽位通道与 bossTimer 全部冻结（2s 与 4s 均不计入关卡推进）
       if (!state.challenge && bossFlow.stage === 'none' &&
           (bossFlow.postDelay > 0 || bossFlow.postWaveT > 0)) {
@@ -469,8 +469,12 @@
             levelFlow.poemClearT = 1;
           }
         } else if (levelFlow.poemWaveIdx < phaseWaves) {
-          // 返场连携精英（elRevive）不阻止波次刷新：仅统计非返场敌人（2026-10-08 用户定稿）
-          if (!enemies.some(en => !en.elRevive)) {
+          // 返场连携精英（elRevive）不阻止波次刷新：仅统计非返场敌人（2026-10-08 用户定稿）；
+          // 场上仅剩威龙时同样不阻断（2026-10-12 用户定稿：威龙悬停极久，「全清等它」易成节奏死角——
+          // 下一波照常刷新、威龙留场）。BOSS 波次不适用本豁免：本分支仅在常规波次未刷满
+          // （poemWaveIdx < phaseWaves）时进入，波次耗尽后的 BOSS 触发清场仍要求全部清完
+          const blocking = enemies.filter(en => en && !en.elRevive);
+          if (!blocking.length || blocking.every(en => en.type === 'weilong')) {
             levelFlow.poemClearT += dt;
             if (levelFlow.poemClearT >= levelFlow.poemClearNext) {
               spawnPoemMainWave();
@@ -565,12 +569,13 @@
         // 特殊3类不再有单独生成逻辑——随常规波次登场（见 04-spawn spawnWaveBody）；
         // 同屏同种限 1 仅限 寒霜 / 御4 / 铁砧（在生成处判定）
 
-        // 4类通道：Lv5 起 4类（主力舰 / 法术阵列）才会出现；主力舰同屏限 1（与法术阵列互斥），法术阵列不受限——
+        // 4类通道：Lv6 起 4类（主力舰 / 法术阵列）才会出现（2026-10-12 用户定稿：Lv5 及之前所有难度不出现 4 类，
+        //   原门槛 Lv5 → Lv6）；主力舰同屏限 1（与法术阵列互斥），法术阵列不受限——
         //   场上已有法术阵列时仍可继续生成 4 类，但只能生成法术阵列（最多同时 2 台，且仅走慢速强制刷新 + 低概率）
-        //   （诗篇波次制不走本通道：4类随波附带，见 04-spawn spawnWaveBody）
+        //   （诗篇波次制不走本通道：4类随波附带，见 04-spawn spawnWaveBody；设计卡波 4 类卡由抽取器 lv≤5 强制排除）
         const fashiArrays = enemies.filter(e => e.type === 'fashiArray').length;
         const hasCapital = enemies.some(e => e.type === 'capital');
-        if (!isPoem() && levelFlow.level >= 5 && !hasCapital && fashiArrays < 2) {
+        if (!isPoem() && levelFlow.level >= 6 && !hasCapital && fashiArrays < 2) {
           levelFlow.capitalIdleT += dt;
           if (fashiArrays === 0) {
             // 无法术阵列：正常节奏（压力低立即 / 超时强制），50% 概率法术阵列、否则主力舰

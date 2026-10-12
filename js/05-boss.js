@@ -837,7 +837,7 @@
       life: opts.life != null ? opts.life : null,
       lifeFade: opts.lifeFade != null ? opts.lifeFade : null,   // 寿命到期后的消散期时长（消散动画用，见 08-entities）
       bossRound: opts.bossRound || false,   // BOSS 圆形弹幕：白核→主色渐变渲染（见 10-draw-world）
-      arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 0.6s（2026-10-10 用户反馈 1.5s 太慢改快，见 10-draw-world arcTintColor）
+      arcTint: opts.arcTint || false,   // 弧线弹出生色漂移：深紫 → 弧线绿 1.2s（2026-10-10 由 1.5s 改 0.6s，2026-10-12 用户定稿翻倍回 1.2s，见 10-draw-world arcTintColor）
       dhDark: opts.dhDark || false,   // 黑暗之手暗核弹：黑主体 + 边缘一小圈红（accent = color）渐变渲染（见 10-draw-world）
       grad: opts.grad || null,   // 渐变风味键（'hr' 黑红 / 'yr' 黄红 / 其他 = 白核→主色→暗橙红边，见 10-draw-world 圆弹 grad 分支）
       tart: opts.tart || false,   // 蛋挞弹：水彩蛋挞贴图渲染（tartImg 烘焙贴图，见 10-draw-world；未加载回退渐变弹）
@@ -1049,8 +1049,8 @@
     }
     if (!e.combatReady) return;
     // 技能1/2 蓄力期停移：以较大加速度平滑减速至停（结束后再平滑加速回巡航），避免瞬停/瞬启
-    // （真我：技能1 不再停移——连续移动射击，移速与常态一致、无额外加速修正）
-    const wantFreeze = !!(e.skill && (e.skill.id === 1 || (e.skill.id === 0 && !isRealme())));
+    // （真我&诗篇（stormTier）：技能1 不再停移——连续移动射击，移速与常态一致、无额外加速修正；2026-10-12 用户定稿诗篇沿用真我全套改版）
+    const wantFreeze = !!(e.skill && (e.skill.id === 1 || (e.skill.id === 0 && !stormTier())));
     if (e.moveRate == null) e.moveRate = 1;
     const rateAccel = wantFreeze ? 6 : 3;   // 减速加速度较大（≈0.17s 停稳），重新启动稍缓（≈0.33s 提速）
     if (wantFreeze) e.moveRate = Math.max(0, e.moveRate - rateAccel * dt);
@@ -1106,22 +1106,23 @@
         //   起手锁定纵向高度（s1LockY）：激光竖直带随机体横向扫动——技能全程仅左右移动，纵向不飘；
         //   纵向速度经移动更新处大减速平滑归零（2026-10-12 用户定稿，替代起手一帧清零瞬停）
         e.s1LockY = e.y;
-        e.skill = isRealme()
+        // 真我&诗篇（stormTier，2026-10-12 用户定稿诗篇沿用）：移动中连续射出 5 次（s.realme 内部标记沿用旧名）
+        e.skill = stormTier()
           ? { id: 0, t: 0, dur: 1e9, realme: true, shot: 0, st: 0, pt: 0, nextAt: 0, gap: 0, fired: false }
           : { id: 0, t: 0, dur: STORM2.s1Charge + STORM2.s1BeamDur, fired: false };
         break;
       case 1: { // 技能2：喷口激涌蓄力 1.2s → 随机序依次下射（间隔 0.13s）
         const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
-        // 真我：50% 同时释放技能6（子状态随行推进；技能2收束时未放完则无缝转为独立技能6）——
+        // 真我&诗篇（stormTier，2026-10-12 用户定稿诗篇沿用）：50% 同时释放技能6（子状态随行推进；技能2收束时未放完则无缝转为独立技能6）——
         //   连携时蓄力延长至 1.6s（STORM2_SHIP.s2.charge），预警圈收缩时长对应 1.2s（ringDur，
         //   蓄力 0.2s 后开始收缩、完成后再过 0.2s 发射的结构不变 → 收缩速度变慢）；
         //   未连携则下一次技能释放间隔 ×0.4（-60%）
-        const linked = isRealme() && Math.random() < STORM2_SHIP.s2.linkS6Chance;
+        const linked = stormTier() && Math.random() < STORM2_SHIP.s2.linkS6Chance;
         const charge = linked ? STORM2_SHIP.s2.charge : STORM2.s2Charge;
         e.skill = { id: 1, t: 0, dur: charge + 3 * STORM2.s2Gap + STORM2.s2BeamDur + 0.15,
           order, nextIdx: 0, nextT: charge, beams: [],
           charge, ringDur: linked ? STORM2_SHIP.s2.ringDur : STORM2.s2RingDur };
-        if (isRealme()) {
+        if (stormTier()) {
           if (linked) {
             e.skill.s6 = { t: 0, armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, linked: true };
           } else {
@@ -1130,14 +1131,14 @@
         }
         break;
       }
-      case 2:   // 技能3：四喷口斜下电弧光束（左右对称，左右边界反弹）；真我：连续快速两次（间隔 1~1.5s）
+      case 2:   // 技能3：四喷口斜下电弧光束（左右对称，左右边界反弹）；真我&诗篇：连续快速两次（间隔 1~1.5s，2026-10-12 用户定稿诗篇沿用）
         e.skill = { id: 2, t: 0,
-          dur: isRealme() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) + 0.4 : 2.4,
+          dur: stormTier() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) + 0.4 : 2.4,
           fired: false, second: false,
-          secondAt: isRealme() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) : Infinity,
+          secondAt: stormTier() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) : Infinity,
           spMul };
-        // 释放后下一次技能释放间隔修正：具象/虚象 ×0.3（-70%）；真我改为 ×1.3（+30%）
-        e.skillCd *= isRealme() ? STORM2_SHIP.s3.afterCdMul : STORM2.s3CdMul;
+        // 释放后下一次技能释放间隔修正：具象/虚象 ×0.3（-70%）；真我&诗篇改为 ×1.3（+30%）
+        e.skillCd *= stormTier() ? STORM2_SHIP.s3.afterCdMul : STORM2.s3CdMul;
         break;
       case 3: { // 技能4：能量球连射雷电长条弹（40~70 发、间隔 0.08s；70% 血以下持续 +50%）——瞄准点按蛇形曲线预采样
         const low = (e.hp / e.maxHp) < 0.70;
@@ -1152,7 +1153,7 @@
         //   硬性约束：所有雷环必须在蛇形雷条射完前全部爆开——生成时刻 ≤ 射完时刻 - 停留时长(1s)，
         //   随机排程超出deadline则整体等比压缩（射完后仍有兜底强爆，见 runStorm2Skill s.id===3）
         const ringCount = isPoem() ? STORM2.s4RingN.poem : isRealme() ? STORM2.s4RingN.realme : isIllusion() ? STORM2.s4RingN.illusion : STORM2.s4RingN.form;
-        const ringGapBase = isRealme() ? STORM2_SHIP.s4.ringGapMul : 1;
+        const ringGapBase = isRealme() ? STORM2_SHIP.s4.ringGapMul : 1;   // 真我 ×0.6；诗篇不叠加——生成间隔走诗篇专属区间 0.6~1.2s（L1156），2026-10-12 用户定稿
         const [gapMin, gapMax] = isPoem() ? STORM2.s4RingGapPoem : [0.8, 1.5];   // 生成间隔区间（诗篇 0.6~1.2s，2026-10-10 用户二次定稿）
         const ringNz = [0, 1, 2, 3].slice(0, Math.min(ringCount, 4));
         while (ringNz.length < ringCount) ringNz.push((Math.random() * 4) | 0);   // 超出 4 圈的部分：追加随机喷口（可重复）
@@ -1168,8 +1169,8 @@
         e.skill = { id: 3, t: 0, dur: endTime + 1.6, shots, offs, fired: 0, next: 0.1, ringTimes, ringNz, ringsSpawned: 0, ringsFlushed: false, spMul };
         break;
       }
-      case 4: { // 技能5：雷电光环 + 下方区域依次雷击（具象 30% 区域 / 真我 60%；各 1.2s 预警，错峰 0.9s / 真我 ×0.9）
-        const gap5 = 0.9 * (isRealme() ? STORM2_SHIP.s5.volleyGapMul : 1);
+      case 4: { // 技能5：雷电光环 + 下方区域依次雷击（具象 30% 区域 / 真我&诗篇 60%；各 1.2s 预警，错峰 0.9s / 真我&诗篇 ×0.9——2026-10-12 用户定稿诗篇沿用）
+        const gap5 = 0.9 * (stormTier() ? STORM2_SHIP.s5.volleyGapMul : 1);
         const strikes = pickS2StrikePoints(5).map((p, k) => ({ x: p.x, y: p.y, t: -k * gap5, fired: false, flash: 0 }));
         e.skill = { id: 4, t: 0, dur: STORM2.s5Warn + 4 * gap5 + 0.7, strikes };
         break;
@@ -1179,8 +1180,8 @@
         e.s6Beams = [];
         e.skill = { id: 5, t: 0, dur: storm2S6Dur(), armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, spMul };
         e.skillCd *= STORM2.s6CdMul;   // 释放后下一次技能释放间隔 -50%
-        // 真我：释放瞬间四个雷电喷口处各触发一次雷霆打击——无预警、伤害减半、雷环子弹数减半
-        if (isRealme()) {
+        // 真我&诗篇（stormTier，2026-10-12 用户定稿诗篇沿用）：释放瞬间四个雷电喷口处各触发一次雷霆打击——无预警、伤害减半、雷环子弹数减半
+        if (stormTier()) {
           for (let i = 0; i < STORM2_SHIP.s6.instantStrikes; i++) {
             const nz = storm2Nozzle(e, i);
             fireS2Strike(nz.x, nz.y, STORM2_SHIP.s6.strikeDmgMul, STORM2_SHIP.s6.ringCntMul);
@@ -1194,9 +1195,9 @@
   // 技能5 雷击区域半径：焦香螺旋桨火环的 80%（S5RMul）
   const S2_STRIKE_R = JIAOXIANG.auraR * STORM2.s5RMul;
 
-  // 雷击落点抽样：n 处（具象：下方 30% 区域 / 真我：下方 60%，底边均留 40px）
+  // 雷击落点抽样：n 处（具象：下方 30% 区域 / 真我&诗篇：下方 60%（2026-10-12 用户定稿诗篇沿用），底边均留 40px）
   function pickS2StrikePoints(n) {
-    const top = isRealme() ? STORM2_SHIP.s5.zoneTop : 0.70;
+    const top = stormTier() ? STORM2_SHIP.s5.zoneTop : 0.70;
     const pts = [];
     for (let k = 0; k < n; k++) {
       pts.push({ x: rand(60, CANVAS_W - 60), y: rand(CANVAS_H * top, CANVAS_H - 40) });
@@ -1447,7 +1448,7 @@
         s.fired = true;
         fireS3Volley(e, sm);
       }
-      if (isRealme() && !s.second && s.t >= s.secondAt) {
+      if (stormTier() && !s.second && s.t >= s.secondAt) {   // 真我&诗篇：第二发（2026-10-12 用户定稿诗篇沿用）
         s.second = true;
         fireS3Volley(e, sm);
       }
@@ -1699,8 +1700,8 @@
   // 2026-10-03 用户定稿：由 1→2→3→4→5 固定轮换改为随机）：
   //   技能1 四管炮幕：持续 s1.dur，每 s1.shotIv 四门前炮（cannonXs 槽位）同时齐射各 1 发（管间角差 + 奇偶轮交替偏角，
   //   对齐机制图鉴 t4DrawQuadCannon 演示）；
-  //   技能2 黑暗涟漪：从本体中心错相位扩散 s2.rings 道环形弹幕（环间隔 ringGap、起始角逐环偏移 ringRotDeg、
-  //   弹速逐环递增且末环显著加快）；
+  //   技能2 黑暗涟漪：从本体中心扩散 s2.rings 道环形弹幕（环间隔 ringGap、每环每弹角度完全随机——
+  //   2026-10-12 用户定稿，弹速逐环递增且末环显著加快）；
   //   技能3 巨大蛋挞：向前方（玩家方向）直射一枚不停旋转的巨大蛋挞弹（判定半径 = 焦香火环 JIAOXIANG.auraR、
   //   弹速慢、单发即结束；tartSpin 相位自旋渲染）。
   // 连携召唤：血量 80/60/40/20% 阈值各召唤一名精英（前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿；
@@ -1848,7 +1849,8 @@
   function startDarkhandSkill(e) {
     // 随机释放（2026-10-03 用户定稿：与暴风之眼/旧日之歌同一套规则，取代原 1→2→3→4→5 固定轮换）：
     // 加权随机池（本局未释放过的技能权重 ×1.5）、同一技能最多连续两次（禁止三连）、
-    // 虚象 bossNoRepeat 直接不重样；连续随机到同技能 → 本次结束后间隔 ×0.2；蛋挞（技能3）禁止连放（2026-10-04 用户定稿）
+    // 虚象 bossNoRepeat 直接不重样；连续随机到同技能 → 本次结束后间隔 ×0.2 + 本次弹速 ×1.4
+    //（2026-10-12 用户定稿：弹速对齐全 BOSS 连中规则——旧日之歌/暴风系 spMul 同款）；蛋挞（技能3）禁止连放（2026-10-04 用户定稿）
     // 额外技能池（2026-10-10 用户定稿实装）：击坠连携精英登记的 dhBonusSkills 对应技能进入池
     //   5 = 夏勇碎翼回旋镖 / 6 = 朴学峰翼根散射 / 7 = 辛国栋边界轰炸 / 8 = 韩希先旋眼火螺；
     //   9 = 双标记导弹（真我&诗篇 80% 解锁 dhMarkSkill，且仅连携精英在场 dhGuardActive 时可选）；
@@ -1886,6 +1888,7 @@
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
     e.dhRepeatCd = repeat ? 0.2 : 1;
+    const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：本次弹速 ×1.4（2026-10-12 用户定稿，消费见 runDarkhandSkill 各技能 ×sm）
     e.lastSkill = id;
     if (id === 4) e.dhS5Lock = isPoem() ? 1 : 2;
     else if (e.dhS5Lock > 0) e.dhS5Lock--;
@@ -1893,8 +1896,8 @@
     for (const k in e.skillWeights) {
       if (+k !== id && !e.skillUseCount[+k]) e.skillWeights[k] *= 1.5;
     }
-    e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0,
-      gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null };   // gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞；blades：技能5 回旋镖；round：技能6 散射轮次；mark：技能9 双标记；eyes：技能8 旋眼；bombs：技能7 轰炸落点（余字段被其他技能复用/无害）
+    e.skill = { id, t: 0, shotT: 0, cannonIdx: 0, ringsFired: 0, firedN: 0, spMul,
+      gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null };   // spMul：连中弹速乘区（全技能出弹 ×sm）；gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞；blades：技能5 回旋镖；round：技能6 散射轮次；mark：技能9 双标记；eyes：技能8 旋眼；bombs：技能7 轰炸落点（余字段被其他技能复用/无害）
   }
 
   // 黑暗之手技能间隔（2026-10-01 用户定稿；有连携比例 2026-10-10 用户定稿 120%→150%）：
@@ -1908,6 +1911,7 @@
   function runDarkhandSkill(e, dt) {
     const s = e.skill;
     s.t += dt;
+    const sm = s.spMul || 1;   // 连中同技能弹速乘区（startDarkhandSkill 置 1.4 / 1.0；2026-10-12 用户定稿对齐全 BOSS 规则）
     if (s.id === 0) {
       // 技能1 四管炮幕（对齐机制图鉴 t4DrawQuadCannon 演示）：每齐射间隔四门炮同时齐射各 1 发，按难度轮数连射——
       // 管间基准角差 cannonFanStep、整轮偏角 volleyBias 奇偶轮左右交替（cannonIdx 复用为轮次计数）；
@@ -1935,25 +1939,24 @@
           const cy = e.y + e.h * 0.36;   // 2026-10-03 用户定稿：射击位置自 0.42h 略微上移
           const base = Math.atan2(player.y - cy, player.x - cx);
           const ang = base + (i - (n - 1) / 2) * c.cannonFanStep + bias;
-          pushBossBullet(cx, cy, ang, c.bulletSpeed, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, vxMul });
+          pushBossBullet(cx, cy, ang, c.bulletSpeed * sm, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, vxMul });
           spawnParticles(cx, cy, '#ff4632', 3, 100);
         }
       }
       if (s.cannonIdx >= rounds) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }
     } else if (s.id === 1) {
-      // 技能2 黑暗涟漪：rings 道错相位环形弹幕，到点逐环释放（环心 = 本体中心，起始角逐环偏移，末环弹速显著增加）；
-      // 每环随机减速（2026-10-03 用户定稿）：减速度 = 该环初速 × rand(0~30%)/s，同环一致、环间不同（decay 通道见 08-entities）
+      // 技能2 黑暗涟漪：rings 道环形弹幕，到点逐环释放（环心 = 本体中心，末环弹速显著增加）；
+      // 每环随机减速（2026-10-03 用户定稿）：减速度 = 该环初速 × rand(0~30%)/s，同环一致、环间不同（decay 通道见 08-entities）；
+      // 每环射击角度完全随机（2026-10-12 用户定稿）：每弹独立 rand(0~2π)，不再 360° 均分 + 环间错相位（随机自然聚簇/留隙）
       const c = DARKHAND.s2;
       // 每环弹数按难度（2026-10-04 用户定稿）：虚象/具象 16 / 真我 18 / 诗篇 20
       const perRing = isPoem() ? c.poemPerRing : (isRealme() ? c.realmePerRing : c.perRing);
       while (s.ringsFired < c.rings && s.t >= s.ringsFired * c.ringGap) {
         const ring = s.ringsFired++;
-        const base = ring * c.ringRotDeg * Math.PI / 180;
-        const spd = c.bulletSpeed + ring * c.ringSpeedStep;
+        const spd = (c.bulletSpeed + ring * c.ringSpeedStep) * sm;   // 连中 ×1.4（衰减同步按提速后初速取比例，减速比值不变）
         const decayAbs = spd * c.speedDecayMax * Math.random();
         for (let k = 0; k < perRing; k++) {
-          const ang = base + k * Math.PI * 2 / perRing;
-          pushBossBullet(e.x, e.y, ang, spd, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
+          pushBossBullet(e.x, e.y, Math.random() * Math.PI * 2, spd, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
         }
         spawnParticles(e.x, e.y, '#ff4632', 10, 200);
       }
@@ -1965,11 +1968,12 @@
       // 出生生长（2026-10-03 二轮定稿）：从小（growFrom）easeOutCubic 放大到全尺寸、判定半径同步缩放，
       // 生长期间纯黑剪影 + 暗红辉光（2026-10-03 三轮定稿：辉光紫改红，与黑红弹幕同系）
       const c = DARKHAND.s3;
-      const spd = isPoem() ? c.poemSpeed : (isRealme() ? c.realmeSpeed : c.bulletSpeed);
-      // 成型时长/成型接触按难度（2026-10-04 用户定稿）：虚象/具象生长 1.4s 且成型阶段不造成伤害
-      //（tartGrowNoHit 打弹体标志，08-entities 碰撞跳过生长中的弹）；真我/诗篇维持 1.1s 照常伤害
+      const spd = (isPoem() ? c.poemSpeed : (isRealme() ? c.realmeSpeed : c.bulletSpeed)) * sm;   // 连中 ×1.4
+      // 成型时长/成型接触按难度（2026-10-04 用户定稿）：虚象/具象生长 1.4s / 真我/诗篇 1.1s；
+      // 生长阶段全难度不造成伤害（2026-10-12 用户定稿：原仅虚象/具象免伤、真我/诗篇随缩放判伤——现统一
+      // tartGrowNoHit 打弹体标志，08-entities 碰撞跳过生长中的弹，长满后照常判定）
       const growDur = (isPoem() || isRealme()) ? c.realmeGrowDur : c.growDur;
-      const growNoHit = (isPoem() || isRealme()) ? false : c.growNoHit;
+      const growNoHit = c.growNoHit;
       const cy = e.y + e.h * 0.42;
       const ang = Math.atan2(player.y - cy, player.x - e.x);
       pushBossBullet(e.x, cy, ang, spd, { r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, tart: true, tartSpin: 0, tartSpinSpd: c.spinSpd, color: '#ff4632', tartGrow: 0, tartGrowDur: growDur, tartFrom: c.growFrom, tartR0: c.r, tartGrowNoHit: growNoHit });
@@ -2000,7 +2004,7 @@
         if (s.pt >= warnDur) {
           for (const gm of c.groups[s.gi]) {
             const sx = e.x + gm.x * e.w, sy = e.y + gm.y * e.h + (gm.oy || 0);
-            s.tarts.push(dhMakeTart(sx, sy, gm.ang));
+            s.tarts.push(dhMakeTart(sx, sy, gm.ang, sm));
             // 发射点大爆发（2026-10-08 用户定稿「大幅增加——空间喷发召唤而出」）：红主调高速爆发 + 暖金底层慢速弥散双层
             spawnParticles(sx, sy, '#ff4632', 30, 320);
             spawnParticles(sx, sy, '#ffbf47', 16, 190);
@@ -2057,7 +2061,8 @@
         const rx = e.x + rp.x * e.w, ry = e.y + rp.y * e.h;
         if (parab) {
           // T = 抵达 50% 屏高时刻：解 ry + vy0·T + 0.5·ay·T² = 0.5·CANVAS_H（vy0 向上为负、ay 向下为正）
-          const vy0 = -c.riseVy, ay = c.accel;
+          //（连中 ×1.4：vy0/ay 同乘 sm → T 随之缩短、A = 6dx/T² 自适应重解，落点仍精确到 tx）
+          const vy0 = -c.riseVy * sm, ay = c.accel * sm;
           const dY = CANVAS_H * 0.5 - ry;
           const T = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * ay * Math.max(dY, 40))) / ay;
           // 落点目标 tx 全屏均匀 [20, W-20]，dx = tx - rx（A = 6·dx/T²，总位移 = A·T²/6 = dx；tx 已在屏内无需再限幅）
@@ -2068,8 +2073,8 @@
             dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
           });
         } else {
-          pushBossBullet(rx, ry, Math.PI / 2, c.speed0, {
-            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, accel: c.accel, maxSpeed: c.maxSpeed,
+          pushBossBullet(rx, ry, Math.PI / 2, c.speed0 * sm, {
+            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, accel: c.accel * sm, maxSpeed: c.maxSpeed * sm,
             dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
           });
         }
@@ -2092,7 +2097,10 @@
       const c = DARKHAND.bXiayong, xc = ELITES.xiayong;
       if (s.cx == null) {   // 释放瞬间玩家位置快照（整轮同轨道；round 已无轮次语义，仅技能6使用）
         s.cx = player.alive ? player.x : CANVAS_W / 2;
-        s.ry = Math.max(xc.bladeRy + Math.random() * xc.bladeRyRand * CANVAS_H, CANVAS_H * (c.ryMinPct || 0));   // ry 下限（bXiayong.ryMinPct，2026-10-12 用户回调：椭圆过小贴底时锚点过低、飞行过久）
+        // 椭圆 BOSS 版自带尺寸（2026-10-12 用户回调「椭圆太小」）：rx = 精英长轴 ×rxMul、ry = 屏高×(ryMinPct + rand×ryBandPct)
+        //（取代原精英混合式 bladeRy + rand·bladeRyRand 与 0.16 下限——下缘仍贴玩家快照高度、湮灭点不变）
+        s.rx = xc.bladeRx * (c.rxMul || 1);
+        s.ry = CANVAS_H * ((c.ryMinPct || 0) + Math.random() * (c.ryBandPct || 0));
         s.cy = (player.alive ? player.y : CANVAS_H * 0.72) - s.ry;   // 轨道下缘贴玩家快照高度（玩家阵亡回退 72% 屏高）
       }
       if (s.st === 'warn') {
@@ -2102,7 +2110,7 @@
           // 绕行线速度（2026-10-10 用户回调「速度不均匀/一顿一顿」修正）：v = ω0·√((rx²+ry²)/2)
           //（RMS 均半径×基准角速度）——1.75π 行程总时长与原恒角速度基本一致；迸出时长 = 2×distMax/v
           //（逐刃 γ 剖面末速恰 = v，与绕行起步速度连续，见 fly 段）
-          const vOrbit = (Math.PI * 2 / xc.bladeDur) * Math.sqrt((xc.bladeRx * xc.bladeRx + s.ry * s.ry) / 2);
+          const vOrbit = (Math.PI * 2 / xc.bladeDur) * Math.sqrt((s.rx * s.rx + s.ry * s.ry) / 2) * sm;   // 连中 ×1.4（出弧末速/绕行同步，γ 剖面反解自动适配）
           const pairN = (isPoem() || isRealme()) ? 2 : 1;   // 真我/诗篇每爪连发两枚（共四枚，2026-10-11 用户定稿）
           // 双刃同步 2.0（2026-10-12 用户三连回调，替代同日初版方案）：初版（outDur 统一 3×distMax/v +
           // P2 回拉统一 distMax/2）使短边刃控制多边形畸变——出弧中途方向乱摆（抖动）、末段急甩，且 3×
@@ -2115,24 +2123,26 @@
           let distMax = 0;
           for (const dir of [1, -1]) {
             const ang0 = dir > 0 ? -Math.PI / 4 : Math.PI + Math.PI / 4;   // 右上 / 左上锚点（对称，同夏勇）
-            const ax0 = s.cx + Math.cos(ang0) * xc.bladeRx, ay0 = s.cy + Math.sin(ang0) * s.ry;
+            const ax0 = s.cx + Math.cos(ang0) * s.rx, ay0 = s.cy + Math.sin(ang0) * s.ry;
             const gx = e.x + dir * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;   // 前爪位置（同 s4 groups[1]）
             const dist = Math.hypot(ax0 - gx, ay0 - gy);
             if (dist > distMax) distMax = dist;
             geo.push({ dir, ang0, ax0, ay0, gx, gy, dist });
           }
-          // 出弧切向化（2026-10-10 用户回调「直线非椭圆切线、抵达方向骤变」）：三次贝塞尔出弧
-          // P0=爪 → P3=锚，P1=爪锚中点（出发沿爪→锚直线）、P2=锚−切向·dist/2（抵达恰沿轨道切向）——
-          // 方向沿程渐变入轨，锚点处方向+速度双连续
+          // 出弧切向化 2.1（2026-10-12 用户回调「直线还不是椭圆切线」）：三次贝塞尔出弧 P0=爪 → P3=锚，
+          // P2=锚−切向·dist/2（抵达恰沿轨道切向，不变）；P1 改取 爪→P2 连线中点（原为爪→锚中点）——
+          // 出发即朝切点 A' 飞、中后段贴切线直线段、抵达沿切向入轨：飞行直线 = 椭圆切线。P3−P2 模长不变
+          //（dist/2）→ 末速剖面 γ 反解（3·(dist/2)·γ/T = vOrbit）不受影响，方向+速度双连续保持
           const outDur = Math.max(0.2, 2 * distMax / vOrbit);
           for (const g of geo) {
-            let tdx = g.dir * -Math.sin(g.ang0) * xc.bladeRx, tdy = g.dir * Math.cos(g.ang0) * s.ry;   // 轨道切向（沿绕行方向）
+            let tdx = g.dir * -Math.sin(g.ang0) * s.rx, tdy = g.dir * Math.cos(g.ang0) * s.ry;   // 轨道切向（沿绕行方向）
             const tl = Math.hypot(tdx, tdy) || 1; tdx /= tl; tdy /= tl;
             const gam = 4 * distMax / (3 * Math.max(g.dist, 1));   // 逐刃剖面指数（末速恒 = vOrbit，见上）
+            const px2 = g.ax0 - tdx * g.dist * 0.5, py2 = g.ay0 - tdy * g.dist * 0.5;   // 切点 A'（P2）
             for (let k = 0; k < pairN; k++) {   // 同爪第二枚延迟 pairGap 射出（快速连发；同轨道同参数）
               s.blades.push({ dir: g.dir, ang: g.ang0, ang0: g.ang0, phase: 'out', ft: 0, delayT: k * c.pairGap,
                 outDur, gam,
-                bx1: g.gx + (g.ax0 - g.gx) * 0.5, by1: g.gy + (g.ay0 - g.gy) * 0.5, bx2: g.ax0 - tdx * g.dist * 0.5, by2: g.ay0 - tdy * g.dist * 0.5,
+                bx1: g.gx + (px2 - g.gx) * 0.5, by1: g.gy + (py2 - g.gy) * 0.5, bx2: px2, by2: py2,
                 sx: g.gx, sy: g.gy, x: g.gx, y: g.gy, hitT: 0, done: false, trail: [] });
             }
           }
@@ -2145,7 +2155,7 @@
         // 迸出段三次贝塞尔出弧切向化（同日回调「直线非切线方向骤变」）：出发沿爪→锚方向、抵达恰沿轨道
         // 切向，方向沿程渐变入轨，锚点处方向+速度双连续——速度曲线铁律
         const merge = Math.PI * (isPoem() ? c.poemTravelMul : c.travelMul);   // 各刃行程：第二次相撞 1.75π / 诗篇第三次 2.75π
-        const vOrbit = (Math.PI * 2 / xc.bladeDur) * Math.sqrt((xc.bladeRx * xc.bladeRx + s.ry * s.ry) / 2);
+        const vOrbit = (Math.PI * 2 / xc.bladeDur) * Math.sqrt((s.rx * s.rx + s.ry * s.ry) / 2) * sm;   // 与生成处同乘（连中 ×1.4），末速剖面连续
         for (const b of s.blades) {
           if (b.done) continue;
           if (b.hitT > 0) b.hitT -= dt;
@@ -2154,7 +2164,7 @@
             b.ft += dt;
             const p = Math.min(1, b.ft / b.outDur);
             const u = Math.pow(p, b.gam || 2);   // 逐刃剖面指数（γ 生成处反解）：末速 |dP/du(1)|·γ/T = 3·(dist/2)·γ/T = vOrbit 恒成立，出发速度 0（γ>1）
-            const ax = s.cx + Math.cos(b.ang) * xc.bladeRx, ay = s.cy + Math.sin(b.ang) * s.ry;   // P3 = 锚点（out 段 b.ang 恒 = ang0）
+            const ax = s.cx + Math.cos(b.ang) * s.rx, ay = s.cy + Math.sin(b.ang) * s.ry;   // P3 = 锚点（out 段 b.ang 恒 = ang0）
             const w = 1 - u;
             b.x = w * w * w * b.sx + 3 * w * w * u * b.bx1 + 3 * w * u * u * b.bx2 + u * u * u * ax;
             b.y = w * w * w * b.sy + 3 * w * w * u * b.by1 + 3 * w * u * u * b.by2 + u * u * u * ay;
@@ -2162,14 +2172,14 @@
           } else {
             // 恒线速度中点二次求精：先按当前角估 Δθ，再按中点 |dP/dθ| 重解——显式欧拉在椭圆高曲率区
             //（短轴端）有 ±10~15% 逐帧纹波，中点法压到 <2%（速度曲线铁律：不可感知的匀速）
-            const dpdA = Math.sqrt((xc.bladeRx * Math.sin(b.ang)) ** 2 + (s.ry * Math.cos(b.ang)) ** 2);
+            const dpdA = Math.sqrt((s.rx * Math.sin(b.ang)) ** 2 + (s.ry * Math.cos(b.ang)) ** 2);
             let dA = vOrbit / Math.max(dpdA, 1) * dt;
-            const dpdM = Math.sqrt((xc.bladeRx * Math.sin(b.ang + dA / 2)) ** 2 + (s.ry * Math.cos(b.ang + dA / 2)) ** 2);
+            const dpdM = Math.sqrt((s.rx * Math.sin(b.ang + dA / 2)) ** 2 + (s.ry * Math.cos(b.ang + dA / 2)) ** 2);
             dA = vOrbit / Math.max(dpdM, 1) * dt;
             b.ang += b.dir * dA;
             if ((b.ang - b.ang0) * b.dir >= merge) {
               b.ang = b.ang0 + b.dir * merge;   // 相撞点（两刃同点重合，同夏勇口径钳位防多转）
-              b.x = s.cx + Math.cos(b.ang) * xc.bladeRx;
+              b.x = s.cx + Math.cos(b.ang) * s.rx;
               b.y = s.cy + Math.sin(b.ang) * s.ry;
               spawnParticles(b.x, b.y, '#3a0a10', 14, 210);   // 暗黑湮灭团（同夏勇三色）
               spawnParticles(b.x, b.y, '#e02424', 10, 290);
@@ -2177,7 +2187,7 @@
               b.done = true;
               continue;
             }
-            b.x = s.cx + Math.cos(b.ang) * xc.bladeRx;
+            b.x = s.cx + Math.cos(b.ang) * s.rx;
             b.y = s.cy + Math.sin(b.ang) * s.ry;
           }
           b.trail.push({ x: b.x, y: b.y });
@@ -2216,7 +2226,7 @@
           const gx = e.x + side * 0.27 * e.w, gy = e.y + 0.30 * e.h - 50;   // 前爪位置（同 s4 groups[1]）
           const dir = s.round === 0 ? side : -side;   // 第一轮向外 / 第二轮向内（dir 决定偏离竖直的方向）
           const ang = Math.PI / 2 + dir * i * step;
-          pushBossBullet(gx, gy, ang, pc.bulletSpeed, { r: pc.bulletR, dmg: isPoem() ? pc.poemDmg : pc.dmg, color: '#e02424', grad: 'hr' });   // 黑红渐变（2026-10-12 用户反馈：原 dhDark 暗核弹太黑看不清——改朴学峰精英本体同款 gradHR 风味，红色明显）
+          pushBossBullet(gx, gy, ang, pc.bulletSpeed * sm, { r: pc.bulletR, dmg: isPoem() ? pc.poemDmg : pc.dmg, color: '#e02424', grad: 'hr' });   // 黑红渐变（2026-10-12 用户反馈：原 dhDark 暗核弹太黑看不清——改朴学峰精英本体同款 gradHR 风味，红色明显）
           spawnParticles(gx, gy, '#ff4632', 2, 90);
         }
       }
@@ -2244,7 +2254,7 @@
       // 扇形轻追踪导弹批次（全同辛国栋连发导弹批次公式——base 竖直向下、外侧弹预压转向弧线收回）
       const fireBatch = (oy) => {
         const vn = isPoem() ? xc.poemVolleyN : xc.volleyN;
-        const mSpd = (isPoem() || isRealme()) ? xc.missileSpeed : xc.illusionMissileSpeed;
+        const mSpd = ((isPoem() || isRealme()) ? xc.missileSpeed : xc.illusionMissileSpeed) * sm;   // 连中 ×1.4（转向弧线参数不变，弧线收紧自然适配）
         const mTurn = (isPoem() || isRealme()) ? xc.missileTurn : xc.illusionMissileTurn;
         const stepA = xc.volleySpreadDeg / (vn - 1) * Math.PI / 180;
         for (let i = 0; i < vn; i++) {
@@ -2322,10 +2332,10 @@
             const tx = eye.ax + Math.cos(ta) * orbR, ty = eye.ay + Math.sin(ta) * orbR;
             const opts = { x: tx, y: ty, r: hc.bulletR, dmg: isPoem() ? hc.poemDmg : hc.dmg, color: '#8a1018', len: SHIP_BULLET_LEN };   // 黑红但不过黑（同款）
             if (isPoem()) {
-              opts.accel = 300; opts.maxSpeed = hc.bulletSpeed * 1.8;   // 诗篇加速长条弹（同款）
+              opts.accel = 300 * sm; opts.maxSpeed = hc.bulletSpeed * 1.8 * sm;   // 诗篇加速长条弹（同款）；连中 ×1.4
               pushBossBullet(tx, ty, ta, 2, opts);
             } else {
-              pushBossBullet(tx, ty, ta, hc.bulletSpeed, opts);
+              pushBossBullet(tx, ty, ta, hc.bulletSpeed * sm, opts);
             }
           }
         }
@@ -2335,7 +2345,7 @@
       // 双标记导弹（真我&诗篇首次降至 80% 血解锁，2026-10-10 用户定稿）：标记玩家释放瞬间瞬时位置
       // 与其水平镜像位置（关于屏幕竖直中线），机体实心区生成暗影导弹雨同款抛物导弹——弹道/伤害/
       // 观感全引 DARKHAND.s5 单一来源，水平剖面（dhMissile S 曲线）精确落至两个标记点（交替分配，
-      // 弹到标记高度时水平速度恰归 0）；标记点短暂显示红色收缩圈（绘制见 11-draw-boss）；释放期间
+      // 弹到标记高度时水平速度恰归 0）；释放期间
       // 本体移速 ×bMark.slowMul 0.4（指数逼近同 s5 通道，见 updateBossDarkhand）
       const c = DARKHAND.bMark, c5 = DARKHAND.s5;
       if (s.mark == null) {
@@ -2352,7 +2362,8 @@
         const rp = dhSampleSolid();
         const rx = e.x + rp.x * e.w, ry = e.y + rp.y * e.h;
         const mk = s.firedN % 2 ? s.mark : s.mark2;   // 交替分配两个标记落点
-        const vy0 = -c5.riseVy, ay = c5.accel;
+        // 连中 ×1.4：vy0/ay 同乘 sm → T 缩短、A = 6dx/T² 自适应重解——两标记落点仍精确（水平剖面速度归 0 口径不变）
+        const vy0 = -c5.riseVy * sm, ay = c5.accel * sm;
         const dY = Math.max(mk.y - ry, 40);   // 标记高于机体时兜底 40px 下落完成水平剖面（同 s5 下限口径）
         const T = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * ay * dY)) / ay;
         const dx = mk.x - rx;
@@ -2374,14 +2385,15 @@
   //（「出现的位置产生粒子效果」），全部露出后停止。真我/诗篇（reflect）命中左右屏幕边缘反弹
   //（子步精确到壁面时刻再折返——位置逐帧连续无回钳 snap；次数难度化：真我 1 / 诗篇 2）；出屏底不反弹
   // 照常飞出，反弹次数用尽后直线飞出屏；整体出屏（含拖尾余量）后由技能循环回收（tar.gone）。
-  function dhMakeTart(sx, sy, ang) {
+  function dhMakeTart(sx, sy, ang, spdMul) {
     const c = DARKHAND.s4;
     const bounceMax = isPoem() ? c.bouncePoem : isRealme() ? c.bounceRealme : 0;
     return {
       t: 0, hit: false, gone: false,
+      spd: c.tartSpeed * (spdMul || 1),        // 头部速率（连中同技能 ×1.4，2026-10-12；dhUpdateTart 消费）
       ax: sx, ay: sy,                          // 出现锚点（发射瞬间快照，同原光束口径）
       hx: sx, hy: sy,                          // 头部位置
-      vx: Math.cos(ang), vy: Math.sin(ang),    // 头部速度方向（单位向量，速率 = c.tartSpeed）
+      vx: Math.cos(ang), vy: Math.sin(ang),    // 头部速度方向（单位向量，速率 = tar.spd）
       sHead: 0,                                // 头部累计弧长（= 已露出长度）
       path: [{ x: sx, y: sy, s: 0 }],          // 头部轨迹历史（s = 自锚点累计弧长；含反弹折点）
       pts: Array.from({ length: Math.round(c.tartLen / c.tartSeg) + 1 }, () => ({ x: sx, y: sy })),   // 身体采样点（[0]=头，间距 tartSeg）
@@ -2400,12 +2412,12 @@
     for (let guard = 0; guard < 4 && remain > 1e-6; guard++) {
       let tWall = Infinity;
       if (tar.nBounce < tar.bounceMax) {
-        if (tar.vx > 1e-6) tWall = Math.min(tWall, (CANVAS_W - halfW - tar.hx) / (tar.vx * c.tartSpeed));
-        if (tar.vx < -1e-6) tWall = Math.min(tWall, (halfW - tar.hx) / (tar.vx * c.tartSpeed));
+        if (tar.vx > 1e-6) tWall = Math.min(tWall, (CANVAS_W - halfW - tar.hx) / (tar.vx * tar.spd));
+        if (tar.vx < -1e-6) tWall = Math.min(tWall, (halfW - tar.hx) / (tar.vx * tar.spd));
       }
       const step = Math.min(remain, Math.max(tWall, 0));
-      tar.hx += tar.vx * c.tartSpeed * step;
-      tar.hy += tar.vy * c.tartSpeed * step;
+      tar.hx += tar.vx * tar.spd * step;
+      tar.hy += tar.vy * tar.spd * step;
       remain -= step;
       tar.sHead += Math.hypot(tar.hx - px, tar.hy - py);
       px = tar.hx; py = tar.hy;

@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
@@ -357,7 +357,7 @@
       },
     },
     xinring: {
-      id: 'xinring', name: '辛国栋之怒', glyph: '☲', iconSvg: flameRingSvg(), color: '#e63cbe',   // iconSvg = 焰环矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg）：环身焰舌用玫红→粉渐变贴合弹体涂装，辉光仍走注册色 currentColor；glyph ☲ 保留作字形回退（原❂与炽心重复；➰ 试行弃用）
+      id: 'xinring', name: '辛国栋之怒', glyph: '☲', iconSvg: flameRingSvg, color: '#e63cbe',   // iconSvg = 焰环矢量**函数引用**（用户 2026-09-27 定稿造型；2026-10-12 改函数——唯一带内部渐变 defs 的图标，静态字符串多挂载点会重复 defs id 使 url(#) 解析到 display:none 面板里的首份定义而不可见，改每次渲染调用生成唯一 id；渲染点须走「typeof iconSvg === 'function' ? iconSvg() : iconSvg」）；glyph ☲ 保留作字形回退（原❂与炽心重复；➰ 试行弃用）
       brief: '发射火环<br>灼烧区域内敌机',
       desc: '向场上生命值最高的敌人发射空间系火环<br>（焦香螺旋桨同款造型，玫红→粉渐变流动，整体透明度 0.8）<br>发射时较快渐显；初速 180%：0.8s 衰减至巡航速度、<br>再 0.6s 衰减至 70% 巡航速度后恒速直线飞行<br>穿过路径上的所有敌人，每 0.1s 结算一次灼烧伤害<br>（对单个敌人的持续灼烧 DPS 见下表）<br>开局需等待一个完整攻击间隔后才首次发射<br>场上无合格目标时朝正前方发射<br>半径 / 灼烧 DPS 随火力等级提升，暴走（Lv5）大幅强化',
       fire: {
@@ -472,10 +472,10 @@
     },
     xiaoyi: {
       id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub', default: true,
-      pickupHealPct: 0.05, pickupHealPctLow: 0.10, pickupHealHpGate: 60, pickupHealHpGateLow: 40,   // 拾取回复（×最大生命）/ 触发阈值（血量点数：低于 60 回 5% / 低于 40 回 10%；水晶不算）
+      pickupHealPct: 0.05, pickupHealPctLow: 0.10, pickupHealHpGateLow: 40,   // 拾取回复（×最大生命）/ 低血阈值（任意血量拾取回 5%——2026-10-12 用户定稿取消 60 门槛；低于 40 改回 10%；水晶不算）
       huiBossHealPct: 0.60,   // 与洄连携：击败 BOSS 立刻恢复 60% 生命（取代洄自身 35% 已损失口径）
-      brief: '低血拾取回血，可与洄联动',
-      desc: '小艺拥有森灵之力。血量低于 60 时拾取任意道具（水晶不算）<br>恢复 5% 生命；血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）',
+      brief: '拾取回血，可与洄联动',
+      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 5% 生命；<br>血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）',
     },
     king: {
       id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffffff', slot: 'sub',   // ♛ 三尖王冠保留（⚔ 试行弃用），颜色 #ffd166 → 白色
@@ -488,11 +488,11 @@
     },
     diao: {
       id: 'diao', name: '迪奥', glyph: '★', iconSvg: higanbanaSvg(), color: '#6a1b9a', slot: 'sub',   // iconSvg = 彼岸花矢量（用户 2026-09-27 定稿，渲染见 .glyph-svg；主菜单卡片 / 图鉴驾驶员页生效）；glyph ★ 保留作字形回退（⛧ 倒五芒、☠ 骷髅均弃用；颜色黑紫不变）
-      // cd：Q 技能冷却（s，开局技力条为空）/ hpCost：每次触发同时扣除的生命上限与当前生命（下限 1）
-      // maxHpRegen：生命上限恢复速率（每秒，不回当前血量；40 上限 ÷ 2/s = 恰好 20s 回满）
-      cd: 40, hpCost: 40, maxHpRegen: 2,
+      // cd：Q 技能冷却（s，开局技力条为空）/ hpCost：每次触发同时扣除的生命上限与当前生命（下限 1；2026-10-12 用户定稿 40→30）
+      // maxHpRegen：生命上限恢复速率（每秒，不回当前血量；30 上限 ÷ 2/s = 15s 回满）
+      cd: 40, hpCost: 30, maxHpRegen: 2,
       brief: '按Q烧血暴走',
-      desc: '迪奥掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 40 生命上限<br>（血条缩短，下限 1）并至少扣除 40 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后每秒回复 2 点、20s 恰好回满 40<br>（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
+      desc: '迪奥掌控邪魔之力诡异无比。按 Q 触发暴走，同时扣除 30 生命上限<br>（血条缩短，下限 1）并至少扣除 30 当前生命<br>（不低于 1，超出新上限的部分裁剪）<br>生命上限随后每秒回复 2 点、15s 恰好回满 30<br>（不回当前血量，重生/重开即复原）<br>技能冷却 40s，开局技力条为空（不能立刻释放）<br>暴走期间再次触发：暴走时间重设为<br>默认持续 + y 秒（y = min{1, 剩余暴走时间}）',
     },
     tianxiu: {
       id: 'tianxiu', name: '天秀忧郁王子', short: '忧郁王子', glyph: '☯', color: '#dff3ff', slot: 'sub',   // ☯ 回调保留（⟳ 旋风试行后弃用）
@@ -521,7 +521,7 @@
       // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS，
       // 2026-10-10 用户定稿：击杀 BOSS 不再加计数）；
       // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×2）；
-      // elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
+      // poemKillMul 诗篇难度击杀充能乘率；elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
       // 镰刀清扫（充满自动召唤，无需按键）：刀柄贴身绕转、刀刃扫至外圈——
       // scytheGripR 刀柄轨迹半径（刀柄绕机体公转的贴身距离，起扫时刀柄位于 scytheStart 方位 = 正左）/
       // scytheR 斩击半径（= 刀刃外圈距机体距离，伤害与消弹范围；刀身自刀柄轨迹圈径向延伸至 R）/
@@ -536,13 +536,14 @@
       // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）——每个敌人被刀刃扫过时受击一次
       counterMax: 122, killGain: { 1: 1, 2: 3, 3: 6, 4: 18, 5: 0 },   // 3/4 类 6/18、5 类 BOSS 归零（2026-10-10 用户定稿）
       bossKillMul: 2, eliteKillMul: 3, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],   // BOSS 战击杀 ×2 / 四精英 ×3（2026-10-10 用户定稿，原 ×3/×4+30 废止）
+      poemKillMul: 1.2,   // 诗篇难度击杀充能 +20%（2026-10-12 用户定稿；在 killGain / BOSS×2 / 精英×3 之上统一乘算，07-player meiNoteKill）
       bossTickGain: 3,
       scytheR: 250, scytheGripR: 34, scytheDur: 0.55, scytheWidth: 220, scytheStart: Math.PI,
       scytheTilt: 0.75,
       scytheWind: 0.3, scytheWindAng: 0.35,
       scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
       brief: '击杀积攒充能<br>召唤镰刀斩击',
-      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
+      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br><b>诗篇难度</b>击杀充能 <b>+20%</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
       id: 'dingdongji', name: '大狗', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
@@ -676,7 +677,7 @@
   // 僚机单轮弹幕夹角(度)按“该轮发数”取值：2发20° / 3发10° / 4发6° / 5发8°（发数越多相邻夹角越小、弹幕更聚拢）
   // 2发相邻 20°：与 3 发（相邻 10° × 2 间隔 = 总夹角 20°）的最远两颗夹角相当；Lv1 两轮与 Lv2 第二轮（同为 2 发）自动同步受影响
   const WINGMAN_SPREAD = { 2: 20, 3: 10, 4: 6, 5: 8 };
-  const MAX_BOMBS = 3;             // 高能爆弹基准上限（真我经 mods.bombCap 降为 2；右上角以图标数量展示）
+  const MAX_BOMBS = 3;             // 高能爆弹代码基准上限（实际各难度经 mods.bombCap 定值：虚象/具象/真我 2、诗篇 1——2026-10-12 用户定稿；右上角以图标数量展示）
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害（真实伤害：无视御4防御光环等一切减伤）
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
   const WEAPON_DROP_HITS = 3;         // 统一：累计受击 3 次掉 1 级火力（全场景同规则；导弹命中不计入）

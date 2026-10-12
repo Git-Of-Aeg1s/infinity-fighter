@@ -348,6 +348,8 @@ canvas#game {
 /* 青时炮艇支援弹屏障：HP 条右缘蓝色覆盖条（锚定右缘；宽度由 12-ui updateHUD 按剩余屏障比例驱动，
    末 1s 线性衰减时随 player.barrier 自动等比缩短；画在血量条之上、描边之下——absolute 定位在边框内側；
    用蓝色系与血条本身的绿色明显区分） */
+/* 青时炮艇支援弹屏障：右缘偏移（right）与宽度由 12-ui updateHUD 按永久屏障宽度联动设置——
+   贴永久屏障左缘向左展示，与永久屏障合计不超出血条宽（2026-10-12 用户定稿） */
 .hp-barrier {
   position: absolute;
   top: 0;
@@ -358,7 +360,7 @@ canvas#game {
   pointer-events: none;
 }
 
-/* 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；不随时间衰减，仅被击中消耗） */
+/* 瓶中精灵永久屏障：HP 条右缘青色覆盖条（右缘锚定；普通屏障贴其左侧展示；不随时间衰减，仅被击中消耗） */
 .hp-perm-barrier {
   position: absolute;
   top: 0;
