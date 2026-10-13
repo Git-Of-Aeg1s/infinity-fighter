@@ -1841,7 +1841,7 @@
         const rr = b.r, hl = b.len / 2;
         if (fm > 0) {
           // 尾焰：弹尾（-x）延伸的渐变火舌，长度与根部亮度随 flameMul 增长（Lv5 暴走 1.0 = 原暴走尾焰）
-          //   flameLenMul：仅长度的额外系数（群星允诺 Lv1~4 收短 35%，暴走弹为 1）
+          //   flameLenMul：仅长度的额外系数（群星允诺 Lv1~4 收短 35%，暴走弹 1.4——2026-10-13 用户定稿拖尾增长）
           const L = (b.len * 0.85 + 16) * fm * (b.flameLenMul || 1);
           const fa = 0.4 + 0.6 * fm;
           const fg = ctx.createLinearGradient(-hl, 0, -hl - L, 0);

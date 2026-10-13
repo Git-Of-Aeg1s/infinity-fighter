@@ -1628,7 +1628,7 @@
       if (e.chargeT >= HARBINGER.cycle + (e.cycleJit || 0)) { e.chargeT = 0; e.chargeWave = (e.chargeWave || 0) + 1; e.firedThisCycle = false; }
       return;
     }
-    // 威龙：每隔一段时间朝玩家射 5 枚无偏转快弹（弹速 +60%）；发起时设置攻击窗口（期间停止移动）
+    // 威龙：每隔一段时间朝玩家射 5 枚无偏转快弹（弹速 ≈418，2026-10-13 用户定稿原 380 +10%）；发起时设置攻击窗口（期间停止移动）
     // 自包含处理连发（不落入下方通用 burst 逻辑，避免 fireTimer 双重递减）
     if (e.type === 'weilong') {
       if (e.burst) {
@@ -1649,16 +1649,16 @@
         e.fireTimer = enemyFireIv(cfg);
         e.burst = {
           baseAng: e.muzzleAng != null ? e.muzzleAng : Math.atan2(player.y - e.y, player.x - e.x),   // 沿炮口当前指向锁定（无偏转）；攻击窗口内炮口不再转向
-          speed: cfg.bulletSpeed * WEILONG.bulletSpeedMul,       // 较普通弹快 60%
+          speed: cfg.bulletSpeed * WEILONG.bulletSpeedMul,       // ≈418（2026-10-13 用户定稿原 380 +10%）
           count: WEILONG.burstCount, shots: 0, gap: WEILONG.burstGap,
-          opts: { color: '#ffb42e', r: 5, dmg: cfg.bulletDmg },  // 橙黄能量弹
+          opts: { r: 6, dmg: cfg.bulletDmg },   // 2类突击艇同款橙色圆弹（不传 color 走默认 #ffd166 渲染，2026-10-13 用户定稿改版）；较其 r5 略大，伤害 = 威龙 bulletDmg（20，同日 12→20）
         };
         e.burstTimer = 0;   // 首立即发
         e.attackT = WEILONG.burstGap * (WEILONG.burstCount - 1) + 0.10;   // 攻击窗口：期间停止移动
       }
       return;
     }
-    // 破片：停稳锁停后 → 玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；
+    // 破片：停稳锁停后 → 玩家位置红圈预警 1s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；
     // 破片U型：无需锁停（入场 atkT 1.8~2s / 诗篇 1.6~2s 计时即门控），导弹 8×3（POPIAN_U），其余同破片
     if (e.type === 'popian' || e.type === 'popianU') {
       if (e.leaving || (e.type !== 'popianU' && !e.arrived)) return;   // 未停稳不攻击（U型除外：无需就位）
@@ -1749,7 +1749,7 @@
     if (e.type === 'pulseMatrix') {
       if (e.leaving) return;
       if (e.pmScaleT > 0) e.pmScaleT -= dt;   // 放大动效计时（绘制读取）
-      // 冲击波扩散计时 + 自爆结算：自爆波扩散完毕的瞬间自身死亡（killEnemy 正常结算得分/掉落）
+      // 冲击波扩散计时 + 自爆结算：自爆波扩散完毕的瞬间自身死亡（自爆非玩家击杀：noReward 不加分不掉落——2026-10-13 用户定稿）
       // + 粒子爆散 + 分裂三座法术矩阵（自爆模式进入后本体的最后一击，2026-10-02）
       if (e.pmWaveT > 0) {
         e.pmWaveT -= dt;
@@ -1785,7 +1785,8 @@
             m.noReward = true;
             m.fireTimer = 1.4;
           }
-          const bi = enemies.indexOf(e);   // 正常死亡结算（得分/掉落/图鉴计数，同弹幕击杀入口；enemies 为 02-core 模块级数组绑定，不经 state）
+          const bi = enemies.indexOf(e);   // 自爆死亡走 noReward 路径（不加分/不掉水晶道具；killEnemy 套件保底在 noReward 提前 return 之前、照常覆盖）
+          e.noReward = true;
           if (bi >= 0) killEnemy(bi);
           return;
         }
@@ -2069,7 +2070,8 @@
         switch (e.pattern % 3) {
           case 0: {
             // 技能1：召唤增生侧翼艇 ×3——两翼各飞出 1 个（先朝两侧、随后转向下飞）+ 机头正下方 1 个（直接朝下飞）；
-            // 诗篇连续两波共 6 个；召唤体与其分裂的卫护飞船不加分、不掉水晶
+            // 诗篇首召单波 ×3、第二次及之后释放才连召两波共 6 个（2026-10-13 用户定稿，原每次双波——
+            // e.cyanSummoned 首召标记随体创建）；召唤体与其分裂的卫护飞船不加分、不掉水晶
             const spawnTrio = () => {
               for (const s of [-1, 1]) {
                 const p = makeEnemy('prolifera', e.x + s * e.w * 0.55, e.y + e.h * 0.35, { fireTimer: 1e9 });
@@ -2089,8 +2091,10 @@
               c._sideVel = { vx: 0, vy: 150 };
               c._velCurve = { t: 0, dur: 0.7, vx0: 0, vy0: 150, vx1: 0, vy1: 150 };
             };
+            const poemFirstSummon = isPoem() && !e.cyanSummoned;   // 诗篇首召标记（先取再置位——首召单波）
+            e.cyanSummoned = true;
             spawnTrio();
-            if (isPoem()) e.scheduled.push({ t: 0.7, fn: spawnTrio });
+            if (isPoem() && !poemFirstSummon) e.scheduled.push({ t: 0.7, fn: spawnTrio });   // 0.7s 后第二波（首召不排）
             break;
           }
           case 1: {
@@ -2663,8 +2667,9 @@
             const ang = dirAng + (k - (g.barragePerDir - 1) / 2) * fanStep;
             // 黄红渐变弹（2026-10-02 用户定稿）：grad:'yr' 标记走白核→黄(#ffd24a)→红边(rgba(224,44,18,0.95))径向渐变渲染（10-draw-world gradYR 分支）；
             // streak：短拖尾（2026-10-12 用户定稿「一定拖尾、不要过长」，复用 BOSS 大子弹 streak 机制）；
-            // taper：锥状（2026-10-12 用户定稿「尾部收缩」——头宽尾尖三角填充）
-            e.scheduled.push({ t: wave * g.barrageWaveGap, fn: () => pushEBullet(e, ang, cfg.bulletSpeed, cfg, { r: g.barrageR, dmg: g.barrageDmg, color: '#ffd24a', grad: 'yr', streak: g.barrageTrail, taper: true }) });
+            // taper：锥状（2026-10-12 用户定稿「尾部收缩」——头宽尾尖三角填充）；
+            // 弹速（2026-10-13 用户定稿）：初速 20% 起步、沿飞行方向匀加速 0.6s 到最大 170%（accel/maxSpeed 机制，08-entities 封顶）
+            e.scheduled.push({ t: wave * g.barrageWaveGap, fn: () => pushEBullet(e, ang, cfg.bulletSpeed * g.barrageV0Mul, cfg, { r: g.barrageR, dmg: g.barrageDmg, color: '#ffd24a', grad: 'yr', streak: g.barrageTrail, taper: true, accel: cfg.bulletSpeed * (g.barrageMaxMul - g.barrageV0Mul) / g.barrageAccelT, maxSpeed: cfg.bulletSpeed * g.barrageMaxMul }) });
           }
         }
       }
@@ -3960,7 +3965,7 @@
         const mix = convertCrystalDrop(nCry);
         const spawnTier = (tier) => {
           const def = CRYSTAL_TIERS[tier];
-          const roll = rollCrystalGiant(tier);   // 巨型转化掷骰（萧杨概率 ×1.5；提升部分转出按原档计分——见 01-config rollCrystalGiant）
+          const roll = rollCrystalGiant(tier);   // 巨型转化掷骰（萧杨概率 ×2；提升部分转出按原档计分——见 01-config rollCrystalGiant）
           const t2 = roll.tier2;
           const colorKey = roll.giant ? 'g' + Math.floor(Math.random() * CRYSTAL_GIANT_COLORS.length) : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS.length);   // BOSS 专属掉落：三色均分（青 / 水蓝 / 粉）+ 巨型双色均分（粉巨型仅 BOSS 可出，2026-09-27 定稿）
           crystals.push({
@@ -4268,17 +4273,19 @@
       // 1类 60% 掉 1~3（紫电/大型龙卷不掉）；2类常规 70% 掉 4~5 + 10% 掉 6；幽暮 80% 掉 6~10；斗志昂扬必掉 6
       // A1 60% 掉 4~5 + 20% 掉 6~8；破片 80% 掉 5~7；矩阵 80% 掉 4~6；炮艇 80% 掉 9~11；先兆者 80% 掉 9~12
       // 威龙 80% 掉 16~22；寒霜/御4/铁砧 90% 掉 6~10；暴鸰 80% 掉 6~8；焦香/脉冲矩阵 90% 掉 12~14；A2 80% 掉 9~12
-      // 4类（主力舰三变体 / 法术阵列 / 四精英）80% 掉 40~48、其余 20% 掉 24~35（2026-10-10 按怪物属性总表同步，原 5% 40~48 / 95% 24~35）
-      // 战争幽灵 80% 掉 54~64、其余 20% 掉 30~35（2026-10-10 按总表补分支——原先误走 1类通用兜底）
+      // 主力舰三变体 / 法术阵列 / 战争矩阵：80% 掉 42~64、其余 20% 掉 30~36（2026-10-13 用户定稿，原 80% 40~48 / 20% 24~35；总表待同步）
+      // 四精英 & 张华&张策：100% 掉 60~80（2026-10-13 用户定稿，原四精英 80% 40~48 / 20% 24~35；总表待同步；张华&张策实体未实装、先行占位）
+      // 战争幽灵：80% 掉 50~64、其余 20% 掉 30~36（2026-10-13 用户定稿，原 80% 54~64 / 20% 30~35；总表待同步——分支 2026-10-10 补，原先误走 1类通用兜底）
       // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍（2~6）
       const isDusk = e.type === 'striker' && e.skill === 'dusk';
       const r = Math.random();
       let cCount = 0;
-      if (e.type === 'capital' || e.type === 'fashiArray' ||
-          e.type === 'puxuefeng' || e.type === 'hanxixian' || e.type === 'xiayong' || e.type === 'xinguodong') {
-        cCount = r < 0.20 ? 24 + Math.floor(Math.random() * 12) : 40 + Math.floor(Math.random() * 9);
+      if (e.type === 'capital' || e.type === 'fashiArray' || e.type === 'warMatrix') {
+        cCount = r < 0.20 ? 30 + Math.floor(Math.random() * 7) : 42 + Math.floor(Math.random() * 23);   // 20% 掉 30~36 / 80% 掉 42~64
+      } else if (e.type === 'puxuefeng' || e.type === 'hanxixian' || e.type === 'xiayong' || e.type === 'xinguodong' || e.type === 'zhangzhang') {
+        cCount = 60 + Math.floor(Math.random() * 21);   // 100% 掉 60~80
       } else if (e.type === 'warGhost') {
-        cCount = r < 0.20 ? 30 + Math.floor(Math.random() * 6) : 54 + Math.floor(Math.random() * 11);
+        cCount = r < 0.20 ? 30 + Math.floor(Math.random() * 7) : 50 + Math.floor(Math.random() * 15);   // 20% 掉 30~36 / 80% 掉 50~64
       } else if (e.type === 'weilong') {
         cCount = r < 0.80 ? 16 + Math.floor(Math.random() * 7) : 0;
       } else if (e.type === 'hanshuang' || e.type === 'yu4' || e.type === 'anvil') {
@@ -4316,7 +4323,7 @@
         const mix = convertCrystalDrop(cCount);
         const spawnTier = (tier) => {
           const def = CRYSTAL_TIERS[tier];
-          const roll = rollCrystalGiant(tier);   // 巨型转化掷骰（萧杨概率 ×1.5；提升部分转出按原档计分——见 01-config rollCrystalGiant）
+          const roll = rollCrystalGiant(tier);   // 巨型转化掷骰（萧杨概率 ×2；提升部分转出按原档计分——见 01-config rollCrystalGiant）
           const t2 = roll.tier2;
           const colorKey = roll.giant ? 'g0' : 'c' + Math.floor(Math.random() * CRYSTAL_COLORS_NORMAL.length);   // 日常掉落：双色均分（青 / 水蓝）——粉色仅 BOSS 掉落（2026-09-27 定稿）；转巨型固定青（粉巨型同为 BOSS 专属）
           crystals.push({

@@ -100,7 +100,7 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 node tools/sync-contract.js  # 头部「被依赖」契约行自动重写（改 import/导出后先跑它）
 node tools/check-names.js    # 顶层命名 / import-export 契约静态检查（必过）
 node tools/check-syntax.js   # 语法静态检查（改 js 收工三连之一）
-node tools/smoke.js          # 无头跑帧冒烟测试（必过；全量 ≈15,900 帧 ≈265s 游戏时间）
+node tools/smoke.js          # 无头跑帧冒烟测试（必过；全量 ≈18,500 帧 ≈309s 游戏时间，2026-10-13 实测）
 node tools/smoke.js --scene=a,b  # 只跑指定场景；--list 列出全部场景（SCENES 注册表）
 ```
 

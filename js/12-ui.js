@@ -226,6 +226,7 @@
     state.honghongT = 0;
     player.permBarrier = 0; player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;
     state.gachaStones = 0; state.gachaReady = false;
+    state.gachaStonesTotal = 0;   // 原石收集总数（结算读数）重开归零（2026-10-13）
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
@@ -246,7 +247,7 @@
     levelFlow.poemWaveIdx = 0;        // 诗篇波次制：本阶段波次计数归零
     levelFlow.poemWaveKitDone = false;   // 诗篇 Lv1~4 套件保底旗标归位（新局首波未掉落状态）
     levelFlow.poemClearT = 0;         // 诗篇波次制：清场计时归零
-    levelFlow.poemClearNext = 0;      // 诗篇波次制：清场间隔归零（0 = 开局立即首波）
+    levelFlow.poemClearNext = 0.4;    // 诗篇波次制：清场间隔归位——开局 0.4s 缓冲后才刷首波（2026-10-13 用户定稿，原 0 = 立即首波）
     state.orangeBombUsed = false;
     state.poemBombDropped = 0;   // 诗篇爆弹掉落计数归零（每局最多掉 2 颗 / 未使用不掉第 2，见 02-core bombDropGate）
     state.hpKitLastLv = -999; // 加血套件等级窗口节流归位（未登记状态）
@@ -916,7 +917,7 @@
     showOverlay(
       '战机陨落',
       `<span class="result-stats">最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />` +
-      (hasPilot('xiaoyang') ? `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}/16</b><br />` : '') +
+      (hasPilot('xiaoyang') ? `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStonesTotal}</b><br />` : '') +
       `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>${state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`}<br />
        剩余生命：<b style="color:#ff4d6d">${Math.max(0, state.lives)}</b></span><br /><br />
        点击下方按钮再次出击`,

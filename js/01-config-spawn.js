@@ -23,14 +23,14 @@
   };
   // 巨型转化概率（按转化前档位逐颗掷定）：小 0.3% / 中 1.8% / 大 10%
   const CRYSTAL_GIANT_CHANCE = { small: 0.003, mid: 0.018, big: 0.1 };
-  // 萧杨专属（2026-10-01）：巨型（原石）转化概率额外提升 50%（相对 ×1.5——小 0.45% / 中 2.7% / 大 15%）；
-  // 「额外」的 50% 部分转出的原石【不额外加分】：得分仍按转化前档位（不按 giant 720）。
-  // 逐颗掷一次 random 三分支：r < base 常规转化（giant 分）/ base ≤ r < base×1.5 萧杨提升转化（原档分）/ 其余不转化。
+  // 萧杨专属（2026-10-01 实装 / 2026-10-13 用户定稿改档）：巨型（原石）转化概率额外提升 100%（相对 ×2——小 0.6% / 中 3.6% / 大 20%）；
+  // 「额外」的 100% 部分转出的原石【不额外加分】：得分仍按转化前档位（不按 giant 720）。
+  // 逐颗掷一次 random 三分支：r < base 常规转化（giant 分）/ base ≤ r < base×2 萧杨提升转化（原档分）/ 其余不转化。
   // 返回 { tier2, val, giant }：tier2=最终档位，val=该颗得分，giant=是否转化为巨型（原石，供 colorKey/成就/充能判定）。
   function rollCrystalGiant(tier) {
     const base = CRYSTAL_GIANT_CHANCE[tier];
     const r = Math.random();
-    const xyBoost = hasPilot('xiaoyang') && r >= base && r < base * 1.5;   // 萧杨提升区间（hasPilot 为函数声明，运行时调用无初始化顺序问题）
+    const xyBoost = hasPilot('xiaoyang') && r >= base && r < base * 2;   // 萧杨提升区间（hasPilot 为函数声明，运行时调用无初始化顺序问题）
     const giant = r < base || xyBoost;
     const t2 = giant ? 'giant' : tier;
     return { tier2: t2, val: CRYSTAL_TIERS[xyBoost ? tier : t2].val, giant };
@@ -448,7 +448,7 @@
   function pickDesignedWaveCard(now, lv, opts) {
     opts = opts || {};
     // Lv≤5 不出含 4 类卡（2026-10-12 用户定稿：所有难度 Lv5 及之前不出现 4 类——本函数是主抽取/组合波追加/
-    // 诗篇主战卡共用入口，在此统一排除即可全覆盖；Lv6 起恢复按表权重）
+    // 诗篇主战卡共用入口，在此统一排除即可全覆盖；Lv6 起恢复按表权重）；另排除「诗篇级」tier（2026-10-13 用户定稿，见下方 tier 循环）
     if (lv <= 5) opts = Object.assign({}, opts, { noCapital: true });
     // 该等级档是否有任何非零权重：有 → 严格按表（0 = 不刷出）；全 0（数值待填占位）→ 等权 1 兜底不停摆
     const col = dwTierIdx(lv);
@@ -463,6 +463,7 @@
     const tierPool = [];
     let tierTotal = 0;
     for (let ti = 0; ti < WAVE_TIER_NAMES.length; ti++) {
+      if (lv <= 5 && WAVE_TIER_NAMES[ti] === '诗篇级') continue;   // Lv5 及之前不刷「诗篇级」波次卡（2026-10-13 用户定稿，Lv6 起恢复按表权重）
       const pool = dwBuildTierPool(WAVE_TIER_NAMES[ti], col, hasW, opts, now);
       if (!pool.length) continue;
       tierPool.push({ pool, wt: tierW[ti] });
@@ -536,14 +537,19 @@
     const s = poemStageIdx(lv);
     if (Math.random() >= POEM_FLANK_EXTRA.chance[s]) return null;
     const tw = POEM_FLANK_EXTRA.tierW[s];
+    // Lv5 及之前不生成「诗篇级」侧翼波（2026-10-13 用户定稿——与主抽取 tier 排除同口径，Lv6 起恢复按表权重）
+    const tierSkip = (i) => lv <= 5 && POEM_TIERS[i] === '诗篇级';
     let total = 0;
-    for (const w of tw) total += w;
+    for (let i = 0; i < tw.length; i++) { if (tierSkip(i)) continue; total += tw[i]; }
+    if (total <= 0) return null;
     let r = Math.random() * total;
-    let tier = POEM_TIERS[POEM_TIERS.length - 1];
+    let tier = null;
     for (let i = 0; i < POEM_TIERS.length; i++) {
+      if (tierSkip(i)) continue;
       r -= tw[i];
       if (r <= 0) { tier = POEM_TIERS[i]; break; }
     }
+    if (!tier) return null;
     return pickWaveCardByRole(tier, ['侧翼'], s);
   }
 

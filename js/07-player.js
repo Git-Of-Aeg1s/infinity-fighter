@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(12 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(19 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaFx, xinFuryRings, honghongT, itemPickFx}
+  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx}
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
@@ -873,7 +873,7 @@
         r: WINGMAN.barR, dmg,
         len: WINGMAN.barLen, wing: true, glow: berserk,
         flameMul: lvCfg.flameMul != null ? lvCfg.flameMul : (berserk ? 1 : 0),   // 尾焰强度：群星允诺按等级 0.35~1，Lv5 暴走最强
-        flameLenMul: berserk ? 1 : WINGMAN.flameLenMul,   // 尾焰长度系数：Lv1~4 收短 35%，暴走保持原长
+        flameLenMul: berserk ? 1.4 : WINGMAN.flameLenMul,   // 尾焰长度系数：Lv1~4 收短 35%，暴走 1.4（拖尾增长 40%，2026-10-13 用户定稿）
         // 弹体渐变（尾→中→头）：非暴走尾部转浅蓝——浅蓝仅占尾部约 2/5（自头部约 60% 处起进入浅蓝），
         // 中段不再有独立中蓝带（中段停靠点 midAt 前移、颜色同尾，余段平滑过渡到头部蓝紫）；
         // 暴走 Lv5 维持注册表原配色（尾橙黄 → 中淡金 → 头蓝紫，停靠点缺省 0.5）
@@ -1074,6 +1074,29 @@
         shieldBurst.x = player.x;
         shieldBurst.y = player.y;
         clearEnemyBullets();   // 护盾解除：清除场上一切敌弹
+        // 辛国栋导弹等下落导弹（missiles 通道）+ 破片三连发导弹 + 夏勇回旋镖（精英 xyBlades / 黑暗之手 id5 blades）一并清除——
+        // 原到期清场只清 eBullets，以上存活至护盾结束后仍可命中玩家（2026-10-13 用户定稿；破片「不可被击毁」指护盾期间的气泡接触免疫，到期清场不豁免）；
+        // BOSS 有预警弹道不中断（不调 cancelBossWarns）
+        missiles.length = 0;
+        missileWarns.length = 0;
+        popianMissiles.length = 0;
+        for (const en of enemies) {
+          if (en.xyBlades) {
+            for (const bl of en.xyBlades) {
+              if (bl.done) continue;
+              spawnParticles(bl.x, bl.y, '#6fe3ff', 8, 180);
+              bl.done = true;   // 全灭后由 06-enemy 收口（xyBlades=null / elGapT 重置）
+            }
+          }
+          const sk = en.skill;
+          if (sk && Array.isArray(sk.blades)) {   // 黑暗之手 id5 回旋镖（boss 敌体 skill 状态挂载，见 05-boss）
+            for (const bl of sk.blades) {
+              if (bl.done) continue;
+              spawnParticles(bl.x, bl.y, '#6fe3ff', 8, 180);
+              bl.done = true;   // 全灭后由 05-boss 收口（skill=null / skillCd 重置）
+            }
+          }
+        }
       }
     }
     // 七日澜心水晶护盾：倒计时；消失时清除周围 250px 内的所有敌弹
@@ -1811,6 +1834,7 @@
   // 释放（Q）后 gachaStones 清零重新累计；其他驾驶员不再通过原石获得该道具（捡原石仅成就计数，见 08-entities achvNoteGiantCrystal）
   function noteGachaStone() {
     if (!hasPilot('xiaoyang')) return;
+    state.gachaStonesTotal++;   // 结算读数：本局收集原石总数（含已充能期间的拾取；不随 Q 释放清零，2026-10-13 用户定稿）
     if (state.gachaReady) return;   // 已有充能：原石不计数（释放后才能继续收集）
     state.gachaStones++;
     if (state.gachaStones < 16) return;
@@ -2174,7 +2198,7 @@
 
   // 依：击杀计数结算（06-enemy killEnemy 调用）——cls 1~5（5 类 = BOSS）；
   // BOSS 战期间计数 ×2，击败黑暗之手四精英改为 ×3（替换 ×2）（2026-10-10 用户定稿，原 ×3/×4+额外30 废止）；
-  // 诗篇难度击杀充能统一 ×1.2（2026-10-12 用户定稿，PILOTS.mei.poemKillMul——在上述乘区之上乘算）；
+  // 诗篇难度击杀充能统一 ×1.1（2026-10-13 用户定稿回调，原 10-12 ×1.2；PILOTS.mei.poemKillMul——在上述乘区之上乘算）；
   // 挑战 / 测试模式不计
   function meiNoteKill(cls, type) {
     if (state.challenge || !hasPilot('mei')) return;

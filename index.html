@@ -58,13 +58,15 @@
             <span class="score-label">SCORE</span>
             <b id="scoreText">0</b>
           </div>
-          <!-- 原石收集进度（当局）：仅驾驶员萧杨收集——集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放（见 07-player noteGachaStone / triggerPilotSkill）；
+          <!-- 当前难度标签（左）+ 原石收集进度（难度标签右侧同行；仅萧杨显示，2026-10-13 用户定稿）：
+               集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放（见 07-player noteGachaStone / triggerPilotSkill）；
                已充能时捡原石不计数，释放后重新累计 -->
-          <div class="stone-panel hidden" id="stonePanel" title="原石收集（当局，萧杨专属）：集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放；已充能时不计数，释放后重新累计">
-            <span class="stone-icon">✦</span><b id="stoneCount">0/16</b>
+          <div class="hud-left-row">
+            <div class="diff-label hidden" id="diffLabel"></div>
+            <div class="stone-panel hidden" id="stonePanel" title="原石收集（当局，萧杨专属）：集满 16 颗转换为「哦哦！抽卡！」技能充能，按 Q 释放；已充能时不计数，释放后重新累计">
+              <span class="stone-icon">✦</span><b id="stoneCount">0</b>
+            </div>
           </div>
-          <!-- 当前难度标签（战斗中显示；buildDiffCards 难度注册表驱动） -->
-          <div class="diff-label hidden" id="diffLabel"></div>
         </div>
         <!-- （原右上角爆弹已移入左下角 hud-bl 首行，2026-10-04；右上角不再有 HUD 内容） -->
       </div>
@@ -131,7 +133,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.4.1</span>
+          <span class="menu-version">v0.4.2</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
         <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；

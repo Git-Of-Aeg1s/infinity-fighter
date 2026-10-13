@@ -13,7 +13,7 @@
   import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns } from './04-spawn.js';
+  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updatePoemRearCards } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -348,6 +348,7 @@
       // 延迟出场队列（z*8 单点排队等）逐帧倒计时到点生成——通用推进（2026-10-12 bug 修复：
       // 原仅在挑战分支调用，正常波抽到 z*8 且命中排队侧时该侧敌机入队后永不生成、整侧静默丢失）
       updateDelayedSpawns(dt);
+      updatePoemRearCards(dt);   // 诗篇后波延迟落地推进（前/后波 0.5~1s 随机间隔；无条件每帧——波阶段结束也不冻结）
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
@@ -358,6 +359,9 @@
         // 诗篇波次制：本阶段波次全部刷出且场上清空 → 直接进警报（波次耗尽即刷怪期结束，不等计时）
         const phaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
         const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
+        // 诗篇：波次刷满且场上清空 → 进警报；若后波仍处 0.5~1s 延迟窗口未落地（前波被秒清），
+        // 先立即落地再判清场——后波绝不跨入 BOSS 警报序列
+        if (isPoem() && levelFlow.poemWaveIdx >= phaseWaves && enemies.length === 0) flushPoemRearCards();
         if (isPoem()
             ? (levelFlow.poemWaveIdx >= phaseWaves && enemies.length === 0)
             : bossFlow.timer >= phaseTime) bossFlow.stage = 'wait';
@@ -437,6 +441,7 @@
         // 无「场上已有主力舰排除 4类卡」限制（44/22422 等按表登场）、无随机组合波（固定双卡结构取代）。
         // 抽不到卡（表全零/卡缺失）兜底走旧编队 spawnWave（正常不可达）
         const spawnPoemMainWave = () => {
+          flushPoemRearCards();   // 兜底：上一波后波若仍处延迟窗口（前波被秒清），新波开始前立即落地、绝不跨波
           const lv = levelFlow.level;
           const list = [];
           for (const roles of [['前波', '前后均可'], ['后波', '前后均可']]) {
@@ -444,8 +449,18 @@
             const f3 = card && t3SpawnCardById(card.id);
             if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
           }
-          if (list.length) spawnDesignedWave(list);
-          else spawnWave();   // 兜底：旧编队路径（表全零/卡缺失；正常不可达）
+          // 前波与后波 0.5~1s 随机刷新间隔（2026-10-13 用户定稿）：前波整波立即落地（spawnDesignedWave
+          // 的 waveSeq / poemWaveIdx / hpKitWaveCd 簿记每波只走一次），后波入诗篇后波延迟队列、到点经
+          // spawnPoemExtraWave 落地（不占独立波次名额、打当前波 waveTag）；许凯狗冲刺期同样生效（后波
+          // 落地与下一波 1s 间隔部分重叠，冲刺即秒场景无碍）；单卡兜底（抽不到后波卡）照常同帧整波
+          if (list.length === 2) {
+            spawnDesignedWave([list[0]]);
+            queuePoemRearCard(list[1], rand(0.5, 1));
+          } else if (list.length) {
+            spawnDesignedWave(list);
+          } else {
+            spawnWave();   // 兜底：旧编队路径（表全零/卡缺失；正常不可达）
+          }
           // 额外生成三连：①侧翼波次（许凯狗冲刺两侧不刷怪 → 冲刺期跳过，同非诗篇 noSide 规则）
           //               ②额外波次（特殊波已并入，权重不变）③真额外三项（单/双导弹互斥 + 增益无人舰）
           const extras = [
@@ -477,6 +492,12 @@
           if (!blocking.length || blocking.every(en => en.type === 'weilong')) {
             levelFlow.poemClearT += dt;
             if (levelFlow.poemClearT >= levelFlow.poemClearNext) {
+              // 生成前等级同步（2026-10-13）：波 N 生成期帧首式（base + poemWaveIdx − 1）尚差一档
+              // （poemWaveIdx 在 spawnDesignedWave 内才递增）——先对齐本波等级（base + poemWaveIdx），
+              // makeEnemy 关卡血量修正（Lv1/2 ×0.70/×0.85）与抽卡档位按「波 N = 等级 N」取值；
+              // 与下方波后同步式同值收敛（poemWaveIdx 递增后两式相等）。许凯狗冲刺路径等级斜坡 1s/级
+              // 本就与波序对齐，不在此处理
+              levelFlow.level = lvCfg.base + levelFlow.poemWaveIdx;
               spawnPoemMainWave();
               levelFlow.poemClearT = 0;
               levelFlow.poemClearNext = rand(WAVE_POEM.clearDelay[0], WAVE_POEM.clearDelay[1]);
@@ -638,7 +659,7 @@
             (state.challenge ? '<br />' : '<br /><br />') +   // 挑战模式无得分行：不插空行（避免三行间距过大）
             `<span class="result-stats">` +
             (state.challenge ? '' : `最终得分：<b style="color:#7ce7ff;font-size:18px">${state.score}</b><br />`) +
-            (state.challenge || state.testBoss || !hasPilot('xiaoyang') ? '' : `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStones}/16</b><br />`) +
+            (state.challenge || state.testBoss || !hasPilot('xiaoyang') ? '' : `原石收集：<b style="color:#ffc9e2">✦ ${state.gachaStonesTotal}</b><br />`) +
             `关卡难度：<b style="color:#b28dff">${currentDifficulty.name}</b>` +
             (state.challenge || state.testBoss ? '' : `<br />抵达关卡：<b style="color:#ffb545">${levelFlow.level}</b>`) +
             `</span>`,

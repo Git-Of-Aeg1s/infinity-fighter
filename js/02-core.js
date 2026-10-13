@@ -184,6 +184,7 @@
     honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
     gachaStones: 0,          // 原石（巨型水晶）当局收集进度（0~16；仅萧杨收集转换，07-player noteGachaStone 写入；HUD 左上与结算页均仅萧杨显示，2026-10-01）
     gachaReady: false,       // 萧杨专属技能「哦哦！抽卡！」充能就绪（16 颗原石转换；Q 键释放 triggerPilotSkill，释放后 gachaStones 清零重计；已充能时捡原石不计数）
+    gachaStonesTotal: 0,     // 原石（巨型水晶）当局收集总数（不随 Q 释放清零——结算页「原石收集」读数；07-player noteGachaStone 写入、12-ui resetGame 归零，2026-10-13）
     jiukeDodgePct: 0,        // 酒客之影当前闪避概率（%，激活置 100；每成功闪避一次 -20，归零后必受伤；30s 到期清 0——07-player damagePlayer 消耗 / updateRewardFx 推进）
     itemPickFx: [],          // 道具获得特效队列（{x, y, glyph, rare, t, max}：机体前方道具图标 + 扩散波渐隐；07-player pushItemPickFx 推入 / updateRewardFx 推进 / 09-draw-ships drawItemPickFx 绘制）
     xgLooseBombs: [],        // 辛国栋击毁后残留的地毯轰炸落点预警（{x, y, t}：killEnemy 从 e.xgBombs 转存；06-enemy updateXgLooseBombs 独立推进爆炸 / 10-draw-world drawXgWarnCircles 绘制；resetGame 清空）
@@ -229,7 +230,7 @@
     hpKitWaveCd: 0,        // 诗篇：加血套件波次节流剩余波数（实际掉落后置满 WAVE_POEM.healWaveGap，每波刷新递减；resetGame 归零）
     poemWaveIdx: 0,     // 诗篇波次制：本阶段已刷波数（波 N = 等级 N；spawnWave 递增，BOSS 阶段推进归零）
     poemClearT: 0,      // 诗篇波次制：清场计时（许凯狗冲刺期复用为下一波倒计时）
-    poemClearNext: 0,   // 诗篇波次制：清场后到下一波的间隔（rand clearDelay；0 = 立即，开局首波即刷）
+    poemClearNext: 0,   // 诗篇波次制：清场后到下一波的间隔（rand clearDelay；开局 resetGame 置 0.4s 缓冲——2026-10-13 用户定稿，原 0 = 开局首波即刷）
     poemWaveKitDone: false,  // 诗篇 Lv1~4 套件保底：本波已掉落升级套件（04-spawn 每波重置 / 06-enemy 通用套件分支登记与击坠保底判定；12-ui resetGame 归位）
   };
 

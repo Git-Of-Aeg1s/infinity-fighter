@@ -142,13 +142,20 @@ canvas#game {
   text-shadow: 0 0 8px rgba(77, 208, 255, 0.5);
 }
 
-/* 原石收集计数（当局）：样式对齐计分表；✦ 图标做上粉下蓝渐变贴合原石（巨型水晶）配色 */
+/* 原石收集计数（当局）：样式对齐计分表；✦ 图标做上粉下蓝渐变贴合原石（巨型水晶）配色
+   与「难度」标签同行展示（2026-10-13 用户定稿：收集表在难度标签右侧，行容器 .hud-left-row 统一接管下间距） */
+.hud-left-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .stone-panel {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  margin-bottom: 8px;
   background: var(--bg-panel);
   border: 1px solid rgba(255, 170, 220, 0.22);
   border-radius: 6px;
@@ -1470,10 +1477,9 @@ canvas#game {
   75% { transform: translateX(4px); }
 }
 
-/* HUD 左上角当前难度标签（战斗中显示）——样式与上方 score-panel 一致（同背景/边框/圆角/内距） */
+/* HUD 左上角当前难度标签（战斗中显示；与原石收集表同行，下间距由 .hud-left-row 接管）——样式与上方 score-panel 一致（同背景/边框/圆角/内距） */
 .diff-label {
   display: inline-block;
-  margin-bottom: 8px;
   padding: 4px 10px;
   border-radius: 6px;
   background: var(--bg-panel);

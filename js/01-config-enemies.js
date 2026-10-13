@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(4 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(5 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -100,7 +100,7 @@
       fireInterval: [1.8, 2.4],
     },
     capital: {
-      w: 192, h: 134, hp: 4200, score: 1300, color: '#ff4d6d', drawScale: 2.0,   // 三变体同血量；下降速度按变体区分（250/220/280，见 updateEnemyMovement）
+      w: 192, h: 134, hp: 4200, score: 1200, color: '#ff4d6d', drawScale: 2.0,   // 三变体同血量；下降速度按变体区分（250/220/280，见 updateEnemyMovement）；分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 48,
       fireInterval: [2.4, 2.8],
     },
@@ -110,10 +110,10 @@
       bulletSpeed: 210, bulletR: 6, bulletDmg: 16, crashDmg: 30,
       fireInterval: [4, 4],
     },
-    // 特殊3类：威龙（高血量无人机）—— 俯视四旋翼无人机、橙黄渐变；蛇形巡航、朝玩家三连快弹（弹速 380）、攻击时停移
+    // 特殊3类：威龙（高血量无人机）—— 俯视四旋翼无人机、橙黄渐变；蛇形巡航、朝玩家五连快弹（弹速 ≈418，2026-10-13 改 2类突击艇同款橙色圆弹略大）、攻击时停移
     weilong: {
       w: 76, h: 70, hp: 5000, score: 1100, color: '#ff9a1a', drawScale: 1.5,
-      bulletSpeed: 230, bulletR: 5, bulletDmg: 12, crashDmg: 30,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 20, crashDmg: 30,   // 弹伤 20（2026-10-13 用户定稿 12→20；总表待同步——本机两处桌面均未见《怪物属性总表.xlsx》，按口述实装）
       fireInterval: [1.91, 2.43],   // 攻击间隔在原 [1.47,1.87] 基础上 +30%（更稀疏）
     },
     // 特殊3类：寒霜（冰霜无人机）—— 俯视四旋翼无人机、灰黑渐变 + 天蓝霜纹边缘；
@@ -181,7 +181,7 @@
     // 特殊2类：破片（三连发导弹无人机）—— 造型类铁砧但更小、灰白金属主导（边框+核心）；中心两条黑杠（头部红、下方缩短）；
     // 下方两根黑色炮管（前部加粗、图层最底）；只沿直线飞到选定点后急停锁停（除非被击毁不再移动），停稳后才攻击；
     // 无攻击距离限制（2026-10-12 用户定稿移除原索敌半径机制，仅保留朝向对齐门控）；
-    // 攻击时玩家位置红圈预警 0.8s → 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；lv11 前低权重
+    // 攻击时玩家位置红圈预警 1s（2026-10-13 用户定稿 0.8→1s）→ 快速三连发不可击毁导弹（7×3；前两发命中不授予受击无敌、后一发正常授予——2026-10-12 用户定稿）；lv11 前低权重
     popian: {
       w: 55, h: 48, hp: 200, score: 160, color: '#cfd6e0', drawScale: 1.2,   // 体型同常规 2 类突击艇 ×1.2
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,   // 碰撞 24（2026-09 批次：取消分段）
@@ -214,7 +214,7 @@
     // 就位 2.5s 后首次召唤、其后每 5s：闪动红光并在周围召唤一个法术矩阵（召唤体死亡不加分不掉水晶、
     // 1s 后开始攻击并随机移动），飞离期间不召唤；Lv11 前不出场（Lv11 起占 4 类槽位，见 spawnCapitalSlot）
     fashiArray: {
-      w: 82, h: 82, hp: 3500, score: 1300, color: '#c22b3d', drawScale: 1.68,   // 体型同炮火先兆者；4 类级血量
+      w: 82, h: 82, hp: 3500, score: 1200, color: '#c22b3d', drawScale: 1.68,   // 体型同炮火先兆者；4 类级血量；分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 40,
       fireInterval: [1e9, 1e9],   // 攻击逻辑在专属状态机内处理，不走通用开火
     },
@@ -222,7 +222,7 @@
     // 具体机制/数值/外观待定；当前仅注册占位，不进入常规出怪（无权重、无生成调用），图鉴挑战模式经
     // spawnChallengeTargetOne 召唤（走 04-spawn spawnWarMatrix 占位函数，移动/开火/绘制待实装）
     warMatrix: {
-      w: 90, h: 90, hp: 4500, score: 1300, color: '#7a3b2e', drawScale: 1.2,   // 血量 4500（2026-10-04 用户定稿：虚象/具象/真我 4500 用基准、诗篇 10000 走 POEM_HP.warMatrix 覆写；原 3600 占位作废）；其余数值占位待《怪物属性总表.xlsx》校准
+      w: 90, h: 90, hp: 4500, score: 1200, color: '#7a3b2e', drawScale: 1.2,   // 血量 4500（2026-10-04 用户定稿：虚象/具象/真我 4500 用基准、诗篇 10000 走 POEM_HP.warMatrix 覆写；原 3600 占位作废）；分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）；其余数值占位待《怪物属性总表.xlsx》校准
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 40,
       fireInterval: [1e9, 1e9],   // 占位：不攻击，机制待设计
     },
@@ -251,7 +251,7 @@
     },
     warGhost: {         // 战争幽灵（4类，诗篇新敌）：风波预警极速入场冲撞 → 驻留中场技能循环 → 直线预警加速斩出；
                         // 光环强化破片系/铁砧、半血召唤（见 WAR_GHOST 与 06-enemy warGhost 分支）
-      w: 98, h: 72, hp: 4200, score: 1300, color: '#ffd24a', drawScale: 1.28,   // 金黄渐变流动机体；2026-10-01 用户定稿整体缩小 25%（碰撞盒与绘制比例同 ×0.75，视觉/判定比例不变）
+      w: 98, h: 72, hp: 4200, score: 1400, color: '#ffd24a', drawScale: 1.28,   // 金黄渐变流动机体；2026-10-01 用户定稿整体缩小 25%（碰撞盒与绘制比例同 ×0.75，视觉/判定比例不变）；分数 1400（2026-10-13 用户定稿 1300→1400，总表待同步）
       bulletSpeed: 138, bulletR: 5, bulletDmg: 10, crashDmg: 40,   // bulletSpeed=技能3弹幕弹速（2026-10-03 用户定稿 +25% 110.4→138，回到 -20% 前基准）；bulletDmg=弹幕每发伤害；入场冲撞走 WAR_GHOST.entryDmg 50
       fireInterval: [1e9, 1e9],   // 攻击逻辑在专属状态机内处理（技能循环），不走通用开火
     },
@@ -273,22 +273,22 @@
     // 挑战召唤走 04-spawn spawnEliteMinion）：技能由专属状态机驱动（参数见 ELITES，逻辑见 06-enemy）。
     // 血量 1200 为实装占位值，待《怪物属性总表.xlsx》校准（本机无表，先按占位实装）
     puxuefeng: {        // 狞笑朴学峰（原名 狂笑朴学峰）：极速截击——流星穿刺 / 翼根连弩（两技 1↔2 交替）
-      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红（2026-10-02）；分数 1000（2026-10-10 按怪物属性总表同步，原 650）——朴学峰
+      w: 110, h: 84, hp: 1200, score: 600, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红（2026-10-02）；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）——朴学峰
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40, crashDmgPoem: 48,   // 冲撞贯穿伤害诗篇 48（2026-10-10 用户定稿；基准 40 不变——仅流星穿刺贯穿结算用，贴身通用碰撞仍走 crashDmg）
       fireInterval: [1e9, 1e9],
     },
     hanxixian: {        // 猩红韩希先（原名 韩希先）：三眼炮座——凝视锁定 / 旋眼火螺（两技循环）
-      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——韩希先
+      w: 110, h: 84, hp: 1200, score: 600, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）——韩希先
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
     xiayong: {          // 铜皮夏勇（原名 夏勇）：重装壁垒——屏障 / 碎翼回旋刃 / 核心膨胀（暗壁 2026-10-03 移除；屏障同日新增）
-      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——夏勇
+      w: 110, h: 84, hp: 1200, score: 600, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）——夏勇
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
     xinguodong: {       // 暴怒辛国栋（原名 辛国栋）：轰炸平台——地毯轰炸 / 十二连发
-      w: 110, h: 84, hp: 1200, score: 1000, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 1000（2026-10-10 按总表同步）——辛国栋
+      w: 110, h: 84, hp: 1200, score: 600, color: '#b21820', drawScale: 1.6,   // 四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）——辛国栋
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
@@ -337,7 +337,7 @@
     entryBoost: 2.6,     // 入场移速倍率（260%），在 entryDecay 内线性衰减回 100%
     entryDecay: 1,       // 入场加成衰减时长（s）
     maxTurn: 3.2,        // 炮口最大转向角速度（rad/s，与破片 POPIAN.maxTurn 等同）；攻击窗口期间炮口锁死
-    bulletSpeedMul: 1.652, // 弹速（230 × 1.652 ≈ 380）
+    bulletSpeedMul: 1.8172, // 弹速（230 × 1.8172 ≈ 418 = 原 380 +10%，2026-10-13 用户定稿）
     lowHpRatio: 0.7,     // 血量低于此比例后压力权重记 0（不再拖慢敌方刷新，见 PRESSURE_W）
   };
 
@@ -356,10 +356,10 @@
     auraFadeIn: 0.8,     // 光圈渐显时长（延迟后从透明淡入到完全体）
     auraR: 160,          // 寒霜光圈半径（较大范围，以玩家核心位置判定）
     dwell: 20,           // 到位后停留时长
-    fireSlow: 0.65,      // 顶部入场光圈内玩家射速倍率（-35%：冷却流速乘 0.65）
-    moveSlow: 0.65,      // 顶部入场光圈内玩家移动速度倍率（-35%）
-    fireSlowFlank: 0.75, // 侧翼入场光圈内玩家射速倍率（-25%）
-    moveSlowFlank: 0.75, // 侧翼入场光圈内玩家移动速度倍率（-25%）
+    fireSlow: 0.65,      // 光圈内玩家射速倍率（-35%：冷却流速乘 0.65；2026-10-13 用户定稿不再分入场侧）
+    moveSlow: 0.65,      // 光圈内玩家移动速度倍率（-35%；不分入场侧同上）
+    fireSlowFlank: 0.65, // 侧翼入场光圈内玩家射速倍率（2026-10-13 用户定稿与顶部统一 -35%，原 0.75/-25%）
+    moveSlowFlank: 0.65, // 侧翼入场光圈内玩家移动速度倍率（与顶部统一，原 0.75/-25%）
     entryDR: 0.20,       // 入场未减速阶段（距落点 ≥90px、未开始减速）受伤 -20%
     entryHitScale: 0.85, // 入场未减速阶段碰撞判定箱缩小倍率（略微缩小）
   };
@@ -574,7 +574,7 @@
     moveMin: 120,          // 最小移动距离（防止出场就停）
     moveMax: 420,          // 最大移动距离（防止飞跃整屏）
     nearBias: 1.8,         // 选点距离偏向近处的指数（random^nearBias：越大越偏向近距离）
-    warnTime: 0.8,         // 发射前红圈预警时长（0.5 +0.3s）
+    warnTime: 1.0,         // 发射前红圈预警时长（2026-10-13 用户定稿 0.8→1s；破片U型同用此值）
     warnOffset: 26,        // 红圈中心相对玩家位置的少量随机偏移上限
     blastR: 44.2,          // 红圈预警半径 / 导弹抵达小范围爆炸半径（原34扩大30%）
     burstCount: 3,         // 三连发
@@ -646,9 +646,12 @@
     barrageDirs: 3,        // 技能3 每波方向数：基准方向 + 与之夹 120° 的两方向（互成 120° 均布；2026-10-02 用户定稿）
     barragePerDir: 3,      // 技能3 每方向发数（同帧扇形齐射，非同向连射）
     barrageFanDeg: 20,     // 技能3 同方向相邻两发夹角（度，扇心对准方向）
-    barrageWaveGap: 0.945, // 波间隔（s，2026-10-02 用户定稿 +40% 0.675→0.945）；连续三波：第2波整体旋转 60°、第3波与第1波同向，初始方向随机
+    barrageWaveGap: 0.614, // 波间隔（s，2026-10-13 用户定稿 -35% 0.945→0.614）；连续三波：第2波整体旋转 60°、第3波与第1波同向，初始方向随机
     barrageRotDeg: 60,     // 第2波旋转角（度）
-    barrageDmg: 10,        // 技能3 每发伤害
+    barrageV0Mul: 0.2,     // 技能3 弹初速倍率（×ENEMY_TYPES.warGhost.bulletSpeed 138 = 27.6；2026-10-13 用户定稿 20%）
+    barrageMaxMul: 1.7,    // 技能3 弹最大速度倍率（×138 = 234.6；2026-10-13 用户定稿 170%）
+    barrageAccelT: 0.6,    // 技能3 初速→最大速度匀加速时长（s；加速度 = 138×(1.7−0.2)/0.6 = 345 px/s²，经 eBullet accel/maxSpeed 沿飞行方向加速封顶，08-entities）
+    barrageDmg: 24,        // 技能3 每发伤害（2026-10-13 用户定稿 10→24）
     barrageR: 10.2,        // 技能3 子弹半径（2026-10-02 用户定稿 +20% 8.5→10.2；黄红渐变渲染走 eBullet grad==='yr' 分支）
     barrageTrail: 36,      // 技能3 散弹拖尾长度（px，2026-10-12 用户定稿「一定拖尾、不要过长」22→36「增大一点」≈3.5 倍弹径；出弹 opts.streak，10-draw-world streak 渐隐线段机制）
     skillGapCut: 0.1,      // 每释放一次技能后的间隔递减量（s，2026-10-12 用户定稿）

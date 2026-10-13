@@ -7,7 +7,7 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
-  import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, enemyGrade } from './01-config-enemies.js';
+  import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, ELITES, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
   import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
@@ -37,7 +37,11 @@
         ? (1 + STORM.tornadoWingVuln + ((isRealme() || isPoem()) ? STORM_SHIP.s2.wingVulnAdd : 0))
         : (1 - STORM.tornadoMainDR);
     }
-    if (e.type === 'boss' && player.weapon === 1) mul *= (1 + BOSS_LOWFIRE_BONUS);   // BOSS：Lv1 逆境补偿
+    {   // 低火力补偿（2026-10-13 用户定稿改版）：火力 Lv1/2/3 对 BOSS 与 4S 敌人 ×1.30/×1.20/×1.10（原仅 Lv1 对 BOSS +20%；
+      // 4S 判定 = ELITES 四精英 + 张华&张策，与 DROP_HP_ELITE 同口径——见 06-enemy 掉落链同名判定）
+      const lf = BOSS_LOWFIRE_BONUS[player.weapon];
+      if (lf && (e.type === 'boss' || ELITES[e.type] || e.type === 'zhangzhang')) mul *= (1 + lf);
+    }
     // 法术矩阵：受到来自主战机（非僚机）的伤害 -30%（僚机弹幕正常）
     if (e.type === 'fashiMatrix' && !isWing) mul *= (1 - FASHI_MATRIX.mainDR);
     // BOSS 受到暴走（Lv5）伤害减免：风暴编织者专属 -30%（2026-10-11 用户定稿删除原「真我全体 BOSS -10%」，

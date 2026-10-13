@@ -6,8 +6,8 @@
  *   classic  按序拼接全部脚本（与 index.html 加载顺序一致），以 new Function 单作用域执行
  *   modules  按序动态 import 全部模块（top-level 代码随 import 执行）
  *
- * 场景：18 个具名场景（SCENES 注册表），覆盖主路径战斗 / 驾驶员 / 副武器 / 图鉴 /
- * 挑战测试 / 精英与 BOSS 状态机 / 原石 / 手柄 / 教程，合计约 14,400 帧（≈240s 游戏时间）。
+ * 场景：19 个具名场景（SCENES 注册表），覆盖主路径战斗 / 驾驶员 / 副武器 / 图鉴 /
+ * 挑战测试 / 精英与 BOSS 状态机 / 原石 / 手柄 / 教程，合计约 18,500 帧（≈309s 游戏时间，2026-10-13 实测 18544 帧）。
  *
  * 判定：任何未捕获异常、主循环帧内异常（14-main 的 catch 会 console.error）都记为 FAIL。
  * 用法：node tools/smoke.js              全量跑（默认）
@@ -704,6 +704,7 @@ async function scenePulseMatrix() {
           e.hp = e.maxHp;
         };
         // 登场 20s + 下一波 ≤2.2s + 波扩散 0.45s ≈ 22.7s ≈ 1362 帧，给 1560 帧余量
+        const scoreBefore = core.state.score;   // 自爆零得分基线（2026-10-13：自爆非玩家击杀 noReward 不加分）
         let sawSD = false, sawWaveR160 = false, boom = false, fashiN = 0;
         for (let f = 0; f < 1560 && !boom; f++) {
           frames(1);
@@ -726,6 +727,16 @@ async function scenePulseMatrix() {
         if (!sawWaveR160) errors.push({ key: '自爆波半径未达 160', stack: '自爆模式下未见 pmWaveR=' + cfg.PULSE_MATRIX.selfDestructR + ' 的释放' });
         if (!boom) errors.push({ key: '脉冲矩阵自爆未死亡', stack: '1560 帧后本体仍在场（pmSelfDestruct=' + !!e.pmSelfDestruct + ' pmWaveR=' + (e.pmWaveR || 0) + '）' });
         else if (fashiN < 3) errors.push({ key: '自爆未分裂三座法术矩阵', stack: '本体死亡帧场上 fashiMatrix=' + fashiN + '（应 ≥3）' });
+        // 自爆零得分 + 分裂体无奖励（2026-10-13 用户定稿：自爆非玩家击杀，本体与分裂三矩阵均不加分不掉落）
+        if (boom && core.state.score !== scoreBefore) {
+          errors.push({ key: '自爆死亡不应得分', stack: '自爆结算后 score=' + core.state.score + '（结算前 ' + scoreBefore + '——noReward 路径应零得分）' });
+        }
+        if (boom) {
+          const splitNow = core.enemies.filter(x => x.type === 'fashiMatrix');
+          if (splitNow.length && !splitNow.every(m => m.noReward)) {
+            errors.push({ key: '分裂法术矩阵缺少 noReward', stack: '存在可得分/掉落的分裂体（noReward 应全量置位）' });
+          }
+        }
         // 分裂体逐帧不瞬跳：爆散飞离（burst easeOut 峰速 ~230px/s ≈ 4px/帧）+ 胡乱移动（wanderSpd 限速），
         // 任何一帧位移 > 12px 即为瞬移（回归点：mxPhase 1 全局带 clamp 曾把分裂体单帧上拉 ~270px）
         {
@@ -1234,7 +1245,7 @@ async function sceneGacha() {
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
     if (playerMod.noteGachaStone && playerMod.triggerPilotSkill && cfg.setPilotSub && cfg.PILOTS && cfg.rollCrystalGiant && cfg.currentPilotMain && core.state) {
       const st = core.state;
-      const reset = () => { st.gachaStones = 0; st.gachaReady = false; };
+      const reset = () => { st.gachaStones = 0; st.gachaReady = false; st.gachaStonesTotal = 0; };
       // ① 非萧杨（默认副驾驶员小艺）：捡原石完全不计数
       cfg.setPilotSub(cfg.PILOTS.xiaoyi);
       reset();
@@ -1274,8 +1285,12 @@ async function sceneGacha() {
       if (!st.gachaReady || st.gachaStones !== 16) {
         errors.push({ key: '萧杨重复充能失败', stack: '释放后 16 颗 gachaReady=' + st.gachaReady + ' gachaStones=' + st.gachaStones + '（预期 true / 16——萧杨可无限次）' });
       }
-      // ⑤ 萧杨转化概率（2026-10-01 新效果）：×1.5（相对 +50%），提升区间转出的原石按转化前档位计分（Math.random 桩控掷骰）
-      // 大水晶 base=0.1 / 提升 0.15：0.05→基础区间转 giant 按 giant 分；0.11→提升区间转 giant 按 big 原档分；0.9→不转
+      // ④b 收集总数（2026-10-13）：gachaStonesTotal 不随 Q 释放清零——①非萧杨 20 颗不计 + ③释放前 16 颗 + ④释放后 16 颗 = 32
+      if (st.gachaStonesTotal !== 32) {
+        errors.push({ key: '原石收集总数异常', stack: 'gachaStonesTotal=' + st.gachaStonesTotal + '（预期 32——非萧杨不计、跨 Q 释放累计）' });
+      }
+      // ⑤ 萧杨转化概率（2026-10-01 实装 / 2026-10-13 改档）：×2（相对 +100%），提升区间转出的原石按转化前档位计分（Math.random 桩控掷骰）
+      // 大水晶 base=0.1 / 提升 0.2：0.05→基础区间转 giant 按 giant 分；0.11→提升区间转 giant 按 big 原档分；0.9→不转
       const savedMain = cfg.currentPilotMain;   // 导出值为当前主驾驶员对象（非函数）
       cfg.setPilotMain(cfg.PILOTS.keli);   // 主槽固定非萧杨，保证 hasPilot 仅由副槽驱动
       cfg.setPilotSub(cfg.PILOTS.xiaoyang);
@@ -1287,7 +1302,7 @@ async function sceneGacha() {
       }
       const rBoost = rollWith(0.11);
       if (rBoost.tier2 !== 'giant' || rBoost.val !== 360 || rBoost.giant !== true) {
-        errors.push({ key: '萧杨提升区间未按原档计分', stack: 'r=0.11 → ' + JSON.stringify(rBoost) + '（预期 giant / 360 / true——提升 50% 部分不额外加分）' });
+        errors.push({ key: '萧杨提升区间未按原档计分', stack: 'r=0.11 → ' + JSON.stringify(rBoost) + '（预期 giant / 360 / true——提升 100% 部分不额外加分）' });
       }
       const rOut = rollWith(0.9);
       if (rOut.tier2 !== 'big' || rOut.val !== 360 || rOut.giant !== false) {
@@ -1303,7 +1318,7 @@ async function sceneGacha() {
       elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
       cfg.setPilotSub(cfg.PILOTS.xiaoyi);   // 还原默认副驾驶员
       reset();
-      sample('原石规则 非萧杨不计数 / 16 颗充能 / Q 释放 / 萧杨无限次 / 转化概率 ×1.5 与原档计分');
+      sample('原石规则 非萧杨不计数 / 16 颗充能 / Q 释放 / 萧杨无限次 / 收集总数 / 转化概率 ×2 与原档计分');
     }
   }
 }

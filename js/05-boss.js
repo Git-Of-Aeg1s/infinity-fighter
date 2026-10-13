@@ -916,7 +916,7 @@
   //   技能2 四喷口激光：停止移动，喷口激涌蓄力 1.2s → 随机序依次向下电弧激光（50 伤害）；
   //         预警为四喷口各一圈收缩波，按发射顺序先后出现
   //   技能3 斜下反弹光束：四喷口向斜下（左右对称两角度）发射电弧光束，触左右边界反弹（弹道呈"<"）；
-  //         弹速 ×1.8；释放后下一次技能释放间隔额外 ×0.3（-70%）
+  //         弹速 ×1.8；释放后下一次技能释放间隔额外 ×0.6（-40%，2026-10-13 用户定稿原 ×0.3/-70%）
   //   技能4 蛇形雷条：能量球沿"先左后右、越摆越宽"的蛇形轨迹连续快速发射雷电长条弹；
   //         四喷口雷环始终释放（依次浮现，停留 1s 后爆开）；<70% 强化：增至 6 圈——随机两喷口生成第二次
   //   技能5 雷霆打击：周身雷电环演出，下方 30% 区域随机 5 处依次雷击（40 伤害，雷电积聚预警 1.2s，
@@ -1137,7 +1137,7 @@
           fired: false, second: false,
           secondAt: stormTier() ? 0.15 + rand(STORM2_SHIP.s3.secondMin, STORM2_SHIP.s3.secondMax) : Infinity,
           spMul };
-        // 释放后下一次技能释放间隔修正：具象/虚象 ×0.3（-70%）；真我&诗篇改为 ×1.3（+30%）
+        // 释放后下一次技能释放间隔修正：具象/虚象 ×0.6（-40%，2026-10-13 用户定稿原 ×0.3/-70%）；真我&诗篇改为 ×1.3（+30%）
         e.skillCd *= stormTier() ? STORM2_SHIP.s3.afterCdMul : STORM2.s3CdMul;
         break;
       case 3: { // 技能4：能量球连射雷电长条弹（40~70 发、间隔 0.08s；70% 血以下持续 +50%）——瞄准点按蛇形曲线预采样
@@ -1179,7 +1179,7 @@
         // 光束存于 e.s6Beams（BOSS 实体级）：技能本体按 storm2S6Dur() 收束（具象/真我 4.6s / 诗篇 3.2s），飞行中的光束独立存活至飞完/被盾吃完
         e.s6Beams = [];
         e.skill = { id: 5, t: 0, dur: storm2S6Dur(), armFired: false, pointsAt: false, ptT: 0, shot: 0, targets: null, spMul };
-        e.skillCd *= STORM2.s6CdMul;   // 释放后下一次技能释放间隔 -50%
+        e.skillCd *= STORM2.s6CdMul;   // 释放后下一次技能释放间隔 -40%（2026-10-13 用户定稿原 -50%）
         // 真我&诗篇（stormTier，2026-10-12 用户定稿诗篇沿用）：释放瞬间四个雷电喷口处各触发一次雷霆打击——无预警、伤害减半、雷环子弹数减半
         if (stormTier()) {
           for (let i = 0; i < STORM2_SHIP.s6.instantStrikes; i++) {
@@ -1700,8 +1700,8 @@
   // 2026-10-03 用户定稿：由 1→2→3→4→5 固定轮换改为随机）：
   //   技能1 四管炮幕：持续 s1.dur，每 s1.shotIv 四门前炮（cannonXs 槽位）同时齐射各 1 发（管间角差 + 奇偶轮交替偏角，
   //   对齐机制图鉴 t4DrawQuadCannon 演示）；
-  //   技能2 黑暗涟漪：从本体中心扩散 s2.rings 道环形弹幕（环间隔 ringGap、每环每弹角度完全随机——
-  //   2026-10-12 用户定稿，弹速逐环递增且末环显著加快）；
+  //   技能2 黑暗涟漪：从本体中心扩散 s2.rings 道环形弹幕（环间隔 ringGap、每环角度均匀分布 + 随机起始相位——
+  //   2026-10-13 用户定稿回调「完全随机」，弹速逐环递增且末环显著加快）；
   //   技能3 巨大蛋挞：向前方（玩家方向）直射一枚不停旋转的巨大蛋挞弹（判定半径 = 焦香火环 JIAOXIANG.auraR、
   //   弹速慢、单发即结束；tartSpin 相位自旋渲染）。
   // 连携召唤：血量 80/60/40/20% 阈值各召唤一名精英（前两名夏勇/朴学峰组内随机、后两名韩希先/辛国栋组内随机，2026-10-03 五轮定稿；
@@ -1947,7 +1947,8 @@
     } else if (s.id === 1) {
       // 技能2 黑暗涟漪：rings 道环形弹幕，到点逐环释放（环心 = 本体中心，末环弹速显著增加）；
       // 每环随机减速（2026-10-03 用户定稿）：减速度 = 该环初速 × rand(0~30%)/s，同环一致、环间不同（decay 通道见 08-entities）；
-      // 每环射击角度完全随机（2026-10-12 用户定稿）：每弹独立 rand(0~2π)，不再 360° 均分 + 环间错相位（随机自然聚簇/留隙）
+      // 每环射击角度均匀分布（2026-10-13 用户定稿，回调 10-12「完全随机」——自然聚簇/留隙观感不佳）：
+      //   环内 360° 均分（相邻弹夹角恒 2π/perRing），每环随机起始相位（环间相位随机、不重排弹序）
       const c = DARKHAND.s2;
       // 每环弹数按难度（2026-10-04 用户定稿）：虚象/具象 16 / 真我 18 / 诗篇 20
       const perRing = isPoem() ? c.poemPerRing : (isRealme() ? c.realmePerRing : c.perRing);
@@ -1955,8 +1956,9 @@
         const ring = s.ringsFired++;
         const spd = (c.bulletSpeed + ring * c.ringSpeedStep) * sm;   // 连中 ×1.4（衰减同步按提速后初速取比例，减速比值不变）
         const decayAbs = spd * c.speedDecayMax * Math.random();
+        const a0 = Math.random() * Math.PI * 2;   // 本环随机起始相位（均匀分布下相位随机即可，无需环间错相簿记）
         for (let k = 0; k < perRing; k++) {
-          pushBossBullet(e.x, e.y, Math.random() * Math.PI * 2, spd, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
+          pushBossBullet(e.x, e.y, a0 + k * (Math.PI * 2 / perRing), spd, { r: c.bulletR, dmg: isPoem() ? c.poemDmg : c.dmg, color: '#ff4632', dhDark: true, decay: decayAbs });
         }
         spawnParticles(e.x, e.y, '#ff4632', 10, 200);
       }

@@ -1,7 +1,7 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(19 名)
+  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(22 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
@@ -77,6 +77,7 @@
   // 原先不随重开清空——上一局的排队机会在新局开头到点补放、破片复用上局最后一批停留高度
   function resetSpawnWaveState() {
     delayedSpawns.length = 0;
+    poemRearQueue.length = 0;
     popianBatch.t = -9; popianBatch.tpY = 0;
   }
   function updateDelayedSpawns(dt) {
@@ -84,6 +85,26 @@
       const q = delayedSpawns[i];
       q.t -= dt;
       if (q.t <= 0) { delayedSpawns.splice(i, 1); q.fn(); }
+    }
+  }
+
+  // ---------- 诗篇后波延迟落地队列（2026-10-13 用户定稿：前波与后波之间 0.5~1s 随机刷新间隔） ----------
+  // 独立于 delayedSpawns——spawnDesignedWave 每波开局清空延迟出场队列，后波若借用会在下一波提前刷出时被误清；
+  // 条目 { f, plan, t } 到点经 spawnPoemExtraWave 落地（不推进 waveSeq / poemWaveIdx——后波不占独立波次名额，
+  // 打当前波 waveTag），由 14-main 每帧无条件推进、spawnPoemMainWave 开头 flush 兜底（绝不跨波）
+  const poemRearQueue = [];
+  function queuePoemRearCard(entry, delay) { poemRearQueue.push({ f: entry.f, plan: entry.plan, t: delay }); }
+  function updatePoemRearCards(dt) {
+    for (let i = poemRearQueue.length - 1; i >= 0; i--) {
+      const it = poemRearQueue[i];
+      it.t -= dt;
+      if (it.t <= 0) { poemRearQueue.splice(i, 1); spawnPoemExtraWave([{ f: it.f, plan: it.plan }]); }
+    }
+  }
+  function flushPoemRearCards() {
+    while (poemRearQueue.length) {
+      const it = poemRearQueue.shift();
+      spawnPoemExtraWave([{ f: it.f, plan: it.plan }]);
     }
   }
 
@@ -98,8 +119,11 @@
   function makeEnemy(type, x, y, opts = {}) {
     const cfg = ENEMY_TYPES[type];
     const diff = diffMods();
-    // 血量难度倍率（虚象：所有非BOSS怪物血量 -20%）；不再有关卡血量加成
-    const hpMul = diff.enemyHpMul != null ? diff.enemyHpMul : 1;
+    // 血量难度倍率（虚象：所有非BOSS怪物血量 -20%）× 关卡血量修正（2026-10-13 用户定稿：
+    // Lv1 刷新敌人 ×0.70、Lv2 ×0.85、Lv3+ 恒 1——诗篇波 N = 等级 N 同口径，波生成期等级由
+    // 14-main 诗篇分支预同步；挑战局多走 TEST_HP 覆盖、swarm 锁 Lv20 不受影响）
+    const lvHpMul = levelFlow.level === 1 ? 0.70 : levelFlow.level === 2 ? 0.85 : 1;
+    const hpMul = (diff.enemyHpMul != null ? diff.enemyHpMul : 1) * lvHpMul;
     // 首次攻击延迟难度加成（虚象：所有非BOSS怪物初始攻击间隔 +0~0.4s，2026-10-12 用户定稿，见 firstFireAdd）
     const ffa = firstFireAdd();
     // 2/3/4 类选取变体（不同颜色 + 不同技能）；opts.variant 可强制指定（图鉴挑战用）
@@ -250,7 +274,7 @@
     // 诗篇难度：全敌人血量按 POEM_HP 表绝对值覆盖（不经 enemyHpMul 乘区；4S 精英由黑暗之手血量派生、BOSS 走 hpByDiff.poem，不在此处理）
     if (isPoem()) {
       const ph = poemHpOf(type, variant ? variant.id : null, opts.behavior);
-      if (ph != null) e.hp = e.maxHp = ph;
+      if (ph != null) e.hp = e.maxHp = ph * lvHpMul;   // ×关卡血量修正（Lv1/2 波同享 -30%/-15%，2026-10-13 用户定稿）
     }
     // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
     // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）；置于诗篇血量之后以保证测试血量优先；
@@ -291,6 +315,21 @@
     return { vx: vx / l * spd, vy: vy / l * spd };
   }
 
+  // 侧翼1类生成路径约束（2026-10-13 用户定稿）：编队「生成时」即保证整条直线路径（含队形偏移）不深于 75% 屏高——
+  // 按队内每个生成点反解方向基值 vy 的上限并取最小（vx 不变、整队共用同一组方向基值 → 队形/平行关系保持；
+  // sideVelocity 归一后速率仍恒 150/200，无速度切换；压平后横速分量增大、横穿时间缩短，约束自动留有余量）。
+  // 数学：直线下沉量 = vy×dx/vx（与速度归一无关，仅方向基值比例决定）→ 约束 vy ≤ (地板y − 生成y)×|vx|/dx；
+  // pts = [{ x, y, fromLeft }]（屏幕坐标生成点集合；出界裕度统一按 ±36 计——斜扫/紫自爆流的 ±30 由此略偏保守）
+  function sideFloorClampVy(vx, vy, pts) {
+    const FLOOR = CANVAS_H * 0.75;
+    let cap = vy;
+    for (const p of pts) {
+      const dx = p.fromLeft ? CANVAS_W + 36 - p.x : p.x + 36;
+      cap = Math.min(cap, (FLOOR - p.y) * Math.abs(vx) / Math.max(1, dx));
+    }
+    return Math.max(0, Math.min(vy, cap));
+  }
+
   // 1类单位统一入口：kind 由 pickSideSpawn 按权重抽取（白影/增生/黄芒/紫电/橙旋/赤月），调用方也可强制指定（紫自爆流）；
   // fast：顶部入场 / BOSS 后固定首波等特殊波次传 true（BOSS 战期间的强制快速由 sideVelocity 内部判定）
   function spawnSideUnit(x, y, vel, kind, fireTimer, fast) {
@@ -308,11 +347,11 @@
     const dirX = fromLeft ? 1 : -1;
     const n = 3 + Math.floor(Math.random() * 3);    // 3~5 架（最少三个一组）
     const vx = dirX * rand(90, 120);                // 方向基值：横快纵慢的斜插角
-    const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;   // 屏幕侧外入场
     const baseY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);   // 入场基准高度：场地中部略偏上（两侧窜出）
     const formation = Math.floor(Math.random() * 4); // 0 纵队 / 1 斜线 / 2 横排梯队 / 3 V 字
     const mid = (n - 1) / 2;
+    const pts = [];                                 // 生成点先行收集（见 sideFloorClampVy：生成时约束整条直线路径不深于 75% 屏高）
     for (let k = 0; k < n; k++) {
       let x, y;
       if (formation === 0) {
@@ -336,9 +375,11 @@
         x = edgeX - dirX * d * 46;           // 沿行进反方向后掠
         y = baseY + sgn * d * 38;            // 两臂上下张开，形成 V/箭头
       }
-      const r = Math.random();
-      const behavior = pickSideSpawn();
-      spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6));
+      pts.push({ x, y, fromLeft });
+    }
+    const vy = sideFloorClampVy(vx, rand(54, 84), pts);   // 方向基值：纵快横慢的斜插下沉分量（生成时已按 75% 屏高压平）
+    for (const p of pts) {
+      spawnSideUnit(p.x, p.y, { vx, vy }, pickSideSpawn(), rand(0.8, 1.6));
     }
   }
   
@@ -399,16 +440,15 @@
     for (const fromLeft of [true, false]) {
       const dirX = fromLeft ? 1 : -1;                  // 横向穿越方向
       const vx = dirX * rand(99, 117);                  // 方向基值：从一边扫向另一边（慢速 150 归一）
-      const vy = rand(54, 69);                           // 同时下沉
       const edgeX = fromLeft ? -30 : CANVAS_W + 30;    // 屏幕侧外入场
+      // 生成点先行收集：生成时按队内各生成点约束整条直线路径不深于 75% 屏高（见 sideFloorClampVy）
+      const pts = [];
       for (let k = 0; k < count; k++) {
-        const r = Math.random();
-        const behavior = pickSideSpawn();
         // 后方跟随：队尾更靠外、更高，形成长队斜线
-        const x = edgeX - dirX * k * gap;
-        const y = startY - k * gap * 0.55;
-        spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6));
+        pts.push({ x: edgeX - dirX * k * gap, y: startY - k * gap * 0.55, fromLeft });
       }
+      const vy = sideFloorClampVy(vx, rand(54, 69), pts);   // 同时下沉（生成时已按 75% 屏高压平）
+      for (const p of pts) spawnSideUnit(p.x, p.y, { vx, vy }, pickSideSpawn(), rand(0.8, 1.6));
     }
   }
 
@@ -422,14 +462,17 @@
     for (const fromLeft of [true, false]) {
       const dirX = fromLeft ? 1 : -1;
       const vx = dirX * rand(99, 117);                 // 与侧翼斜扫同向（慢速 150 归一）
-      const vy = rand(54, 69);
       const edgeX = fromLeft ? -30 : CANVAS_W + 30;
+      // 生成点先行收集：生成时按队内各生成点约束整条直线路径不深于 75% 屏高（见 sideFloorClampVy）
+      const pts = [];
       for (let k = 0; k < count; k++) {
         // 后方跟随：队尾更靠外、更高，形成长队斜线依次入场
-        const x = edgeX - dirX * k * gap;
-        const y = startY - k * gap * 0.55;
+        pts.push({ x: edgeX - dirX * k * gap, y: startY - k * gap * 0.55, fromLeft });
+      }
+      const vy = sideFloorClampVy(vx, rand(54, 69), pts);   // 同时下沉（生成时已按 75% 屏高压平）
+      for (const p of pts) {
         const white = Math.random() < whiteRatio;      // 白影 1类：无攻击、无亡语
-        spawnSideUnit(x, y, { vx, vy }, white ? 'pass' : 'kamikaze', rand(0.8, 1.6));
+        spawnSideUnit(p.x, p.y, { vx, vy }, white ? 'pass' : 'kamikaze', rand(0.8, 1.6));
       }
     }
   }
@@ -551,17 +594,16 @@
     const gap = 54;                                    // 队列间距（沿行进反方向排开）
     const dirX = fromLeft ? 1 : -1;
     const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（慢速 150 归一）
-    const vy = rand(54, 84);
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场
     const startY = rand(CANVAS_H * 0.35, CANVAS_H * 0.45);  // 入场高度：场地中部略偏上（两侧窜出）
+    // 生成点先行收集：生成时按队内各生成点约束整条直线路径不深于 75% 屏高（见 sideFloorClampVy）
+    const pts = [];
     for (let k = 0; k < count; k++) {
-      const r = Math.random();
-      const behavior = pickSideSpawn();
       // 排成长队：队尾依次靠外、靠上，形成一列斜线
-      const x = edgeX - dirX * k * gap;
-      const y = startY - k * gap * 0.5;
-      spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6));
+      pts.push({ x: edgeX - dirX * k * gap, y: startY - k * gap * 0.5, fromLeft });
     }
+    const vy = sideFloorClampVy(vx, rand(54, 84), pts);   // 同时下沉（生成时已按 75% 屏高压平）
+    for (const p of pts) spawnSideUnit(p.x, p.y, { vx, vy }, pickSideSpawn(), rand(0.8, 1.6));
   }
 
   // BOSS 战期间定时强制的 1类波次（小组 / 长队各 50%，全难度）——不走压力系统，场上存怪不影响刷新；
@@ -584,19 +626,27 @@
     const dirX = fromLeft ? 1 : -1;
     const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场（三条共用同一侧）
     const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（快速 200 归一），三条共用
-    const vy = rand(54, 84);
     let nextY = CANVAS_H * 0.30 + rand(-8, 8);         // 首波入场高度基准 + 抖动
+    const lines = [];
+    const pts = [];                                    // 全部生成点先行收集：三条共用 vy，生成时统一按 75% 屏高压平（见 sideFloorClampVy）
     for (let w = 0; w < 3; w++) {
       const startY = nextY;
       nextY += rand(50, 100);                          // 与相邻波的纵向间距：随机 50~100px（用户定稿）
       const count = 5 + Math.floor(Math.random() * 3);   // 5~7：长队
       const gap = 54;                                    // 队列间距（沿行进反方向排开）
+      const row = [];
       for (let k = 0; k < count; k++) {
-        const behavior = pickSideSpawn(['kamikaze', 'swirl']);   // 固定首波无紫电/橙旋
         // 排成长队：队尾依次靠外、靠上，形成一列斜线
-        const x = edgeX - dirX * k * gap;
-        const y = startY - k * gap * 0.5;
-        spawnSideUnit(x, y, { vx, vy }, behavior, rand(0.8, 1.6), true);
+        const p = { x: edgeX - dirX * k * gap, y: startY - k * gap * 0.5, fromLeft };
+        row.push(p);
+        pts.push(p);
+      }
+      lines.push(row);
+    }
+    const vy = sideFloorClampVy(vx, rand(54, 84), pts);   // 同时下沉（生成时已按 75% 屏高压平；三条仍共用 → 平行、间距恒定不变）
+    for (const row of lines) {
+      for (const p of row) {
+        spawnSideUnit(p.x, p.y, { vx, vy }, pickSideSpawn(['kamikaze', 'swirl']), rand(0.8, 1.6), true);   // 固定首波无紫电/橙旋
         enemies[enemies.length - 1].postBossWave = true;   // 标记 BOSS 后固定首波：水晶必掉 + 掉量翻倍
       }
     }
@@ -1261,8 +1311,9 @@
     return e;
   }
 
-  // 寒霜光圈减速判定：玩家核心（判定点）位于任一已显现的寒霜光圈内时，冷却流速按入场方式分流（顶部 ×0.65 / 侧翼 ×0.75）
-  // 虚幻寒冷区域（对玩家生效的）：圈内冷却流速 ×frostFireSlow（同寒霜顶部档）；炽心装甲：免疫寒霜减速（寒冷区域同款豁免）
+  // 寒霜光圈减速判定：玩家核心（判定点）位于任一已显现的寒霜光圈内时，冷却流速 ×0.65（-35%——
+  // 2026-10-13 用户定稿不再分入场侧，侧翼与顶部统一）；虚幻寒冷区域（对玩家生效的）：
+  // 圈内冷却流速 ×frostFireSlow（同寒霜档）；炽心装甲：免疫寒霜减速（寒冷区域同款豁免）
   function playerFrostSlowMul() {
     if (currentArmor.id === 'chixin') return 1;
     for (const e of enemies) {
@@ -1278,8 +1329,8 @@
     return 1;
   }
 
-  // 寒霜光圈移动减速：玩家核心位于光圈内时按入场方式分流（顶部 ×0.65 / 侧翼 ×0.75）
-  // 虚幻寒冷区域（对玩家生效的）：圈内移速 ×frostMoveSlow（同寒霜顶部档）；炽心装甲：免疫寒霜减速（寒冷区域同款豁免）
+  // 寒霜光圈移动减速：玩家核心位于光圈内时移速 ×0.65（-35%——2026-10-13 用户定稿不再分入场侧）
+  // 虚幻寒冷区域（对玩家生效的）：圈内移速 ×frostMoveSlow（同寒霜档）；炽心装甲：免疫寒霜减速（寒冷区域同款豁免）
   function playerFrostMoveMul() {
     if (currentArmor.id === 'chixin') return 1;
     for (const e of enemies) {
@@ -1878,7 +1929,7 @@
     spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
     capitalMaxWait, SPECIAL3_POOL, special3Weight, spawnWave, WAVE_FORMATIONS, pickFormation, spawnDesignedWave, comboWaveChance,
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
-    spawnPoemExtraWave,
+    spawnPoemExtraWave, queuePoemRearCard, updatePoemRearCards, flushPoemRearCards,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
