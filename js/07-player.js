@@ -1236,7 +1236,7 @@
     // 辛国栋之怒火环死亡不消失（2026-10-12 用户定稿：灼烧火环跨命保留，死亡期间随 updatePlayer 冻结、重生后继续转；仅重开/金陨口径见 12-ui resetGame 与金陨段）
   }
 
-  // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 3 次掉 1 级火力
+  // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 2 次掉 1 级火力
   // 虚象：受击不再降低武器等级——整个累计机制直接关闭
   function accumulateWeaponDropHit() {
     if (diffMods().noWeaponDropOnHit) return;

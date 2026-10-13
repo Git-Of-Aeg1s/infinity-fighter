@@ -268,7 +268,7 @@
     respawnTimer: 0,   // 掉命后重生倒计时
     enterT: 0,         // 主菜单开局飞入剩余时长（>0 时操控锁定、y 由飞入缓动驱动；resetGame 自主菜单开局置位）
     enterFromY: 0,     // 开局飞入出发 y（主菜单演示屏站位）
-    hitCount: 0,       // 受击计数：统一累计 3 次掉一层火力（导弹命中不计入）
+    hitCount: 0,       // 受击计数：统一累计 2 次掉一层火力（导弹命中不计入）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
     slashCd: 0,        // 距下次斩击的冷却（s）

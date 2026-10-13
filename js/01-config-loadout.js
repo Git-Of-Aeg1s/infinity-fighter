@@ -682,7 +682,7 @@
   const MAX_BOMBS = 3;             // 高能爆弹代码基准上限（实际各难度经 mods.bombCap 定值：虚象/具象/真我 2、诗篇 1——2026-10-12 用户定稿；右上角以图标数量展示）
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害（真实伤害：无视御4防御光环等一切减伤）
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
-  const WEAPON_DROP_HITS = 3;         // 统一：累计受击 3 次掉 1 级火力（全场景同规则；导弹命中不计入）
+  const WEAPON_DROP_HITS = 2;         // 统一：累计受击 2 次掉 1 级火力（全场景同规则；导弹命中不计入；2026-10-13 用户定稿 3→2）
 
   export {
     PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
