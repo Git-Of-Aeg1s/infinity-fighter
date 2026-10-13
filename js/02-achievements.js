@@ -226,10 +226,11 @@
   function achvNoteArmorSkillUsed() { achv.armorSkillUsed = true; }
   function achvNotePilotSkillUsed() { achv.pilotSkillUsed = true; }
 
-  // 忘了：装备了带主动技能的护甲（ARMOR_SKILLS 注册）或驾驶员（天秀 / 迪奥 / 萧杨 / 叮咚鸡——四驾驶员均有 Q 主动技能），
-  // 整局从未使用过任何技能（2026-10-13 用户定稿补齐萧杨；叮咚鸡同批次一并纳入——判定语义 = 「带有技能的驾驶员」）
+  // 忘了：装备了带主动技能的护甲（ARMOR_SKILLS 注册）或驾驶员（天秀 / 迪奥 / 萧杨——三者均有 Q 主动技能），
+  // 整局从未使用过任何技能（2026-10-13 用户定稿补齐萧杨；叮咚鸡同批次曾一并纳入，同日用户回调移出——
+  // 「忘了」仅覆盖带技能护甲 + 上述三驾驶员，叮咚鸡不绑定本成就）
   function achvCheckForgotSkill() {
-    const hasSkillEquip = !!ARMOR_SKILLS[currentArmor.id] || hasPilot('tianxiu') || hasPilot('diao') || hasPilot('xiaoyang') || hasPilot('dagou');
+    const hasSkillEquip = !!ARMOR_SKILLS[currentArmor.id] || hasPilot('tianxiu') || hasPilot('diao') || hasPilot('xiaoyang');
     if (hasSkillEquip && !achv.armorSkillUsed && !achv.pilotSkillUsed) unlockAchievement('forgotSkill');
   }
 
