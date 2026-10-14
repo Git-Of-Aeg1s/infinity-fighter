@@ -12,7 +12,7 @@
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, missiles, pillarStrikes, player, rand, shake, spawnBlastRing, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
-  import { enemyFrostZoneMoveMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
+  import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
   import { bulwarkActive, beamClipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
@@ -252,7 +252,7 @@
     if (e.skill) runStormSkill(e, e.skill, dt);
     else {
       e.skillCd -= dt;
-      if (e.skillCd <= 0) startStormSkill(e);
+      if (e.skillCd <= 0 && state.gachaHaltT <= 0) startStormSkill(e);   // 抽卡停火窗口不开新技能
     }
 
     // 血量首次低于 70%：掉落一个暴走道具（一次性）
@@ -311,12 +311,13 @@
     if (Math.random() < p) pushStormPillar();
   }
 
-  // 技能4（真我/诗篇）：随机生成 2~3 个改变旋转方向的时刻——任意相邻两次间隔 ≥1s，且首次改变不晚于前 5s
-  // durOverride：诗篇持续 7.5s 时以覆盖值参与采样（改变时刻不晚于实际持续时长）
+  // 技能4（真我/诗篇）：生成改变旋转方向的时刻——真我必定 2 次 / 诗篇必定 3 次（2026-10-14 用户定稿，原随机 2~3 次），
+  // 任意相邻两次间隔 ≥1s，且首次改变不晚于前 5s
+  // durOverride：诗篇（持续时长与诗篇覆盖键一致参与采样——改变时刻不晚于实际持续时长）
   function stormS4ChangeTimes(durOverride) {
     const cfg = STORM_SHIP.s4;
     const dur = durOverride ?? cfg.dur;
-    const count = cfg.changesMin + Math.floor(Math.random() * (cfg.changesMax - cfg.changesMin + 1));
+    const count = durOverride != null ? cfg.changesPoem : cfg.changes;
     for (let tries = 0; tries < 50; tries++) {
       const ts = [];
       for (let i = 0; i < count; i++) ts.push(rand(cfg.changeGap + 0.2, dur - 0.4));
@@ -407,10 +408,9 @@
       case 3:
         // 技能4：漩涡状弹幕（4 条臂），具象：前半程逆时针旋转、后半程顺时针旋转
         // 初始朝向完全随机（0~2π 任意角）：首轮子弹可能是「+」、「×」或任意中间朝向
-        // 真我：总时长 9s；初始方向顺/逆时针随机，期间随机改变 2~3 次（间隔 ≥1s，首次不晚于前 5s）；
-        //   旋转速度 +40%（20%+20% 加算）、风弹射速 +60%（30%+30% 加算）、风弹长度 +30%；
-        //   持续期间自身获得 25% 减伤（见 08-entities enemyDamageMul）
-        // 诗篇：沿用真我结构，持续时长覆盖为 7.5s（改变方向时刻按 7.5s 采样）
+        // 真我：总时长 7s；初始方向顺/逆时针随机，期间必定改变 2 次方向（间隔 ≥1s，首次不晚于前 5s）；
+        //   旋转速度 +40%（20%+20% 加算）、风弹射速 +60%（30%+30% 加算）、风弹长度 +30%
+        // 诗篇：沿用真我结构，持续时长同为 7s，必定改变 3 次方向
         e.skill = stormTier()
           ? { id: 3, t: 0, dur: isPoem() ? STORM_SHIP.s4.durPoem : STORM_SHIP.s4.dur, fire: 0, armAng: Math.random() * Math.PI * 2,
               dir: Math.random() < 0.5 ? 1 : -1, changes: stormS4ChangeTimes(isPoem() ? STORM_SHIP.s4.durPoem : null), ci: 0, spMul }
@@ -1069,7 +1069,7 @@
     if (e.skill) runStorm2Skill(e, e.skill, dt);
     else {
       e.skillCd -= dt;   // 常速流逝（原「玩家暴走间隔减半」机制 2026-10-10 用户定稿删除）
-      if (e.skillCd <= 0) startStorm2Skill(e);
+      if (e.skillCd <= 0 && state.gachaHaltT <= 0) startStorm2Skill(e);   // 抽卡停火窗口不开新技能
     }
     if (e.s6Beams && e.s6Beams.length) updateS6Beams(e, dt);   // 技能6 重现光束（技能收束后继续存活）
 
@@ -1665,7 +1665,7 @@
   // 转向扫动：期望速度 = 段速 × mul，分轴逼近航点——速度跨段延续、转弯走弧线、抵点不刹停；
   // wpHold（技能6 中线驻留）时靠分轴制动上限自然减速、静停于航点
   function bossMoveUpdate(e, M, dt, mul) {
-    mul *= enemyFrostZoneMoveMul(e);   // 虚幻寒冷区域（对敌生效）：BOSS 移速减速，效果减半（UNREAL.bossResist，见 04-spawn）
+    mul *= enemyFrostZoneMoveMul(e) * gachaBottomSlowMul(e, dt);   // 虚幻寒冷区域（对敌生效）：BOSS 移速减速，效果减半（UNREAL.bossResist）；萧杨抽卡停火窗口：50% 线下按深度平滑减速（04-spawn）
     if (!e.wp) bossPickWaypoint(e, M);
     const dist = Math.hypot(e.wp.tx - e.x, e.wp.ty - e.y);
     if (e.wpHold && dist < 0.5) {   // 驻留：已抵达航点（中线），静停等发射
@@ -1842,7 +1842,7 @@
     if (e.skill) runDarkhandSkill(e, dt);
     else {
       e.skillCd -= dt;
-      if (e.skillCd <= 0) startDarkhandSkill(e);
+      if (e.skillCd <= 0 && state.gachaHaltT <= 0) startDarkhandSkill(e);   // 抽卡停火窗口不开新技能
     }
   }
 
@@ -1861,7 +1861,8 @@
     if (!e.skillUseCount) e.skillUseCount = {};
     const BONUS = { xiayong: 5, puxuefeng: 6, xinguodong: 7, hanxixian: 8 };
     for (const k in BONUS) {
-      if (e.dhBonusSkills[k] && e.skillWeights[BONUS[k]] == null) e.skillWeights[BONUS[k]] = 1;
+      // 黑暗之手获得的精英技能：随机到的权重翻倍（2026-10-14 用户定稿）——额外技能入池初始权重 2（基础技能 1）
+      if (e.dhBonusSkills[k] && e.skillWeights[BONUS[k]] == null) e.skillWeights[BONUS[k]] = 2;
     }
     let pool = [0, 1, 2, 3, 4];
     for (const k in BONUS) if (e.dhBonusSkills[k]) pool.push(BONUS[k]);
@@ -2256,8 +2257,10 @@
       // 扇形轻追踪导弹批次（全同辛国栋连发导弹批次公式——base 竖直向下、外侧弹预压转向弧线收回）
       const fireBatch = (oy) => {
         const vn = isPoem() ? xc.poemVolleyN : xc.volleyN;
-        const mSpd = ((isPoem() || isRealme()) ? xc.missileSpeed : xc.illusionMissileSpeed) * sm;   // 连中 ×1.4（转向弧线参数不变，弧线收紧自然适配）
-        const mTurn = (isPoem() || isRealme()) ? xc.missileTurn : xc.illusionMissileTurn;
+        // 辛国栋导弹弧线参数全难度统一（2026-10-14 用户定稿：原虚象/具象专属的减速修正转正——全难度恒 200/0.4，
+        // 与精英本体 06-enemy 消费点同口径）
+        const mSpd = xc.missileSpeed * sm;   // 连中 ×1.4（转向弧线参数不变，弧线收紧自然适配）
+        const mTurn = xc.missileTurn;
         const stepA = xc.volleySpreadDeg / (vn - 1) * Math.PI / 180;
         for (let i = 0; i < vn; i++) {
           const off = i - (vn - 1) / 2;

@@ -183,6 +183,45 @@ canvas#game {
   text-shadow: 0 0 8px rgba(255, 158, 210, 0.45);
 }
 
+/* ── 原石计数表满 16 颗（萧杨抽卡就绪，2026-10-14 用户定稿）──────────────
+   边框切换为特殊驾驶员卡片同款样式：青粉流动渐变边框 + 两道流动白芒——
+   复用 .pilot-diamond.special-pilot 的 pilotBorderFlow / glintSpin 动画与 @property --glintAngle；
+   类切换由 12-ui updateHUD 驱动（state.gachaReady）——释放 Q 消耗充能后同步还原 */
+.stone-panel.ready {
+  position: relative;   /* ::after 白芒定位基准 */
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(18, 16, 12, 0.92), rgba(18, 16, 12, 0.92)) padding-box,
+    linear-gradient(135deg, #39C5BB, #FFC0CB, #39C5BB, #FFC0CB, #39C5BB) border-box;
+  background-size: auto, 300% 300%;
+  animation: pilotBorderFlow 5s ease-in-out infinite;
+  box-shadow: none;
+}
+
+.stone-panel.ready::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 6px;
+  padding: 1.5px;
+  background: conic-gradient(from var(--glintAngle, 0deg),
+    rgba(255, 255, 255, 0.95) 0deg,
+    rgba(255, 255, 255, 0.95) 8deg,
+    rgba(255, 255, 255, 0) 12deg,
+    rgba(255, 255, 255, 0) 176deg,
+    rgba(255, 255, 255, 0.95) 180deg,
+    rgba(255, 255, 255, 0.95) 188deg,
+    rgba(255, 255, 255, 0) 192deg,
+    rgba(255, 255, 255, 0) 356deg,
+    rgba(255, 255, 255, 0.95) 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: glintSpin 3.2s linear infinite;
+}
+
 /* 大无垠之王：BOSS 战累积增伤读数（金色 = PILOTS.king.color；hud-bl 列内位于量表之下 / 血条之上）
    显示 / 隐藏由 12-ui stepKingBonusFade 驱动：透明度渐显渐隐，hidden 仅在渐隐完成后挂上回收布局 */
 .king-bonus {

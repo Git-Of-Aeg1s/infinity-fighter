@@ -10,8 +10,8 @@
   import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, ELITES, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
   import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
-  import { CHAOS_SMALL_DMG_MUL, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
-  import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, enemyOnScreen, crystals, eBullets, enemies, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { CHAOS_SMALL_DMG_MUL, CRYSTAL_ABSORB_DELAY, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
+  import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy } from './06-enemy.js';
   import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain } from './07-player.js';
@@ -49,10 +49,7 @@
     if (e.type === 'boss' && player.weapon >= 5 && e.bossId === 'storm2') {
       mul *= (1 - STORM2.berserkDR);
     }
-    // 暴风之眼（真我/诗篇）：技能4 漩涡弹幕持续期间自身减伤 25%（主武器/僚机/斩击均生效；高能爆弹真实伤害不经此处）
-    if (e.type === 'boss' && e.bossId === 'storm' && (isRealme() || isPoem()) && e.skill && e.skill.id === 3) {
-      mul *= (1 - STORM_SHIP.s4.dr);
-    }
+    // 暴风之眼技能4 漩涡弹幕的持续期间减伤 25% 已删除（2026-10-14 用户定稿：释放漩涡弹幕时不再拥有减伤）
     // 焦香螺旋桨：登场 2s 内受到的伤害 -30%（入场保护，主武器与僚机弹幕均生效）
     if (e.type === 'jiaoxiang' && (e.auraT || 0) < JIAOXIANG.entryDRT) mul *= (1 - JIAOXIANG.entryDR);
     // 寒霜：入场未减速阶段（距落点 ≥90px、未开始减速）受到的伤害 -20%（主武器与僚机弹幕均生效）
@@ -366,7 +363,14 @@
         // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.7（弹速 -30%，2026-10-10 用户定稿由 -60% 下调；
         // 力场内敌机射速/移速仍维持 -60%，见 02-core enemyFieldFireMul / 04-spawn enemyFrostZoneMoveMul 同口径分支）
         const ffd = state.frostField;
-        const fm = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.7 : 1;
+        const fmField = (ffd && Math.hypot(b.x - ffd.x, b.y - ffd.y) <= ffd.r) ? 0.7 : 1;
+        // 虚幻殉爆区域（frostZones，affectsEnemies = 殉爆 death 区 + 诗篇投弹双效区）：弹体【位于区域内】时位移流速 ×0.65
+        //（弹速 -35%，2026-10-14 用户定稿：对区域内敌方子弹减速——与寒霜侧翼 -35% 同档；多重叠取最强，同值不叠加）
+        let fmZone = 1;
+        for (const z of frostZones) {
+          if (z.affectsEnemies && Math.hypot(b.x - z.x, b.y - z.y) <= z.r) { fmZone = 0.65; break; }
+        }
+        const fm = fmField * fmZone;
         b.x += b.vx * fm * dt; b.y += b.vy * fm * dt;
       }
       // 反弹光束（技能3）/ 技能6 暗黑子弹：触左右边界反弹，实际弹道呈"<"形折线；
@@ -690,7 +694,7 @@
       // 七日澜心结晶护盾同款——环绕 6s（ARMOR_SKILLS.lanxin.dur，与量子护盾同时长），消失时清弹
       // 许凯狗冲刺期间不读条：仅吸收，护盾效果跳过（与量子护盾同口径）
       if (state.pilotDashT <= 0) {
-        player.crystalShield = Math.max(player.crystalShield || 0, crystalShieldDur());   // 结晶护盾时长（炼金璃 6s / 基准 4.8s，01-config 单一入口）
+        player.crystalShield = Math.max(player.crystalShield || 0, crystalShieldDur());   // 结晶护盾时长（炼金璃 5.2s / 基准 4s，01-config 单一入口）
         if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
         spawnParticles(p.x, p.y, '#FFC0CB', 18, 200);
       }
@@ -760,8 +764,10 @@
     for (let i = crystals.length - 1; i >= 0; i--) {
       const c = crystals[i];
       c.t += dt * 4;
+      c.age = (c.age || 0) + dt;   // 出生计时：掉出 CRYSTAL_ABSORB_DELAY(0.1s) 内不可被吸收（2026-10-14 用户定稿）
+      const canAbsorb = c.age >= CRYSTAL_ABSORB_DELAY;
       // 许凯狗冲刺：水晶无视距离立刻被自身吸收（计入得分）；澜心 / 炼金璃等量表冻结不计（见 updatePilotStatus）
-      if (state.pilotDashT > 0 && player.alive) {
+      if (state.pilotDashT > 0 && player.alive && canAbsorb) {
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
         if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
@@ -771,7 +777,10 @@
       }
       // 磁吸：靠近玩家时被吸附（吸附后直奔机身中心判定点）
       // 强制吸收（absorbDelay，警报快速吸收等）：先自由下落一小段，随后无视距离高速飞向战机
-      if (c.absorbDelay != null && c.absorbDelay > 0) {
+      //（两条吸收通道均受 0.1s 吸收延迟门控——出生水晶先自由下坠满延迟再进入吸附/拉取）
+      if (!canAbsorb) {
+        // 出生 0.1s 内：仅自由下坠，不进入任何吸收通道
+      } else if (c.absorbDelay != null && c.absorbDelay > 0) {
         c.absorbDelay -= dt;   // 下坠阶段：保持初始 vx/vy 四散飘落
       } else if (player.alive) {
         const dx = player.x - c.x;
@@ -804,7 +813,7 @@
       if (c.x < c.r) { c.x = c.r; if (c.vx < 0) c.vx = 0; }
       else if (c.x > CANVAS_W - c.r) { c.x = CANVAS_W - c.r; if (c.vx > 0) c.vx = 0; }
       if (c.y > CANVAS_H + 20) { crystals.splice(i, 1); continue; }
-      if (player.alive &&
+      if (canAbsorb && player.alive &&
           Math.abs(c.x - player.x) < player.w / 2 + c.r &&
           Math.abs(c.y - player.y) < player.h / 2 + c.r) {
         state.score += Math.round(c.val * diffMods().scoreMul);

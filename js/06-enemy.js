@@ -12,7 +12,7 @@
   import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul } from './01-config-difficulty.js';
   import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
   import { blBombs, bombDropGate, bossEntranceActive, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
-  import { enemyFrostZoneMoveMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
+  import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnAnvil, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
   import { accumulateWeaponDropHit, applyRewardItem, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, meiNoteKill, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
@@ -37,8 +37,9 @@
         continue;
       }
       // 寒冷区域（虚幻）敌机减速：每帧按出生基准 speedMulBase 重算 speedMul（对敌生效区域内 ×0.65，
-      // BOSS 效果减半；BOSS 移速另经 05-boss bossMoveUpdate 的 mul 挂钩）——多重叠区域取最强减速
-      if (e.speedMulBase != null) e.speedMul = e.speedMulBase * enemyFrostZoneMoveMul(e);
+      // BOSS 效果减半；BOSS 移速另经 05-boss bossMoveUpdate 的 mul 挂钩）——多重叠区域取最强减速；
+      // 萧杨抽卡停火窗口：场地 50% 线下敌机按深度平滑减速（gachaBottomSlowMul，大逼近率无瞬跳）
+      if (e.speedMulBase != null) e.speedMul = e.speedMulBase * enemyFrostZoneMoveMul(e) * gachaBottomSlowMul(e, dt);
       if (e.type === 'boss') {
         updateBoss(e, dt);
         // BOSS 血量阶段掉落判定（每当失去 20% 血量；所有 BOSS 通用，含今后新增，见 05-boss updateBossLootMarks）
@@ -391,10 +392,12 @@
       // 入位/冲锋基准速度逐变体定义（VARIANTS.striker entry/charge，幽暮不适用）；各变体停留规则已统一（无额外修正）
       const holdY = e.holdY != null ? e.holdY : 210;
       const descend = e.entrySpd != null ? e.entrySpd : 140;   // 入位下降速度
-      // 仅剩 2类防御（2026-10-12 用户定稿）：场上除坚垒外无其他存活敌人（濒死/离场者不计）时——
-      // 全体坚垒立刻终止停留（holdTimer 清零转入冲锋分支：vy 自当前值指数平滑加速，无瞬跳）；
-      // 尚未到停留线者计时归零后自然不停线（冲锋分支不吸附 holdY）。挑战模式不生效（保留停留表现供观察）
-      if (!state.challenge && e.holdTimer > 0 && fortressOnlyField(e)) e.holdTimer = 0;
+      // 仅剩 2类防御（2026-10-12 用户定稿；2026-10-14 用户定稿收紧：仅坚垒自身受此机制，其余 2类 变体不提前下移）——
+      // 场上除坚垒外无其他存活敌人（濒死/离场者不计）时，坚垒立刻终止停留（holdTimer 清零转入冲锋分支：
+      // vy 自当前值指数平滑加速，无瞬跳）；尚未到停留线者计时归零后自然不停线（冲锋分支不吸附 holdY）。
+      // 挑战模式不生效（保留停留表现供观察）。此前未限定 variant，非坚垒 2类 在「场上仅剩坚垒/仅剩自己」时
+      // 会被误清 holdTimer 提前冲锋——2026-10-14 修复
+      if (!state.challenge && e.variant === 'fortress' && e.holdTimer > 0 && fortressOnlyField(e)) e.holdTimer = 0;
       // 「2*7」无停留直通（50% 波次）：下降段保持入位速度越过前锋停留线，越过 holdY 后
       // 平滑衰减到 descend × vNoHoldSpdMul（基准 0.8 / 诗篇 0.6）——指数逼近保证速度曲线连续，不瞬变；
       // 全程无横移（全波 holdY 按出生偏移差异化 → 行程相等、同时越线，阵型保持）
@@ -1579,6 +1582,9 @@
   }
 
   function updateEnemyFire(e, dt) {
+    // 萧杨抽卡停火窗口：全场敌机停火——释放瞬间已清空 scheduled 并中止释放中的技能（07-player startGacha），
+    // 此 gate 保证停火窗口内不产生新的开火触发
+    if (state.gachaHaltT > 0) return;
     if (e.y < 0 || e.x < -30 || e.x > CANVAS_W + 30) {
       // 未入场不开火（含横向尚未入场的长队队尾，避免屏外开火）；
       // 例外：朴学峰残像未爆完（留影后 0.7s 内本体可能已冲出屏底/顶部重入屏外段）——放行进入
@@ -2233,18 +2239,24 @@
         case 2: {
           // 技能3：朝竖直向下依次射出四组「左3右3」加速长条弹（初速≈0、逐渐加速到最大速度 180% 弹速），
           // 四组的左右两 stream 夹角依次为 75°/55°/35°/15°（逐组收窄）；释放期间自身停移（crgoldHold）；
-          // 出弹点以施放瞬间为准快照（不随机体移动漂移）
+          // 出弹点以施放瞬间为准快照（不随机体移动漂移）。
+          // 2026-10-14 用户定稿：①轮间隔 0.5→0.425s（-15%）②攻击间隔改第四轮发射那一刻起算——
+          // 触发瞬间挂起 fireTimer（1e9），末轮时刻经 scheduled 恢复通用间隔（仿炮艇 case 2 写法）
           const ox = e.x, oy = e.y + e.h / 2;
           const accel = 420, maxSpeed = cfg.bulletSpeed * 1.8;
+          const roundGap = 0.425;   // 轮间隔（原 0.5s，-15%）
           e.crgoldHold = 2.0;
+          e.fireTimer = 1e9;   // 挂起：攻击间隔改第四轮发射那一刻起算（末轮 scheduled 恢复）
           for (let g = 0; g < 4; g++) {
             const halfA = [75, 55, 35, 15][g] * Math.PI / 360;   // 每侧偏角 = 夹角的一半
-            const t0 = g * 0.5;
+            const t0 = g * roundGap;
             for (let i = 0; i < 3; i++) {
               e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 + halfA, 0.5, cfg, { accel, maxSpeed, x: ox, y: oy }) });
               e.scheduled.push({ t: t0 + i * 0.07, fn: () => pushEBullet(e, Math.PI / 2 - halfA, 0.5, cfg, { accel, maxSpeed, x: ox, y: oy }) });   // 左右同帧发射（原 +0.035 错开致两侧不同时）
             }
           }
+          // 第四轮（末组）发射时刻 = 3×roundGap + 组内末发 2×0.07 —— 此刻才开始计算下一次攻击间隔
+          e.scheduled.push({ t: 3 * roundGap + 0.14, fn: () => { e.fireTimer = enemyFireIv(cfg); } });
           break;
         }
       }
@@ -2943,15 +2955,16 @@
     if (e.type === 'xinguodong' && s.kind === 2) {
       // 连发导弹（2026-10-04 用户定稿改版）：每批 volleyN 发扇形轻追踪导弹（批间隔 volleyGap 0.5s），
       // 轮间随机 gap2 间隔（普通 1.2~1.6s / 诗篇 1.0~1.4s，释放瞬间抽取见 startEliteSkill）；
-      // 虚象/具象 = 仅 1 轮（2 批 × 4 发 = 8 发）且导弹初速/转向减小（illusionMissileSpeed/Turn，弧度更平）；
+      // 虚象/具象 = 仅 1 轮（2 批 × 4 发 = 8 发）；导弹弧线参数全难度统一 200/0.4（2026-10-14 转正）；
       // 真我 = 8 发（每批 4 发 × 2 批）仍 2 轮；诗篇 = 12 发 2 轮不变（每批 6 发，登记《诗篇难度修正.md》#31，
       // 上移演出见移动相位 1，收口后下次技能间隔 +poemVolleyGapAdd）。发射瞬间按扇位偏移预压恒定转向
       //（外侧弹向内弧线回收，不再跟踪）；missiles 数组通用推进（turn 字段分支见 updateMissiles）
       s.batchT += dt;
       const vn = isPoem() ? c.poemVolleyN : c.volleyN;
       const maxB = (isPoem() || isRealme()) ? 4 : c.illusionBatches;   // 批数收口：诗篇/真我 4（2 轮），虚象/具象 2（1 轮）
-      const mSpd = (isPoem() || isRealme()) ? c.missileSpeed : c.illusionMissileSpeed;
-      const mTurn = (isPoem() || isRealme()) ? c.missileTurn : c.illusionMissileTurn;
+      // 导弹弧线参数全难度统一 200/0.4（2026-10-14 用户定稿：原虚象/具象专属减速修正转正，illusion 双键已删）
+      const mSpd = c.missileSpeed;
+      const mTurn = c.missileTurn;
       const iv = s.firedBatches === 2 ? s.gap2 : c.volleyGap;   // 第 2 批后为轮间隔，其余为批间隔
       if (s.firedBatches === 0 || s.batchT >= iv) {
         s.batchT = 0;
@@ -3225,8 +3238,10 @@
     spawnParticles(e.x, e.y, '#ffd9d9', 4, 90);
   }
 
-  // 法术阵列：发射大号红色正方体（较常规正方体大一号、红光更强、伤害 26）；
-  // 飞行 30%~60% 射程时分裂为 3 枚常规正方体（1 同向 + 2 垂直），分裂前 0.5s 红圈收缩预警（见 updateSpellCubes / drawSpellCubes）
+  // 法术阵列：发射大号红色正方体（较常规正方体大一号、红光更强、伤害 26）——
+  // 飞行 30%~60% 射程（随机，与旧版完全一致）时分裂为 3 枚常规正方体：夹角互为 120°、其中 1 枚沿原方向
+  //（2026-10-14 用户澄清定稿：仅分裂产物改版——旧「1 同向 + 2 垂直」与诗篇 5 枚均分口径作废，
+  // 全难度统一 3 枚 120°；飞行/分裂时机逻辑不变）。速度剖面：初速 35% cruise → 平滑加速到 cruise
   function fireArrayCube(e) {
     if (!player.alive) return;
     const baseAng = Math.atan2(player.y - e.y, player.x - e.x);
@@ -3242,29 +3257,24 @@
       growT: 0, scale: FASHI_MATRIX.cubeGrowFrom, r: FASHI_ARRAY.cubeR * FASHI_MATRIX.cubeGrowFrom,
       big: true,
       spinSeed: rand(0, Math.PI * 2),   // 三轴翻滚初相（多枚大正方体翻滚姿态互不相同）
-      spinMul: rand(0.8, 1.25) * 2,     // 三轴翻滚速度扰动 ×2（法术阵列大正方体转速翻倍，2026-09 批次）
-      splitDist: maxRange * rand(FASHI_ARRAY.splitMin, FASHI_ARRAY.splitMax),
+      spinMul: rand(0.8, 1.25) * 2,     // 三轴翻滚速度扰动 ×2
+      splitDist: maxRange * rand(FASHI_ARRAY.splitMin, FASHI_ARRAY.splitMax),   // 分裂行程（占射程 30%~60% 随机，与旧版一致）
       warnT: -1,   // <0 = 未进入分裂预警
     });
     spawnParticles(e.x, e.y, '#ffd9d9', 4, 90);
   }
 
-  // 大正方体分裂：常规原地裂为 3 枚常规法术矩阵正方体——1 枚沿原方向、2 枚垂直于原方向；
-  // 诗篇（2026-10-12 用户定稿）：裂为 5 枚、均分 360°（每枚间隔 72°），其中 1 枚与大正方体原方向一致；
-  // 射程继承剩余射程、以最大尺寸直接出现；伴随微弱冲击波爆炸特效（k 缩放 drawCubeHitFx 扩散半径）；
+  // 大正方体分裂（2026-10-14 用户定稿）：原地裂为 3 枚常规法术矩阵正方体——夹角互为 120°（每枚间隔 120°）、
+  // 其中 1 枚（k=0）与大正方体原方向一致，全难度一致；射程继承剩余射程、以最大尺寸直接出现；
+  // 伴随微弱冲击波爆炸特效（k 缩放 drawCubeHitFx 扩散半径）；
   // 二类·穿透标记 swPen 由母体继承（母体已穿盾时，分裂体在盾后生成，不再触盾也应保持减伤一致性）
   function splitSpellCube(c, i) {
     const rem = Math.max(60, c.maxRange - c.traveled);
-    // 诗篇 5 枚均分 360°（k=0 恰为原方向）、常规 3 枚（1 同向 + 2 垂直）
-    const dirs = isPoem()
-      ? [0, 1, 2, 3, 4].map(k => {
-          const a = Math.atan2(c.uy, c.ux) + k * Math.PI * 2 / 5;
-          return [Math.cos(a), Math.sin(a)];
-        })
-      : [[c.ux, c.uy], [-c.uy, c.ux], [c.uy, -c.ux]];
-    for (const [nx, ny] of dirs) {
+    const base = Math.atan2(c.uy, c.ux);
+    for (let k = 0; k < 3; k++) {
+      const a = base + k * Math.PI * 2 / 3;   // 互为 120°，k=0 恰为原方向
       spellCubes.push({
-        x: c.x, y: c.y, ux: nx, uy: ny,
+        x: c.x, y: c.y, ux: Math.cos(a), uy: Math.sin(a),
         spd: c.spd, cruise: c.cruise,
         dmg: FASHI_MATRIX.cubeDmg,
         traveled: 0, maxRange: rem, phase: 'fly', glow: 1, alpha: 1,
@@ -3280,7 +3290,7 @@
 
   // 正方体生命周期：fly（平滑加速巡航）→ brake（临近射程减速滑行，末段提前渐隐，速度归零时恰好 alpha=0 消失）
   //   二类·穿透射弹（注册表见 01-config BULWARK 注释）：守愿者白盾无法截断——触盾直接穿过并标记 swPen，
-  //   此后命中玩家伤害 -50%（法术阵列大正方体分裂出的常规正方体继承标记）
+  //   此后命中玩家伤害 -50%
   function updateSpellCubes(dt) {
     for (let i = spellCubes.length - 1; i >= 0; i--) {
       const c = spellCubes[i];
@@ -3974,6 +3984,7 @@
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant, firstBoss: firstBossCry,
             fromBoss: true,   // BOSS 掉落水晶标记（炼金璃隐藏计数表不计入，见 08-entities updateCrystals）
+            age: 0,   // 出生计时（0.1s 吸收延迟门控，见 08-entities updateCrystals / 01-config CRYSTAL_ABSORB_DELAY）
             phase: Math.random(),
             t: Math.random() * Math.PI * 2,
           });
@@ -4047,6 +4058,22 @@
         } else {
           bossFlow.victoryDelay = 0;
           bossFlow.postDelay = 2;   // 击败 BOSS 后 2s 再刷怪（不计入关卡推进；到时固定刷首波 1类长队）
+          // 许凯狗：击坠 BOSS 后概率再冲刺（2026-10-14 用户定稿）——20% 冲撞 2s / 15% 冲撞 3s（互斥单掷），
+          // 冲掉 BOSS 后的特殊波次与后续等级的敌人（冲刺期敌机进场 60%~80% 强制击杀，见 14-main 冲刺块）：
+          // 特殊波次提前至冲撞窗口内落地（postDelay 收窄至 0.4s）、观察期跳过（14-main postWaveT 置 0）、
+          // 非诗篇关卡自冲撞 1s 后按 1 级/s 推进（2s ≈ 冲掉特殊波次 +1 个等级 / 3s ≈ +2 个等级）
+          if (hasPilot('xukaigou') && !state.challenge && !state.testBoss) {
+            const roll = Math.random();
+            const dashT = roll < 0.20 ? 2 : roll < 0.35 ? 3 : 0;
+            if (dashT > 0) {
+              state.pilotDashT = dashT;
+              state.dashPostBoss = true;
+              state.dashPostBossT = 0;
+              bossFlow.postDelay = Math.min(bossFlow.postDelay, 0.4);
+              player.invuln = Math.max(player.invuln, dashT);   // 冲撞期间无敌（同开局冲刺口径，不闪烁）
+              player.invulnBlink = false;
+            }
+          }
         }
       } else {
         bossFlow.victoryDelay = 2.5;  // 延迟后返回主界面
@@ -4331,6 +4358,7 @@
             vx: 0, vy: rand(230, 300),   // 垂直下坠（不乱飞；掉速 2026-10-12 用户定稿 180~250 → 230~300，与 BOSS 掉落同速）
             r: def.r, val: roll.val,
             tier: t2, colorKey, giant: roll.giant,
+            age: 0,   // 出生计时（0.1s 吸收延迟门控，见 08-entities updateCrystals / 01-config CRYSTAL_ABSORB_DELAY）
             phase: Math.random(),
             t: Math.random() * Math.PI * 2,
           });

@@ -1598,7 +1598,8 @@
       ctx.restore();
     }
 
-    // 受击无敌（invulnBlink）时每秒隐/显 10 次；登场/重生无敌（invulnBlink=false）不闪动。
+    // 受击无敌（invulnBlink）时每秒隐/显 10 次；重生无敌同受击口径闪烁（2026-10-14 用户定稿），
+    // 仅开局入场无敌（12-ui resetGame 置 invulnBlink=false）与最终壁垒免死不闪动。
     // 闪动帧同样绘制装甲图标演出——祈星在受击时触发，若随闪烁吞没则基本看不见
     const blink = player.invuln > 0 && player.invulnBlink && player.weapon !== 5 && Math.floor(player.invuln * 20) % 2 === 0;
     if (blink) {

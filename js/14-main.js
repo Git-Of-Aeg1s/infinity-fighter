@@ -255,10 +255,19 @@
       //   冲刺结束：bossFlow.timer 对齐到 dashLv 对应时刻（1 + 35/5 = 8 → 直接衔接 Lv8，刷怪期总长不变）
       if (state.pilotDashT > 0) {
         state.pilotDashT = Math.max(0, state.pilotDashT - dt);
-        levelFlow.level = Math.min(PILOTS.xukaigou.dashLv,
-          1 + Math.floor((PILOTS.xukaigou.dashDur - state.pilotDashT) / 1));
-        levelFlow.prevLevel = levelFlow.level;   // 冲刺期升级不触发斗志昂扬判定
-        bossFlow.timer = 0;
+        if (state.dashPostBoss) {
+          // 击坠 BOSS 触发的再冲刺（2026-10-14 用户定稿：概率冲撞 2s/3s 冲掉 BOSS 后特殊波次与后续等级敌人）：
+          // 不覆盖等级（开局冲向 dashLv=8 的公式对高等级不适用）、不清 bossFlow.timer——
+          // 冲刺开始 1s（特殊波次冲杀窗口）后按 1 级/s 推进关卡（timer 4×dt 额外 + 下方自然 1×dt = 5×dt = 1 级/s，
+          // step 5s/级；诗篇不推 timer，由波次制自然推进——后波连续刷出即被冲杀，波次序号自然前进）
+          state.dashPostBossT += dt;
+          if (!isPoem() && state.dashPostBossT > 1) bossFlow.timer += 4 * dt;
+        } else {
+          levelFlow.level = Math.min(PILOTS.xukaigou.dashLv,
+            1 + Math.floor((PILOTS.xukaigou.dashDur - state.pilotDashT) / 1));
+          levelFlow.prevLevel = levelFlow.level;   // 冲刺期升级不触发斗志昂扬判定
+          bossFlow.timer = 0;
+        }
         for (let i = enemies.length - 1; i >= 0; i--) {
           const e = enemies[i];
           if (e && e.type !== 'boss' && !e._deathSettled) {
@@ -288,8 +297,15 @@
           }
         }
         if (state.pilotDashT <= 0) {
-          bossFlow.timer = (PILOTS.xukaigou.dashLv - lvCfg.base) * lvCfg.step;
-          chargeAllGaugesOnDashEnd();   // 冲刺结束瞬间：所有技能计量表立刻完全充能（07-player）
+          if (state.dashPostBoss) {
+            // 再冲刺结束：计时不做开局对齐（保持自然累计值 → 关卡已按 1 级/s 推进）；
+            // 充满量表的收尾福利不触发（开局冲刺专属——再冲刺以「冲掉波次」为目的，不附带满量表赠礼）
+            state.dashPostBoss = false;
+            state.dashPostBossT = 0;
+          } else {
+            bossFlow.timer = (PILOTS.xukaigou.dashLv - lvCfg.base) * lvCfg.step;
+            chargeAllGaugesOnDashEnd();   // 冲刺结束瞬间：所有技能计量表立刻完全充能（07-player）
+          }
         }
       }
 
@@ -348,7 +364,9 @@
       // 延迟出场队列（z*8 单点排队等）逐帧倒计时到点生成——通用推进（2026-10-12 bug 修复：
       // 原仅在挑战分支调用，正常波抽到 z*8 且命中排队侧时该侧敌机入队后永不生成、整侧静默丢失）
       updateDelayedSpawns(dt);
-      updatePoemRearCards(dt);   // 诗篇后波延迟落地推进（前/后波 0.5~1s 随机间隔；无条件每帧——波阶段结束也不冻结）
+      updatePoemRearCards(dt);   // 诗篇后波延迟落地推进（前/后波 0.3~0.7s 随机间隔；无条件每帧——波阶段结束也不冻结）
+      // 萧杨抽卡停火窗口递减（无条件每帧——玩家死亡/演出异常也不残留停火；startGacha 置位、updateGachaFx shock 结束归零兜底）
+      if (state.gachaHaltT > 0) state.gachaHaltT = Math.max(0, state.gachaHaltT - dt);
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
@@ -359,7 +377,7 @@
         // 诗篇波次制：本阶段波次全部刷出且场上清空 → 直接进警报（波次耗尽即刷怪期结束，不等计时）
         const phaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
         const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
-        // 诗篇：波次刷满且场上清空 → 进警报；若后波仍处 0.5~1s 延迟窗口未落地（前波被秒清），
+        // 诗篇：波次刷满且场上清空 → 进警报；若后波仍处 0.3~0.7s 延迟窗口未落地（前波被秒清），
         // 先立即落地再判清场——后波绝不跨入 BOSS 警报序列
         if (isPoem() && levelFlow.poemWaveIdx >= phaseWaves && enemies.length === 0) flushPoemRearCards();
         if (isPoem()
@@ -421,7 +439,9 @@
           if (bossFlow.postDelay <= 0) {
             bossFlow.postDelay = 0;
             spawnPostBossWave();
-            bossFlow.postWaveT = 4;   // 自首波刷新（第一个敌人出现）起计时
+            // 再冲刺触发时跳过 4s 观察期（postWaveT = 0）：后续等级的敌人立即恢复刷出、被冲刺强制击杀——
+            //「冲掉 BOSS 后的特殊波次和后面的一个/两个等级的敌人」（2026-10-14 用户定稿，触发见 06-enemy killEnemy BOSS 分支）
+            bossFlow.postWaveT = state.dashPostBoss ? 0 : 4;   // 自首波刷新（第一个敌人出现）起计时
           }
         } else {
           bossFlow.postWaveT -= dt;
@@ -449,13 +469,13 @@
             const f3 = card && t3SpawnCardById(card.id);
             if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
           }
-          // 前波与后波 0.5~1s 随机刷新间隔（2026-10-13 用户定稿）：前波整波立即落地（spawnDesignedWave
+          // 前波与后波随机刷新间隔（2026-10-13 用户定稿实装；2026-10-14 用户定稿 0.5~1s → 0.3~0.7s）：前波整波立即落地（spawnDesignedWave
           // 的 waveSeq / poemWaveIdx / hpKitWaveCd 簿记每波只走一次），后波入诗篇后波延迟队列、到点经
           // spawnPoemExtraWave 落地（不占独立波次名额、打当前波 waveTag）；许凯狗冲刺期同样生效（后波
           // 落地与下一波 1s 间隔部分重叠，冲刺即秒场景无碍）；单卡兜底（抽不到后波卡）照常同帧整波
           if (list.length === 2) {
             spawnDesignedWave([list[0]]);
-            queuePoemRearCard(list[1], rand(0.5, 1));
+            queuePoemRearCard(list[1], rand(0.3, 0.7));
           } else if (list.length) {
             spawnDesignedWave(list);
           } else {

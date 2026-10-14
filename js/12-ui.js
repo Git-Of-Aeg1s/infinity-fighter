@@ -6,7 +6,7 @@
   //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
@@ -91,6 +91,10 @@
     const showStones = hasPilot('xiaoyang') && !state.challenge && !state.testBoss && state.mode === 'playing';
     stonePanel.classList.toggle('hidden', !showStones);
     if (showStones) stoneCount.textContent = String(state.gachaStones);
+    // 原石计数表满 16 颗（gachaReady）：边框切换为特殊驾驶员卡片同款「青粉流动渐变 + 两道流动白芒」
+    //（2026-10-14 用户定稿；样式 .stone-panel.ready 见 style.css，复用 pilotBorderFlow / glintSpin 动画；
+    // 释放 Q 消耗充能后 gachaReady 复位 → 边框同步还原）
+    stonePanel.classList.toggle('ready', showStones && !!state.gachaReady);
     // 左下角爆弹图标（2026-10-04 移入 hud-bl 首行，紧贴血条左侧心形上方；技能量表右移让位）：
     // 实心图标 = 现有爆弹数，虚线空圈 = 空栏位（总栏位 = 当前上限：
     // 真我 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd））；测试模式（图鉴挑战敌人 / BOSS 测试）爆弹无限，显示 ∞
@@ -129,10 +133,12 @@
     douzhiBar.classList.toggle('active', douzhiOn);
     const douzhiW = douzhiOn ? (state.hasteT / DOUZHI.buffDuration * 100) + '%' : '0%';
     if (douzhiW !== _hudDouzhiW) { douzhiFill.style.width = douzhiW; _hudDouzhiW = douzhiW; }
-    // 晶盾读条（右下角，淡粉；七日澜心结晶护盾倒计时）
+    // 晶盾读条（右下角，淡粉；七日澜心结晶护盾倒计时）——分母走 crystalShieldDur() 统一入口：
+    // 原分母硬编码 ARMOR_SKILLS.lanxin.dur，装备炼金璃（护盾 5.2s）时开盾前段条恒顶满不动（5.2/4 > 100% 被裁切）——
+    // 2026-10-14 用户报告修复
     const jingdunOn = player.crystalShield > 0;
     jingdunBar.classList.toggle('active', jingdunOn);
-    const jingdunW = jingdunOn ? (player.crystalShield / ARMOR_SKILLS.lanxin.dur * 100) + '%' : '0%';
+    const jingdunW = jingdunOn ? (player.crystalShield / crystalShieldDur() * 100) + '%' : '0%';
     if (jingdunW !== _hudJingdunW) { jingdunFill.style.width = jingdunW; _hudJingdunW = jingdunW; }
     // 装甲技能圆形计数表（左下角、生命值上方，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
     const skillDef = ARMOR_SKILLS[currentArmor.id];
@@ -227,6 +233,7 @@
     player.permBarrier = 0; player.barrier = 0; player.barrierMax = 0; player.barrierT = 0;
     state.gachaStones = 0; state.gachaReady = false;
     state.gachaStonesTotal = 0;   // 原石收集总数（结算读数）重开归零（2026-10-13）
+    state.gachaHaltT = 0;   // 抽卡停火窗口重开清零（演出中断防护）
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
@@ -329,6 +336,8 @@
     // 否则主菜单演示机体（复用 drawPlayer）会残留冲刺白光特效
     state.pilotDashT = (autoStart && (currentPilotMain.id === 'xukaigou' || currentPilotSub.id === 'xukaigou') && !state.testBoss && !state.challenge)
       ? PILOTS.xukaigou.dashDur : 0;
+    state.dashPostBoss = false;    // 许凯狗再冲刺标记随重开复位（跨局残留防护）
+    state.dashPostBossT = 0;
   resetAchievements();   // 成就：本局进度清零（须在 state.testBoss / state.challenge 置位之后——门控以这两项为准）
     state.flash = 0;
     state.hurt = 0;

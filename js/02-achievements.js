@@ -1,6 +1,6 @@
 // 02-achievements：成就系统（注册表 ACHIEVEMENTS 见 01-config；本局进度 / 解锁判定 / 结算徽章展示 / 数值图鉴「成就」页）
 
-  // 被依赖：05-boss(1 名) 06-enemy(11 名) 07-player(21 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(6 名)
+  // 被依赖：05-boss(1 名) 06-enemy(11 名) 07-player(22 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(6 名)
 //
 // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
 // 依赖：01x 配置域（ACHIEVEMENTS 注册表 + 装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
@@ -24,7 +24,6 @@
 
   import { ARMOR_SKILLS, currentArmor, currentPilotMain, currentPilotSub, currentSubWeapon, currentWingman, hasPilot, specialGearActive } from './01-config-loadout.js';
   import { ENEMY_CLASS } from './01-config-enemies.js';
-  import { FIRST_ROUND_BOSSES } from './01-config-boss.js';
   import { isPoem, isRealme } from './01-config-difficulty.js';
   import { ACHIEVEMENTS, ACHIEVEMENT_TIERS, ACHIEVEMENT_TIER_ORDER, ACHIEVEMENT_INFINITY_ENABLED } from './01-config-achievements.js';
   import { state, bossFlow, resultAchieve, infoBody } from './02-core.js';
@@ -45,7 +44,7 @@
     douzhiKills: 0,      // 斗志昂扬击杀数（斗志非常昂扬 ≥2）
     killsTotal: 0,       // 敌机击坠总数（非 BOSS；狂暴开杀 ≥200）
     pickups: 0,          // 道具拾取数（水晶不算；UPUPUP ≥15）
-    watchClears: 0,      // 群星守望消除敌弹数（群星不灭 ≥60）
+    watchClears: 0,      // 群星守望消除敌弹数（群星不灭 ≥100，2026-10-14 用户定稿 60→100）
     chixinClass1Kills: 0,// 炽心灼烧击杀 1 类敌人数（飞蛾扑火 ≥20）
     lingluoSkillCount: 0,// 迪奥 Q 技能成功释放次数（疯狂杀戮 ≥3）
     armorSkillUsed: false, // 本局是否使用过装甲技能（F；忘了）
@@ -126,8 +125,9 @@
     if (hasPilot('xukaigou') && !achv.songDown) unlockAchievement('xukaiPreBossDeath');
     if (!finalDeath) return;
     if (typeof cause === 'string' && cause.startsWith('crash:')) {
+      // 冲锋！冲锋！：被 BOSS 的碰撞伤害击坠（2026-10-14 用户定稿——不再限定第一轮 BOSS，任意 BOSS 碰撞均可）
+      unlockAchievement('firstBossCrashDeath');
       const bid = cause.slice(6);
-      if (FIRST_ROUND_BOSSES.includes(bid)) unlockAchievement('firstBossCrashDeath');
       if (bid === 'storm') unlockAchievement('stormCrashDeath');
     }
     if (cause === 'boss:song' || cause === 'crash:song') unlockAchievement('songDeath');
@@ -201,11 +201,11 @@
     if (achv.giantCrystals >= 16) unlockAchievement('goldLegend');
   }
 
-  // 群星守望消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥60）
+  // 群星守望消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥100，2026-10-14 用户定稿 60→100）
   function achvNoteWatchClear(n) {
     if (!achvGateOk() || !n) return;
     achv.watchClears += n;
-    if (achv.watchClears >= 60) unlockAchievement('watch60');
+    if (achv.watchClears >= 100) unlockAchievement('watch60');
   }
 
   // 支援光环内击坠上报（06-enemy killEnemy 判定 inSupportAura 后调用；其实是打不到 ≥12）

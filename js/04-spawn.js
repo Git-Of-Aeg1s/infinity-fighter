@@ -1,7 +1,7 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(4 名) 06-enemy(8 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(22 名)
+  // 被依赖：05-boss(5 名) 06-enemy(9 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(22 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
@@ -88,7 +88,7 @@
     }
   }
 
-  // ---------- 诗篇后波延迟落地队列（2026-10-13 用户定稿：前波与后波之间 0.5~1s 随机刷新间隔） ----------
+  // ---------- 诗篇后波延迟落地队列（2026-10-13 用户定稿：前波与后波之间随机刷新间隔；2026-10-14 用户定稿 0.5~1s → 0.3~0.7s） ----------
   // 独立于 delayedSpawns——spawnDesignedWave 每波开局清空延迟出场队列，后波若借用会在下一波提前刷出时被误清；
   // 条目 { f, plan, t } 到点经 spawnPoemExtraWave 落地（不推进 waveSeq / poemWaveIdx——后波不占独立波次名额，
   // 打当前波 waveTag），由 14-main 每帧无条件推进、spawnPoemMainWave 开头 flush 兜底（绝不跨波）
@@ -1059,6 +1059,8 @@
 
   // 连携精英返场（2026-10-08 用户定稿）：黑暗之手战离场登记（state.dhFledElites）的精英按 ELITE_REVIVE.levels
   // 固定等级重新登场——顶部标准入场（holdTimer 1e9 永驻，同图鉴挑战口径），血量 = 登记血量 + 已损失 × healLostPct；
+  // 返场强化（2026-10-14 用户定稿）：恢复 50% 已损后，当前生命与生命上限均翻倍
+  // （例：登记 10000 / 上限 15000 → 恢复 50% 已损到 12500 → 翻倍成 25000 / 30000）；
   // 带 elRevive 标记：不占在场压力权重（4S 类型不在 PRESSURE_W）、不阻止诗篇波次刷新（14-main 诗篇分支排除）、
   // 不因新的 4S 登场而离场，仅第三轮刷怪期结束统一离场（02-core departRevivedElites）。
   // 张华&张策实装时走同通道（rec.hp 传全血 = 登记值即上限，全额入场）。14-main 于第三轮 phase===2 按等级触发
@@ -1068,6 +1070,7 @@
     const max = el.maxHp;
     const recorded = Math.min(Math.max(0, rec.hp), max);
     el.hp = Math.max(1, Math.round(max - (max - recorded) * ELITE_REVIVE.healLostPct));   // 登记血量 + 已损失 × 50%
+    el.hp = Math.min(el.maxHp = max * 2, el.hp * 2);   // 返场强化：恢复后生命与上限翻倍（上限先翻倍再钳制，理论上 hp ≤ max 恒成立）
     return el;
   }
 
@@ -1368,6 +1371,22 @@
       mul = Math.min(mul, slow);
     }
     return mul;
+  }
+
+  // 萧杨抽卡停火窗口（state.gachaHaltT，2026-10-14 用户定稿）：场地 50% 屏高以下的敌机，
+  // 每再低 1% 屏高目标移速 -2%（屏底 100% 深度 → 目标 0）；已在区域内的敌机以大逼近率 8/s（≈0.3s 到位）
+  // 平滑过渡到目标值，不瞬跳（速度曲线铁律）；窗口结束后同样平滑恢复 1。
+  // 调用点：06-enemy updateEnemies 每帧 speedMul 挂钩；05-boss bossMoveUpdate 的 mul（BOSS 移速）
+  function gachaBottomSlowMul(e, dt) {
+    const cur = e.gachaSlowMul == null ? 1 : e.gachaSlowMul;
+    let target = 1;
+    if (state.gachaHaltT > 0) {
+      const frac = e.y / CANVAS_H;
+      if (frac > 0.5) target = Math.max(0, 1 - (frac - 0.5) * 2);
+    }
+    const next = cur + (target - cur) * Math.min(1, dt * 8);
+    e.gachaSlowMul = next;
+    return next;
   }
 
   // 特殊3类：御4 —— 防御型无人机：下降到与常规 3 类炮艇一致的悬停高度停留 25s（速度为其 80%）；
@@ -1933,7 +1952,7 @@
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
     spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
-    spawnUnreal, enemyFrostZoneMoveMul,
+    spawnUnreal, enemyFrostZoneMoveMul, gachaBottomSlowMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,
     spawnChallengeWave, spawnPopianU, spawnWarGhost, spawnEliteMinion, spawnRevivedElite, spawnPulseMatrix,
     updateChallenge, updateDelayedSpawns, resetSpawnWaveState,

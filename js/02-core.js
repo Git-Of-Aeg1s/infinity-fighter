@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(40 名) 07-player(46 名) 08-entities(20 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(40 名) 07-player(50 名) 08-entities(21 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -134,6 +134,8 @@
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     pilotDashT: 0,         // 许凯狗：开场高能冲刺剩余时长（s；resetGame 置位，14-main 递减与调度）
+    dashPostBoss: false,   // 许凯狗：击坠 BOSS 触发的再冲刺标记（06-enemy killEnemy BOSS 分支置位，14-main 冲刺块消费——等级覆盖/量表收尾与开局冲刺不同）
+    dashPostBossT: 0,      // 许凯狗：再冲刺已进行时长（s；14-main 冲刺块累计，>1s 后按 1 级/s 推进关卡）
     maxinSpeedMul: 1,      // 马兴犬：移速倍率（1 原速 / 1.25 Shift 加速 / 0.8 CapsLock 减速；同键再按恢复原速）
     princeGauge: 0,        // 天秀忧郁王子：白色量表（0~1；非水晶得分 40000 充满，BOSS 战按秒充能；按 Q 释放友方大风暴）
     tianxiuDebugSpam: false,  // 天秀：连发风暴模式（战斗中按 8 切换，每 0.4~1.4s 自动发射友方大风暴；离开游戏后默认关闭，见 12-ui resetGame）
@@ -184,6 +186,7 @@
     honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
     gachaStones: 0,          // 原石（巨型水晶）当局收集进度（0~16；仅萧杨收集转换，07-player noteGachaStone 写入；HUD 左上与结算页均仅萧杨显示，2026-10-01）
     gachaReady: false,       // 萧杨专属技能「哦哦！抽卡！」充能就绪（16 颗原石转换；Q 键释放 triggerPilotSkill，释放后 gachaStones 清零重计；已充能时捡原石不计数）
+    gachaHaltT: 0,           // 萧杨抽卡停火窗口（s，>0 生效）：全场敌我停火 + 场地 50% 线下敌机减速（07-player startGacha 置位、14-main 无条件递减、updateGachaFx shock 结束归零）
     gachaStonesTotal: 0,     // 原石（巨型水晶）当局收集总数（不随 Q 释放清零——结算页「原石收集」读数；07-player noteGachaStone 写入、12-ui resetGame 归零，2026-10-13）
     jiukeDodgePct: 0,        // 酒客之影当前闪避概率（%，激活置 100；每成功闪避一次 -20，归零后必受伤；30s 到期清 0——07-player damagePlayer 消耗 / updateRewardFx 推进）
     itemPickFx: [],          // 道具获得特效队列（{x, y, glyph, rare, t, max}：机体前方道具图标 + 扩散波渐隐；07-player pushItemPickFx 推入 / updateRewardFx 推进 / 09-draw-ships drawItemPickFx 绘制）

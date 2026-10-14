@@ -3637,12 +3637,14 @@
   //     c.spinMul（0.8~1.25）→ 播放速率，随机性保留；运行时每颗每帧 1 次 drawImage。
   //   小正方体：柜式投影姿态只随发射方向整体旋转（本体形状恒定）→ 烘 1 张（sx=+1 基准，左发射镜像），运行时 rotate+镜像贴图。
   //   拖尾：红光带 / 白热内芯分两层烘焙（保留 lighter 叠加语义），运行时 rotate+scale 贴图，替代逐帧渐变+shadowBlur。
+  // （2026-10-14 用户回调：法术阵列大正方体保留——三轴翻滚烘焙体系随之恢复；分裂时机与旧版一致（射程 30%~60% 随机行程），仅分裂产物改为 3 枚 120°，见 06-enemy fireArrayCube / splitSpellCube）
   // 烘焙一律按 gg=1 / alpha=1 / scale=1 基准；运行时以 globalAlpha = c.alpha·gg 一并还原黯淡与渐隐（原绘制各元素 alpha 均匀乘 gg·alpha，等价）。
+  let xcubeSmall = null;           // { cv, size, s } 小正方体贴图
+  let xtrailSmall = null;          // { red, core, len, bodyS, margin } 拖尾双层贴图
   const XTUMBLE_FRAMES = 96;       // 大正方体烘焙帧数（4 圈循环 × 24 步/圈）
   const XTUMBLE_REVS = 4;          // 每循环 rx 转过圈数（ry 3 圈、rz 2 圈 → 比 1 : 3/4 : 1/2）
   let xtumble = null;              // { frames: [canvas × 96], size, s }（懒烘焙：首颗大正方体出现时一次性构建）
-  let xcubeSmall = null;           // { cv, size, s } 小正方体贴图
-  let xtrailBig = null, xtrailSmall = null;   // { red, core, len, bodyS, margin } 拖尾双层贴图
+  let xtrailBig = null;            // 大正方体拖尾贴图
 
   function frac01(x) { return x - Math.floor(x); }
 

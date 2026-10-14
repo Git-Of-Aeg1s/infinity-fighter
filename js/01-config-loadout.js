@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(27 名) 13-encyclopedia(13 名) 14-main(6 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(28 名) 13-encyclopedia(13 名) 14-main(6 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
@@ -124,7 +124,7 @@
       desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
-      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 <b>4.8s</b><br>（量子护盾样式+晶体网格，护盾期间量表停计；<br>装备炼金璃延长至 <b>6s</b>）<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波' },
+      desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 <b>4s</b><br>（量子护盾样式+晶体网格，护盾期间量表停计；<br>装备炼金璃延长至 <b>5.2s</b>）<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波' },
     bulwark:  { id: 'bulwark', name: '最终壁垒', glyph: '⛨', color: '#ffb545',
       brief: '受到致命伤害时不死且短暂无敌，仅一次',
       desc: '每条命一次：生命值减为 0 时不死<br>（含导弹等强制击杀）恢复 1 点生命、<br>获得 5s 无敌（淡金菱形环绕，不降低攻速）<br>触发瞬间核心处护甲图标扩散渐隐<br>无敌结束时清除周围 120px 内敌弹<br>菱形微微扩大渐隐并扩散金环' },
@@ -136,9 +136,9 @@
       desc: '从所有来源获得的无敌时间 +60%<br><hr>每 20s（无敌结束后起算）展开<br>持续 10s 的「圣守窗口」：窗口内<br>受到伤害时在结算前触发无敌<br>（常规受击无敌时长），该次伤害完全免除<br>窗口期间与无敌期间周期均不计时<br>（窗口关闭或触发消耗后重新计时）' },
     chengyue: { id: 'chengyue', name: '澄月', glyph: '◉', color: '#6fe3ff',   // ◉ 满月+光环（原☾月牙不对称，改为对称满月）
       chance: 0.225, bossChance: 0.40,   // 暴走触发（新触发）与暴走续时均判定一次；非 BOSS 22.5%（2026-10-12 用户定稿，原 15%）/ BOSS 战 40%
-      shieldDur: 6,   // 护盾时长（s）：与通用量子护盾一致（不再缩短）
+      shieldDur: 4,   // 护盾时长（s）：与暴走时长一致（4s，2026-10-14 用户定稿，原 6s 与通用量子护盾一致）
       brief: '触发暴走时概率获得量子护盾',
-      desc: '触发暴走时 22.5% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 40%<br>（每个 BOSS 限一次）<br>护盾时长与量子护盾一致（6s）' },
+      desc: '触发暴走时 22.5% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 40%<br>（每个 BOSS 限一次）<br>护盾时长 <b>4s</b>（与暴走时长一致）' },
     chixin:   { id: 'chixin', name: '炽心', glyph: '❂', color: '#ff7a18',
       burnR: 108, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
       burnTagMul: 1.5,   // 灰色 / 黑色标记敌人（enemyColorTags 含 'gray'/'black'：灰黑系特殊无人机/炮兵、幽暮与黑色 BOSS）灼烧增伤倍率
@@ -170,11 +170,11 @@
   const ARMOR_SKILLS = {
     // firstBossBonus：首轮 BOSS（见 FIRST_ROUND_BOSSES）掉落的水晶对量表的额外收益倍率（+700% → 总收益 ×8）
     // BOSS 战期间另有击杀充能（1%~3%/杀，见 06-enemy killEnemy），不依赖水晶拾取
-    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4.8, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },   // dur 4.8s（2026-10-11 用户定稿 6→4.8；装备炼金璃延长至 6s，统一入口 crystalShieldDur()）
+    lanxin: { label: '澜心', color: '#FFC0CB', dur: 4, clearR: 250, gaugeCrystalScore: 5000, firstBossBonus: 8 },   // dur 4s（2026-10-14 用户定稿 4.8→4，与暴走时长一致；装备炼金璃延长至 5.2s，统一入口 crystalShieldDur()）
   };
 
-  // 结晶护盾实际时长（单一入口）：基准 = ARMOR_SKILLS.lanxin.dur（4.8s，2026-10-11 用户定稿 6→4.8）；
-  // 装备炼金璃时延长至 PILOTS.lianjinLovely.crystalShieldDur（6s）。
+  // 结晶护盾实际时长（单一入口）：基准 = ARMOR_SKILLS.lanxin.dur（4s，2026-10-14 用户定稿 4.8→4）；
+  // 装备炼金璃时延长至 PILOTS.lianjinLovely.crystalShieldDur（5.2s）。
   // 消费点：07-player triggerArmorSkill（澜心按 F 开盾）/ 08-entities applyPowerupPickup 'crystalShield'（结晶护盾道具）
   function crystalShieldDur() { return hasPilot('lianjinLovely') ? PILOTS.lianjinLovely.crystalShieldDur : ARMOR_SKILLS.lanxin.dur; }
 
@@ -507,16 +507,16 @@
     },
     lianjinLovely: {
       id: 'lianjinLovely', name: '炼金璃', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
-      crystalShieldDur: 6,   // 装备时结晶护盾时长（s，2026-10-11 用户定稿；基准 4.8 = ARMOR_SKILLS.lanxin.dur，统一入口 crystalShieldDur()）
-      // 重做（2026-10-09 用户定稿）+ 时长延长（2026-10-11 用户定稿）：
-      // ① 结晶护盾时长延长：装备本驾驶员时，澜心按 F 开启的结晶护盾与结晶护盾道具均为 6s
+      crystalShieldDur: 5.2,   // 装备时结晶护盾时长（s，2026-10-14 用户定稿 6→5.2；基准 4 = ARMOR_SKILLS.lanxin.dur，统一入口 crystalShieldDur()）
+      // 重做（2026-10-09 用户定稿）+ 时长延长（2026-10-11 用户定稿 4.8→6；2026-10-14 用户定稿 6→5.2、基准 4.8→4）：
+      // ① 结晶护盾时长延长：装备本驾驶员时，澜心按 F 开启的结晶护盾与结晶护盾道具均为 5.2s
       //    （crystalShieldDur() 统一入口，消费点 07-player triggerArmorSkill / 08-entities applyPowerupPickup 'crystalShield'）；
       // ② BOSS 战：BOSS 血量首次到达 70% 时额外掉落一个结晶护盾道具（每台 BOSS 一次，
       //    见 05-boss updateLovelyShieldMark / 08-entities applyPowerupPickup 'crystalShield'）；
       // ③ 连携七日澜心：量表充能完毕的瞬间立刻释放淡粉特效并清除 250px 内敌弹（lovelyBurst），
       //    量表保持满格、按 F 照常开启结晶护盾（见 07-player updatePilotStatus）
       brief: '增强结晶护盾<br>连携七日澜心，充能满时清除范围弹幕',
-      desc: '装备本驾驶员时，<b>结晶护盾</b>时长延长至 <b>6s</b><br>（基准 4.8s——澜心按 F 开启的护盾<br>与结晶护盾道具均受影响）<br>同时携带七日澜心时：<br>七日澜心量表<b>充能完毕</b>的瞬间，立刻释放<br>淡粉特效并清除 250px 内所有敌方子弹<br>（量表保持满格，按 F 照常开启结晶护盾）<br><b>BOSS 战</b>：BOSS 血量首次到达 <b>70%</b> 时<br>额外掉落一个<b>结晶护盾</b>（每台 BOSS 一次）',
+      desc: '装备本驾驶员时，<b>结晶护盾</b>时长延长至 <b>5.2s</b><br>（基准 4s——澜心按 F 开启的护盾<br>与结晶护盾道具均受影响）<br>同时携带七日澜心时：<br>七日澜心量表<b>充能完毕</b>的瞬间，立刻释放<br>淡粉特效并清除 250px 内所有敌方子弹<br>（量表保持满格，按 F 照常开启结晶护盾）<br><b>BOSS 战</b>：BOSS 血量首次到达 <b>70%</b> 时<br>额外掉落一个<b>结晶护盾</b>（每台 BOSS 一次）',
     },
     mei: {
       id: 'mei', name: '依', glyph: '❁', color: '#FFC0CB', slot: 'sub',   // ❁ 四瓣花（iconSvg 渐变字形见 meiGlyphSvg：#FFC0CB → 白）
@@ -536,7 +536,7 @@
       // （见 10-draw-world drawMeiScythes 锚点注释）：杆轴水平朝外、握把贴机体、刃尖达 scytheR 外圈，
       // 尺寸由锚点决定；素材 1199×1754 竖构图）/
       // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）——每个敌人被刀刃扫过时受击一次
-      counterMax: 122, killGain: { 1: 1, 2: 3, 3: 6, 4: 18, 5: 0 },   // 3/4 类 6/18、5 类 BOSS 归零（2026-10-10 用户定稿）
+      counterMax: 122.1, killGain: { 1: 1, 2: 3, 3: 6, 4: 18, 5: 0 },   // 3/4 类 6/18、5 类 BOSS 归零（2026-10-10 用户定稿）；上限 122.1（2026-10-14 用户定稿，原 122）
       bossKillMul: 2, eliteKillMul: 3, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],   // BOSS 战击杀 ×2 / 四精英 ×3（2026-10-10 用户定稿，原 ×3/×4+30 废止）
       poemKillMul: 1.1,   // 诗篇难度击杀充能 +10%（2026-10-13 用户定稿回调，原 10-12 +20%；在 killGain / BOSS×2 / 精英×3 之上统一乘算，07-player meiNoteKill）
       bossTickGain: 3,
@@ -545,7 +545,7 @@
       scytheWind: 0.3, scytheWindAng: 0.35,
       scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
       brief: '击杀积攒充能<br>召唤镰刀斩击',
-      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br><b>诗篇难度</b>击杀充能 <b>+10%</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
+      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122.1</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br><b>诗篇难度</b>击杀充能 <b>+10%</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
       id: 'dingdongji', name: '大狗', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
@@ -565,7 +565,7 @@
     xiaoyang: {
       id: 'xiaoyang', name: '萧杨', glyph: '☘', color: '#228B22', slot: 'sub',   // ☘ 三叶草回调（🍀 emoji 自带色破坏单色风格弃用），深绿辉光保留
       brief: '收集原石<br>按Q抽卡',
-      desc: '萧杨阴险狡诈——收集原石从不手软。<br>所有水晶转为原石的概率额外提升 <b>100%</b><br>（小 0.6% / 中 3.6% / 大 20%；提升部分转出的原石<br><b>不额外加分</b>，得分仍按转化前的水晶计算）。<br>每收集 <b>16</b> 颗原石，充满一次「哦哦！抽卡！」技能<br>（充满后按 <b>Q</b> 释放，可无限次；已充满时继续捡原石不计数）。<br>释放：<b>16</b> 颗原石自画面外四面八方随机先后汇集机体<br>（约 2.5s，期间<b>无敌</b>、我方输出 <b>-60%</b>），收束后清除<br>周身 <b>300px</b> 敌弹并抽卡——<b>70% 蓝 / 25% 紫 / 5% 金</b>：<br>场中巨影闪现，同色陨石轰击场心（蓝 <b>6000</b> / 紫 <b>16000</b><br>全场伤害；<b>金秒杀全场敌方单位</b>——埃逸殉爆同款：禁用<br>增生分裂 / 法术矩阵爆发等召唤型亡语；一次金陨<b>最多带走<br>一个 BOSS</b>——暴风之眼被秒后召唤的风暴编织者免疫本场<br>金陨，编织者单独在场时照常秒杀）。陨石同时清除全场敌我<br>弹幕与预警（辛国栋之怒火环、暴风之眼风波/风柱、风暴编织者<br>雷霆/激光预警；登场的战争幽灵直接被砸死）；黑暗之手连携<br>精英不被波及——本体若被击杀，精英立即终止技能迅速离场。',
+      desc: '萧杨阴险狡诈——收集原石从不手软。<br>所有水晶转为原石的概率额外提升 <b>100%</b><br>（小 0.6% / 中 3.6% / 大 20%；提升部分转出的原石<br><b>不额外加分</b>，得分仍按转化前的水晶计算）。<br>每收集 <b>16</b> 颗原石，充满一次「哦哦！抽卡！」技能<br>（充满后按 <b>Q</b> 释放，可无限次；已充满时继续捡原石不计数）。<br>释放瞬间：以自身为中心释放一道<b>青粉渐变流动光波</b>扩散全场——<br>清除触碰到的<b>所有敌我弹幕</b>（大蛋挞 / 长条蛋挞 / 大正方体 /<br>暴鸰炸弹 / 光束弹等）、<b>残留区域</b>（辛国栋之怒火环、虚幻寒冷区域等）<br>与<b>预警及技能</b>（战争幽灵瞄准劈砍、暴风之眼横竖风波、炮火先兆者导弹、<br>风暴编织者雷霆轰击 / 重现光束等——释放到一半的敌方技能立刻中止、<br>本次视为已释放完毕）；波及的水晶立刻消失并<b>视为被吸收</b>；同时全场<br><b>敌我停火</b>，位于场地 <b>50%</b> 线以下的敌机每再低 <b>1%</b> 屏高移速 <b>-2%</b><br>（平滑减速，无瞬跳）——演出期间场上没有子弹。<br>随后 <b>16</b> 颗原石（掉落原石的 <b>70%</b> 尺寸）自四面八方依次飞来、<br>环绕机体转动，全部到齐 <b>0.5s</b> 后向核心收束、变小发白并被吸收——<br>吸收瞬间按品质发出一道光波（<b>蓝 200px / 紫 300px / 金全场</b>；金光波<br>更快更宽并微微震屏，行进 <b>150px</b> 后内圈带上<b>彩虹拖尾</b>）。<br>随后场心出现<b>陨石阴影</b>，<b>0.7s</b> 后陨石砸下（演出全程<b>无敌</b>、我方输出<br><b>-60%</b>）：蓝 <b>16000</b> / 紫 <b>32000</b> 全场伤害；<b>金秒杀全场敌方单位</b>——<br>埃逸殉爆同款：禁用增生分裂 / 法术矩阵爆发等召唤型亡语；一次金陨<b>最多<br>带走一个 BOSS</b>——暴风之眼被秒后召唤的风暴编织者免疫本场金陨，<br>编织者单独在场时照常秒杀。陨石同时清除全场敌我弹幕与预警（登场的<br>战争幽灵直接被砸死）；黑暗之手连携精英同受陨石结算（已处离场相位者<br>视为脱离战场、不被追杀）。砸下 <b>0.4s</b> 后停火效果结束。',
     },
     niudan: {
       id: 'niudan', name: '牛蛋', glyph: '●', color: '#e6c86e', slot: 'sub', whiteboard: true,   // ● 圆蛋（肥嘟嘟造型意象）；白板副驾驶员（2026-10-03 用户新增），成就「无垠」白板判定与胡笛客同门
@@ -632,7 +632,7 @@
   //     / bulletAlphaStormFight 暴风之眼战中我方风弹透明度（与敌弹样式相同，压透明度区分）
   const PRINCE_STORM = {
     dur: 7, riseSpd: 130, r: 110,
-    tickDmg: 80, tickIv: 0.1,
+    tickDmg: 100, tickIv: 0.1,   // 风暴主体接触伤害 100 / 每 0.1s 一跳（2026-10-14 用户定稿 80→100）；非 BOSS 类敌人每跳额外扣 3% 最大生命（07-player updateFriendStorms，不乘减伤链）
     bulletCount: 2, fireIvMin: 0.20, fireIvMax: 0.30,
     bulletSpeed0: 190.4, bulletAccel: 100.625, bulletMaxSpeed: 816.2,
     bulletR: 5.6, bulletLen0: 14.4, bulletLenMax: 84, growRate: 150,
@@ -656,7 +656,7 @@
   //     现役：法术大师A1/A2 激光（laser 弹，08-entities laser 分支）、风暴编织者技能3 "<"光束（beamTrail 分支）、
   //           风暴编织者技能6 电弧光束（s.beams clipD，见 05-boss runStorm2Skill）
   //   二类·穿透（c.swPen 标记）：白盾无法截断——触盾直接穿过并标记，此后命中玩家伤害 -50%。
-  //     现役：法术矩阵射弹 / 法术阵列射弹 / 法术阵列分裂射弹（spellCubes，见 06-enemy updateSpellCubes / splitSpellCube）
+  //     现役：法术矩阵射弹 / 法术阵列大正方体射弹与分裂射弹（spellCubes，见 06-enemy updateSpellCubes / splitSpellCube）
   //   三类·反射（b.swRef 标记）：首次触盾按入射夹角镜像反弹（反射角=入射角，非原路弹回）；
   //     反弹后失去墙壁反弹能力（bounceX 清除）；同一射弹仅反弹一次，再次触盾白盾无任何效果（直接穿过、伤害不减）。
   //     现役：旧日之歌暗黑射弹（技能5/6 + 登场部件球弹幕，见 05-boss fireDarkSix / updateBoss；反弹见 08-entities swRef 分支）

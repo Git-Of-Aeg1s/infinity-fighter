@@ -56,7 +56,7 @@ description: 大无垠战机（Infinity Fighter）项目导读：架构地图、
 **关键约定**：
 - 共享状态新增属性必须先在 `02-core` 归域声明，不许他处裸挂
 - 玩法机制描述以 `13-encyclopedia` 图鉴文案与 README 为准，改机制时同步
-- 虚象/具象/真我难度分叉走 `DIFFICULTIES.<难度>.mods`（`diffMods()` 取值、缺省回退基准）；诗篇已发版——`poem.mods` 已落地（scoreMul ×2 / princeGaugeFull 36000），其余诗篇分叉以 `isPoem()` 硬分支 + `01-config` `*Poem` 参数键实装（《诗篇难度修正.md》为历史档案，不再写入）
+- 虚象/具象/真我难度分叉走 `DIFFICULTIES.<难度>.mods`（`diffMods()` 取值、缺省回退基准）；诗篇已发版——`poem.mods` 已落地（scoreMul ×2.2 / princeGaugeFull 36000），其余诗篇分叉以 `isPoem()` 硬分支 + `01-config` `*Poem` 参数键实装（《诗篇难度修正.md》为历史档案，不再写入）
 
 ## 4. 并行开发规矩（多窗口共用一个工作区）
 

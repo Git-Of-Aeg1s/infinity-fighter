@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(2 名) 08-entities(5 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(3 名) 08-entities(5 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -511,14 +511,14 @@
     boxHMul: 0.85,                 // 盒子高度倍率（略微降低 15%）
   };
 
-  // 法术大师A1 参数（特殊2类紫光激光无人机）：不停留、出场 1.2~3s 后停移射击、50% 横移再恢复下降；
+  // 法术大师A1 参数（特殊2类紫光激光无人机）：不停留、出场 0.8~2.2s 后停移射击、50% 横移再恢复下降；
   // 所有移动速度统一固定 160（原两段巡航 200/140 统一，2026-09 批次；平滑切换逻辑保留、两段同速等效恒速）
   const FASHI_A1 = {
     entrySpeed: 160,     // 上 25% 屏高线（y = CANVAS_H × 0.25）以上的巡航速度（统一 160）
     speed: 160,          // 越线后的下压巡航速度（统一 160）
     cruiseAccel: 3.5,    // 两段巡航切换的平滑率（1/s）——速度曲线连续、无瞬变
     accel: 14,           // 加速度系数（很大：停移/横移/恢复都极快但平滑）
-    firstDelay: [1.2, 3],       // 登场后随机 1.2~3s 触发首次刹停攻击（每架独立随机，同 A2）
+    firstDelay: [0.8, 2.2],     // 登场后随机 0.8~2.2s 触发首次刹停攻击（每架独立随机，同 A2；2026-10-14 用户定稿 1.2~3 → 0.8~2.2）
     fireInterval: [1.0, 1.5],   // 攻击间隔：随机 1~1.5s
     firePause: 0.25,     // 停稳后到发射的短暂停顿（视觉反馈）
     fireLingerAfter: 0.35, // 发射后继续静止时长（不移动，原 0.15 + 0.2）
@@ -830,15 +830,15 @@
       // 技能2 连发导弹（2026-10-04 改版）：每轮两批 × volleyN 发扇形轻追踪导弹（批间隔 volleyGap；发射瞬间按
       // 玩家方向预压恒定角速度形成弧线追踪）；轮数按难度：虚象/具象仅 1 轮（illusionBatches=2 批收口）、
       // 真我/诗篇 2 轮（4 批收口）；每批发数 4 发（诗篇 poemVolleyN 6 发——《诗篇难度修正.md》#31）；
-      // 导弹弧线弧度按难度：虚象/具象 illusionMissileSpeed/illusionMissileTurn = 200/0.4（弹速与转向同步
-      // 减小 → 曲线弧度更平，2026-10-04 用户指定），真我/诗篇维持 235/0.55；
+      // 导弹弧线参数全难度统一 missileSpeed/missileTurn = 200/0.4（2026-10-14 用户定稿：原虚象/具象专属的
+      // 减速修正转正——原真我/诗篇 235/0.55 与 illusion 键双轨制取消，illusionMissileSpeed/Turn 键已删除，
+      // 黑暗之手获得的辛国栋技能（05-boss id7）同引本键）；
       // 轮间随机 volleyRoundGapRange（诗篇 poemVolleyRoundGapRange，登记《诗篇难度修正.md》）；
       // 诗篇发射期间本体上移 poemRisePct×屏高（poemRiseK 低通 ≈0.3s 过渡，速度曲线铁律），
       // 两轮发射完毕收口后平滑回落，且下次技能间隔 +poemVolleyGapAdd
       volleyN: 4, poemVolleyN: 6, illusionBatches: 2, volleyGap: 0.5,
       volleyRoundGapRange: [1.2, 1.6], poemVolleyRoundGapRange: [1.0, 1.4],
-      volleySpreadDeg: 64, missileSpeed: 235, missileTurn: 0.55,
-      illusionMissileSpeed: 200, illusionMissileTurn: 0.4,
+      volleySpreadDeg: 64, missileSpeed: 200, missileTurn: 0.4,   // 全难度统一（2026-10-14 用户定稿转正，原 235/0.55 仅真我/诗篇、虚象/具象 200/0.4）
       poemRisePct: 0.1, poemRiseK: 1.5, poemVolleyGapAdd: 0.5,   // poemRiseK 1.5 = 2026-10-04 二次定稿：上移/回落均放缓（原 3，时间常数 ≈0.67s，10% 屏高 ≈2s 平滑完成）
       missileDmg: 20, poemMissileDmg: 26, missileR: 6,   // 2026-10-10 用户定稿 14→20 / 诗篇 26
       // 技能间隔：2.34s = 1.8 × 1.3（2026-10-12 用户定稿 +30%；1.8 = 公共 1.2 × 1.5 与朴学峰一致，
@@ -934,10 +934,10 @@
     firstDelayPoem: 1.9,   // 诗篇难度首次脉冲间隔
   };
 
-  // 法术阵列参数（特殊3类血红三菱法师母机）：移速/碰撞同炮火先兆者；发射法术矩阵同款但大一号的红色正方体，
-  // 飞行 30%~60% 射程时分裂为 3 枚常规正方体（1 同向 + 2 垂直）；在场时法术矩阵偏移角/速度增强（见 fireMatrixCube）
   // 法术阵列参数（特殊4类血红三菱法师母机）：整体移速为炮火先兆者基准的 65%（speedMul 0.65）；
-  // 发射法术矩阵同款但大一号的红色正方体，飞行 30%~60% 射程时分裂为 3 枚常规正方体（1 同向 + 2 垂直）；
+  // 发射大号红色正方体——飞行 30%~60% 射程（随机，与旧版完全一致）后原地分裂为 3 枚常规正方体：
+  // 夹角互为 120°、其中 1 枚沿原方向（2026-10-14 用户澄清定稿：仅分裂产物改版——旧「1 同向 + 2 垂直」
+  // 与诗篇 5 枚均分口径作废，全难度统一 3 枚 120°；飞行/分裂时机逻辑不变）；
   // 每 4s 闪动红光并在周围召唤一个法术矩阵（召唤体无奖励）；在场时法术矩阵偏移角/速度增强（见 fireMatrixCube）
   const FASHI_ARRAY = {
     descend: 220,        // 进场下降速度（无减速动作）
@@ -957,7 +957,7 @@
     cubeHalf: 20,        // 大正方体绘制半边长（不随小正方体缩小联动；原为矩阵 15 的约 1.33 倍）
     cubeSpin: 1.5,       // 大正方体三轴翻滚基准角速度（rad/s；立体旋转，各轴异速叠加非二维自转）
     glowMul: 1.35,       // 大正方体红光增强倍率
-    splitMin: 0.30,      // 分裂行程下限（占射程比例）
+    splitMin: 0.30,      // 分裂行程下限（占射程比例——飞行/分裂时机与旧版完全一致）
     splitMax: 0.60,      // 分裂行程上限（占射程比例）
     splitWarn: 0.5,      // 分裂预警时长（s，红圈收缩）
     slotChance: 0.50,    // Lv11 起 4 类槽位出场时替换主力舰的概率（其余为主力舰）

@@ -1,21 +1,21 @@
 // 07-player：玩家武器 / 僚机逻辑 / 受伤与无敌 / 拾取 / 高能爆弹 / 清弹
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(12 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(19 名)
+  // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(12 名) 10-draw-world(1 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(19 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx}
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
-  import { ENEMY_CLASS, HANSHUANG } from './01-config-enemies.js';
+  import { ENEMY_CLASS, ENEMY_TYPES, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { diffMods, invulnDiffMul, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
   import { REWARD_ITEMS } from './01-config-spawn.js';
-  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyOnScreen, enemies, entranceDt, feijianWaves, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles } from './02-core.js';
+  import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, crystals, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyFireIv, enemyOnScreen, enemies, entranceDt, feijianWaves, frostZones, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
   import { berserkBursts, bombBursts, enemyDamageMul, shieldBurst } from './08-entities.js';
-  import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLovelyBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
+  import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteGiantCrystal, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLovelyBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
   import { endGame } from './12-ui.js';
 
 
@@ -259,10 +259,10 @@
       else if (g.t < 1.4) spd = g.spd * (1 - ((g.t - 0.8) / 0.6) * 0.3); // 100% → 70%
       else spd = g.spd * 0.7;                                            // 70% 恒速
       if (g.slowT != null) {
-        // 命中 BOSS 后 0.3s 内线性减速 40%（降至命中瞬间速度的 60%），此后恒定（2026-10-10 用户定稿——
+        // 命中 BOSS 后 0.3s 内线性减速 35%（降至命中瞬间速度的 65%），此后恒定（2026-10-14 用户定稿 40%→35%——
         // 火环贴住 BOSS 持续灼烧更久；命中瞬间 slowT=0.3 → 系数 1.0，速度逐帧连续无突跳）
         g.slowT = Math.max(0, g.slowT - dt);
-        spd *= 0.6 + 0.4 * (g.slowT / 0.3);
+        spd *= 0.65 + 0.35 * (g.slowT / 0.3);
       }
       if (g.dieT != null) {
         // 消散：半速漂移 + 渐隐（绘制端按 dieT 淡出），不再结算灼烧
@@ -284,7 +284,7 @@
         if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
         if (Math.hypot(e.x - g.x, e.y - g.y) > g.r + Math.min(e.w, e.h) / 2) continue;
         e.hp -= g.dps * g.tick * kingDmgBonusMul() * rewardOutMul() * pxpfChargeHurtMul(e);   // 抽卡演出期间我方输出 -60%；朴学峰冲刺易伤 ×2
-        if (e.type === 'boss' && g.slowT == null) g.slowT = 0.3;   // 首次灼烧到 BOSS：启动 0.3s 减速至命中速度 50%（一次性触发，见 updateXinRings 速度段）
+        if (e.type === 'boss' && g.slowT == null) g.slowT = 0.3;   // 首次灼烧到 BOSS：启动 0.3s 减速至命中速度 65%（一次性触发，见 updateXinRings 速度段）
         if (Math.random() < 0.3) spawnParticles(e.x + rand(-6, 6), e.y + rand(-6, 6), '#ff8fab', 1, 60);
         if (e.hp <= 0) killed.push(e);
       }
@@ -907,6 +907,9 @@
         player.respawnTimer -= dt;
         if (player.respawnTimer <= 0) respawnPlayer();
       }
+      // 辛国栋之怒火环：死亡期间继续飞行（2026-10-14 用户定稿——不再随 updatePlayer 提前 return 冻结；
+      // 位移与灼烧 tick 照常推进，重生后无缝衔接；仅警报 / BOSS 登场演出仍照常消散）
+      updateXinRings(dt);
       return;
     }
 
@@ -1080,6 +1083,9 @@
         missiles.length = 0;
         missileWarns.length = 0;
         popianMissiles.length = 0;
+        // 法术正方体（法术矩阵立方 / 法术阵列散射立方，大/小一并）随消失波消解（2026-10-14 用户定稿）
+        for (const c of spellCubes) spawnParticles(c.x, c.y, '#6fe3ff', 8, 180);
+        spellCubes.length = 0;
         for (const en of enemies) {
           if (en.xyBlades) {
             for (const bl of en.xyBlades) {
@@ -1187,6 +1193,7 @@
   // 仅警报/进场/展开期间停止攻击；wait（等清场）阶段继续攻击残敌
   function playerFireLocked() {
     if (state.pilotDashT > 0) return true;   // 许凯狗：冲刺期间我方不会攻击
+    if (state.gachaHaltT > 0) return true;   // 萧杨抽卡停火窗口：全场敌我停火（2026-10-14 用户定稿改版）
     if (bossFlow.stage === 'none' || bossFlow.stage === 'wait') return false;
     if (bossFlow.stage === 'warn') return true;   // 警报阶段一律锁定（暴风之眼汇聚入场短于警报剩余时间，不能仅靠 combatReady）
     return !enemies.some(e => e.type === 'boss' && e.combatReady);
@@ -1200,7 +1207,7 @@
     player.x = CANVAS_W / 2;
     player.y = CANVAS_H - 90;
     player.invuln = 2 * invulnDiffMul();   // 虚象：所有来源的无敌时间 +50%（含登场/重生保护）
-    player.invulnBlink = false;   // 登场/重生无敌不闪动（机体保持完整可见）
+    player.invulnBlink = true;   // 重生无敌正常闪烁（2026-10-14 用户定稿；开局入场无敌仍不闪动——12-ui resetGame 内另行置 false）
     player.weapon = 4;   // 复活后火力等级默认 Lv4（2026-10-10 用户定稿，原 Lv3；BOSS 试炼 / 图鉴挑战固定基准本就是 4）
     player.berserk = 0;
     // 最终壁垒：复活后立刻暴走（2026-10-10 用户定稿）——weapon=5 + 满时长，结束后回落 Lv4；
@@ -1233,7 +1240,8 @@
     player.slashCd = 0; player.slashTarget = null; player.slashSideT = null; player.slashQueue = []; player.slashPrevDeg = null; player.slashGapT = 0;   // 群星之杀斩击运行态重置
     player.subCooldown = 0;      // 副武器冷却就绪
     feijianWaves.length = 0;     // 无界飞剑：未发射的飞剑波随重生清除（否则冻结在阵亡位置）
-    // 辛国栋之怒火环死亡不消失（2026-10-12 用户定稿：灼烧火环跨命保留，死亡期间随 updatePlayer 冻结、重生后继续转；仅重开/金陨口径见 12-ui resetGame 与金陨段）
+    // 辛国栋之怒火环死亡不消失（2026-10-12 用户定稿：灼烧火环跨命保留；2026-10-14 用户定稿：死亡期间不再冻结、
+    // 火环照常飞行与灼烧——updatePlayer 死亡分支内调用 updateXinRings；仅重开/金陨口径见 12-ui resetGame 与金陨段）
   }
 
   // 受击计数推进（damagePlayer 与破片导弹"整轮仅计一次"共用）：非暴走时统一累计 2 次掉 1 级火力
@@ -1531,7 +1539,7 @@
   }
 
   // 澄月：触发暴走（新触发与暴走续时均判定一次）时概率获得量子护盾——
-  // 常规 22.5%（2026-10-12 用户定稿，原 15%）/ BOSS 战 40%（每个 BOSS 限一次；时长 6s 与通用量子护盾一致，走注册表 ARMORS.chengyue.shieldDur）
+  // 常规 22.5%（2026-10-12 用户定稿，原 15%）/ BOSS 战 40%（每个 BOSS 限一次；时长 4s 与暴走时长一致，走注册表 ARMORS.chengyue.shieldDur）
   function tryChengyueShield() {
     if (currentArmor.id !== 'chengyue') return;
     const bossFight = bossFlow.stage === 'fight';
@@ -1545,7 +1553,7 @@
     }
     achvNoteChengyueRoll(true);
     player.shield = currentArmor.shieldDur || 6;
-    player.shieldMax = player.shield;   // 读条分母同步（澄月 6s，与通用量子护盾一致）
+    player.shieldMax = player.shield;   // 读条分母同步（澄月 4s，与暴走时长一致——2026-10-14 用户定稿）
     spawnArmorGlyphFx('◉', currentArmor.color, 0.8, 'pulse', false, -38);   // 澄月图标演出：机头上方（dy=-38，同测试2 卡3/卡4 布局；淡青◉满月渐显-放大-渐隐，与注册表 glyph 同步）
     spawnParticles(player.x, player.y, '#6fe3ff', 18, 200);
   }
@@ -1563,7 +1571,7 @@
     state.armorSkillGauge = Math.min(1, (state.armorSkillGauge || 0) + amount / def.gaugeCrystalScore);
   }
 
-  // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：结晶护盾环绕 4.8s，装备炼金璃 6s）
+  // 按 F 触发装甲技能：量表满 1 时消耗并执行当前装甲的技能（七日澜心：结晶护盾环绕 4s，装备炼金璃 5.2s）
   // 返回 true = 触发成功（14-main 的 F 键入口调用）
   function triggerArmorSkill() {
     if (state.mode !== 'playing' || state.paused) return false;
@@ -1573,7 +1581,7 @@
     state.armorSkillGauge = 0;
     achvNoteArmorSkillUsed();   // 成就：忘了——装甲技能已使用
     if (currentArmor.id === 'lanxin') {
-      player.crystalShield = crystalShieldDur();   // 结晶护盾时长（炼金璃 6s / 基准 4.8s，01-config 单一入口）
+      player.crystalShield = crystalShieldDur();   // 结晶护盾时长（炼金璃 5.2s / 基准 4s，01-config 单一入口）
       achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
       spawnParticles(player.x, player.y, def.color, 20, 180);   // 澜心护盾开启：无震屏（2026-10-12 用户定稿）
     }
@@ -1957,49 +1965,167 @@
     }
   }
 
-  // 哦哦！抽卡！状态机启动：16 颗原石自画面外四面八方生成（随机方向、随机先后——非同时出现），
-  // 汇集阶段约 2.5s，期间无敌（damagePlayer 的 gachaFx 早退兜底）与我方输出 -60%（02-core rewardOutMul）
+  // —— 哦哦！抽卡！演出常量（2026-10-14 用户定稿改版）——
+  const GACHA_FLY_DUR = 0.65;      // 单颗原石飞行时长（s）：自画面外飞抵环绕轨道
+  const GACHA_ORBIT_R = 66;        // 原石环绕机体的轨道半径（px）
+  const GACHA_ORBIT_W = 2.2;       // 原石环绕角速度（rad/s）
+  const GACHA_ORBIT_WAIT = 0.5;    // 全部到齐后再环绕的等待时长（s）——到齐后 0.5s 开始向核心收束
+  const GACHA_CONVERGE_DUR = 0.35; // 收束时长（s）：向核心移动、变小发白并被吸收
+  const GACHA_CLEAR_WAVE_SPEED = 1500;   // 释放瞬间青粉清场光波扩散速度（px/s，1600px 处出界收尾）
+  // 绘制端共享常量（10-draw-world drawGachaFx 用；单值来源 07-player）
+  const GACHA_FX_DRAW = { fly: GACHA_FLY_DUR, orbitR: GACHA_ORBIT_R, stoneR: 9 * 0.7 };   // stoneR：演出原石半径 = 敌方掉落原石基准 9 的 70%（缩小 30%，2026-10-14 用户定稿）
+  // 抽卡演出状态机启动（Q 释放瞬间）：
+  // ①全场敌我停火（state.gachaHaltT，14-main 无条件递减；吸收抽色后按品质精算余窗——陨石砸下 +0.4s 结束）
+  // ②敌方技能中止且视为已释放完毕：排程弹清空、释放中的技能对象丢弃、射弹技能挂起的 1e9 fireTimer 恢复节拍
+  // ③BOSS 预警/技能中断 + 登场中的战争幽灵击杀（cancelBossWarns——战争幽灵瞄准和劈砍、暴风之眼横竖风波、
+  //   炮火先兆者导弹、风暴编织者雷霆轰击/重现光束等）；导弹预警线 / 风波区域标记 / 幽灵劈砍余像同步清空
+  // ④青粉渐变流动光波自机体扩散全场，途中清除触碰到的敌我弹幕（大蛋挞/长条蛋挞/大正方体/暴鸰炸弹/光束弹等）、
+  //   残留 buff 区域（辛国栋之怒火环、虚幻寒冷区域等）与水晶（波及即视为吸收——无视 0.1s 吸收延迟，见 updateGachaWave）
+  // ⑤16 颗演出原石（尺寸 = 敌方掉落原石的 70%）依次自四面八方飞来 → 环绕机体转动 → 全部到齐 0.5s 后
+  //   向核心收束、变小发白并被吸收
   function startGacha() {
+    // —— 停火 + 技能中止（释放瞬间）——
+    state.gachaHaltT = 3.0;   // 覆盖汇集+收束（≈2.97s）；抽色时按品质精算余窗（波时长 + 阴影/陨石 0.7 + 0.4）
+    for (const en of enemies) {
+      if (!en || en.dying) continue;
+      en.scheduled = [];   // 未发射的排程弹清空（射弹类技能半程中止）
+      if (en.skill) {
+        en.skill = null;   // 释放中的技能立刻中止——本次视为已释放完毕（技能冷却照常轮转）
+        const cfg = ENEMY_TYPES[en.type];
+        if (cfg) en.fireTimer = enemyFireIv(cfg);
+      }
+      if (en.fireTimer >= 1e8) {   // 射弹技能挂起态（赤金主力舰 case2 1e9 等，无 skill 对象）→ 恢复正常节拍
+        const cfg = ENEMY_TYPES[en.type];
+        en.fireTimer = cfg ? enemyFireIv(cfg) : 1;
+      }
+      if (en.crgoldHold) en.crgoldHold = 0;
+    }
+    cancelBossWarns();
+    missileWarns.length = 0;
+    zoneMarks.length = 0;
+    wgSlashes.length = 0;
+    if (state.stormVortex) state.stormVortex = null;   // 涡流风旋独立机体随技能中止消散
+    // —— 16 颗演出原石（依次自四面八方，随机先后）——
     const stones = [];
     for (let k = 0; k < 16; k++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = 420 + Math.random() * 260;   // 自画面外四周起步
-      stones.push({ delay: k * 0.09 + Math.random() * 0.12, sx: player.x + Math.cos(ang) * dist, sy: player.y + Math.sin(ang) * dist, t: 0 });
+      stones.push({ delay: k * 0.09 + Math.random() * 0.12, sx: player.x + Math.cos(ang) * dist, sy: player.y + Math.sin(ang) * dist,
+        t: 0, x: player.x, y: player.y, orbAng: Math.random() * Math.PI * 2, orbW: GACHA_ORBIT_W * (Math.random() < 0.5 ? 1 : -1),
+        scale: 1, white: 0 });
     }
-    state.gachaFx = { phase: 'gather', t: 0, stones, color: null, my: 0 };
-    player.invuln = Math.max(player.invuln, 2.9);   // 汇集 + 彩光窗口的无敌帧（damagePlayer 另有 gachaFx 全程兜底）
+    state.gachaFx = { phase: 'gather', t: 0, stones, color: null, my: 0,
+      wave: { x: player.x, y: player.y, r: 0, done: false },
+      cwave: null, arriveT: 0 };
+    player.invuln = Math.max(player.invuln, 4.8);   // 全演出窗口无敌帧（damagePlayer 另有 gachaFx 全程兜底）
   }
 
-  // 抽卡演出推进：gather（2.5s 原石汇集）→ flash（0.35s 彩光 + 清周身 300px 敌弹 + 抽色）→
-  // shadow（0.7s 场心巨影压境）→ meteor（0.55s 陨石加速砸向场心）→ shock（0.9s 巨型冲击波 + 全场结算）
+  // 青粉清场光波径向推进：扫过的敌我弹幕 / 残留区域 / 水晶即清除（水晶无视 0.1s 吸收延迟、按拾取口径结算）
+  function updateGachaWave(g, dt) {
+    const w = g.wave;
+    if (!w || w.done) return;
+    w.r += GACHA_CLEAR_WAVE_SPEED * dt;
+    const r = w.r;
+    const hit = (x, y, pad = 26) => Math.hypot(x - w.x, y - w.y) <= r + pad;
+    const pop = (x, y) => { spawnParticles(x, y, '#7ce8dd', 3, 130); spawnParticles(x, y, '#ffc9e2', 3, 110); };
+    for (let i = eBullets.length - 1; i >= 0; i--) { const b = eBullets[i]; if (hit(b.x, b.y)) { pop(b.x, b.y); eBullets.splice(i, 1); } }   // 含大蛋挞 / 长条蛋挞 / 虚幻炸弹
+    for (let i = pBullets.length - 1; i >= 0; i--) { const b = pBullets[i]; if (hit(b.x, b.y)) { pop(b.x, b.y); pBullets.splice(i, 1); } }   // 我方弹幕
+    for (let i = missiles.length - 1; i >= 0; i--) { const m = missiles[i]; if (hit(m.x, m.y)) { pop(m.x, m.y); missiles.splice(i, 1); } }
+    for (let i = popianMissiles.length - 1; i >= 0; i--) { const m = popianMissiles[i]; if (hit(m.x, m.y)) { pop(m.x, m.y); popianMissiles.splice(i, 1); } }
+    for (let i = blBombs.length - 1; i >= 0; i--) { const b = blBombs[i]; if (hit(b.x, b.y)) { pop(b.x, b.y); blBombs.splice(i, 1); } }   // 暴鸰炸弹
+    for (let i = spellCubes.length - 1; i >= 0; i--) { const c = spellCubes[i]; if (hit(c.x, c.y)) { pop(c.x, c.y); spellCubes.splice(i, 1); } }   // 大/小正方体
+    for (let i = feijianWaves.length - 1; i >= 0; i--) { const f = feijianWaves[i]; if (hit(f.x, f.y)) feijianWaves.splice(i, 1); }   // 飞剑波
+    for (let i = xinRings.length - 1; i >= 0; i--) { const g2 = xinRings[i]; if (hit(g2.x, g2.y)) { pop(g2.x, g2.y); xinRings.splice(i, 1); } }   // 辛国栋之怒火环（我方残留区域一并清除）
+    for (let i = frostZones.length - 1; i >= 0; i--) { const z = frostZones[i]; if (hit(z.x, z.y)) { pop(z.x, z.y); frostZones.splice(i, 1); } }   // 虚幻寒冷区域等残留 buff 区域
+    // 水晶：波及即消失并视为被吸收（无视 0.1s 吸收延迟——用户定稿；结算口径与 08-entities 拾取一致）
+    for (let i = crystals.length - 1; i >= 0; i--) {
+      const c = crystals[i];
+      if (!hit(c.x, c.y, c.r)) continue;
+      state.score += Math.round(c.val * diffMods().scoreMul);
+      state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表（updatePilotStatus 差分时扣除）
+      armorSkillGain(c.val, c.firstBoss);   // 七日澜心：按水晶得分等比填充技能量表（护盾期间停计）
+      if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数
+      pop(c.x, c.y);
+      crystals.splice(i, 1);
+    }
+    if (r > 1600) w.done = true;
+  }
+
+  // 抽卡演出推进（2026-10-14 用户定稿改版）：
+  //   gather（原石依次飞来 → 环绕机体转动，全部到齐后 0.5s）→ converge（0.35s 向核心收束、变小发白吸收；
+  //   吸收瞬间抽色 + 品质光波：蓝 200 / 紫 300 / 金全场——金更快更宽 + 微震屏 + 150px 后彩虹拖尾）→
+  //   shadow（0.45s 场心陨石阴影）→ meteor（0.25s 快速砸下——阴影出现到砸下共 0.7s）→
+  //   shock（0.4s 冲击余波；结算在 gachaMeteorImpact，结束瞬间停火窗口归零）
   function updateGachaFx(dt) {
     const g = state.gachaFx;
     g.t += dt;
+    updateGachaWave(g, dt);   // 青粉清场光波（与阶段并行）
+    if (g.cwave) {   // 品质光波推进（吸收瞬间爆发）
+      const cw = g.cwave;
+      if (cw.r < cw.max) cw.r = Math.min(cw.max, cw.r + cw.speed * dt);
+      else { cw.hold -= dt; if (cw.hold <= 0) g.cwave = null; }
+    }
     if (g.phase === 'gather') {
-      for (const s of g.stones) s.t += dt;
-      if (g.t >= 2.5) {
-        g.phase = 'flash'; g.t = 0;
+      let allArrived = true;
+      for (const s of g.stones) {
+        s.t += dt;
+        const lt = s.t - s.delay;
+        if (lt < 0) { allArrived = false; continue; }   // 尚未起飞
+        if (lt < GACHA_FLY_DUR) {
+          // 飞行段：自起点向环绕轨道入轨点逼近（ease-in 越近越快），落点随机分配轨道角
+          allArrived = false;
+          const p = lt / GACHA_FLY_DUR;
+          const ease = p * p * (0.4 + 0.6 * p);
+          const ex = player.x + Math.cos(s.orbAng) * GACHA_ORBIT_R;
+          const ey = player.y + Math.sin(s.orbAng) * GACHA_ORBIT_R;
+          s.x = s.sx + (ex - s.sx) * ease;
+          s.y = s.sy + (ey - s.sy) * ease;
+        } else {
+          // 环绕段：到齐时刻起环绕机体转动（玩家移动时轨道跟随）
+          if (!s.arrived) { s.arrived = true; g.arriveT = Math.max(g.arriveT, s.t); }
+          s.orbAng += s.orbW * dt;
+          s.x = player.x + Math.cos(s.orbAng) * GACHA_ORBIT_R;
+          s.y = player.y + Math.sin(s.orbAng) * GACHA_ORBIT_R;
+        }
+      }
+      if (allArrived && g.t >= g.arriveT + GACHA_ORBIT_WAIT) { g.phase = 'converge'; g.t = 0; }
+    } else if (g.phase === 'converge') {
+      // 收束段：全部原石向核心移动、变小发白（吸收）
+      const p = clamp(g.t / GACHA_CONVERGE_DUR, 0, 1);
+      for (const s of g.stones) {
+        s.scale = 1 - p;
+        s.white = p;
+        s.x += (player.x - s.x) * Math.min(1, dt * 14);   // 大逼近率飞向核心（速度曲线连续）
+        s.y += (player.y - s.y) * Math.min(1, dt * 14);
+      }
+      if (g.t >= GACHA_CONVERGE_DUR) {
+        g.phase = 'shadow'; g.t = 0;
         const r = Math.random();
         g.color = r < 0.70 ? 'blue' : r < 0.95 ? 'purple' : 'gold';   // 70% 蓝 / 25% 紫 / 5% 金
         if (g.color === 'gold') achvNoteGachaGold();   // 成就「金色传说」：本局原石 ≥16 且抽出金
-        clearEnemyBulletsNear(player.x, player.y, 300);   // 彩光：清除周身 300px 敌方子弹
+        // 品质光波：蓝 200px / 紫 300px / 金全场（金：速度更快、光波更宽 + 微震屏 + 150px 后彩虹拖尾，见绘制端）
+        const waveDur = g.color === 'blue' ? 0.25 : g.color === 'purple' ? 0.3 : 0.55;
+        g.cwave = { x: player.x, y: player.y, r: 12,
+          max: g.color === 'blue' ? 200 : g.color === 'purple' ? 300 : Math.hypot(CANVAS_W, CANVAS_H) * 0.62 + 60,
+          speed: g.color === 'gold' ? 3000 : 1400, hold: 0.22 };
+        if (g.color === 'gold') shake(6, 0.3);   // 金色光波发出期间微微震屏
         spawnParticles(player.x, player.y, '#ffffff', 30, 320);
+        // 停火余窗精算：品质光波 + 场心阴影/陨石 0.7s + 0.4s 余波（陨石砸下后 0.4s 停火结束）
+        state.gachaHaltT = Math.max(state.gachaHaltT, waveDur + 0.05 + 0.7 + 0.4);
       }
-    } else if (g.phase === 'flash') {
-      if (g.t >= 0.35) { g.phase = 'shadow'; g.t = 0; }
     } else if (g.phase === 'shadow') {
-      if (g.t >= 0.7) { g.phase = 'meteor'; g.t = 0; g.my = -80; }
+      if (g.t >= 0.45) { g.phase = 'meteor'; g.t = 0; g.my = -80; }
     } else if (g.phase === 'meteor') {
       // 陨石自屏幕上方加速砸向场心（位置由绘制端按 g.t 插值；此处仅计时）
-      if (g.t >= 0.55) { g.phase = 'shock'; g.t = 0; gachaMeteorImpact(g.color); }
+      if (g.t >= 0.25) { g.phase = 'shock'; g.t = 0; gachaMeteorImpact(g.color); }
     } else if (g.phase === 'shock') {
-      if (g.t >= 0.9) state.gachaFx = null;
+      if (g.t >= 0.4) { state.gachaFx = null; state.gachaHaltT = 0; }   // 0.4s 后停火效果结束
     }
   }
 
   // 陨石落点全场结算：清除全场敌我弹幕与预警（含辛国栋之怒火环、暴风之眼风流、暴风之眼风波/风柱、
   // 风暴编织者雷霆/激光预警、战争幽灵登场——登场的战争幽灵直接被砸死，见 cancelBossWarns），
-  // 再按抽中颜色结算伤害：蓝 6000 / 紫 16000 全场；金直接秒杀全场敌方单位（埃逸殉爆同款真实击杀），
+  // 再按抽中颜色结算伤害：蓝 16000 / 紫 32000 全场（2026-10-14 用户定稿）；金直接秒杀全场敌方单位（埃逸殉爆同款真实击杀），
   // 二阶段 BOSS 风暴编织者无法秒杀——改按紫陨石伤害结算
   //
   // 【统一伤害规则 · 秒杀类技能】（埃逸终极殉爆 / 金色陨石；本注释为规则锚点，全仓引用此处）
@@ -2045,7 +2171,7 @@
         killEnemy(i);
         if (e.type === 'boss') bossKilled = true;   // 暴风之眼在此被秒 → killEnemy 同步召唤的风暴编织者带 _sdImmune 登场、且不在本轮结算快照内（天然豁免）
       } else {
-        e.hp -= (color === 'purple' ? 16000 : 6000) * pxpfChargeHurtMul(e);
+        e.hp -= (color === 'purple' ? 32000 : 16000) * pxpfChargeHurtMul(e);   // 蓝陨 16000 / 紫陨 32000（2026-10-14 用户定稿，原 6000/16000）
         spawnParticles(e.x, e.y, '#ffffff', 12, 260);
         if (e.hp <= 0) killEnemy(i);
       }
@@ -2361,6 +2487,14 @@
           bl.done = true;
         }
       }
+      // 法术正方体（法术矩阵立方 / 法术阵列散射立方，大/小一并）：刀身扫中即消解（2026-10-14 用户定稿）
+      for (let sc2 = spellCubes.length - 1; sc2 >= 0; sc2--) {
+        const cb = spellCubes[sc2];
+        if (!inSector(cb.x, cb.y)) continue;
+        spawnParticles(cb.x, cb.y, '#ffd9d9', 8, 160);
+        spawnParticles(cb.x, cb.y, '#ff5a6e', 5, 120);
+        spellCubes.splice(sc2, 1);
+      }
       if (sc.t >= wind + cfg.scytheDur) { meiScythes.splice(i, 1); continue; }   // 蓄力 + 斩完一圈即消散
     }
   }
@@ -2559,6 +2693,9 @@
           if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：主体接触伤害穿透
           if (Math.hypot(e.x - s.x, e.y - s.y) > PRINCE_STORM.r + Math.max(e.w, e.h) / 2) continue;
           e.hp -= PRINCE_STORM.tickDmg * mul * yu4AuraMul(e) * kingDmgBonusMul() * pxpfChargeHurtMul(e);   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴；朴学峰冲刺易伤 ×2
+          // 非 BOSS 类敌人：每跳额外扣除 3% 最大生命（2026-10-14 用户定稿；固定值不乘御4/国王/充能等减伤链——
+          // 与依镰刀 20% maxHp 同口径的百分比削血；BOSS 不可百分比削血，仅吃固定 tickDmg）
+          if (e.type !== 'boss') e.hp -= e.maxHp * 0.03;
           if (Math.random() < 0.4) spawnParticles(e.x + rand(-8, 8), e.y + rand(-8, 8), '#dff3ff', 1, 80);
           if (e.hp <= 0) killed.push(e);
         }
@@ -2813,7 +2950,7 @@
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
     segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, beamClipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
-    accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
+    GACHA_FX_DRAW, accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
     handlePlayerDeath, aiyiSelfDestruct, updateAiyiWaves, stormBossFightActive, pilotStormContactMul,
     princeStormKillGain, updatePilotStatus, triggerPilotSkill, updateFriendStorms, kingDmgBonusMul, chargeAllGaugesOnDashEnd,
     updateDagouMissiles, meiNoteKill, noteDdjLevelUp, applyRewardItem, pushItemPickFx, currentBombCap, noteGachaStone,
