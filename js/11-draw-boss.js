@@ -949,12 +949,13 @@
       }
       return tornadoTextureSprite.cv;
     }
-  function drawTornado(e, spinMul = 1) {
+  function drawTornado(e, spinMul = 1, tOverride = null) {
       ctx.save();
       ctx.translate(e.x, e.y);
       const R = e.w * 0.5;
-      const rot = -state.time * 1.9 * spinMul;   // 逆时针（canvas 角度递减）；spinMul：友方大风暴 ×2
-      const pulse = 1 + Math.sin(state.time * 3.1) * 0.015;   // 轻微呼吸缩放
+      const T = tOverride != null ? tOverride : state.time;   // 时间源可覆盖：结算页等非战斗态由实体冻结时钟驱动（自转停住，2026-10-14 用户定稿）
+      const rot = -T * 1.9 * spinMul;   // 逆时针（canvas 角度递减）；spinMul：友方大风暴 ×2
+      const pulse = 1 + Math.sin(T * 3.1) * 0.015;   // 轻微呼吸缩放
       ctx.scale(pulse, pulse);
       const blit = (img, angle, alpha) => {
         ctx.save();
@@ -968,7 +969,7 @@
       const tex = getTornadoTextureSprite(R);     // 原图纹理：慢自转 + alpha 0.26（仅隐约可辨旋涡轮廓与暗色云隙）
       if (tex) blit(tex, rot * 0.55, 0.26);
       blit(S.arms, rot);                          // 矢量旋臂：自转
-      blit(S.tendrils, rot + state.time * 0.55);  // 细风须：相对主臂缓慢漂移，织出风流感
+      blit(S.tendrils, rot + T * 0.55);  // 细风须：相对主臂缓慢漂移，织出风流感
       blit(S.top, 0);                             // 外缘柔光 + 风暴眼微光（不随自转）
       ctx.restore();
     }

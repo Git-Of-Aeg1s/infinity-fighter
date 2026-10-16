@@ -134,6 +134,7 @@
     crystalMagnetMul: 1,   // 水晶磁吸半径倍率（击败第一个 BOSS 后永久 ×1.5，重开归 1）
     armorSkillGauge: 0,    // 装甲技能量表（0~1，七日澜心：收集水晶填充；按 F 满 1 时触发，见 07-player triggerArmorSkill）
     pilotDashT: 0,         // 许凯狗：开场高能冲刺剩余时长（s；resetGame 置位，14-main 递减与调度）
+    pilotDashDur: 0,       // 许凯狗：本次冲刺总时长（s；开局长冲 = dashDur、击坠 BOSS 再冲刺 = 2/3——07-player 演出插值按此计算，避免 3s 冲刺负 elapsed 触发 smoothstep 外插瞬移；06-enemy/12-ui 写、07-player 读）
     dashPostBoss: false,   // 许凯狗：击坠 BOSS 触发的再冲刺标记（06-enemy killEnemy BOSS 分支置位，14-main 冲刺块消费——等级覆盖/量表收尾与开局冲刺不同）
     dashPostBossT: 0,      // 许凯狗：再冲刺已进行时长（s；14-main 冲刺块累计，>1s 后按 1 级/s 推进关卡）
     maxinSpeedMul: 1,      // 马兴犬：移速倍率（1 原速 / 1.25 Shift 加速 / 0.8 CapsLock 减速；同键再按恢复原速）
@@ -214,8 +215,9 @@
     warnT: 0,          // 警报演出计时
     victoryDelay: 0,   // BOSS 击杀后延迟返回主界面
     defeatedName: '',  // 被击败的 BOSS 名称
-    postDelay: 0,      // BOSS 击败后到恢复刷怪的缓冲（2s，不计入关卡推进）
-    postWaveT: 0,      // BOSS 后固定首波（1类长队）刷出起 4s 观察期，结束后恢复正常刷怪（不计入关卡推进）
+    postDelay: 0,      // BOSS 击败后到刷新特殊波次的缓冲（2s，不计入关卡推进）
+    postWaveClear: false,  // BOSS 后特殊波次（水晶核芯艇）等待清场：波次全部落地且场上无敌人 → 0.6s 后恢复刷怪（不计入关卡推进）
+    postClearT: 0,     // 特殊波次清场后的 0.6s 恢复计时（postWaveClear 期间累计）
   };
 
   // 关卡与出怪节奏：level 由有效刷怪时间驱动；spawnTimer/waveSeq 驱动波次；capitalIdleT 驱动 4类槽位刷新

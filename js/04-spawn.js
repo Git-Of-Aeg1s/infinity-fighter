@@ -1,13 +1,13 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(5 名) 06-enemy(9 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(22 名)
+  // 被依赖：05-boss(5 名) 06-enemy(9 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(24 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
+  import { ANVIL, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
@@ -79,6 +79,7 @@
     delayedSpawns.length = 0;
     poemRearQueue.length = 0;
     popianBatch.t = -9; popianBatch.tpY = 0;
+    crystalWaveRoundsLeft = 0;   // BOSS 后特殊波次未落地轮次计数归零（跨局清理）
   }
   function updateDelayedSpawns(dt) {
     for (let i = delayedSpawns.length - 1; i >= 0; i--) {
@@ -194,6 +195,12 @@
       e.score = (e.behavior === 'kamikaze' || e.behavior === 'swirl') ? SIDE_KAMIKAZE_SCORE : SIDE_SCORE;
     } else if (type === 'prolifera') {
       e.score = SIDE_SCORE;
+    }
+    // 水晶核芯艇（1S）：水晶三色随机（CRYSTAL_CORE_COLORS，绘制消费见 10-draw-world）+
+    // 无入场加成（_entryMul 预置 1——速度恒 200 直线穿越，侧翼/顶部/对角入场同规则，见 06-enemy 1类家族分支）
+    if (type === 'crystalCore') {
+      e.crystalColor = CRYSTAL_CORE_COLORS[(Math.random() * CRYSTAL_CORE_COLORS.length) | 0];
+      e._entryMul = 1;
     }
     // 真我：暴风之眼技能2 召唤的大型龙卷血量 6000（具象基准 3600）
     if (type === 'tornado' && isRealme()) e.hp = e.maxHp = STORM_SHIP.s2.hp;
@@ -615,41 +622,121 @@
     for (let k = n0; k < enemies.length; k++) enemies[k].minionDrop = true;
   }
 
-  // BOSS 击败后的固定首波（2026-10-12 用户定稿改版）：同侧同时刷出三条同款长队、竖直高度互不相同
-  //（首波基准 0.30H±8px 抖动，相邻波纵向间距随机 50~100px（用户定稿）——三条共用同一组方向基值 vx/vy，
-  // 横穿过程保持平行、间距恒定，速度曲线无瞬变）；
-  // 每条仍是一群 1类排成长队、从左或右入场横穿战场自另一侧离场；
-  // 本波不出现紫电（kamikaze）与橙旋（swirl）1类（白影/增生/黄芒/赤月按权重混入）；
-  // BOSS 战结束后 6s 内的特殊波次：不限入场位置一律快速 200（显式传 fast）
-  function spawnPostBossWave() {
-    const fromLeft = Math.random() < 0.5;
-    const dirX = fromLeft ? 1 : -1;
-    const edgeX = fromLeft ? -36 : CANVAS_W + 36;      // 屏幕侧外入场（三条共用同一侧）
-    const vx = dirX * rand(90, 120);                   // 方向基值：与常规 1类同向（快速 200 归一），三条共用
-    let nextY = CANVAS_H * 0.30 + rand(-8, 8);         // 首波入场高度基准 + 抖动
-    const lines = [];
-    const pts = [];                                    // 全部生成点先行收集：三条共用 vy，生成时统一按 75% 屏高压平（见 sideFloorClampVy）
-    for (let w = 0; w < 3; w++) {
-      const startY = nextY;
-      nextY += rand(50, 100);                          // 与相邻波的纵向间距：随机 50~100px（用户定稿）
-      const count = 5 + Math.floor(Math.random() * 3);   // 5~7：长队
-      const gap = 54;                                    // 队列间距（沿行进反方向排开）
-      const row = [];
-      for (let k = 0; k < count; k++) {
-        // 排成长队：队尾依次靠外、靠上，形成一列斜线
-        const p = { x: edgeX - dirX * k * gap, y: startY - k * gap * 0.5, fromLeft };
-        row.push(p);
-        pts.push(p);
-      }
-      lines.push(row);
+  // ---------- BOSS 后特殊波次：水晶核芯艇（2026-10-15 用户定稿，替换原「同侧三条 1类长队」固定首波） ----------
+  // 四种编成在每个 BOSS 击败后独立随机抽一；每种共 40 艘、轮间隔 0.25s、同轮全部同时落地（初始位置同齐）；
+  // 每轮从全部槽位（波次1/2 = 高度带、波次3 = 纵列、波次4 = 角位）随机取不重复的 n 个同时落地，
+  // 同槽位相邻轮次的艇以 0.25s × 200px/s = 50px 间距依次跟进（不重叠）
+  //（2026-10-15 用户回调：删除「槽位场上同时最多 1 艘」并发上限——该设计使非击坠流出场不足 40，按排程该出就出）；
+  // 艇体：速度恒 200、无入场加成（_entryMul 预置 1，makeEnemy）、直线穿越不停留（移动见 06-enemy 1类家族分支）；
+  // 波次全部落地且场上清空后 0.6s 恢复正常刷怪并解除等级冻结（状态机见 14-main postWaveClear 块）
+  const CRYSTAL_WAVE = {
+    roundGap: 0.25,    // 轮间隔（= 同槽位跟进间距 50px 的来源：0.25s × 200px/s）
+    total: 40,         // 每种波次总艘数（按排程全额落地）
+    clearDelay: 0.6,   // 清场后恢复正常刷怪的延迟（14-main 消费）
+    edge: 36,          // 屏外出生裕度（侧翼/顶部，同 1类惯例 ±36）
+    cornerNear: 60,    // 波次 4：角点附近位置沿垂线的偏移距离
+  };
+  let crystalWaveRoundsLeft = 0;   // 未落地轮次计数（0 = 全部落地）；resetSpawnWaveState 跨局归零
+  const crystalWaveSpawning = () => crystalWaveRoundsLeft > 0;
+  const crystalWaveStats = { spawned: 0 };   // 本波已生成艘数（spawnPostBossWave 重置；smoke 断言出场数 = 40 用）
+
+  // 轮次艘数分配：total 分 rounds 轮、每轮 ≥1——先均摊、余量随机散布（40/12 → 8×3 + 4×4；40/8 → 8×5）
+  function crystalRoundSizes(rounds, total) {
+    const base = Math.floor(total / rounds);
+    const sizes = Array(rounds).fill(base);
+    let rest = total - base * rounds;
+    while (rest > 0) { sizes[(Math.random() * rounds) | 0] += 1; rest--; }
+    return sizes;
+  }
+  // 从槽位池随机取 n 个不重复槽位（仅同轮内去重——同轮同槽位会完全重叠；跨轮同槽位 = 50px 跟进队列）
+  function crystalPickLanes(pool, n) {
+    const p = pool.slice();
+    const picks = [];
+    while (picks.length < n && p.length) picks.push(p.splice((Math.random() * p.length) | 0, 1)[0]);
+    return picks;
+  }
+  // 单艇生成：方向基值归一到恒速 200（无入场加成在 makeEnemy 预置）
+  function spawnCrystalUnit(x, y, vx, vy) {
+    const e = makeEnemy('crystalCore', x, y, {});
+    const l = Math.hypot(vx, vy) || 1;
+    e._sideVel = { vx: vx / l * 200, vy: vy / l * 200 };
+    crystalWaveStats.spawned++;
+    return e;
+  }
+  // 轮次排程公共壳：第 r 轮延迟 r×roundGap 落地（全局延迟队列 delayedSpawns——特殊波次期刷怪通道全冻结，
+  // 无跨波清队列风险；resetSpawnWaveState 跨局清空 + crystalWaveRoundsLeft 归零）
+  function crystalScheduleRounds(rounds, total, roundFn) {
+    let delay = 0;
+    for (const n of crystalRoundSizes(rounds, total)) {
+      crystalWaveRoundsLeft++;
+      queueDelayedSpawn(delay, () => { crystalWaveRoundsLeft--; roundFn(n); });
+      delay += CRYSTAL_WAVE.roundGap;
     }
-    const vy = sideFloorClampVy(vx, rand(54, 84), pts);   // 同时下沉（生成时已按 75% 屏高压平；三条仍共用 → 平行、间距恒定不变）
-    for (const row of lines) {
-      for (const p of row) {
-        spawnSideUnit(p.x, p.y, { vx, vy }, pickSideSpawn(['kamikaze', 'swirl']), rand(0.8, 1.6), true);   // 固定首波无紫电/橙旋
-        enemies[enemies.length - 1].postBossWave = true;   // 标记 BOSS 后固定首波：水晶必掉 + 掉量翻倍
+  }
+
+  // 波次 1：单侧五高度（20%/30%/40%/50%/60% 屏高）× 12 轮 × 40 艘；每轮随机左右侧（2026-10-15 用户定稿）、
+  // 同轮同侧同一起点（初始水平位置一致）、水平直穿
+  function crystalWaveSideLanes() {
+    const lanes = [0.20, 0.30, 0.40, 0.50, 0.60];
+    crystalScheduleRounds(12, CRYSTAL_WAVE.total, (n) => {
+      const fromLeft = Math.random() < 0.5;
+      const x = fromLeft ? -CRYSTAL_WAVE.edge : CANVAS_W + CRYSTAL_WAVE.edge;
+      const picks = crystalPickLanes(lanes, n);
+      for (const p of picks) spawnCrystalUnit(x, CANVAS_H * p, fromLeft ? 1 : -1, 0);
+    });
+  }
+  // 波次 2：双侧四高度（30%/40%/50%/60% 屏高）× 12 轮 × 40 艘（双侧合计）；每轮每侧至少 1 艘、
+  // 每侧同轮同一起点（初始水平位置一致）、水平直穿；每侧每高度同时最多 1 艘
+  function crystalWaveDualLanes() {
+    const lanes = [0.30, 0.40, 0.50, 0.60];
+    crystalScheduleRounds(12, CRYSTAL_WAVE.total, (n) => {
+      const nA = 1 + ((Math.random() * (n - 1)) | 0);   // 两侧分配：每侧 ≥1（nA ∈ 1..n-1 随机）
+      for (const side of ['L', 'R']) {
+        const cnt = side === 'L' ? nA : n - nA;
+        const fromLeft = side === 'L';
+        const x = fromLeft ? -CRYSTAL_WAVE.edge : CANVAS_W + CRYSTAL_WAVE.edge;
+        const picks = crystalPickLanes(lanes, cnt);
+        for (const p of picks) spawnCrystalUnit(x, CANVAS_H * p, fromLeft ? 1 : -1, 0);
+      }
+    });
+  }
+  // 波次 3：顶部五列（占屏宽 26%/38%/50%/62%/74%）× 12 轮 × 40 艘；每轮同一起点竖直高度一致（屏外顶部同 y）、
+  // 竖直下穿；每列同时最多 1 艘
+  function crystalWaveTopCols() {
+    const cols = [0.26, 0.38, 0.50, 0.62, 0.74];
+    crystalScheduleRounds(12, CRYSTAL_WAVE.total, (n) => {
+      const picks = crystalPickLanes(cols, n);
+      for (const p of picks) spawnCrystalUnit(CANVAS_W * p, -CRYSTAL_WAVE.edge, 0, 1);
+    });
+  }
+  // 波次 4：四角 12 位 × 8 轮 × 40 艘（每轮 5 艘）——顶边两角 + 以顶边为一边、边长 = 屏宽的正方形下方两点，
+  // 每点沿「点 ↔ 正方形中点」连线的垂线再取两个附近位置（角点本身 + 垂线两侧各 60px，共 4×3 = 12）；
+  // 同角三艇沿「角点 → 正方形中点」方向平行斜扫（垂线偏移 = 平行轨间距 60px）
+  function crystalWaveCorners() {
+    const W = CANVAS_W;
+    const ccx = W / 2, ccy = W / 2;   // 正方形中点
+    const pts = [];
+    for (const [px, py] of [[0, 0], [W, 0], [0, W], [W, W]]) {
+      const dl = Math.hypot(ccx - px, ccy - py) || 1;
+      const dx = (ccx - px) / dl, dy = (ccy - py) / dl;   // 指向中点（同角三艇共用 → 平行轨）
+      const nx = -dy, ny = dx;                            // 垂线方向
+      for (const off of [0, CRYSTAL_WAVE.cornerNear, -CRYSTAL_WAVE.cornerNear]) {
+        pts.push({ x: px + nx * off, y: py + ny * off, dx, dy });
       }
     }
+    crystalScheduleRounds(8, CRYSTAL_WAVE.total, (n) => {
+      const picks = crystalPickLanes(pts, n);
+      for (const p of picks) spawnCrystalUnit(p.x, p.y, p.dx, p.dy);
+    });
+  }
+
+  // BOSS 击败后的特殊波次入口（2026-10-15 改版）：四种水晶核芯艇编成独立随机抽一
+  //（2026-10-15 用户定稿「每个 BOSS 独立随机」；forceKind 仅供 smoke 场景定向测试）
+  function spawnPostBossWave(forceKind) {
+    crystalWaveRoundsLeft = 0;
+    crystalWaveStats.spawned = 0;
+    const kinds = [crystalWaveSideLanes, crystalWaveDualLanes, crystalWaveTopCols, crystalWaveCorners];
+    (forceKind != null ? kinds[forceKind] : kinds[(Math.random() * kinds.length) | 0])();
   }
 
   // 波次调度（诗篇专用路径，2026-10-12 起）：非诗篇已改走设计波次卡抽取（14-main 编排
@@ -1112,14 +1199,15 @@
     const cfg = PULSE_MATRIX;
     const first = isPoem() ? cfg.firstDelayPoem : cfg.firstDelay;
     // holdTimer 形参保留兼容调用方（挑战模式传 1e9），但 2026-10-02 起自爆计时（登场 20s）全模式生效，永驻语义作废
-    // 出生朝向（2026-10-11 用户定稿）：15% 从场地顶部竖直下压入场（登场速度加成延长至 2.5s），否则侧翼横移（原逻辑）；
+    // 出生朝向（2026-10-11 用户定稿）：15% 从场地顶部竖直下压入场（登场速度加成延长至 2.5s；下压至屏高
+    // 60%~80% 随机位置刹停留——2026-10-14 用户定稿，原 20%~38%），否则侧翼横移（原逻辑）；
     // forceFlank：侧翼卡强制侧翼入场（2026-10-12 用户定稿：侧翼波次不出现顶部生成），fromLeft 指定侧（null = 内部随机）
     const fromTop = forceFlank ? false : Math.random() < 0.15;
     let startX, y, travelMax, baseY;
     if (fromTop) {
       startX = rand(60, CANVAS_W - 60);
       y = -50;
-      baseY = CANVAS_H * rand(0.20, 0.38);      // 下压停驻高度（屏高 20%~38%）
+      baseY = CANVAS_H * rand(0.60, 0.80);      // 下压停驻高度：屏高 60%~80% 随机（2026-10-14 用户定稿，原 20%~38%）
       travelMax = baseY - y;                     // 竖直位移总量（到停驻点刹停）
     } else {
       // 侧翼出生：从左/右侧屏外出生、向另一侧持续移动；出现高度 = 玩家竖直位置 ±20% 屏高（clamp 防出界）
@@ -1946,6 +2034,7 @@
     strikerVariantWeights, sideSpawnWeights, pickVariant, makeEnemy, pickSideSpawn, spawnSideUnit, spawnSideGroup,
     spawnStrikerGroup, spawnMirrorRow, spawnSideSweep, spawnSideKamikazeStream, spawnStrikerVee, spawnGunshipWings,
     spawnDiagonalRaid, spawnSideColumn, spawnPostBossWave, spawnBossMinionWave, fieldPressureW, spawnPressureThreshold,
+    CRYSTAL_WAVE, crystalWaveSpawning, crystalWaveStats,
     capitalMaxWait, SPECIAL3_POOL, special3Weight, spawnWave, WAVE_FORMATIONS, pickFormation, spawnDesignedWave, comboWaveChance,
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
     spawnPoemExtraWave, queuePoemRearCard, updatePoemRearCards, flushPoemRearCards,

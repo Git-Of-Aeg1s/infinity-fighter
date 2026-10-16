@@ -12,7 +12,7 @@
   import { GACHA_FX_DRAW } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
   import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCrystalCoreBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
   import { getCrystal3DSprite } from './09c-draw-crystal.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawDarkhandTarts, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
@@ -230,7 +230,7 @@
   function drawEnemy(e) {
     // 诗篇占位敌人（wip）：统一白色方块占位造型
     if (WIP_PLACEHOLDER_TYPES.includes(e.type)) { drawWipPlaceholderBody(e); return; }
-    if (e.type === 'tornado') { drawTornado(e); return; }   // 龙卷专用绘制（自身处理 translate）
+    if (e.type === 'tornado') { drawTornado(e, 1, e.rt); return; }   // 龙卷专用绘制（自身处理 translate；e.rt = 战斗期冻结时钟——结算页自转停住）
     // 战争幽灵：世界坐标层预警（入场/离场风波 + 技能1扇形 / 技能2双线），先于本体绘制（图层在机体之下）
     if (e.type === 'warGhost') drawWarGhostWarns(e);
     // 4S 精英：世界坐标层预警（朴学峰穿刺线 / 夏勇坠击落点影子），先于本体绘制（图层在机体之下）
@@ -299,6 +299,10 @@
       drawDuskStrikerBody(e); // 自带填充与描边（暗黑渐变菱形 + 微亮描边 + 中央白色发光核心；渐显/渐隐透明度内含）
     } else if (e.type === 'striker' && e.skill === 'fortress') {
       drawFortressStrikerBody(e); // 自带填充与描边（黄色倒置菱形 + 前置能量盾：盾沿增粗外移 + 流光；见 09-draw-ships）
+    } else if (e.type === 'crystalCore') {
+      // 水晶核芯艇（1S）：白色短艇 + 双臂后撑 + 大水晶（A 版式；整体按航向旋转——机头朝航向、水晶拖在后方）
+      drawCrystalCoreBody(e);
+      ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
     } else {
     if (e.type === 'side' && e.behavior === 'moon') {
       // 赤月侧翼艇：红色箭镖，造型与其他 1类完全一致，仅将顶角精确旋转到当前航向（= 子弹发射方向）
@@ -476,7 +480,7 @@
       ctx.strokeStyle = pal.accent;
       ctx.lineWidth = 2;
       if (e.variant === 'amber') {
-        const ringRot = state.time * 1.8 + (e.wobble || 0);
+        const ringRot = (e.rt != null ? e.rt : state.time) * 1.8 + (e.wobble || 0);   // e.rt = 战斗期冻结时钟（结算页光环停转）
         for (let i = 0; i < 2; i++) {
           ctx.beginPath();
           ctx.ellipse(0, 2, 17, 13, ringRot + i * Math.PI / 2, 0, Math.PI * 2);
@@ -621,7 +625,7 @@
         ctx.strokeStyle = pal.accent;
         ctx.lineWidth = 2.4;
         ctx.globalAlpha *= reveal;
-        const ringRot = state.time * 1.5 + (e.wobble || 0);
+        const ringRot = (e.rt != null ? e.rt : state.time) * 1.5 + (e.wobble || 0);   // 赤金：e.rt = 战斗期冻结时钟（结算页双环停转）
         for (let i = 0; i < (e.ringsLeft || 0); i++) {
           ctx.beginPath();
           ctx.ellipse(0, 0, 30 - i * 3, 22 - i * 2.5, ringRot + i * Math.PI / 2, 0, Math.PI * 2);
@@ -2817,7 +2821,7 @@
       ctx.globalAlpha *= a;
       // 风暴本体直接复用大型龙卷（暴风之眼召唤物）绘制 drawTornado：白色实体底盘 + 台风云盘纹理 +
       // 矢量旋臂 + 外缘柔光 + 风暴眼微光，样式完全一致（自转为该绘制内置的时间驱动，无需实体 rot）
-      drawTornado({ x: s.x, y: s.y, w: s.r * 2 }, 2);   // 自转 ×2（友方大风暴专属转速）
+      drawTornado({ x: s.x, y: s.y, w: s.r * 2 }, 2, s.rt);   // 自转 ×2（友方大风暴专属转速）；s.rt = 战斗期冻结时钟——结算页自转停住（2026-10-14 用户定稿）
       ctx.restore();
     }
   }
@@ -3206,10 +3210,12 @@
     if (!g) return;
     const cx = CANVAS_W / 2, cy = CANVAS_H * 0.45;
     ctx.save();
-    // 青粉清场光波：双色渐变环随时间旋转（流动感），随扩散半径渐隐
+    // 青粉清场光波：双色渐变环随时间旋转（流动感）；末端减速缓入边界后原地 0.35s 渐隐（见 updateGachaWave）
     if (g.wave && g.wave.r > 4 && !g.wave.done) {
       const w = g.wave;
-      const a = clamp(1 - w.r / 1700, 0, 1);
+      const fade = w.fade === undefined ? 1 : w.fade;
+      const grow = clamp(1 - Math.pow(w.r / 1700, 1.6) * 0.75, 0, 1);   // 随半径渐隐但保持可见（原线性曲线 1600px 处 α≈0.06 末端几乎不可见）
+      const a = grow * fade;
       const ga = state.time * 2.4;
       const gx = Math.cos(ga) * w.r, gy = Math.sin(ga) * w.r;
       const lg = ctx.createLinearGradient(w.x - gx, w.y - gy, w.x + gx, w.y + gy);
@@ -3218,7 +3224,7 @@
       lg.addColorStop(1, '#39C5BB');
       ctx.globalAlpha = a * 0.85;
       ctx.strokeStyle = lg;
-      ctx.lineWidth = 14;
+      ctx.lineWidth = 14 + (1 - fade) * 6;   // 渐隐期线宽微增（消散感）
       ctx.shadowColor = '#7ce8dd';
       ctx.shadowBlur = 18;
       ctx.beginPath();
@@ -3237,7 +3243,7 @@
       const cw = g.cwave;
       const c = GACHA_COLORS[g.color] || GACHA_COLORS.blue;
       const gold = g.color === 'gold';
-      const fade = cw.r >= cw.max ? clamp(cw.hold / 0.22, 0, 1) : 1;
+      const fade = cw.fade === undefined ? 1 : cw.fade;   // 到顶后 0.25s 渐隐（updateGachaFx 推进）
       ctx.globalAlpha = 0.9 * fade;
       ctx.strokeStyle = c.light;
       ctx.shadowColor = c.main;
@@ -3262,14 +3268,15 @@
         } catch (err) { /* conic 渐变不可用：静默跳过拖尾 */ }
       }
     }
-    // 原石（飞行 → 环绕 → 收束变小发白；尺寸 = 敌方掉落原石的 70%）
+    // 原石（飞行 → 环绕 → 收束变小发白；真·原石精灵，尺寸 = 掉落原石的 70%——
+    // 2026-10-14 用户反馈「环绕期间原石没有真正出现」：原淡色光点（9px 径向渐变 + 18Hz 闪烁）几乎不可见，
+    // 改为巨型水晶同款烘焙精灵贴图（g0 青 / g1 粉，随掉落池双色）+ 慢自转 + 收束段发白罩）
     if (g.phase === 'gather' || g.phase === 'converge') {
       for (const s of g.stones) {
         const lt = s.t - s.delay;
         if (lt < 0) continue;
         const x = s.x, y = s.y;
-        const r = Math.max(1, GACHA_FX_DRAW.stoneR * s.scale);
-        const a = Math.min(1, lt * 6) * (0.65 + 0.35 * Math.sin(state.time * 18 + s.delay * 40));
+        const a = Math.min(1, lt * 6) * (0.9 + 0.1 * Math.sin(state.time * 6 + s.delay * 40));   // 稳定微呼吸（不再高频闪烁）
         // 飞行拖线（仅飞行段：起点 → 当前位置的残影线）
         if (g.phase === 'gather' && lt < GACHA_FX_DRAW.fly) {
           const p = lt / GACHA_FX_DRAW.fly;
@@ -3286,16 +3293,21 @@
           ctx.lineTo(x, y);
           ctx.stroke();
         }
-        // 石体：白核 + 青白光晕（收束段向纯白增亮——发白被吸收）
+        // 石体：真·原石精灵（掉落原石的 70%；自转 ≈1.8s/圈、各石随机相位；收束段 scale→0）
+        const spr = getCrystal3DSprite('giant', s.ck, (state.time * 0.55 + s.delay * 3.7) % 1);
+        const w = spr.width * 0.7 * s.scale;
         ctx.globalAlpha = a;
-        const gg = ctx.createRadialGradient(x, y, 0, x, y, r + 3);
-        gg.addColorStop(0, 'rgba(255,255,255,0.95)');
-        gg.addColorStop(0.45, s.white > 0 ? `rgba(255,255,255,${(0.55 + 0.4 * s.white).toFixed(3)})` : 'rgba(190,225,255,0.55)');
-        gg.addColorStop(1, 'rgba(160,210,255,0)');
-        ctx.fillStyle = gg;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.drawImage(spr, x - w / 2, y - w / 2, w, w);
+        if (s.white > 0) {   // 收束段发白：白色径向罩随进度增强（被核心吸收的观感）
+          ctx.globalAlpha = a * s.white;
+          const wg = ctx.createRadialGradient(x, y, 0, x, y, Math.max(2, w * 0.62));
+          wg.addColorStop(0, 'rgba(255,255,255,0.95)');
+          wg.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = wg;
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(2, w * 0.62), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
     if (g.phase === 'shadow' || g.phase === 'meteor' || g.phase === 'shock') {

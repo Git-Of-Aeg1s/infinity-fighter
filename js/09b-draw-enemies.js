@@ -1,7 +1,7 @@
 // 09b-draw-enemies.js：敌机形体 / 弹幕标记 / 法术方块 / 战争幽灵斩击绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(29 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(30 名) 13-encyclopedia(1 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, player, popianMissiles, slashFx, spellCubes, state, wgSlashes } from './02-core.js';
@@ -4544,6 +4544,84 @@
     ctx.beginPath(); ctx.arc(0, -3.5, 4, 0, TAU); ctx.stroke();
   }
 
+  // 水晶核芯艇水晶三色明暗面预衍生（01-config-enemies CRYSTAL_CORE_COLORS 三键一一对应——
+  // 颜色固定三种，查表取代逐帧混色计算；键 = e.crystalColor，缺省回退青）
+  const CRYSTAL_CORE_PALETTES = {
+    '#39c5bb': { base: '#39c5bb', light: '#9ce2dd', dark: '#247e78', deep: '#18534f' },
+    '#46aaff': { base: '#46aaff', light: '#a3d5ff', dark: '#2d6da3', deep: '#1d476b' },
+    '#ffc0cb': { base: '#ffc0cb', light: '#ffe0e5', dark: '#a37b82', deep: '#6b5155' },
+  };
+  // 水晶核芯艇本体（1S，A 版式 2026-10-15 用户定稿）：白色短艇（机头朝 +y = 航向）+ 双臂后撑 + 白色牵引框
+  // 包住大水晶（框拖在机体后方 −y；框内尖顶六边形六面明暗 + 白棱线 + 高光，占整体轮廓主体——≈56×22 视觉，
+  // 机型 ≈46×34 中框内水晶 25×17 为最大单体）；自带填充与描边；调用方（10-draw-world drawEnemy）已
+  // translate(e.x, e.y) + scale(drawScale)，本函数内按 _sideVel 旋转到航向（缺省竖直朝下 = 图鉴预览口径）
+  function drawCrystalCoreBody(e) {
+    const pal = CRYSTAL_CORE_PALETTES[e.crystalColor] || CRYSTAL_CORE_PALETTES['#39c5bb'];
+    const v = e._sideVel || { vx: 0, vy: 60 };
+    ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);
+    // —— 白色牵引框（2026-10-15 用户定稿「白框包住水晶，类似牵引装置那种」）：圆角感白描边矩形笼
+    //    （x ±9 / y −24.5~−1，水晶整体包络 + 周边余量 ≈2.5；白框在晶后——六面体盖住框内沿）
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = 'rgba(255,255,255,0.8)'; ctx.shadowBlur = 3;
+    ctx.beginPath();
+    ctx.rect(-9, -24.5, 18, 23.5);
+    ctx.stroke();
+    ctx.restore();
+    // —— 大水晶（框内 −y）：中心 (0,-13)，宽 12 / 高 18——顶锥 + 腰带 + 底锥六面明暗
+    ctx.save();
+    ctx.shadowColor = pal.base; ctx.shadowBlur = 6;
+    const face = (pts, fill) => {
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+    };
+    const cy0 = -13, hw = 6, belt = 3.6, mid = 0.8, top = cy0 - 9, bot = cy0 + 9;
+    face([[0, top], [-hw, cy0 - belt], [0, cy0 - mid]], pal.light);        // 顶锥左
+    face([[0, top], [hw, cy0 - belt], [0, cy0 - mid]], pal.base);          // 顶锥右
+    face([[-hw, cy0 - belt], [0, cy0 - mid], [0, cy0 + mid], [-hw, cy0 + belt]], pal.base);   // 腰带左
+    face([[hw, cy0 - belt], [0, cy0 - mid], [0, cy0 + mid], [hw, cy0 + belt]], pal.light);    // 腰带右
+    face([[-hw, cy0 + belt], [0, cy0 + mid], [0, bot]], pal.dark);         // 底锥左
+    face([[hw, cy0 + belt], [0, cy0 + mid], [0, bot]], pal.deep);          // 底锥右
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(0, top); ctx.lineTo(-hw, cy0 - belt); ctx.lineTo(-hw, cy0 + belt); ctx.lineTo(0, bot);
+    ctx.lineTo(hw, cy0 + belt); ctx.lineTo(hw, cy0 - belt); ctx.closePath();
+    ctx.moveTo(0, top); ctx.lineTo(0, bot);
+    ctx.moveTo(-hw, cy0 - belt); ctx.lineTo(hw, cy0 - belt);
+    ctx.moveTo(-hw, cy0 + belt); ctx.lineTo(hw, cy0 + belt);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';   // 高光斑
+    ctx.beginPath(); ctx.ellipse(-1.2, cy0 - 2.4, 1.1, 2, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // —— 双臂后撑（机体尾部 → 牵引框下角）
+    ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      ctx.strokeStyle = 'rgba(120,140,175,0.9)'; ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(s * 3, 4.5); ctx.lineTo(s * 9, -1.5); ctx.stroke();
+      ctx.strokeStyle = '#eef2fa'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(s * 3, 4.5); ctx.lineTo(s * 9, -1.5); ctx.stroke();
+    }
+    // —— 白色短艇（镖形机头朝 +y 航向，尾部收窄接双臂）
+    ctx.beginPath();
+    ctx.moveTo(0, 15);
+    ctx.lineTo(4.5, 8); ctx.lineTo(5, 2); ctx.lineTo(3, 0.5);
+    ctx.lineTo(-3, 0.5); ctx.lineTo(-5, 2); ctx.lineTo(-4.5, 8);
+    ctx.closePath();
+    ctx.fillStyle = '#eef2fa'; ctx.fill();
+    ctx.strokeStyle = 'rgba(120,140,175,0.85)'; ctx.lineWidth = 1; ctx.stroke();
+    // 座舱（近机头深色菱形，2026-10-15 用户定稿：黑色区域由椭圆改菱形）+ 尾部引擎辉光点
+    ctx.fillStyle = '#2b3550';
+    ctx.beginPath();
+    ctx.moveTo(0, 6.9); ctx.lineTo(1.7, 9.5); ctx.lineTo(0, 12.1); ctx.lineTo(-1.7, 9.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(185,220,255,0.7)';
+    ctx.beginPath(); ctx.arc(0, -0.5, 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+
   export {
     bladePath, drawSlashFx, drawHarbingerBody, drawHanshuangBody,
     drawAnvilBody, drawPopianBody, drawPopianUBody, drawFashiMatrixBody,
@@ -4557,5 +4635,5 @@
     paintMarkE, paintBoxMark1, paintBoxMark2, paintBoxMark3,
     paintBoxMark4, paintBoxMark5, drawDouzhiBody, drawDouzhiFx,
     drawWeilongBody, drawWarGhostBody, drawWarGhostWarns, drawWarGhostSlashes,
-    paintWarGhostCandidate,
+    paintWarGhostCandidate, drawCrystalCoreBody,
   };

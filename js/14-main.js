@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：（暂无）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{cheatInvuln, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{cheatInvuln, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postClearT, postDelay, postWaveClear, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
@@ -13,7 +13,7 @@
   import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { capitalMaxWait, challengeTargets, comboWaveChance, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updatePoemRearCards } from './04-spawn.js';
+  import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updatePoemRearCards } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -320,7 +320,7 @@
         // 额外波次（特殊定位全池 50%/100%/100%）+ 真额外三项（单/双导弹互斥 + 增益无人舰）；
         // BOSS 战 / 结算窗口内升级不判定（避免乱入）；诗篇不走此分支（诗篇每波判定，见诗篇分支额外生成三连）
         if (!isPoem() && !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
-            bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+            bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) {
           const lvUp = levelFlow.level;
           for (const extra of [pickPoemExtraCard(lvUp), pickPoemTrueExtra(lvUp)]) {
             if (!extra) continue;
@@ -371,8 +371,8 @@
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
       } else if (bossFlow.stage === 'none') {
-        // BOSS 击败后的 2s 缓冲与首波 4s 观察期不计入关卡推进（冻结 bossTimer，等级不增长）
-        if (bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) bossFlow.timer += dt;
+        // BOSS 击败后的 2s 缓冲与特殊波次（水晶核芯艇）期不计入关卡推进（冻结 bossTimer，等级不增长）
+        if (bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) bossFlow.timer += dt;
         // 当前阶段刷怪时间到 → 等清场后进警报；登场 BOSS 由 bossPhase 决定（旧日之歌 → 黑暗之手 → 暴风之眼）
         // 诗篇波次制：本阶段波次全部刷出且场上清空 → 直接进警报（波次耗尽即刷怪期结束，不等计时）
         const phaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
@@ -430,31 +430,35 @@
         }
       }
 
-      // BOSS 击败后的刷新序列：2s 缓冲 → 固定首波（同侧三条 1类长队横扫、无紫色、竖直高度互不相同）→ 4s 观察期 → 恢复正常刷怪
-      // 期间压力/槽位通道与 bossTimer 全部冻结（2s 与 4s 均不计入关卡推进）
+      // BOSS 击败后的刷新序列（2026-10-15 用户定稿改版）：2s 缓冲 → 特殊波次（水晶核芯艇四种编成独立随机抽一、
+      // 轮次 0.25s 排程，见 04-spawn）→ 波次全部落地且场上清空（未被击坠的艇穿越离场同样计入清场）→ 0.6s 后
+      // 恢复正常刷怪并解除等级冻结；期间压力/槽位通道与 bossTimer 全部冻结（2s 缓冲与特殊波次期均不计入关卡推进）
       if (!state.challenge && bossFlow.stage === 'none' &&
-          (bossFlow.postDelay > 0 || bossFlow.postWaveT > 0)) {
+          (bossFlow.postDelay > 0 || bossFlow.postWaveClear)) {
         if (bossFlow.postDelay > 0) {
           bossFlow.postDelay -= dt;
           if (bossFlow.postDelay <= 0) {
             bossFlow.postDelay = 0;
             spawnPostBossWave();
-            // 再冲刺触发时跳过 4s 观察期（postWaveT = 0）：后续等级的敌人立即恢复刷出、被冲刺强制击杀——
-            //「冲掉 BOSS 后的特殊波次和后面的一个/两个等级的敌人」（2026-10-14 用户定稿，触发见 06-enemy killEnemy BOSS 分支）
-            bossFlow.postWaveT = state.dashPostBoss ? 0 : 4;   // 自首波刷新（第一个敌人出现）起计时
+            bossFlow.postWaveClear = true;   // 等待特殊波次清场（许凯狗再冲刺的强制击坠会自然快速清场）
+            bossFlow.postClearT = 0;
           }
-        } else {
-          bossFlow.postWaveT -= dt;
-          if (bossFlow.postWaveT <= 0) bossFlow.postWaveT = 0;
+        } else if (enemies.length === 0 && !crystalWaveSpawning()) {
+          // 特殊波次轮次全部落地且场上无敌人 → 0.6s 缓冲后恢复（清场计时期间仍冻结等级）
+          bossFlow.postClearT += dt;
+          if (bossFlow.postClearT >= CRYSTAL_WAVE.clearDelay) {
+            bossFlow.postWaveClear = false;
+            bossFlow.postClearT = 0;
+          }
         }
       }
 
       // ---------- 诗篇波次制刷怪（登记见《诗篇难度修正.md》深度改版 #1；2026-10-12 主波接入设计卡） ----------
       // 每级一波：上一波全部击毁/离场 → clearDelay 计时 → 刷下一波（波 N = 等级 N）；
       // 不走压力系统 / 波次间隔 / 4类槽位通道（4类随主战卡出现，场上已有主力舰排除 4类卡）；
-      // 特殊刷新不受影响：BOSS 战强制波 / BOSS 后固定首波 / Lv13 焦香一次性（下方同步保留）
+      // 特殊刷新不受影响：BOSS 战强制波 / BOSS 后特殊波次（水晶核芯艇）/ Lv13 焦香一次性（下方同步保留）
       if (isPoem() && !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
-          bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+          bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) {
         // 诗篇主战波 + 额外生成三连（2026-10-12 用户定稿）：每等级固定 1前波 + 1后波——
         // 前波位 = 等级权重抽 tier → tier 内「前波/前后均可」按「波次权重」当前档列抽卡；
         // 后波位 = 等级权重抽 tier → tier 内「后波/前后均可」同法（各自独立抽取，共享 16s 恢复期/同定位 ×0.35）；
@@ -538,7 +542,7 @@
       // 持续刷怪测试（challenge.kind==='swarm'）与正常战斗共用本通道：swarm 时等级已锁 Lv20（帧首），
       // spawnTimer 驱动一直刷怪；其余 challenge（BOSS 试炼 / 单敌 / 波次测试）仍跳过（各自由 updateChallenge 补刷）
       if ((!state.challenge || state.challenge.kind === 'swarm') && !isPoem() && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
-          bossFlow.postDelay <= 0 && bossFlow.postWaveT <= 0) {
+          bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) {
         // bossVictoryDelay > 0：最终 BOSS 已被击坠、正在等待胜利结算——冻结刷怪，避免结算前刷出新怪
         // ---------- 场面压力刷新系统（替代固定冷却） ----------
         // 压力比 = 场上敌人权重和 / 满场基准（虚象 ×0.75：更早超阈值 → 更早进入慢速刷新，压低同屏数量）；

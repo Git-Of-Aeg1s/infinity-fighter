@@ -40,6 +40,7 @@
       // BOSS 效果减半；BOSS 移速另经 05-boss bossMoveUpdate 的 mul 挂钩）——多重叠区域取最强减速；
       // 萧杨抽卡停火窗口：场地 50% 线下敌机按深度平滑减速（gachaBottomSlowMul，大逼近率无瞬跳）
       if (e.speedMulBase != null) e.speedMul = e.speedMulBase * enemyFrostZoneMoveMul(e) * gachaBottomSlowMul(e, dt);
+      e.rt = state.time;   // 战斗期冻结时钟快照（绘制端龙卷/金曜光环/赤金双环等旋转元素用）——结算页停更后旋转元素定格（2026-10-14 用户定稿）
       if (e.type === 'boss') {
         updateBoss(e, dt);
         // BOSS 血量阶段掉落判定（每当失去 20% 血量；所有 BOSS 通用，含今后新增，见 05-boss updateBossLootMarks）
@@ -302,10 +303,11 @@
       e.y += STORM.tornadoDescend * dt;
       return;
     }
-    if (e.type === 'side' || e.type === 'prolifera' || e.type === 'escort') {
+    if (e.type === 'side' || e.type === 'prolifera' || e.type === 'escort' || e.type === 'crystalCore') {
       // 斜插直线穿越，不反弹；两速体系：_sideVel 生成时已按快速 200 / 慢速 150 归一（方向由编队基值决定）；
       // 入场瞬间额外冲刺（_entryMul 初值 ×1.6），随后按指数快速衰减回 1（整组同帧生成、同倍率衰减，队形不变）
-      // 增生侧翼艇同 1类移动；卫护飞船继承母舰 _sideVel 沿原航向大致继续飞行（_entryMul 预置 1，无入场冲刺）
+      // 增生侧翼艇同 1类移动；卫护飞船继承母舰 _sideVel 沿原航向大致继续飞行（_entryMul 预置 1，无入场冲刺）；
+      // 水晶核芯艇（1S）恒速 200、无入场加成（_entryMul 生成时预置 1——BOSS 后特殊波次专用，见 04-spawn）
       const v = e._sideVel || { vx: 0, vy: SIDE_SPEED_SLOW };
       if (e._entryMul === undefined) e._entryMul = SIDE_ENTRY_BOOST;      // 青时炮艇召唤体：速度曲线（两翼先横向飞出、0.7s 内平滑转向下飞；机头第三个 vx0=vx1=0 直落）——绘制朝向按速度实时计算
       if (e._velCurve) {
@@ -4057,16 +4059,17 @@
           e.dying = { t: 0, dur: 0.8 };
         } else {
           bossFlow.victoryDelay = 0;
-          bossFlow.postDelay = 2;   // 击败 BOSS 后 2s 再刷怪（不计入关卡推进；到时固定刷首波 1类长队）
+          bossFlow.postDelay = 2;   // 击败 BOSS 后 2s 再刷新（不计入关卡推进；到时刷新特殊波次——水晶核芯艇四选一，见 04-spawn）
           // 许凯狗：击坠 BOSS 后概率再冲刺（2026-10-14 用户定稿）——20% 冲撞 2s / 15% 冲撞 3s（互斥单掷），
           // 冲掉 BOSS 后的特殊波次与后续等级的敌人（冲刺期敌机进场 60%~80% 强制击杀，见 14-main 冲刺块）：
-          // 特殊波次提前至冲撞窗口内落地（postDelay 收窄至 0.4s）、观察期跳过（14-main postWaveT 置 0）、
-          // 非诗篇关卡自冲撞 1s 后按 1 级/s 推进（2s ≈ 冲掉特殊波次 +1 个等级 / 3s ≈ +2 个等级）
+          // 特殊波次提前至冲撞窗口内落地（postDelay 收窄至 0.4s）、被强杀/穿越离场后快速清场 → 0.6s 恢复刷怪
+          //（14-main postWaveClear 块）、非诗篇关卡自冲撞 1s 后按 1 级/s 推进（2s ≈ 冲掉特殊波次 +1 个等级 / 3s ≈ +2 个等级）
           if (hasPilot('xukaigou') && !state.challenge && !state.testBoss) {
             const roll = Math.random();
             const dashT = roll < 0.20 ? 2 : roll < 0.35 ? 3 : 0;
             if (dashT > 0) {
               state.pilotDashT = dashT;
+              state.pilotDashDur = dashT;   // 再冲刺总时长（2s/3s）——07-player 演出插值按此计算（负 elapsed 会触发 smoothstep 外插瞬移）
               state.dashPostBoss = true;
               state.dashPostBossT = 0;
               bossFlow.postDelay = Math.min(bossFlow.postDelay, 0.4);
@@ -4303,7 +4306,7 @@
       // 主力舰三变体 / 法术阵列 / 战争矩阵：80% 掉 42~64、其余 20% 掉 30~36（2026-10-13 用户定稿，原 80% 40~48 / 20% 24~35；总表待同步）
       // 四精英 & 张华&张策：100% 掉 60~80（2026-10-13 用户定稿，原四精英 80% 40~48 / 20% 24~35；总表待同步；张华&张策实体未实装、先行占位）
       // 战争幽灵：80% 掉 50~64、其余 20% 掉 30~36（2026-10-13 用户定稿，原 80% 54~64 / 20% 30~35；总表待同步——分支 2026-10-10 补，原先误走 1类通用兜底）
-      // BOSS 击败后固定首波（postBossWave 标记）的 1类：必定掉落且数量翻倍（2~6）
+      // 水晶核芯艇（1S，BOSS 后特殊波次）：16 值等概率——10~24 各 1/16 + 54（2026-10-15 用户定稿「每个值的概率均等，19、20、10、54 等的概率相同」）
       const isDusk = e.type === 'striker' && e.skill === 'dusk';
       const r = Math.random();
       let cCount = 0;
@@ -4339,10 +4342,11 @@
         cCount = r < 0.80 ? 5 + Math.floor(Math.random() * 3) : 0;
       } else if (e.type === 'fashiMatrix') {
         cCount = r < 0.80 ? 4 + Math.floor(Math.random() * 3) : 0;
+      } else if (e.type === 'crystalCore') {
+        cCount = Math.random() < 1 / 16 ? 54 : 10 + Math.floor(Math.random() * 15);   // 16 值等概率：54 或 10~24 均匀
       } else {
         cCount = r < 0.60 ? 1 + Math.floor(Math.random() * 3) : 0;   // 1类（side / prolifera）
       }
-      if (e.postBossWave) cCount = 2 * (1 + Math.floor(Math.random() * 3));   // 固定首波 1类：必掉且翻倍
       const noDrop = (e.type === 'side' && (e.behavior === 'kamikaze' || e.behavior === 'swirl')) || e.type === 'tornado';   // 紫电/橙旋/大型龙卷不掉水晶
       // BOSS 战强制波 1类（minionDrop）：不掉水晶
       if (!noDrop && !e.minionDrop && cCount > 0) {

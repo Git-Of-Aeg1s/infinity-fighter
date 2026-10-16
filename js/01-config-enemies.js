@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 炮艇变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(34 名) 05-boss(4 名) 06-enemy(33 名) 07-player(3 名) 08-entities(5 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(35 名) 05-boss(4 名) 06-enemy(33 名) 07-player(3 名) 08-entities(5 名) 09b-draw-enemies(17 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(10 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -9,7 +9,7 @@
 
   // 敌机类别映射（群星守望按击杀类别清除敌弹；未列出的类型——BOSS / 龙卷等——不触发）
   const ENEMY_CLASS = {
-    side: 1, prolifera: 1, escort: 1,
+    side: 1, prolifera: 1, escort: 1, crystalCore: 1,
     striker: 2, fashiA1: 2, fashiMatrix: 2, popian: 2, douzhi: 2,
     gunship: 3, harbinger: 3, hanshuang: 3, weilong: 3, yu4: 3, anvil: 3, baoling: 3, jiaoxiang: 3, fashiA2: 3,
     capital: 4, fashiArray: 4, warMatrix: 4,
@@ -22,7 +22,8 @@
   // 怪物等级（类别 + 类内强度档 A~F，A 最弱）：为刷新波次重构打的元数据基础。
   //   key = 图鉴条目 id（与 13-encyclopedia ENCY_DATA 键一致，可区分同 type 不同涂装/变体）；
   //   首位类别数字必须与 ENEMY_CLASS 对应类型的类别一致（本表条目粒度、ENEMY_CLASS 为 type 粒度，两表靠本注释约束同步）。
-  //   特殊档位：R=奖励机单列（无攻击功能怪，不入强度梯度）；
+  //   特殊档位：S=特殊波次专用档（1S=水晶核芯艇——仅 BOSS 后特殊波次登场，不入常规强度梯度）；
+  //   R=奖励机单列（无攻击功能怪，不入强度梯度）；
   //   BOSS 为 5 系列，轮次对应 BOSS_ROUNDES（五轮设计稿单一来源）——5A 第1轮 旧日之歌 / 5B 第2轮 黑暗之手·晨星 / 5C 第3轮 暴风之眼 /
   //   5D 第4轮 归星·颂歌 / 5E 第5轮 月亮领主（晨星/归星/颂歌/月亮领主未实装，实装时按此入表）/ 5S 被召唤（Summoned，风暴编织者由暴风之眼死后直接召唤）；
   //   4S=黑暗之手四精英 + 张华&张策（特殊精英档，与图鉴 desc 称谓一致；2026-10-05 由 4F 改 4S）。
@@ -32,6 +33,7 @@
     // 1类（虚象级）
     side_pass: '1A', side_shoot: '1A', side_moon: '1A', side_swirl: '1A',
     side_kamikaze: '1B', prolifera: '1B',
+    crystalCore: '1S',   // 1S 特殊档：水晶核芯艇（BOSS 后特殊波次专用，不入常规梯度）
     // 2类（具象级）
     striker_crimson: '2A', striker_amber: '2A', striker_azure: '2A', striker_violet: '2A', striker_white: '2A', striker_fortress: '2A',
     striker_dusk: '2B', popian: '2B', fashiMatrix: '2B',
@@ -87,6 +89,16 @@
       crashDmg: 10,                // 绝对值（怪物属性总表 2026-09 批次）
       invulnMul: 0.4,             // 撞击造成的无敌时间同样为 40%（0.48s）
       fireInterval: [1.4, 2.2],   // 无攻击，字段仅为 makeEnemy 取值完整性
+    },
+    // 水晶核芯艇（1S 特殊档，2026-10-15 用户定稿）：白色短艇尾部携带大比例水晶（A 版式——双臂后撑夹持，
+    // 水晶三色随机见 CRYSTAL_CORE_COLORS）；无任何攻击能力、碰撞伤害 10、无入场速度加成、
+    // 恒速 200 直线穿越不停留（移动走 06-enemy 1类家族分支）；仅在击败 BOSS 后的特殊波次中成群出现
+    //（四种编成独立随机抽一，见 04-spawn spawnPostBossWave——不入常规刷怪池 / 波次卡）；击坠分数 100，
+    // 必定掉落水晶（16 值等概率：10~24 各 1/16 + 54，见 06-enemy killEnemy）；体型与 2类突击艇相近略小
+    crystalCore: {
+      w: 44, h: 34, hp: 100, score: 100, color: '#f2f5fa', drawScale: 1.4,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 10,
+      fireInterval: [1e9, 1e9],   // 不攻击：间隔天文数字，永不落入通用开火逻辑
     },
     striker: {
       w: 46, h: 40, hp: 56,  score: 130,  color: '#ff3b30', drawScale: 1.4,
@@ -1107,6 +1119,10 @@
   const SIDE_SCORE = 50;
   const SIDE_KAMIKAZE_SCORE = 80;
 
+  // 水晶核芯艇水晶三色（与 01-config-spawn CRYSTAL_COLORS 同板——01x 配置域内部单向依赖禁止反向 import，
+  // 故同值并列；改色需两处同步）。每艘生成时随机取一（makeEnemy，消费见 04-spawn / 10-draw-world）
+  const CRYSTAL_CORE_COLORS = ['#39c5bb', '#46aaff', '#ffc0cb'];
+
   export {
     ENEMY_CLASS, ENEMY_GRADES, enemyGrade, ENEMY_TYPES,
     WIP_PLACEHOLDER_TYPES, HARBINGER, WEILONG, HANSHUANG,
@@ -1122,5 +1138,5 @@
     CAPITAL_PALETTE, GUNSHIP_PALETTE,
     SIDE_BEHAVIOR_COLORS, SIDE_MOON,
     SIDE_SWIRL, SIDE_SPAWN_W, SIDE_SHOOT_HP, SIDE_SCORE,
-    SIDE_KAMIKAZE_SCORE,
+    SIDE_KAMIKAZE_SCORE, CRYSTAL_CORE_COLORS,
   };

@@ -1464,6 +1464,93 @@ async function sceneHelpPad() {
   }
 }
 
+async function sceneCrystalWave() {
+  // BOSS 后特殊波次（水晶核芯艇）：四编成逐一定向驱动（spawnPostBossWave(forceKind)）——
+  // ①艇体数值（hp = 100 × 难度血量乘区 × 关卡修正 / score 100 / 恒速 200）
+  // ②同向艇体不重叠（成对中心距 ≥44——同槽位跨轮跟进 50px / 平行轨 60px / 异槽位 ≥57px；
+  //   异向交叉经过不判重叠——波次 4 四角方向族在屏中心自然交错，敌机间无碰撞为设计内行为）
+  // ③出场数恒 = 40（crystalWaveStats.spawned——2026-10-15 用户回调删并发上限后按排程全额落地）+ 轮次全部落地
+  // ④14-main 状态机：postDelay → postWaveClear → 击坠清场 → 0.6s 后恢复刷怪
+  const cfgE = await import(pathToFileURL(join(jsDir, '01-config-enemies.js')).href);
+  const cfgD = await import(pathToFileURL(join(jsDir, '01-config-difficulty.js')).href);
+  const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+  const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+  const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+  const uiMod = await import(pathToFileURL(join(jsDir, '12-ui.js')).href);
+  if (cfgE.ENEMY_TYPES.crystalCore.crashDmg !== 10) {
+    errors.push({ key: '水晶核芯艇碰撞伤害≠10', stack: 'crashDmg=' + cfgE.ENEMY_TYPES.crystalCore.crashDmg });
+  }
+  const names = ['单侧五高度', '双侧四高度', '顶部五列', '四角12位'];
+  const lvMul = () => (core.levelFlow.level === 1 ? 0.70 : core.levelFlow.level === 2 ? 0.85 : 1);
+  for (let k = 0; k < 4; k++) {
+    uiMod.resetGame(true);
+    core.bossFlow.postDelay = 1e9;   // 冻结常规刷怪通道（直接驱动波次，不经 14-main 状态机——该路径由下方 Part B 覆盖）
+    spawn.spawnPostBossWave(k);
+    frames(2);
+    const first = core.enemies.find(e => e.type === 'crystalCore');
+    if (!first) { errors.push({ key: '水晶核芯艇未生成（' + names[k] + '）', stack: 'spawnPostBossWave(' + k + ') 后场上无 crystalCore' }); continue; }
+    const hpMul = (cfgD.diffMods().enemyHpMul != null ? cfgD.diffMods().enemyHpMul : 1) * lvMul();
+    if (Math.abs(first.hp - 100 * hpMul) > 1e-6) {
+      errors.push({ key: '水晶核芯艇血量不符（' + names[k] + '）', stack: 'hp=' + first.hp + ' 期望 ' + (100 * hpMul) });
+    }
+    if (first.score !== 100) errors.push({ key: '水晶核芯艇分数≠100（' + names[k] + '）', stack: 'score=' + first.score });
+    let failed = false;
+    for (let c = 0; c < 42 && !failed; c++) {   // 42×10 帧 ≈ 7s：12×0.25s 排程 + 穿越 ≈2.8~3.4s + 余量
+      frames(10);
+      const ships = core.enemies.filter(e => e.type === 'crystalCore');
+      for (let i = 0; i < ships.length && !failed; i++) {
+        const spd = Math.hypot(ships[i]._sideVel.vx, ships[i]._sideVel.vy);
+        if (Math.abs(spd - 200) > 0.01) {
+          errors.push({ key: '艇速≠200（' + names[k] + '）', stack: 'spd=' + spd.toFixed(2) });
+          failed = true; break;
+        }
+        for (let j = i + 1; j < ships.length; j++) {
+          const a = ships[i], b = ships[j];
+          // 同向（叉积 ≈ 0 且同向前）才判重叠：同槽位/同轨/平行槽位间永不靠拢；异向交叉经过属设计内行为
+          const cross = a._sideVel.vx * b._sideVel.vy - a._sideVel.vy * b._sideVel.vx;
+          const dot = a._sideVel.vx * b._sideVel.vx + a._sideVel.vy * b._sideVel.vy;
+          if (Math.abs(cross) > 1e-6 || dot <= 0) continue;
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < 44) {
+            errors.push({ key: '同向艇重叠（' + names[k] + '）', stack: '中心距 ' + d.toFixed(1) + ' < 44（跟进间距应 ≥50）' });
+            failed = true; break;
+          }
+        }
+      }
+    }
+    if (!failed && spawn.crystalWaveStats.spawned !== 40) {
+      errors.push({ key: '出场数≠40（' + names[k] + '）', stack: 'spawned=' + spawn.crystalWaveStats.spawned });
+    }
+    if (!failed && spawn.crystalWaveSpawning()) {
+      errors.push({ key: '特殊波次轮次未全部落地（' + names[k] + '）', stack: 'crystalWaveSpawning()=true（7s 后）' });
+    }
+    sample('特殊波次 ' + names[k] + '（数值 / 恒速 200 / 不重叠 / 出场 40 / 轮次落地）');
+  }
+  // Part B：14-main 状态机（postDelay → 特殊波次 → postWaveClear → 击坠清场 → 0.6s 恢复）
+  uiMod.resetGame(true);
+  core.bossFlow.postDelay = 0.1;
+  frames(30);   // ≈0.5s：postDelay 走完 → spawnPostBossWave（随机编成）→ postWaveClear 置位
+  if (!core.bossFlow.postWaveClear) {
+    errors.push({ key: '特殊波次未进入清场等待', stack: 'postWaveClear=' + core.bossFlow.postWaveClear });
+  }
+  let guard = 0;
+  while (spawn.crystalWaveSpawning() && guard++ < 300) frames(10);   // 等全部轮次落地（≤3s）
+  if (spawn.crystalWaveStats.spawned !== 40) {
+    errors.push({ key: '状态机波次出场数≠40', stack: 'spawned=' + spawn.crystalWaveStats.spawned });
+  }
+  guard = 0;
+  while (core.enemies.some(e => e.type === 'crystalCore') && guard++ < 50) {
+    for (let i = core.enemies.length - 1; i >= 0; i--) {
+      if (core.enemies[i].type === 'crystalCore') enemyMod.killEnemy(i);   // 击坠清场（走完整掉落链）
+    }
+  }
+  frames(60);   // ≈1s > 0.6s：清场缓冲走完应解除冻结
+  if (core.bossFlow.postWaveClear) {
+    errors.push({ key: '清场 0.6s 后未恢复刷怪', stack: 'postWaveClear 仍为 true（击坠清场 + 1s 后）' });
+  }
+  sample('BOSS 后状态机：postDelay → 特殊波次 → 击坠清场 → 0.6s 恢复');
+}
+
 async function sceneFinale() {
   elements.musicToggle.click();                 // 静音开关
   frames(10);
@@ -1489,6 +1576,7 @@ const SCENES = [
   { name: 'hover-bob', desc: '御4 / 铁砧到位悬停纵向微摆（连续性 + 公式复核）', files: '04-spawn 06-enemy', run: sceneHoverBob },
   { name: 'gacha', desc: '原石规则（非萧杨不计数 / 16 颗充能 / Q 释放 / 转化概率）', files: '07-player 01-config-loadout', run: sceneGacha },
   { name: 'gamepad', desc: '手柄全链路（认领 / 菜单导航 / 摇杆死区 / 爆弹暂停 / 拔出回退）', files: '02-core 14-main 07-player 12-ui', run: sceneGamepad },
+  { name: 'crystal-wave', desc: 'BOSS 后特殊波次（水晶核芯艇四编成：数值 / 恒速 200 / 不重叠 / 出场 40 / 清场 0.6s 恢复）', files: '04-spawn 06-enemy 14-main 12-ui 01-config-enemies', run: sceneCrystalWave },
   { name: 'help-pad', desc: '教程面板手柄页切换（切出 / 切回 / 收起）', files: '12-ui', run: sceneHelpPad },
   { name: 'finale', desc: '静音开关收尾', files: '03-audio', run: sceneFinale },
 ];

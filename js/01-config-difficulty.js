@@ -213,6 +213,7 @@
   const POEM_HP = {
     side_pass: 40, side_shoot: 40, side_kamikaze: 40, side_swirl: 40, side_moon: 40,
     prolifera: 40, escort: 10,
+    crystalCore: 100,   // 水晶核芯艇（1S）：诗篇不额外加血（2026-10-15 用户明示「100，这个我刚才就说过」= 基准即诗篇值）
     striker_crimson: 400, striker_amber: 400, striker_azure: 400, striker_violet: 400, striker_white: 400,
     striker_fortress: 3000, striker_dusk: 300,
     gunship_violet: 2000, gunship_crimson: 2000, gunship_amber: 2500, gunship_orange: 2000, gunship_cyan: 2000,

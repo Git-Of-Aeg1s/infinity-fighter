@@ -315,7 +315,8 @@
     bossFlow.stage = 'none';
     bossFlow.victoryDelay = 0;
     bossFlow.postDelay = 0;
-    bossFlow.postWaveT = 0;
+    bossFlow.postWaveClear = false;
+    bossFlow.postClearT = 0;
     bossFlow.defeatedName = '';
     state.victoryOverlay = false;
     bossFlow.warnT = 0;
@@ -336,6 +337,7 @@
     // 否则主菜单演示机体（复用 drawPlayer）会残留冲刺白光特效
     state.pilotDashT = (autoStart && (currentPilotMain.id === 'xukaigou' || currentPilotSub.id === 'xukaigou') && !state.testBoss && !state.challenge)
       ? PILOTS.xukaigou.dashDur : 0;
+    state.pilotDashDur = state.pilotDashT;   // 冲刺总时长快照（开局长冲 = dashDur；07-player 演出插值读此值）
     state.dashPostBoss = false;    // 许凯狗再冲刺标记随重开复位（跨局残留防护）
     state.dashPostBossT = 0;
   resetAchievements();   // 成就：本局进度清零（须在 state.testBoss / state.challenge 置位之后——门控以这两项为准）

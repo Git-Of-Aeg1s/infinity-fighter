@@ -13,7 +13,7 @@
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, missiles, pillarStrikes, player, rand, shake, spawnBlastRing, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
-  import { bulwarkActive, beamClipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
+  import { bulwarkActive, clipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
 
@@ -922,7 +922,8 @@
   //   技能5 雷霆打击：周身雷电环演出，下方 30% 区域随机 5 处依次雷击（40 伤害，雷电积聚预警 1.2s，
   //         区域半径 = 焦香螺旋桨火环 JIAOXIANG.auraR；击中中心外扩一圈 14~20 枚雷电子弹）
   //   技能6 重现光束：四喷口沿臂方向直射光束出屏 → 光束于机体上方左右两点重现，每边每轮 2 条、恒定 3 轮
-  //         （同边两束夹角 ≥15°，轮次间隔 1.5s；真我技能2 连携时仅 1 轮、时间轴 1.5s）；重现光束弹速 ×0.6；撞守愿者白盾被一次性咬合吃掉（盾移开不恢复）；
+  //         （同边两束夹角 ≥15°，轮次间隔 1.5s；真我技能2 连携时仅 1 轮、时间轴 1.5s）；重现光束弹速 ×0.6；撞守愿者白盾被一次性咬合吃掉（盾移开不恢复；
+  //         2026-10-14 用户定稿：仅实际触及盾弧才截断、可从双盾内缘间隙穿过——原双盾连体桥隐形判定已删，见 updateS6Beams）；
   //         技能本体 4.6s 收束，飞行光束存于 e.s6Beams 独立存活（不拖长技能间隔）
   //
   // 四臂/喷口几何：与 11-draw-boss drawStormBossII 的绘制常量保持一致（改动需双侧同步）
@@ -1543,15 +1544,17 @@
         //   盾移开后光束**定型**——长度冻结为最近被咬合的可见长度，此后不再增长
         //   （臂向光束成为定长残段；重现光束以定长飞完剩余行程）；
         //   重现光束尾端持续推进——盾仍挡在轴线上时，尾端越过盾面即整条被"吃完"（移除）；
-        //   盾判定与其他射弹同一套白盾几何（pad = 光束半宽 s6R + 半盾厚，无额外收窄）。
+        //   盾判定与其他射弹同一套白盾几何（pad = 光束半宽 s6R + 半盾厚，无额外收窄）；
+        //   2026-10-14 用户定稿：不再使用双盾连体桥（beamClipAgainstShield 已删）——重现光束只有**实际触及盾弧**
+        //   才被截断，可从双盾内缘间隙穿过（间隙 ~71px，主机正上方无盾区域不再有隐形判定面）
         //   b.blocked 仅作逐帧状态（上一帧是否被咬合）：正向射线未命中且上一帧被咬合时，用反向射线检测
         //   盾是否仍在轴线上（尾端已越过盾面 → 吃完）；反向亦未命中 = 盾已移开 → 定型
         let effLen = b.len;
         let eaten = false;
         if (bulwarkActive()) {
           const shieldPad = STORM2.s6R + BULWARK.thickness / 2 * BULWARK.scale;
-          const clip = beamClipAgainstShield(b.x, b.y, ux0, uy0, b.len, shieldPad)
-            ?? (b.blocked ? beamClipAgainstShield(b.x, b.y, -ux0, -uy0, 2000, shieldPad, true) : null);
+          const clip = clipAgainstShield(b.x, b.y, ux0, uy0, b.len, shieldPad)
+            ?? (b.blocked ? clipAgainstShield(b.x, b.y, -ux0, -uy0, 2000, shieldPad) : null);
           if (clip) {
             b.blocked = true;
             const d = (clip.x - b.x) * ux0 + (clip.y - b.y) * uy0;   // 盾位沿轴投影（负 = 已越过尾端）
@@ -2627,7 +2630,7 @@
     if (e.skill) runBossSkill(e, e.skill, dt);
     else {
       e.skillCd -= dt;
-      if (e.skillCd <= 0) startBossSkill(e);
+      if (e.skillCd <= 0 && state.gachaHaltT <= 0) startBossSkill(e);   // 旧日之歌：抽卡停火窗口不开新技能（与 storm/storm2/darkhand 同口径）
     }
     // 真我连携：与主技能并行的技能1（由 startBossSkill 概率挂载）
     if (e.link) runBossSkill(e, e.link, dt);

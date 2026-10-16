@@ -10,7 +10,7 @@
   import { ENEMY_CLASS, ENEMY_TYPES, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { diffMods, invulnDiffMul, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
-  import { REWARD_ITEMS } from './01-config-spawn.js';
+  import { CRYSTAL_GIANT_COLORS, REWARD_ITEMS } from './01-config-spawn.js';
   import { blBombs, bossEntranceActive, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, crystals, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyFireIv, enemyOnScreen, enemies, entranceDt, feijianWaves, frostZones, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, killEnemy } from './06-enemy.js';
@@ -823,34 +823,6 @@
     return best;
   }
 
-  // BOSS 光束截断专用（现仅技能6 使用，见 05-boss runStorm2Skill；技能1/2 为四类·免疫射弹不走此处）：
-  //   盾弧 + 两盾内端点之间的“连体桥”——
-  //   守愿者双盾分居主机两侧（offsetX ±41），盾弧内缘之间留有约 71px 空隙，竖直/近竖直向下的
-  //   BOSS 光柱会从主机正上方空隙漏过。此处把两盾内端点连线一并纳入截断（即“白盾连成一面”），
-  //   仅供 BOSS 光束裁切使用；普通子弹判定维持既有几何（shieldSweepHit / clipAgainstShield）不变
-  function beamClipAgainstShield(tx, ty, ux, uy, len, pad = 0, anyDir = false) {
-    const clip = clipAgainstShield(tx, ty, ux, uy, len, pad);
-    if (clip) return clip;
-    if (!anyDir && (uy < 0.25 || wingmen.length !== 2)) return null;   // 仅朝下的光束参与桥截断（臂向外/向上的光束不受影响；anyDir：尾端越盾"吃完"检测的反向射线需要解除朝向限制）
-    const [a, b] = wingmen;
-    if (!a.shieldSegs || !a.shieldSegs.length || !b.shieldSegs || !b.shieldSegs.length) return null;
-    const pA = a.shieldPts[0], pB = b.shieldPts[0];   // 各盾内缘端点（computeShieldSegs 的 theta=arcFrom 端）
-    if (!pA || !pB) return null;
-    const hx = tx + ux * len, hy = ty + uy * len;
-    const flashBoth = () => { a.shieldFlash = 1; b.shieldFlash = 1; };
-    const hit = segIntersect(tx, ty, hx, hy, pA.x, pA.y, pB.x, pB.y);
-    if (hit) { flashBoth(); return { x: hit.x, y: hit.y, d: hit.t * len, w: a }; }
-    if (pad > 0) {
-      const h = segSegClosest(tx, ty, hx, hy, pA.x, pA.y, pB.x, pB.y);
-      if (h.d <= pad) {
-        const d = clamp(((h.x - tx) * ux + (h.y - ty) * uy) / len, 0, 1) * len;
-        flashBoth();
-        return { x: h.x, y: h.y, d, w: a };
-      }
-    }
-    return null;
-  }
-
   // 僚机单轮齐射：n 发长条弹幕，绕竖直向上方向对称展开，相邻夹角 spreadDeg 度
   //   berserk/level 由调用方传入（本轮启动瞬间的定格值）——同一 burst 连续两轮齐射外观/伤害一致，
   //   轮中途暴走开启/结束不改变后续齐射；两参缺省时回退实时读值（兼容直调）
@@ -921,8 +893,10 @@
     if (state.pilotDashT > 0) {
       // 许凯狗冲刺：无法操控——机体水平居中，在屏高 20%~40% 之间大幅上下正弦摆动（约 3.8 个来回）；
       // 入场段（dashEntry 0.5s）：从出发位置平滑升至摆动区，不瞬间闪现；
-      // 收尾段（dashTail 0.8s）：摆动幅度平滑衰减，机体滑落至 70% 屏高交还操控，不瞬间停顿
-      const dashDur = PILOTS.xukaigou.dashDur;
+      // 收尾段（dashTail 0.8s）：摆动幅度平滑衰减，机体滑落至 70% 屏高交还操控，不瞬间停顿。
+      // 冲刺总时长读 state.pilotDashDur（开局长冲 = dashDur、击坠 BOSS 再冲刺 = 2/3s）——
+      // 3s 再冲刺若仍按 dashDur=2s 计算，elapsed 起步为 -1，smoothstep 外插 (p²(3-2p)=1) 会让机体首帧直接瞬移到摆动区
+      const dashDur = state.pilotDashDur > 0 ? state.pilotDashDur : PILOTS.xukaigou.dashDur;
       const elapsed = dashDur - state.pilotDashT;
       const dashPhase = elapsed / dashDur;
       player.x = CANVAS_W / 2;
@@ -1973,7 +1947,8 @@
   const GACHA_CONVERGE_DUR = 0.35; // 收束时长（s）：向核心移动、变小发白并被吸收
   const GACHA_CLEAR_WAVE_SPEED = 1500;   // 释放瞬间青粉清场光波扩散速度（px/s，1600px 处出界收尾）
   // 绘制端共享常量（10-draw-world drawGachaFx 用；单值来源 07-player）
-  const GACHA_FX_DRAW = { fly: GACHA_FLY_DUR, orbitR: GACHA_ORBIT_R, stoneR: 9 * 0.7 };   // stoneR：演出原石半径 = 敌方掉落原石基准 9 的 70%（缩小 30%，2026-10-14 用户定稿）
+  // （stoneR 已删：演出原石改用巨型水晶烘焙精灵按掉落原石 70% 贴图，尺寸不再走半径常量——2026-10-14 用户反馈）
+  const GACHA_FX_DRAW = { fly: GACHA_FLY_DUR, orbitR: GACHA_ORBIT_R };
   // 抽卡演出状态机启动（Q 释放瞬间）：
   // ①全场敌我停火（state.gachaHaltT，14-main 无条件递减；吸收抽色后按品质精算余窗——陨石砸下 +0.4s 结束）
   // ②敌方技能中止且视为已释放完毕：排程弹清空、释放中的技能对象丢弃、射弹技能挂起的 1e9 fireTimer 恢复节拍
@@ -1989,6 +1964,11 @@
     for (const en of enemies) {
       if (!en || en.dying) continue;
       en.scheduled = [];   // 未发射的排程弹清空（射弹类技能半程中止）
+      if (en.link) en.link = null;   // 旧日之歌连携技能1：独立于 e.skill 的并行弹流——不清除则停火期间继续开火（用户报告 #5 根因之一）
+      if (en.partsAnim) {   // 旧日之歌六球重组动画中止：部件球归位镶接位、动画标记清除——否则六球冻在半空（用户报告 #6 根因）
+        en.partsAnim = false;
+        if (en.parts) for (const pt of en.parts) { pt.x = pt.tx; pt.y = pt.ty; }
+      }
       if (en.skill) {
         en.skill = null;   // 释放中的技能立刻中止——本次视为已释放完毕（技能冷却照常轮转）
         const cfg = ENEMY_TYPES[en.type];
@@ -2011,8 +1991,9 @@
       const ang = Math.random() * Math.PI * 2;
       const dist = 420 + Math.random() * 260;   // 自画面外四周起步
       stones.push({ delay: k * 0.09 + Math.random() * 0.12, sx: player.x + Math.cos(ang) * dist, sy: player.y + Math.sin(ang) * dist,
-        t: 0, x: player.x, y: player.y, orbAng: Math.random() * Math.PI * 2, orbW: GACHA_ORBIT_W * (Math.random() < 0.5 ? 1 : -1),
-        scale: 1, white: 0 });
+      t: 0, x: player.x, y: player.y, orbAng: Math.random() * Math.PI * 2, orbW: GACHA_ORBIT_W * (Math.random() < 0.5 ? 1 : -1),
+      ck: 'g' + Math.floor(Math.random() * CRYSTAL_GIANT_COLORS.length),   // 原石贴图色键（g0 青 / g1 粉——与 BOSS 掉落巨型同池双色均分）
+      scale: 1, white: 0 });
     }
     state.gachaFx = { phase: 'gather', t: 0, stones, color: null, my: 0,
       wave: { x: player.x, y: player.y, r: 0, done: false },
@@ -2024,7 +2005,17 @@
   function updateGachaWave(g, dt) {
     const w = g.wave;
     if (!w || w.done) return;
-    w.r += GACHA_CLEAR_WAVE_SPEED * dt;
+    // 推进（2026-10-14 用户反馈「扩散波到地方一下就停太生硬」）：
+    //   ①末端减速——70% 半径（1120px）后推进速度二次衰减至 20%，波环缓入边界；
+    //   ②到顶渐隐——到达 1600px 后半径驻留、alpha 0.35s 渐隐（期间全径清除继续生效），fade 完才 done
+    if (w.r < 1600) {
+      const p = Math.min(1, w.r / 1600);
+      const slow = p > 0.7 ? ((p - 0.7) / 0.3) ** 2 * 0.8 : 0;
+      w.r = Math.min(1600, w.r + GACHA_CLEAR_WAVE_SPEED * (1 - slow) * dt);
+    } else {
+      w.fade = (w.fade === undefined ? 1 : w.fade) - dt / 0.35;
+      if (w.fade <= 0) { w.done = true; return; }
+    }
     const r = w.r;
     const hit = (x, y, pad = 26) => Math.hypot(x - w.x, y - w.y) <= r + pad;
     const pop = (x, y) => { spawnParticles(x, y, '#7ce8dd', 3, 130); spawnParticles(x, y, '#ffc9e2', 3, 110); };
@@ -2048,7 +2039,6 @@
       pop(c.x, c.y);
       crystals.splice(i, 1);
     }
-    if (r > 1600) w.done = true;
   }
 
   // 抽卡演出推进（2026-10-14 用户定稿改版）：
@@ -2060,10 +2050,17 @@
     const g = state.gachaFx;
     g.t += dt;
     updateGachaWave(g, dt);   // 青粉清场光波（与阶段并行）
-    if (g.cwave) {   // 品质光波推进（吸收瞬间爆发）
+    if (g.cwave) {   // 品质光波推进（吸收瞬间爆发；末段减速缓入最大半径，到顶后原地 0.25s 渐隐+缓慢外扩残韵——不再硬停）
       const cw = g.cwave;
-      if (cw.r < cw.max) cw.r = Math.min(cw.max, cw.r + cw.speed * dt);
-      else { cw.hold -= dt; if (cw.hold <= 0) g.cwave = null; }
+      if (cw.r < cw.max) {
+        const p = cw.r / cw.max;
+        const slow = p > 0.75 ? ((p - 0.75) / 0.25) ** 2 * 0.7 : 0;
+        cw.r = Math.min(cw.max, cw.r + cw.speed * (1 - slow) * dt);
+      } else {
+        cw.fade = (cw.fade === undefined ? 1 : cw.fade) - dt / 0.25;
+        cw.r += 60 * dt;
+        if (cw.fade <= 0) g.cwave = null;
+      }
     }
     if (g.phase === 'gather') {
       let allArrived = true;
@@ -2107,7 +2104,7 @@
         const waveDur = g.color === 'blue' ? 0.25 : g.color === 'purple' ? 0.3 : 0.55;
         g.cwave = { x: player.x, y: player.y, r: 12,
           max: g.color === 'blue' ? 200 : g.color === 'purple' ? 300 : Math.hypot(CANVAS_W, CANVAS_H) * 0.62 + 60,
-          speed: g.color === 'gold' ? 3000 : 1400, hold: 0.22 };
+          speed: g.color === 'gold' ? 3000 : 1400 };
         if (g.color === 'gold') shake(6, 0.3);   // 金色光波发出期间微微震屏
         spawnParticles(player.x, player.y, '#ffffff', 30, 320);
         // 停火余窗精算：品质光波 + 场心阴影/陨石 0.7s + 0.4s 余波（陨石砸下后 0.4s 停火结束）
@@ -2664,6 +2661,7 @@
     for (let i = friendStorms.length - 1; i >= 0; i--) {
       const s = friendStorms[i];
       s.t += dt;
+      s.rt = state.time;   // 战斗期冻结时钟快照（绘制端 drawTornado 用）——结算页停止更新后自转定格，不再转动（2026-10-14 用户定稿）
       s.y -= PRINCE_STORM.riseSpd * (s.dbg ? PRINCE_STORM.dbgRiseSpdMul : 1) * dt;
       // 风弹：大型龙卷同款随机喷射（发射点 = 体内随机点，比例同大型龙卷 w×0.2 / h×0.3）
       s.fireT -= dt;
@@ -2948,7 +2946,7 @@
     WEAPON_LINES, delayedShots, fireWeapon, updateDelayedShots, fireWeaponBerserk,
     beamSparkT, pickSlashTarget, doSlashLine, pickSlashDeg, updateStarslayer, wingmanHasteMul, updateSlashFx,
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
-    segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, beamClipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
+    segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
     GACHA_FX_DRAW, accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,
     handlePlayerDeath, aiyiSelfDestruct, updateAiyiWaves, stormBossFightActive, pilotStormContactMul,
