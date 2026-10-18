@@ -2092,7 +2092,8 @@
     }
   }
 
-  // 导弹垂直预警线：红↔橙闪动 + 顶部警告图标
+  // 导弹预警线：红↔橙闪动 + 警告图标（垂直：全高竖线 + 顶部图标；横向 3D 极夜：全宽横线 + 左缘图标，
+  // 方向随弹道横置——2026-10-16 先兆者家族实装）
   function drawMissileWarns() {
     for (const w of missileWarns) {
       const flash = Math.sin(state.time * 18) >= 0;
@@ -2104,6 +2105,33 @@
       ctx.shadowColor = col;
       ctx.shadowBlur = 14;
       ctx.lineWidth = (2 + prog * 3) * 0.6;
+      if (w.horiz) {
+        // 横置（极夜横向导弹）：中线 + 两侧带横贯全宽，警告图标在左缘
+        ctx.beginPath();
+        ctx.moveTo(0, w.y);
+        ctx.lineTo(CANVAS_W, w.y);
+        ctx.stroke();
+        ctx.globalAlpha = (0.1 + prog * 0.12) * 0.5;
+        ctx.fillStyle = col;
+        ctx.fillRect(0, w.y - 5.4, CANVAS_W, 10.8);
+        ctx.shadowBlur = 0;
+        // 左缘警告图标（三角 + !；三角竖置一角朝上——与垂直预警线顶部图标同形，2026-10-16 用户定稿）
+        ctx.globalAlpha = 1;
+        ctx.translate(30, w.y);
+        ctx.fillStyle = col;
+        ctx.shadowColor = col; ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(0, -12); ctx.lineTo(11, 9); ctx.lineTo(-11, 9); ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#200000';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', 0, 2);
+        ctx.restore();
+        continue;
+      }
       // 宽度缩短 40%（2026-10-12 用户更正：是宽度不是高度——主线 lineWidth 与两侧带 18px 均 ×0.6，
       // 高度保持全高）；中线样式不动，两侧带透明度减半
       ctx.beginPath();
@@ -2132,11 +2160,13 @@
     }
   }
 
-  // 下落导弹：宽于常规子弹，尖头朝下 + 向上尾焰 + 高速火光拖尾（橙红外带 + 白热内芯 + 上行喷流亮段）
+  // 下落导弹：宽于常规子弹，尖头朝下 + 向上尾焰 + 高速火光拖尾（橙红外带 + 白热内芯 + 上行喷流亮段）；
+  // m.rot 存在时整体旋转（3D 极夜横向导弹：弹体朝向随飞行方向，尾焰/拖尾随之横置——涂装与其它导弹同色红橙）
   function drawMissiles() {
     for (const m of missiles) {
       ctx.save();
       ctx.translate(m.x, m.y);
+      if (m.rot) ctx.rotate(m.rot);
       // ---- 火光拖尾：沿运动反方向（竖直向上）的光带，长度/亮度随时间闪动、轴线轻微摆动 ----
       const flick = 0.82 + 0.18 * Math.sin(state.time * 21 + m.x * 0.7);
       const tl = m.r * 11 * flick;   // 拖尾长度（高速下落的长火带）

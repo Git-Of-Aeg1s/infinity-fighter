@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(12 名) 10-draw-world(1 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(19 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx}
+  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx}
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP } from './01-config-core.js';
-  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, berserkDuration, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry } from './01-config-loadout.js';
   import { ENEMY_CLASS, ENEMY_TYPES, HANSHUANG } from './01-config-enemies.js';
   import { DARKHAND } from './01-config-boss.js';
   import { diffMods, invulnDiffMul, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
@@ -1188,7 +1188,7 @@
     // 同拾取暴走道具路径（banner / 粒子 / 冲击波），但不计分；BOSS 试炼 / 图鉴挑战固定 Lv4 测试基准，不触发暴走
     if (!state.testBoss && !state.challenge && currentArmor.id === 'bulwark') {
       player.weapon = 5;
-      player.berserk = BERSERK.duration;
+      player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
       player.berserkBanner = 2.0;
       spawnParticles(player.x, player.y, '#ff5a1f', 24, 300);
       berserkBursts.push({ t: 0, duration: 0.7, x: player.x, y: player.y, big: true });   // 多道并存（2026-10-11 用户定稿）
@@ -1262,7 +1262,7 @@
         return true;   // 闪避成功：有受击反馈、无血量结算、不计入受击掉级计数
       }
     }
-    // 屏障（青时炮艇支援弹）+ 永久屏障（瓶中精灵）：优先消耗普通屏障，再消耗永久屏障；
+    // 屏障（青时战舰支援弹）+ 永久屏障（瓶中精灵）：优先消耗普通屏障，再消耗永久屏障；
     // 拥有屏障时被击中只要没掉血即算无伤（return false 不记受击）；
     // 永久屏障具备抵御效果：若该次伤害 > barrier + permBarrier，仅扣除两个屏障、不扣血（吃掉一次溢出伤害）
     if ((player.barrier > 0 || player.permBarrier > 0) && amount > 0) {
@@ -1309,6 +1309,8 @@
     // 温酒客：受到的所有伤害提升（深藏不露的代价：开局 +100%，每击败一个 BOSS -25 个百分点、最低归零——
     // 扣减在 06-enemy BOSS 击败结算处；whiteboard 已摘除，不再视作"无驾驶员效果"）
     if (hasPilot('wenjiuke') && state.wenjiukeVuln > 0) amount *= 1 + state.wenjiukeVuln;
+    // 东坤蝰：暴走期间受到的伤害降低（2026-10-17 用户定稿）
+    if (hasPilot('dongkun') && player.berserk > 0) amount *= 1 - PILOTS.dongkun.berserkDmgCut;
     // 哈基米大王：暴走期 35% 概率闪避（失败 +5% 累积、成功清零；加成跨暴走保留——只在成功时清零）。
     // 闪避效果延长至暴走结束后 4s（tailDur，覆盖后暴走的最危险窗口）；概率累积仅在暴走期间进行。
     // 闪避不受伤害，但触发受击无敌与受击反馈——无敌时长与常规受击一致（2026-10-11 用户定稿删除原 70% 衰减）
@@ -1608,7 +1610,8 @@
   //   迪奥：Q 技能冷却倒计时（开局技力条为空 = 冷却满值起步）
   //   大无垠之王：BOSS 战期间累积 造成伤害 +0.75%/s（上限 +120%）、受到伤害 +0.5%/s（上限 +80%）（多阶段切换 ×phaseKeep / 阶段结束清零见 06-enemy killEnemy）
   //   天秀：白色量表充能——非水晶得分差分（水晶得分经 princeCrystalGain 扣除）+ BOSS 战按秒充能
-  //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；闪避 / 攻速增益倒计时
+  //        （任意 BOSS 战 +2%/s；暴风之眼战 +6%/s）；**量表充满瞬间自动召唤友方大风暴**（2026-10-17 用户定稿
+  //        改自动释放，不再按 Q——见函数末尾满格边沿判定）；闪避 / 攻速增益倒计时
   function updatePilotStatus(dt) {
     // 许凯狗冲刺：所有驾驶员计时表 / 量表冻结（叮咚鸡导弹雨不计时、迪奥冷却不走、
     // 天秀量表不充能、炼金璃计数不涨、哈基米存续不走等）；天秀得分差分账目照常结转（避免冲刺结束后一次性回填）
@@ -1713,6 +1716,14 @@
     state.princeScoreBase = state.score;
     state.princeCrystalGain = 0;
     if (delta > 0 && !dashFrozen) state.princeGauge = Math.min(1, state.princeGauge + delta / (diffMods().princeGaugeFull || PILOTS.tianxiu.gaugeFull));
+    // 量表充满瞬间自动召唤友方大风暴（2026-10-17 用户定稿：技能改为自动释放，不再按 Q）——
+    // 冲刺冻结（dashFrozen）与警报 / BOSS 登场动画（bossEntranceActive，与 triggerPilotSkill 原封锁同口径）
+    // 期间不释放、封锁解除首帧补放；许凯狗冲刺结束充满（chargeAllGaugesOnDashEnd）随即走此判定放出
+    if (!dashFrozen && !bossEntranceActive() && state.princeGauge >= 1) {
+      state.princeGauge = 0;
+      launchFriendStorm();   // 忧郁王子友方风暴：无震屏（2026-10-12 用户定稿）
+      achvNotePilotSkillUsed();   // 成就：忘了——天秀技能已使用（自动释放同样计数）
+    }
   }
 
   // 许凯狗冲刺结束瞬间（14-main 递减归零帧调用一次）：所有技能计量表立刻完全充能——
@@ -1730,7 +1741,7 @@
     }
     // 迪奥：Q 冷却清零（立即可释放）
     if (hasPilot('diao')) state.lingluoCdT = 0;
-    // 天秀忧郁王子：白色量表充满（立即可释放）
+    // 天秀忧郁王子：白色量表充满（满格边沿判定随即自动释放友方大风暴，2026-10-17 用户定稿改自动）
     if (hasPilot('tianxiu')) state.princeGauge = 1;
     // 萧杨：原石充能就绪（16 颗转换完成，Q 立即可释放；金光迸粒 + 🎲 提示同 noteGachaStone 充能完成）
     if (hasPilot('xiaoyang') && !state.gachaReady) {
@@ -1771,9 +1782,8 @@
       case 'magnetShroom': // 磁力菇：水晶拾取半径 +75（2026-10-12 用户定稿 +50→+75；一整局、可叠加；08-entities 水晶吸附读取）
         state.magnetBonus += 75;
         break;
-      case 'noLingluo':    // 不再陵落：9s 螺旋飞剑风暴（32 发/s，起始朝上每发 +25°，每圈自带 25° 偏移）
+      case 'noLingluo':    // 不再陵落：9s 飞剑风暴（每 0.12s 一轮 4 发朝上扇形、相邻夹角 15°——2026-10-18 用户定稿改版，原螺旋射线作废）
         state.swordStormT = 9;
-        state.swordStormAng = -Math.PI / 2;   // 每次获得重置起始朝向（正上方）
         state.swordStormAcc = 0;
         break;
       case 'frostGen':     // 寒霜发生器：160px 力场跟随机体，12s 后朝上 80px/s 发射离场
@@ -1826,22 +1836,26 @@
     pushItemPickFx('gacha');   // 🎲 图标 + 扩散波（充能完成提示）
   }
 
-  // 不再陵落：单发螺旋飞剑。伤害/外观取当前火力等级的无界飞剑参数（SUB_WEAPONS.feijian.fire）；
+  // 不再陵落：单发飞剑。伤害/外观取当前火力等级的无界飞剑参数（SUB_WEAPONS.feijian.fire）；
   // 直向飞行（无 homing）；可穿透 2 个敌人（mainPierce 2），每次穿透伤害 -20% 基准线性衰减
   // （pierceStep 0.2 + pierceBase 基准：100% → 80% → 60%，2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；
   // 08-entities 结算；对 BOSS / 4类主力舰·法术阵列不穿透）；
-  // 射出方向在水平线以下（vy>0）标记 lowArc，对 BOSS 仅 50% 伤害（08-entities 命中结算读取）
-  function fireSwordStormOne() {
+  // llSword 标记来源——所有来自不再陵落的飞剑对 BOSS 减伤 20%（2026-10-18 用户定稿，08-entities 命中结算读取；
+  // 原「低弧对 BOSS 50%」规则随螺旋改版删除）
+  function fireSwordStormOne(ang) {
     const f = SUB_WEAPONS.feijian.fire;
     const lv = f.levels[player.weapon] || f.levels[1];
-    const ang = state.swordStormAng;
     pBullets.push({
       x: player.x, y: player.y - 6,
       vx: Math.cos(ang) * f.speed, vy: Math.sin(ang) * f.speed,
       r: f.r, dmg: lv.dmg, len: f.len, sword: true, sub: true, mainPierce: 2, pierceStep: 0.2, pierceBase: lv.dmg,
-      ...(Math.sin(ang) > 0 ? { lowArc: true } : {}),
+      llSword: true,
     });
-    state.swordStormAng += 25 * Math.PI / 180;   // 顺时针偏转 25°（每圈转完自带 25° 偏移）
+  }
+
+  // 不再陵落：一轮 4 发——朝正上方居中扇形展开，相邻夹角 15°（相对正上 -22.5°/-7.5°/+7.5°/+22.5°）
+  function fireSwordStormRound() {
+    for (const off of [-22.5, -7.5, 7.5, 22.5]) fireSwordStormOne(-Math.PI / 2 + off * Math.PI / 180);
   }
 
   // 奖励道具效果逐帧推进（updatePlayer 调用；演示屏不调用——道具仅在实战局掉落）。
@@ -1854,14 +1868,14 @@
     if (Math.abs(state.laodaMul - laodaTarget) < 0.002) state.laodaMul = laodaTarget;
     if (state.laodaT > 0) state.laodaT = Math.max(0, state.laodaT - dt);
 
-    // 不再陵落：32 发/s 累加器推进
+    // 不再陵落：0.12s/轮累加器推进（每轮 4 发）
     if (state.swordStormT > 0) {
       if (!playerFireLocked()) {
         state.swordStormT = Math.max(0, state.swordStormT - dt);
-        state.swordStormAcc += dt * 32;
-        while (state.swordStormAcc >= 1) {
-          state.swordStormAcc -= 1;
-          fireSwordStormOne();
+        state.swordStormAcc += dt;
+        while (state.swordStormAcc >= 0.12) {
+          state.swordStormAcc -= 0.12;
+          fireSwordStormRound();
         }
       }
     }
@@ -2176,7 +2190,8 @@
     state.sweepKill = false;
   }
 
-  // 驾驶员技能触发（14-main 键盘入口）：天秀忧郁王子、迪奥、大狗、萧杨（原石抽卡充能释放）均按 Q
+  // 驾驶员技能触发（14-main 键盘/手柄入口）：迪奥、大狗、萧杨（原石抽卡充能释放）均按 Q——
+  // 天秀忧郁王子已改量表充满自动释放（2026-10-17 用户定稿），不再走按键路径（见 updatePilotStatus 满格边沿判定）
   function triggerPilotSkill(keyName = 'q') {
     if (state.mode !== 'playing' || state.paused) return false;
     // 警报 / BOSS 登场动画期间不可释放技能（入场演出收尾、battle 尚未正式展开）
@@ -2188,14 +2203,6 @@
       state.gachaStones = 0;   // 进度清零重新累计（已充能期间原石不计数）
       startGacha();            // 原石汇集演出 → 抽色 → 陨石（状态机见 startGacha/updateGachaFx）
       achvNotePilotSkillUsed();   // 成就：忘了——萧杨 Q 技能已使用
-      return true;
-    }
-    // 天秀忧郁王子：量表满时向前方召唤友方大风暴——暴风之眼同款风暴的我方版
-    if (hasPilot('tianxiu') && keyName === 'q') {
-      if (state.princeGauge < 1) return false;
-      state.princeGauge = 0;
-      launchFriendStorm();   // 忧郁王子 Q 友方风暴：无震屏（2026-10-12 用户定稿）
-      achvNotePilotSkillUsed();   // 成就：忘了——天秀 Q 技能已使用
       return true;
     }
     // 大狗：计数表任一层满时按 Q——向前方 120° 均匀射出 4 发导弹 → 触发武器等级升级 → 消耗一层；
@@ -2224,14 +2231,14 @@
         state.ddjBerserkUps = (state.ddjBerserkUps || 0) + 1;   // 4/5 级按技能均消耗暴走升级机会
         if (player.weapon === 4) {
           player.weapon = 5;
-          player.berserk = BERSERK.duration;
+          player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
           player.berserkBanner = 1.5;
           tryChengyueShield();   // 澄月：暴走触发判定一次（与 pickupKit 同约定）
           berserkBursts.push({ t: 0, duration: 0.7, x: player.x, y: player.y, big: true });   // 多道并存（2026-10-11 用户定稿）
           spawnParticles(player.x, player.y, '#ffb545', 26, 260);
         } else {
           // 已在暴走（5 级）：机会照常消耗，暴走倒计时续满
-          player.berserk = BERSERK.duration;
+          player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
           tryChengyueShield();
           player.berserkBanner = 1.0;
         }
@@ -2257,12 +2264,12 @@
       spawnParticles(player.x, player.y, '#c084fc', 16, 200);
       if (player.weapon === 5) {
         const y = Math.min(1, player.berserk);
-        player.berserk = BERSERK.duration + y;
+        player.berserk = berserkDuration() + y;   // 东坤蝰：+0.8s（统一入口，下同）
         player.berserkBanner = 1.0;
         tryChengyueShield();   // 澄月：暴走续时判定一次（与 pickupBerserk 同约定）
       } else {
         player.weapon = 5;
-        player.berserk = BERSERK.duration;
+        player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
         player.berserkBanner = 2.0;
         tryChengyueShield();   // 澄月：新触发暴走判定一次
         berserkBursts.push({ t: 0, duration: 0.7, x: player.x, y: player.y, big: true });   // 多道并存（2026-10-11 用户定稿）
@@ -2690,7 +2697,9 @@
           if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
           if (e.type === 'boss' && bossEntranceActive()) continue;   // 登场虚化 BOSS：主体接触伤害穿透
           if (Math.hypot(e.x - s.x, e.y - s.y) > PRINCE_STORM.r + Math.max(e.w, e.h) / 2) continue;
-          e.hp -= PRINCE_STORM.tickDmg * mul * yu4AuraMul(e) * kingDmgBonusMul() * pxpfChargeHurtMul(e);   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴；朴学峰冲刺易伤 ×2
+          // 诗篇难度：对非 BOSS 敌人基础伤害 ×3（2026-10-17 用户定稿；下方 3% 最大生命百分比削血不乘）
+          const poemNonBossMul = (isPoem() && e.type !== 'boss') ? PRINCE_STORM.poemNonBossMul : 1;
+          e.hp -= PRINCE_STORM.tickDmg * mul * poemNonBossMul * yu4AuraMul(e) * kingDmgBonusMul() * pxpfChargeHurtMul(e);   // 大无垠之王：BOSS 战累积增伤同样生效于友方大风暴；朴学峰冲刺易伤 ×2
           // 非 BOSS 类敌人：每跳额外扣除 3% 最大生命（2026-10-14 用户定稿；固定值不乘御4/国王/充能等减伤链——
           // 与依镰刀 20% maxHp 同口径的百分比削血；BOSS 不可百分比削血，仅吃固定 tickDmg）
           if (e.type !== 'boss') e.hp -= e.maxHp * 0.03;
@@ -2716,7 +2725,7 @@
       player.weapon++;
       if (player.weapon === 5) {
         // 抵达 Lv5 即暴走：限时 6s，结束后回落 Lv4
-        player.berserk = BERSERK.duration;
+        player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
         tryChengyueShield();   // 澄月：暴走触发时概率获得量子护盾
         player.berserkBanner = 1.5;   // 机身上方展示"暴走"字样
         spawnParticles(player.x, player.y, '#ffb545', 26, 260);
@@ -2724,7 +2733,7 @@
       }
     } else if (player.weapon === 5) {
       // 已处于暴走：重置倒计时（续时同样判定澄月护盾）
-      player.berserk = BERSERK.duration;
+      player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，下同）
       tryChengyueShield();
       player.berserkBanner = 1.0;
       spawnParticles(player.x, player.y, '#ffb545', 16, 200);
@@ -2737,7 +2746,7 @@
     const alreadyBerserk = player.weapon === 5;
     player.weapon = 5;
     tryChengyueShield();   // 澄月：新触发与暴走续时均判定一次（已暴走续时也判定）
-    player.berserk = BERSERK.duration;   // 重置倒计时
+    player.berserk = berserkDuration();   // 重置倒计时（东坤蝰：+0.8s，统一入口）
     player.berserkBanner = alreadyBerserk ? 1.0 : 2.0;
     // 暴走触发不再震屏（以粉橙双环冲击波 + 粒子为唯一反馈；4类等敌人被击杀同样不震屏）
     // 多层粒子爆炸增强特效
@@ -2871,7 +2880,7 @@
       demoPhase = phase;
       const enteringBerserk = phase === 1;
       player.weapon = enteringBerserk ? 5 : 4;
-      player.berserk = enteringBerserk ? BERSERK.duration : 0;
+      player.berserk = enteringBerserk ? berserkDuration() : 0;   // 东坤蝰：+0.8s（统一入口，下同）
       player.cooldown = 0;
       player.slashQueue = []; player.slashPrevDeg = null;   // 演示阶段切换：连斩队列与夹角链一并重置
       if (enteringBerserk) {

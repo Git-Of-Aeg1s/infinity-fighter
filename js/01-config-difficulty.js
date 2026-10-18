@@ -218,12 +218,14 @@
     striker_fortress: 3000, striker_dusk: 300,
     gunship_violet: 2000, gunship_crimson: 2000, gunship_amber: 2500, gunship_orange: 2000, gunship_cyan: 2000,
     capital_crimson: 9000, capital_azure: 9000, capital_crgold: 10000,
-    harbinger: 3000, weilong: 9000, hanshuang: 2000, yu4: 2000, anvil: 2000,
+    harbinger: 3000, harbingerLead: 2400, harbingerHub: 4500, harbingerPolar: 2400,   // 先兆者家族四型（2026-10-16 用户定稿：先导/极夜 800/2400、中枢 1500/4500）
+    weilong: 9000, hanshuang: 2000, yu4: 2000, anvil: 2000,
     baoling: 1200, baolingG: 1400, unreal: 1200, jiaoxiang: 2800,
     douzhi: 280, sponsor: 280, sponsorDeluxe: 280,   // 三 2R 敌诗篇不再加血（2026-10-12 用户定稿 400→280 = 与基准 hp 一致；原 400 = 280×1.43）
     fashiA1: 360, popian: 500, popianU: 500, fashiMatrix: 360,
+    voyager: 1000,   // 浮海飘航者（2类侧位，2026-10-16 用户定稿）：基准 300 / 诗篇 1000
     fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 4000,
-    warMatrix: 10000,
+    warMatrix: 8000,   // 战争矩阵（诗篇级 4B，2026-10-17 用户定稿 10000→8000；基准 4000）
     tornado: 6800,   // 大型龙卷（暴风之眼技能2 召唤物）：基准 3600 / 真我 6000 不覆写其余难度，诗篇 6800（2026-10-10 用户二次定稿 4800→6800）
   };
   // 诗篇血量取值入口：key 优先 变体 → 行为 → 类型

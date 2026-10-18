@@ -1029,13 +1029,16 @@ canvas#game {
    #39C5BB→#FFC0CB 双色渐变流动边框 + 两道白芒绕框流动（类切换见 12-ui refreshLoadout）── */
 
 /* 选择页卡片：右上角青粉渐变三角角标（静态常亮、不脉动），代表特殊角色；
-   overflow hidden + top/right: 0——三角完全收在卡片内、不超出边框（2026-10-08 用户定稿） */
-.pilot-card.special {
+   overflow hidden + top/right: 0——三角完全收在卡片内、不超出边框（2026-10-08 用户定稿）；
+   2026-10-17 扩展 .armor-card.special：特殊护甲（群星之扉）同显角标（装甲/副武器卡片共用 armor-card 类） */
+.pilot-card.special,
+.armor-card.special {
   position: relative;   /* 角标 ::after 定位基准（.armor-card 无 position） */
   overflow: hidden;     /* 三角裁剪在卡片圆角边框内（至 1px 边框内缘），绝不外溢 */
 }
 
-.pilot-card.special::after {
+.pilot-card.special::after,
+.armor-card.special::after {
   content: '';
   position: absolute;
   top: 0;
@@ -1434,6 +1437,24 @@ canvas#game {
   line-height: 1.45;
 }
 
+/* ---------- 占位装备卡片（placeholder: true，2026-10-17）----------
+   尚未实装的装备名称占位（01-config-loadout 五注册表条目）：选择页自动生成卡片，
+   灰阶降透明展示 + 禁 hover 抬升/高亮；点击不选中（12-ui 各 build 函数拦截，
+   current 永不指向占位条目）。文案统一「未实装」（brief/desc）；
+   特殊占位（群星之扉 / 天秀混沌王子）同显 .pilot-card.special 三角角标 */
+.plane-card.placeholder,
+.armor-card.placeholder {
+  opacity: 0.55;
+  filter: grayscale(0.65);
+  cursor: default;
+}
+
+.plane-card.placeholder:hover,
+.armor-card.placeholder:hover {
+  border-color: rgba(120, 180, 255, 0.25);   /* 回退基础边框：禁 hover 高亮 */
+  transform: none;
+}
+
 /* 驾驶员卡片名称收字距：6 字名「天秀忧郁王子」在 76px 内容宽内单行放下
    （.armor-card-name 的 2px 字距 + 光学缩进下 6 字 ≈ 85px > 76px 会折行） */
 .pilot-card .armor-card-name {
@@ -1458,6 +1479,7 @@ canvas#game {
 
 .plane-grid {
   display: flex;
+  flex-wrap: wrap;   /* 5 张卡自动换行（3+2 两行，2026-10-17）：面板内宽 ≈436px / 卡宽 138px，单行 722px 溢出时 justify-content:center 会把两端卡片裁出可视区（混乱将至/天底、群星允诺「消失」根因） */
   gap: 12px;
   justify-content: center;
 }

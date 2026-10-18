@@ -8,11 +8,11 @@
   //
   import { CANVAS_H, CANVAS_W, dhSampleSolid } from './01-config-core.js';
   import { BULWARK, PLAYER_CFG, hasPilot } from './01-config-loadout.js';
-  import { ELITES, HARBINGER, JIAOXIANG, SHIP_BULLET_LEN } from './01-config-enemies.js';
+  import { ELITES, HARBINGER, HARBINGER_POLAR, JIAOXIANG, SHIP_BULLET_LEN } from './01-config-enemies.js';
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, missiles, pillarStrikes, player, rand, shake, spawnBlastRing, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
-  import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnEliteMinion, spawnHarbinger } from './04-spawn.js';
+  import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnEliteMinion, spawnHarbinger, spawnHarbingerHub, spawnHarbingerPolar } from './04-spawn.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
@@ -99,7 +99,6 @@
         dhAmp: false,                // 本段击坠增伤激活标记（至本段结束/下一窗口召唤止；高能爆弹/绷绷炸弹不吃，08-entities enemyDamageMul 消费）
         dhBonusSkills: {},           // 已登记的「额外技能」表（键 = 精英 type，2026-10-08 用户定稿：任意连携精英被击坠即永久登记，整场战斗生效——技能本体 2026-10-10 实装，见 startDarkhandSkill）
         dhForceQueue: [],            // 新登记额外技能的强制释放队列（元素 = 精英 type 键；登记见 02-core dhOnLinkedEliteKilled、消费见 startDarkhandSkill——2026-10-10 用户定稿：获得新技能后下一个释放的技能必定为它，连续击坠多名按击坠顺序逐个强制）
-        dhMarkSkill: false,          // 真我&诗篇首次降至 80% 血解锁「双标记导弹」（id 9）入池标记（2026-10-10 用户定稿；且仅连携精英在场时可选）
         dhS5Lock: 0,                 // 暗影导弹雨（id 4）释放锁：>0 时不可入池，每释放一个其他技能 -1（非诗篇 2 / 诗篇 1——2026-10-10 用户定稿「不连续释放」）
         shock: null,                 // 现形震荡波 { t, dur }（reveal 结束释放，纯演出）
         skill: null, skillCd: darkhandSkillCd(),
@@ -1822,9 +1821,7 @@
       // 内随机取一名尚未召唤者——组内顺序随机、组间先后固定（pairs 两两分组见 01-config DARKHAND.summon）
       const pool = sm.pairs[Math.floor(e.dhSummoned.length / 2)].filter(t => !e.dhSummoned.includes(t));
       const type = pool[Math.floor(Math.random() * pool.length)];
-      const firstWindow = e.dhSummoned.length === 0;   // 首窗 = 80% 血（双标记导弹解锁时点）
       e.dhSummoned.push(type);
-      if (firstWindow && (isRealme() || isPoem())) e.dhMarkSkill = true;   // 真我&诗篇 80% 解锁双标记导弹入池（2026-10-10 用户定稿，仅连携在场时可选）
       e.dhCurrent = type;   // 当前血量窗口精英（2026-10-08 用户定稿：本段内被击坠 → 减伤撤销 + 反向增伤，登记见 02-core dhOnLinkedEliteKilled）
       e.dhAmp = false;      // 新窗口开始：上一段的击坠增伤失效（本段血量 = 触发召唤阈值 → 再降 20%）
       const m = spawnEliteMinion(type, 1e9);   // 第二参为驻留时长：1e9 永驻，离场时机由血量窗口驱动
@@ -1856,20 +1853,19 @@
     //（2026-10-12 用户定稿：弹速对齐全 BOSS 连中规则——旧日之歌/暴风系 spMul 同款）；蛋挞（技能3）禁止连放（2026-10-04 用户定稿）
     // 额外技能池（2026-10-10 用户定稿实装）：击坠连携精英登记的 dhBonusSkills 对应技能进入池
     //   5 = 夏勇碎翼回旋镖 / 6 = 朴学峰翼根散射 / 7 = 辛国栋边界轰炸 / 8 = 韩希先旋眼火螺；
-    //   9 = 双标记导弹（真我&诗篇 80% 解锁 dhMarkSkill，且仅连携精英在场 dhGuardActive 时可选）；
+    //   9 = 双标记导弹（2026-10-16 用户定稿移入常规池：全难度开局可选，无连携在场条件）；
     //   新登记的技能经 dhForceQueue 强制：下一个释放的技能必定为它（同日用户定稿，见 weightedPick 处）
     // 暗影导弹雨（id 4）不连续释放（2026-10-10 用户定稿）：dhS5Lock > 0 时剔除出池——释放 id4 置锁
     //（非诗篇 2 / 诗篇 1），每释放一个其他技能递减；极端过滤到空池时放开基础池兜底
-    if (!e.skillWeights) e.skillWeights = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1 };
+    if (!e.skillWeights) e.skillWeights = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 9: 1 };   // 9 = 双标记导弹常规池（2026-10-16 用户定稿）
     if (!e.skillUseCount) e.skillUseCount = {};
     const BONUS = { xiayong: 5, puxuefeng: 6, xinguodong: 7, hanxixian: 8 };
     for (const k in BONUS) {
       // 黑暗之手获得的精英技能：随机到的权重翻倍（2026-10-14 用户定稿）——额外技能入池初始权重 2（基础技能 1）
       if (e.dhBonusSkills[k] && e.skillWeights[BONUS[k]] == null) e.skillWeights[BONUS[k]] = 2;
     }
-    let pool = [0, 1, 2, 3, 4];
+    let pool = [0, 1, 2, 3, 4, 9];
     for (const k in BONUS) if (e.dhBonusSkills[k]) pool.push(BONUS[k]);
-    if (e.dhMarkSkill && dhGuardActive()) pool.push(9);
     if (e.skillStreak >= 2) pool = pool.filter(x => x !== e.lastSkill);
     if (diffMods().bossNoRepeat) pool = pool.filter(x => x !== e.lastSkill);
     if (e.lastSkill === 2) pool = pool.filter(x => x !== 2);   // 蛋挞（技能3）不连放（2026-10-04 用户定稿：上一技能为蛋挞时本轮剔除）
@@ -1877,9 +1873,8 @@
     if (!pool.length) {   // 极端全过滤兜底（当前过滤规则下数学不可达——0/3 无专属过滤，防御未来规则扩展；
       // 4 锁豁免一跳：兜底池重建仍不含 4，本轮先放其他技能、锁递减后下一轮自然回归；
       // 兜底含已登记的额外技能 5~8 与双标记 9（2026-10-10 用户指出修正）——奖励技能不因兜底被排除）
-      pool = [0, 1, 2, 3];
+      pool = [0, 1, 2, 3, 9];
       for (const k in BONUS) if (e.dhBonusSkills[k]) pool.push(BONUS[k]);
-      if (e.dhMarkSkill && dhGuardActive()) pool.push(9);
     }
     // 强制释放队列（2026-10-10 用户定稿：击坠连携精英新登记额外技能后，下一个释放的技能必定为该新技能；
     // 登记见 02-core dhOnLinkedEliteKilled——非空时跳过随机池直接选中队首，簿记照常走下方统一路径）
@@ -1892,7 +1887,9 @@
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
     e.dhRepeatCd = repeat ? 0.2 : 1;
-    const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：本次弹速 ×1.4（2026-10-12 用户定稿，消费见 runDarkhandSkill 各技能 ×sm）
+    // 连中同技能：本次弹速 ×1.4（2026-10-12 用户定稿，消费见 runDarkhandSkill 各技能 ×sm）——
+    // 四管炮幕(0)/爪翼毁灭蛋挞(3)不吃弹速加成（2026-10-16 用户定稿；连中间隔 ×0.2 节奏不变）
+    const spMul = (repeat && id !== 0 && id !== 3) ? 1.4 : 1.0;
     e.lastSkill = id;
     if (id === 4) e.dhS5Lock = isPoem() ? 1 : 2;
     else if (e.dhS5Lock > 0) e.dhS5Lock--;
@@ -1924,6 +1921,7 @@
       // 间隔/轮数按难度（2026-10-04 用户定稿，间隔放缓）：虚象/具象 1.0s×4 轮、真我 0.8s×5 轮、诗篇 0.7s×6 轮；
       // 诗篇首轮 6 发（2026-10-04 用户定稿）：四炮口喷 6 发——外侧槽 [0]/[3] 各 1 发、内侧两槽 [1]/[2] 各 2 发，
       // 角度仍按 cannonFanStep 六等分扇面（(i-(n-1)/2)·step，±0.45rad 与 4 发 ±0.27 同数量级）；
+      // 非诗篇第 4 轮 2 发（内侧两炮）+ 诗篇第 3→4 轮齐射间隔翻倍（2026-10-16 用户定稿，2026-10-17 回调外侧改内侧，见下方分支）；
       // 虚象/具象水平位移压缩 vxMul 0.7（2026-10-04 用户定稿「水平位移减小一些」——生成时一次性缩放，
       // 真我/诗篇不缩放；0.7 为自定值待校准）
       const c = DARKHAND.s1;
@@ -1931,15 +1929,17 @@
       const iv = c.shotIv * (isPoem() ? c.poemIvMul : (isRealme() ? c.realmeIvMul : c.baseIvMul));
       const vxMul = (isPoem() || isRealme()) ? 1 : c.vxMul;   // 弹水平分量压缩（仅虚象/具象；传 1 等于不缩放）
       const slot6 = [0, 1, 1, 2, 2, 3];   // 诗篇首轮 6 发的炮口槽位映射
+      const slot2 = [1, 2];               // 非诗篇第 4 轮 2 发炮口槽位（内侧两炮，2026-10-17 用户回调：原外侧 [0]/[3] 改 [1]/[2]）
       s.shotT -= dt;
       while (s.shotT <= 0 && s.cannonIdx < rounds) {
         s.shotT += iv;
         if (!player.alive) break;
         const roundNo = s.cannonIdx++;   // 自增前捕获轮次（bias 奇偶交替 + 诗篇首轮判据）
+        if (isPoem() && roundNo === 2) s.shotT += iv * (c.poemGap34Mul - 1);   // 诗篇第 3→4 轮间隔翻倍（2026-10-16 用户定稿：第 3 轮射出后补差值，下一轮等待 2×iv）
         const bias = (roundNo % 2 ? 1 : -1) * c.volleyBias;
-        const n = (isPoem() && roundNo === 0) ? 6 : 4;
+        const n = (isPoem() && roundNo === 0) ? 6 : (roundNo === 3 && !isPoem() ? c.round4Shots : 4);   // 非诗篇第 4 轮 2 发（2026-10-16 用户定稿）
         for (let i = 0; i < n; i++) {
-          const cx = e.x + c.cannonXs[n === 6 ? slot6[i] : i] * e.w;
+          const cx = e.x + c.cannonXs[n === 6 ? slot6[i] : (n === 2 ? slot2[i] : i)] * e.w;
           const cy = e.y + e.h * 0.36;   // 2026-10-03 用户定稿：射击位置自 0.42h 略微上移
           const base = Math.atan2(player.y - cy, player.x - cx);
           const ang = base + (i - (n - 1) / 2) * c.cannonFanStep + bias;
@@ -2054,7 +2054,9 @@
       // 水平走 S 剖面（ax = A(1-2t/T) 线性变化 → vx 先增后减、抵达 50% 屏高 T 时精确归 0）；
       // 落点全屏均匀采样（二轮定稿「分布更加均匀——连不在本体上的屏幕左右两侧也有子弹落下」：tx 含本体两侧
       // 窄屏区、边缘各留 20px，dx = tx - rx 取代旧 ±20% 屏宽位移限制）；弹体渲染始终竖直朝下不旋转（见 10-draw-world）；
-      // 释放期间本体移速 ×0.2（指数逼近平滑，见 updateBossDarkhand）
+      // 释放期间本体移速 ×0.2（指数逼近平滑，见 updateBossDarkhand）；
+      // 每发速度随机浮动 k ∈ 0.6~1.3（2026-10-17 用户定稿，同日回调 0.7~1.1 放宽）：直落弹道 maxSpeed/accel 同乘 k；
+      // 抛物弹道 riseVy/ay 同乘 k（上升高度按 k 缩放、速度快的导弹整体更快），T/A 以缩放后参数重解——落点仍精确到 tx
       const c = DARKHAND.s5;
       const parab = isRealme() || isPoem();
       // 弹数/时长四档（2026-10-04 用户定稿）：虚象 5s×30 / 具象 5s×40 / 真我 6s×70 / 诗篇 7s×90
@@ -2065,10 +2067,11 @@
         s.firedN++;
         const rp = dhSampleSolid();
         const rx = e.x + rp.x * e.w, ry = e.y + rp.y * e.h;
+        const k = 0.6 + Math.random() * 0.7;   // 每发独立速度浮动倍率（0.6~1.3，2026-10-17 用户定稿同日回调放宽）
         if (parab) {
           // T = 抵达 50% 屏高时刻：解 ry + vy0·T + 0.5·ay·T² = 0.5·CANVAS_H（vy0 向上为负、ay 向下为正）
           //（连中 ×1.4：vy0/ay 同乘 sm → T 随之缩短、A = 6dx/T² 自适应重解，落点仍精确到 tx）
-          const vy0 = -c.riseVy * sm, ay = c.accel * sm;
+          const vy0 = -c.riseVy * sm * k, ay = c.accel * sm * k;
           const dY = CANVAS_H * 0.5 - ry;
           const T = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * ay * Math.max(dY, 40))) / ay;
           // 落点目标 tx 全屏均匀 [20, W-20]，dx = tx - rx（A = 6·dx/T²，总位移 = A·T²/6 = dx；tx 已在屏内无需再限幅）
@@ -2080,7 +2083,7 @@
           });
         } else {
           pushBossBullet(rx, ry, Math.PI / 2, c.speed0 * sm, {
-            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, accel: c.accel * sm, maxSpeed: c.maxSpeed * sm,
+            len: c.len, r: c.r, dmg: isPoem() ? c.poemDmg : c.dmg, accel: c.accel * sm * k, maxSpeed: c.maxSpeed * sm * k,
             dhDark: true, color: '#ff4632', streak: c.streak, fadeIn: c.fadeIn,
           });
         }
@@ -2350,7 +2353,8 @@
       }
       if (s.t >= hc.orbitDur) { e.skill = null; e.skillCd = darkhandSkillCd(e.dhRepeatCd); }
     } else if (s.id === 9) {
-      // 双标记导弹（真我&诗篇首次降至 80% 血解锁，2026-10-10 用户定稿）：标记玩家释放瞬间瞬时位置
+      // 双标记导弹（2026-10-16 用户定稿移入常规技能池：全难度开局可选，原真我&诗篇 80% 血解锁 +
+      // 仅连携精英在场条件删除）：标记玩家释放瞬间瞬时位置
       // 与其水平镜像位置（关于屏幕竖直中线），机体实心区生成暗影导弹雨同款抛物导弹——弹道/伤害/
       // 观感全引 DARKHAND.s5 单一来源，水平剖面（dhMissile S 曲线）精确落至两个标记点（交替分配，
       // 弹到标记高度时水平速度恰归 0）；释放期间
@@ -2362,8 +2366,8 @@
         s.markT = 0;
       }
       s.markT += dt;
-      const dur = isPoem() ? c.poemDur : c.realmeDur;
-      const n = isPoem() ? c.poemCount : c.realmeCount;
+      const dur = isPoem() ? c.poemDur : (isRealme() ? c.realmeDur : (isIllusion() ? c.illusionDur : c.dur));
+      const n = isPoem() ? c.poemCount : (isRealme() ? c.realmeCount : (isIllusion() ? c.illusionCount : c.count));
       const iv = dur / n;
       while (s.firedN < n && s.t >= s.firedN * iv) {
         s.firedN++;
@@ -2635,31 +2639,40 @@
     // 真我连携：与主技能并行的技能1（由 startBossSkill 概率挂载）
     if (e.link) runBossSkill(e, e.link, dt);
 
-    // 血量首次低于 70%：召唤炮火先兆者（staticX 固定靠边、不巡航，避免被 BOSS 机体挡住）——
-    // 诗篇：左右同时各一位，首攻时间强制 1.5s / 2.5s 各一（随机分配左右）；非诗篇仅最左侧一位
+    // 血量首次低于 70% / 40%：召唤炮火先兆者（2026-10-17 用户定稿改版）——
+    //   虚象：不召唤；具象：仅 70% 血在随机一侧召唤 1 位炮火先兆者（3A，固定靠边不巡航）；
+    //   真我：70% 血随机一侧 1 位 3A、40% 血在另一侧再 1 位（合计两侧各一）；
+    //   诗篇：召唤位置 = 25% / 75% 屏宽两点——70% 血两位置各 1 位极夜炮火先兆者（3D）、40% 血两位置
+    //   各 1 位中枢炮火先兆者（3C），四台攻击间隔显式错开（cycleJit 0.1/0.5/0.3/0.7）；召唤体不做入场
+    //   初速保持（entryT 预置 0——06-enemy 衰减段懒初始化仅 null 时生效，预置即跳过），速度自生成起
+    //   恒为常态巡航速度的 35%（speedMul 0.35：3C ≈ 63px/s、3D ≈ 100.8px/s；2026-10-18 用户定稿改版，
+    //   原「入场初速不变 + 100px/s 归一修正」作废）恒速下移直到离场（hoverY 置屏外不停留），
+    //   正常掉落分数与水晶
+    const POEM_HARB_X = [CANVAS_W * 0.25, CANVAS_W * 0.75];
+    const POEM_HARB_SINK = { hoverY: CANVAS_H + 300 };   // 悬停点置屏外 → 恒速下移不停留、出屏底自然移除
     if (!e.summonHarbL && e.hp <= e.maxHp * 0.70) {
       e.summonHarbL = true;
       if (isPoem()) {
-        const leftFirst = Math.random() < 0.5;
-        spawnHarbinger(40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMin : HARBINGER.chargeFirstMax });
-        spawnHarbinger(CANVAS_W - 40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMax : HARBINGER.chargeFirstMin });
-      } else {
-        spawnHarbinger(40, { staticX: true });
-      }
+        spawnHarbingerPolar(POEM_HARB_X[0], { staticX: true, cycleJit: 0.1, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+        spawnHarbingerPolar(POEM_HARB_X[1], { staticX: true, cycleJit: 0.5, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+      } else if (isRealme()) {
+        e.songHarb70Side = Math.random() < 0.5 ? 40 : CANVAS_W - 40;   // 记录 70% 召唤侧（40% 线在另一侧）
+        spawnHarbinger(e.songHarb70Side, { staticX: true });
+      } else if (!isIllusion()) {   // 具象
+        spawnHarbinger(Math.random() < 0.5 ? 40 : CANVAS_W - 40, { staticX: true });
+      }   // 虚象：不召唤
     }
-    // 血量首次低于 40%：再召唤一位（镜像 70% 召唤；入场下降约 1s 就位后，行动逻辑与 70% 召唤的那台一致）——
-    // 诗篇：左右同时各一位，首攻时间强制 1.5s / 2.5s 各一（随机分配左右）；非诗篇仅最右侧一位
     if (!e.summonHarbR && e.hp <= e.maxHp * 0.40) {
       e.summonHarbR = true;
       if (isPoem()) {
-        const leftFirst = Math.random() < 0.5;
-        spawnHarbinger(40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMin : HARBINGER.chargeFirstMax });
-        spawnHarbinger(CANVAS_W - 40, { staticX: true, chargeFirstDur: leftFirst ? HARBINGER.chargeFirstMax : HARBINGER.chargeFirstMin });
-      } else {
-        spawnHarbinger(CANVAS_W - 40, { staticX: true });
-      }
+        spawnHarbingerHub(POEM_HARB_X[0], { staticX: true, cycleJit: 0.3, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+        spawnHarbingerHub(POEM_HARB_X[1], { staticX: true, cycleJit: 0.7, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+      } else if (isRealme()) {
+        const other = e.songHarb70Side === 40 ? CANVAS_W - 40 : 40;   // 另一侧
+        spawnHarbinger(other, { staticX: true });
+      }   // 具象 / 虚象：40% 线不召唤
     }
-
+    
     // 血量 70%：掉落一个暴走道具（一次性）
     if (!e.dropBerserk && e.hp <= e.maxHp * 0.70) {
       e.dropBerserk = true;

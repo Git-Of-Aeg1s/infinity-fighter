@@ -12,7 +12,7 @@
   import { GACHA_FX_DRAW } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
   import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCrystalCoreBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawCrystalCoreBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawHanshuangBody, drawHarbingerBody, drawHarbingerHubBody, drawHarbingerLeadBody, drawHarbingerPolarBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawVoyagerBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWarMatrixBody, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
   import { getCrystal3DSprite } from './09c-draw-crystal.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawDarkhandTarts, drawStormVortex, drawTornado, drawZoneMarks } from './11-draw-boss.js';
 
@@ -246,6 +246,12 @@
 
     if (e.type === 'harbinger') {
       drawHarbingerBody(e);   // 自带填充与描边（圆环 + 横杠 + 红/灰充能核心）
+    } else if (e.type === 'harbingerLead') {
+      drawHarbingerLeadBody(e);   // 先导 3B：六边形圆角环带 + 圆芯 + 横杠（浮现期实体渐显）
+    } else if (e.type === 'harbingerHub') {
+      drawHarbingerHubBody(e);    // 中枢 3C：薄杆反向旋转 + 厚杆固定变红 + 三叉纹 + 环外三炮座
+    } else if (e.type === 'harbingerPolar') {
+      drawHarbingerPolarBody(e);  // 极夜 3D：菱形框芯（方框圆角一角朝下）+ 冰蓝充能
     } else if (e.type === 'weilong') {
       drawWeilongBody(e);     // 自带填充与描边（四角环状旋翼 + 磨角矩形机身 + 指向炮管 + 橙黄渐变）
     } else if (e.type === 'baoling') {
@@ -283,10 +289,17 @@
       drawPopianBody(e);      // 自带填充与描边（灰白金属菱形边框 + 中心黑杠红头 + 底部双黑炮管）
     } else if (e.type === 'popianU') {
       drawPopianUBody(e);     // 破片U型：同破片机体（菱形四角/核心描边改红，双杠黑底红能流动，炮口改红，尾焰随移动方向）
+    } else if (e.type === 'voyager') {
+      // 浮海飘航者：白色杆体绕深蓝核心（本体自转 e.faceAng 朝向玩家 + 杆体 e.rodK 预缩短/回弹内含；
+      // 自带完整填充描边——末尾清空路径让尾部公共 fill/stroke 空跑）
+      drawVoyagerBody(e);
+      ctx.beginPath();
     } else if (e.type === 'fashiMatrix') {
       drawFashiMatrixBody(e); // 自带填充与描边（竖菱形白红渐变外体 + 细黑菱形环 + 白红核心）
     } else if (e.type === 'fashiArray') {
       drawFashiArrayBody(e);  // 自带填充与描边（三座法术矩阵样式菱形 + 灰黑底座；中央血红色带流动特效）
+    } else if (e.type === 'warMatrix') {
+      drawWarMatrixBody(e);   // 自带填充与描边（横置巨型法术矩阵 + 登场演出时间轴 + 裂核/棱镜/卫星菱/碎框残角；参数见 WAR_MATRIX）
     } else if (e.type === 'pulseMatrix') {
       drawPulseMatrixBody(e); // 自带填充与描边（三座法术矩阵顶点相连 + 暗红核心；含脉冲预警收缩圈/冲击波/放大动效）
     } else if (e.type === 'warGhost') {
@@ -300,7 +313,7 @@
     } else if (e.type === 'striker' && e.skill === 'fortress') {
       drawFortressStrikerBody(e); // 自带填充与描边（黄色倒置菱形 + 前置能量盾：盾沿增粗外移 + 流光；见 09-draw-ships）
     } else if (e.type === 'crystalCore') {
-      // 水晶核芯艇（1S）：白色短艇 + 双臂后撑 + 大水晶（A 版式；整体按航向旋转——机头朝航向、水晶拖在后方）
+      // 水晶核芯艇（1S）：三角机头自六边形牵引框下缘两角收拢 + 大水晶（A 版式；整体按航向旋转——机头朝航向、水晶拖在后方）
       drawCrystalCoreBody(e);
       ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
     } else {
@@ -330,7 +343,7 @@
     } else if (e.type === 'side' || e.type === 'prolifera') {
       // 1类/增生侧翼艇：小型三角箭镖（宽 ±9.35 / 长 19.8），顶角精确指向移动方向——
       // 侧翼/顶部斜插的航向随编队基值变化，固定 ±0.35 倾角会出现朝向与实际航向不符（2026-09 批次改为按 _sideVel 精确旋转）；
-      // 青时炮艇召唤体（_velTilt）速度曲线逐帧缓动 → 朝向自然平滑过渡；无 _sideVel（图鉴预览等）竖直朝下
+      // 青时战舰召唤体（_velTilt）速度曲线逐帧缓动 → 朝向自然平滑过渡；无 _sideVel（图鉴预览等）竖直朝下
       const v = e._sideVel || { vx: 0, vy: 60 };
       ctx.rotate(Math.atan2(v.vy, v.vx) - Math.PI / 2);
       ctx.beginPath();
@@ -356,7 +369,7 @@
       ctx.lineTo(-15, -4);
       ctx.closePath();
     } else if (e.type === 'gunship') {
-      // 3类：宽体炮艇，双引擎短翼
+      // 3类：宽体战舰，双引擎短翼
       ctx.beginPath();
       ctx.moveTo(0, 20);
       ctx.lineTo(16, 10);
@@ -458,12 +471,12 @@
       ctx.fill();
     }
 
-    // 3类炮艇精细化：装甲分块 + 变体涂装 + 能量核心 + 双引擎辉光 + 受光边缘
+    // 3类战舰精细化：装甲分块 + 变体涂装 + 能量核心 + 双引擎辉光 + 受光边缘
     if (e.type === 'gunship') {
       const pal = GUNSHIP_PALETTE[e.variant] || GUNSHIP_PALETTE.violet;
       const pulse = 0.6 + Math.sin(state.time * 3.2 + (e.wobble || 0)) * 0.4;   // 涂装/引擎呼吸
 
-      // (1) 装甲分块线（暗色，勾勒炮艇结构：中央龙骨 + 翼根/前翼缝）
+      // (1) 装甲分块线（暗色，勾勒战舰结构：中央龙骨 + 翼根/前翼缝）
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
       ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, 17); ctx.stroke();          // 中央龙骨
@@ -608,7 +621,7 @@
       ctx.stroke();
       // 两侧斜向分块已移入翼面绘制（随折翼变形）
 
-      // (2) 变体涂装光带：赤红 = 两侧 V 形光带；苍蓝 = 横向甲板灯带；赤金 = 旋转双环（金曜炮艇风格放大版）
+      // (2) 变体涂装光带：赤红 = 两侧 V 形光带；苍蓝 = 横向甲板灯带；赤金 = 旋转双环（金曜战舰风格放大版）
       ctx.shadowColor = pal.glow;
       ctx.shadowBlur = 9;
       ctx.globalAlpha = 0.5 + pulse * 0.4;
@@ -619,7 +632,7 @@
           ctx.beginPath(); ctx.moveTo(-17, yy); ctx.lineTo(17, yy); ctx.stroke();
         }
       } else if (e.variant === 'crgold') {
-        // 赤金：环绕舰体的旋转双环（金曜炮艇的双环放大版）——施放「金环扩散」消耗一枚，环数随剩余递减；
+        // 赤金：环绕舰体的旋转双环（金曜战舰的双环放大版）——施放「金环扩散」消耗一枚，环数随剩余递减；
         // 机翼展开完成后才逐渐显现（ringT 渐入）
         const reveal = clamp((e.ringT || 0) / 0.8, 0, 1);
         ctx.strokeStyle = pal.accent;
@@ -746,8 +759,9 @@
     ctx.save();
     ctx.translate(e.x, e.y);
 
-    // 蓝色4类护盾：虚化期间显示能量护盾气泡（炮弹穿过、可打到后面的敌人）
-    if (e.phase > 0) {
+    // 蓝色4类护盾：虚化期间显示能量护盾气泡（炮弹穿过、可打到后面的敌人）——幽蓝/苍蓝等带盾虚化专用；
+    // 战争矩阵登场演出同为 phase 虚化但无护盾语义（纯「尚未生成」），排除不画（2026-10-18 用户报告登场有护盾）
+    if (e.phase > 0 && e.type !== 'warMatrix') {
       const rr = Math.max(e.w, e.h) * 0.6;
       const a = 0.4 + Math.sin(state.time * 6) * 0.15;
       ctx.globalAlpha = a;
@@ -765,7 +779,7 @@
       ctx.globalAlpha = 1;
     }
 
-    // 青时炮艇召唤体次数盾：白色浅盾气泡（小于量子护盾；剩余层数呼吸明灭，耗尽不绘制）
+    // 青时战舰召唤体次数盾：白色浅盾气泡（小于量子护盾；剩余层数呼吸明灭，耗尽不绘制）
     if ((e.chargeShield || 0) > 0) {
       const cr = Math.max(e.w, e.h) * 0.42;
       const ca = 0.55 + Math.sin(state.time * 5 + (e.wobble || 0)) * 0.15;
@@ -817,7 +831,7 @@
         ctx.fillStyle = '#ff9500';
         ctx.fillRect(-w / 2, -e.h / 2 - 8, w * hpR, 3);
       }
-      // 青时炮艇支援弹屏障（白蓝覆盖条）：画在血量之上；宽度 = 血条宽 × barrier / max(barrierMax, maxHp)，
+      // 青时战舰支援弹屏障（白蓝覆盖条）：画在血量之上；宽度 = 血条宽 × barrier / max(barrierMax, maxHp)，
       // 锚定右缘——屏障被打时覆盖区自左向右缩短（规格：maxHp 1000 → 覆盖 20%；maxHp < 200 → 全覆盖；
       // 4F 精英无屏障，恒走上面黑红流动分支）
       if ((e.barrier || 0) > 0 && e.barrierMax) {
@@ -976,7 +990,7 @@
     // 中段暗红 → 焰尖黑渐透明），长度随 e.elT 高频抖动 ±8%（实体自身相位：gameover 后 update 停 →
     // 冻结不抖，同叮咚鸡导弹尾焰处理）；绘制在机体之下（焰根被机身压住），内芯亮红细焰叠加提亮；
     // 朴学峰焰体缩至 75%、韩希先长度 95%（更长）/宽度 75%（2026-10-02）；朴学峰冲刺时随机头方向（elRot 旋转坐标系内）；
-    // 图鉴预览（encyPreview）不绘制
+    // 尾焰仅 live 大图绘制（2026-10-17 动画化 + 同日回调「动效仅大图」：encyPreview 小图缩略恢复旧静帧不绘制）
     if (!e.encyPreview) {
       const lenScale = e.type === 'puxuefeng' ? 0.75 : e.type === 'hanxixian' ? 0.95 : 1;
       const widScale = (e.type === 'puxuefeng' || e.type === 'hanxixian') ? 0.75 : 1;
@@ -1008,6 +1022,12 @@
     }
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, -edw / 2, -edh / 2, edw, edh);
+      // 写回立绘实际渲染尺寸（局部 edw/edh × drawScale = 世界尺寸）——06-enemy 通用出界移除判定消费
+      //（2026-10-17 用户反馈「还没完全离开屏幕就判定为离场」：碰撞盒半高 42 < 立绘渲染半高 ≈90.7，
+      // 按碰撞盒判定时立绘上半截尚在屏内即被移除；每帧写回保证素材加载前后自动切换）
+      const _ds = ENEMY_TYPES[e.type].drawScale || 1;
+      e.drawW = edw * _ds;
+      e.drawH = edh * _ds;
     } else {
       // 回退：类型色圆角方 + 暗描边（与占位白块区分）
       ctx.fillStyle = e.color;
@@ -1058,14 +1078,27 @@
         // 凝视锁定：追踪期红细线（持续跟随）→ 锁定静止期红细线保持指向（不开火、提亮示意）→
         // 激光期双层粗激光（外辉光 + 白热内芯，方向固定）；时序 0.5s / 0.5s / 0.9s 见 06-enemy advanceEliteSkill
         if (!s.fired) {
+          // 预警进度 wp：追踪期 + 锁定期全时程 0→1（06-enemy 锁定瞬间 s.t 归零故分段累计）——发射瞬间 wp=1
+          const wp = clamp((s.locked ? c.trackT + s.t : s.t) / (c.trackT + c.holdT), 0, 1);
           ctx.globalAlpha = (s.locked ? 0.95 : 0.62) + 0.25 * Math.sin(state.time * 18);
           ctx.strokeStyle = '#e83444';   // 提亮红（2026-10-04 二次定稿：预警线略微加粗提亮，原 #c22030）
-          ctx.lineWidth = 3.5;   // 预警线增粗（2026-10-02 原 1.4 → 2.5；2026-10-04 二次定稿 → 3.5）
+          ctx.lineWidth = 3.5 * (c.warnWidthMul0 + (1 - c.warnWidthMul0) * wp);   // 宽度 2.5× 线性收细 → 发射瞬间 1×（3.5px 基准，2026-10-16 用户定稿）
+          ctx.lineCap = 'round';   // 线头圆滑（2026-10-17 用户定稿：预警线远端圆头，方头观感生硬）
           ctx.shadowColor = '#ff2430'; ctx.shadowBlur = 8;   // 红色辉光提亮（2026-10-04 二次定稿）
           ctx.beginPath();
           ctx.moveTo(e.x, eyeY);
           ctx.lineTo(e.x + Math.cos(s.ang) * 1000, eyeY + Math.sin(s.ang) * 1000);
           ctx.stroke();
+          ctx.lineCap = 'butt';
+          // 发射点收缩预警圈（2026-10-16 用户定稿）：凝视开始出现在大眼处，半径随预警推进收缩、发射瞬间恰好归零；
+          // 开始更大且更淡（2026-10-17 用户定稿）：初始半径 warnRingR0（150）起缩 + 圈透明度随 wp 自 ≈1/4 亮度渐实（与预警线共享脉动基准）
+          if (wp < 1) {
+            ctx.globalAlpha *= 0.25 + 0.75 * wp;
+            ctx.beginPath();
+            ctx.arc(e.x, eyeY, Math.max(c.warnRingR0 * (1 - wp), 0.5), 0, Math.PI * 2);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
           ctx.shadowBlur = 0;
         } else {
           const bp = clamp(s.t / 0.1, 0, 1);
@@ -2164,7 +2197,7 @@
         } else if (b.oval) {
           paintWindStreakBody(b);
         } else {
-          // 长条弹渐变：头端红（b.color——炮艇/主力舰 #ff4d2e、旧日之歌 #ff7a45）→ 中段近白 → 尾端略带红光的暖白
+          // 长条弹渐变：头端红（b.color——战舰/主力舰 #ff4d2e、旧日之歌 #ff7a45）→ 中段近白 → 尾端略带红光的暖白
           // （半透明收尾柔化入背景，不再像旧版 0.15 透明度那样发黑）；描边同款略带红光的白
           //（2026-10-09 用户反馈：头端经 LONG_HEAD_RED 映射增红；外圈描边统一变红一些）
           const g = ctx.createLinearGradient(-b.len / 2, 0, b.len / 2, 0);
@@ -3470,7 +3503,7 @@
     drawGiantTarts();   // 巨大蛋挞（黑暗之手技能3）：全部敌机之下（2026-10-12 用户定稿——BOSS 层之上、敌机层之下）
     // 常规敌机按体型（碰撞盒面积）降序绘制：大机先画在底层、小机浮上层——4类不遮挡 3/2/1类（2026-10-12 用户定稿）。
     // 等面积时按类层级降序（4类先画更靠底）。⚠️ 敌机无 r 属性（碰撞统一用 w/h 半宽半高）——
-    // 旧实现 b.r - a.r 恒 NaN、排序空转，图层实际退化为生成顺序（青时炮艇被后生成的 4类遮挡即此根因，2026-10-12 修复）
+    // 旧实现 b.r - a.r 恒 NaN、排序空转，图层实际退化为生成顺序（青时战舰被后生成的 4类遮挡即此根因，2026-10-12 修复）
     for (const e of [...enemies].sort((a, b) =>
       ((b.w * b.h) - (a.w * a.h)) || ((ENEMY_CLASS[b.type] || 0) - (ENEMY_CLASS[a.type] || 0))
     )) {

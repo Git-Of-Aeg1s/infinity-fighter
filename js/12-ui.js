@@ -3,10 +3,10 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(13 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAng, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, berserkDuration, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
@@ -65,7 +65,7 @@
     const ratio = player.hp / maxHp;
     const hpW = (ratio * 100) + '%';
     if (hpW !== _hudHpW) { hpFill.style.width = hpW; _hudHpW = hpW; }
-    // 青时炮艇支援弹屏障：贴永久屏障左缘向左展示（右缘偏移 = 永久屏障宽度，2026-10-12 用户定稿——
+    // 青时战舰支援弹屏障：贴永久屏障左缘向左展示（右缘偏移 = 永久屏障宽度，2026-10-12 用户定稿——
     // 原两屏障均右缘锚定、永久屏障盖住普通屏障）；末 1s player.barrier 自动线性衰减 → 覆盖条等比缩短。
     // 与永久屏障合计显示宽度钳制 ≤ 血量条宽（超出截断，两屏障条不超出血条范围）
     const permRatio = (player.permBarrier || 0) > 0
@@ -122,7 +122,7 @@
     const shieldOn = player.shield > 0;
     // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
     berserkBar.classList.toggle('active', berserkOn);
-    const berserkW = berserkOn ? (player.berserk / BERSERK.duration * 100) + '%' : '0%';
+    const berserkW = berserkOn ? (player.berserk / berserkDuration() * 100) + '%' : '0%';   // 分母走统一入口（东坤蝰 4.8s——否则量表溢出）
     if (berserkW !== _hudBerserkW) { berserkFill.style.width = berserkW; _hudBerserkW = berserkW; }
     // 护盾读条（右下角）
     shieldBar.classList.toggle('active', shieldOn);
@@ -152,7 +152,7 @@
         _hudSkillFrac = frac; _hudSkillColor = skillDef.color;
       }
     }
-    // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表 / 迪奥 Q 冷却（均按 Q，满格 = 可释放）
+    // 驾驶员量表（与装甲量表同款式）：天秀忧郁王子白色量表（充满自动释放风暴）/ 迪奥 Q 冷却（按 Q，满格 = 可释放）
     // / 依击杀计数条（无按键，满格自动召唤镰刀；环形填充为 #FFC0CB→白 渐变）
     // / 大狗计数表（按 Q）：环形展示当前层进度，每充满一层转一整周；已充满的持有层数在右下角显示数字
     const pilotGaugeMode = (currentPilotMain.id === 'tianxiu' || currentPilotSub.id === 'tianxiu') ? 'tianxiu'
@@ -221,7 +221,7 @@
     // 奖励道具效果状态归位（道具槽已取消——击坠立即生效；07-player applyRewardItem 置位 / updateRewardFx 推进）
     state.laodaT = 0; state.laodaMul = 1;
     state.magnetBonus = 0;
-    state.swordStormT = 0; state.swordStormAng = -Math.PI / 2; state.swordStormAcc = 0;
+    state.swordStormT = 0; state.swordStormAcc = 0;
     state.frostField = null;
     state.bombCapAdd = 0; state.bengbagGot = false;
     state.jiukeT = 0; state.jiukeDodgePct = 0;
@@ -810,9 +810,17 @@
       const wm = WINGMEN_CFG[id];
       if (wm.empty) continue;   // 去掉“无僚机/不选僚机”选项：必须携带僚机出击
       const card = document.createElement('div');
-      card.className = 'plane-card wingman-card' + (wm.id === currentWingman.id ? ' selected' : '');
+      card.className = 'plane-card wingman-card' + (wm.id === currentWingman.id ? ' selected' : '')
+        + (wm.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.wingman = wm.id;
-      if (!wm.empty) {
+      if (wm.placeholder) {
+        // 占位僚机：不画机体缩略图，统一显示占位菱形字形（与装甲/副武器/驾驶员占位卡同款，2026-10-17 用户定稿）
+        const glyph = document.createElement('div');
+        glyph.className = 'armor-card-glyph';
+        glyph.textContent = wm.glyph || '◇';
+        glyph.style.color = wm.color || '#8a97a8';
+        card.appendChild(glyph);
+      } else if (!wm.empty) {
         const cvs = document.createElement('canvas');
         cvs.width = 56 * DPR; cvs.height = 60 * DPR;
         cvs.style.width = '56px'; cvs.style.height = '60px';
@@ -831,6 +839,7 @@
       desc.innerHTML = wm.desc;
       card.append(name, desc);
       card.addEventListener('click', () => {
+        if (wm.placeholder) return;   // 占位僚机：不可选中（currentWingman 永不指向占位条目）
         setWingman(wm);
         wingmanGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.wingman === wm.id));
@@ -846,30 +855,9 @@
     for (const id in PLANES) {
       const p = PLANES[id];
       const card = document.createElement('div');
-      card.className = 'plane-card' + (p.id === currentPlane.id ? ' selected' : '');
+      card.className = 'plane-card' + (p.id === currentPlane.id ? ' selected' : '')
+        + (p.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.plane = p.id;
-
-      // 缩略图：复用玩家战机造型（高 DPI 适配）；暴走状态造型（翼片全展开 + 翼尖微光）
-      const cvs = document.createElement('canvas');
-      cvs.width = 92 * DPR; cvs.height = 76 * DPR;
-      cvs.style.width = '92px'; cvs.style.height = '76px';
-      const c = cvs.getContext('2d');
-      c.scale(DPR, DPR);
-      c.translate(46, 38);
-      let cardScale = p.id === 'starslayer' ? 0.6 : 0.9;    // 群星之杀暴走巨帆更大：缩小以完整入图
-      if (p.id === 'chaos') cardScale *= 0.9;   // 混乱将至：选机卡片预览图缩小 10%（主页面装备框同步）
-      c.scale(cardScale, cardScale);
-      paintShip(c, 1, p, 1, true);   // 概览图使用暴走形态（berserkT=1，still=静态不画动态光效）；传入当前卡片机型 p
-      // 暴走翼尖微光（静态帧）——仅 chaos；群星之杀的侧角光已在 paintStarslayer 内绘制
-      if (p.id === 'chaos') {
-        c.save();
-        c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
-        c.fillStyle = '#ff69b4';
-        for (const sx of [-1, 1]) {
-          c.beginPath(); c.arc(sx * 22 * 1.2 * (p.drawScale || 1), 10, 2.5, 0, Math.PI * 2); c.fill();
-        }
-        c.restore();
-      }
 
       const name = document.createElement('div');
       name.className = 'plane-card-name';
@@ -878,8 +866,39 @@
       desc.className = 'plane-card-desc';
       desc.innerHTML = p.desc;
 
-      card.append(cvs, name, desc);
+      if (p.placeholder) {
+        // 占位战机：不画机体缩略图，统一显示占位菱形字形（与装甲/副武器/驾驶员占位卡同款，2026-10-17 用户定稿）
+        const glyph = document.createElement('div');
+        glyph.className = 'armor-card-glyph';
+        glyph.textContent = p.glyph || '◇';
+        glyph.style.color = p.color || '#8a97a8';
+        card.append(glyph, name, desc);
+      } else {
+        // 缩略图：复用玩家战机造型（高 DPI 适配）；暴走状态造型（翼片全展开 + 翼尖微光）
+        const cvs = document.createElement('canvas');
+        cvs.width = 92 * DPR; cvs.height = 76 * DPR;
+        cvs.style.width = '92px'; cvs.style.height = '76px';
+        const c = cvs.getContext('2d');
+        c.scale(DPR, DPR);
+        c.translate(46, 38);
+        let cardScale = p.id === 'starslayer' ? 0.6 : 0.9;    // 群星之杀暴走巨帆更大：缩小以完整入图
+        if (p.id === 'chaos') cardScale *= 0.9;   // 混乱将至：选机卡片预览图缩小 10%（主页面装备框同步）
+        c.scale(cardScale, cardScale);
+        paintShip(c, 1, p, 1, true);   // 概览图使用暴走形态（berserkT=1，still=静态不画动态光效）；传入当前卡片机型 p
+        // 暴走翼尖微光（静态帧）——仅 chaos；群星之杀的侧角光已在 paintStarslayer 内绘制
+        if (p.id === 'chaos') {
+          c.save();
+          c.globalAlpha = 0.5; c.shadowColor = '#ff69b4'; c.shadowBlur = 14;
+          c.fillStyle = '#ff69b4';
+          for (const sx of [-1, 1]) {
+            c.beginPath(); c.arc(sx * 22 * 1.2 * (p.drawScale || 1), 10, 2.5, 0, Math.PI * 2); c.fill();
+          }
+          c.restore();
+        }
+        card.append(cvs, name, desc);
+      }
       card.addEventListener('click', () => {
+        if (p.placeholder) return;   // 占位战机：不可选中（currentPlane 永不指向占位条目）
         setPlane(p);
         planeGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.plane === p.id));
@@ -946,7 +965,9 @@
     for (const id in ARMORS) {
       const a = ARMORS[id];
       const card = document.createElement('div');
-      card.className = 'armor-card' + (a.id === currentArmor.id ? ' selected' : '');
+      card.className = 'armor-card' + (a.id === currentArmor.id ? ' selected' : '')
+        + (a.special ? ' special' : '')   // special = 特殊装备：卡片右上角青粉三角角标（style.css .armor-card.special，与 .pilot-card.special 同款）
+        + (a.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.armor = a.id;
       const glyph = document.createElement('div');
       glyph.className = 'armor-card-glyph' + (a.sym ? ' glyph-sym' : '');
@@ -960,6 +981,7 @@
       desc.innerHTML = a.brief || a.desc;   // 卡片用简短文案（brief）；详细数值见数值与机制图鉴「护甲」页
       card.append(glyph, name, desc);
       card.addEventListener('click', () => {
+        if (a.placeholder) return;   // 占位护甲：不可选中（currentArmor 永不指向占位条目）
         setArmor(a);
         armorGrid.querySelectorAll('.armor-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.armor === a.id));
@@ -977,7 +999,8 @@
     for (const id in SUB_WEAPONS) {
       const w = SUB_WEAPONS[id];
       const card = document.createElement('div');
-      card.className = 'armor-card' + (w.id === currentSubWeapon.id ? ' selected' : '');
+      card.className = 'armor-card' + (w.id === currentSubWeapon.id ? ' selected' : '')
+        + (w.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.sub = w.id;
       const glyph = document.createElement('div');
       glyph.className = 'armor-card-glyph';
@@ -998,6 +1021,7 @@
       desc.innerHTML = w.brief || w.desc;   // 卡片用简短文案（brief）；详细数值见数值与机制图鉴「副武器」页
       card.append(glyph, name, desc);
       card.addEventListener('click', () => {
+        if (w.placeholder) return;   // 占位副武器：不可选中（currentSubWeapon 永不指向占位条目）
         setSubWeapon(w);
         subGrid.querySelectorAll('.armor-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.sub === w.id));
@@ -1023,7 +1047,8 @@
       const p = PILOTS[id];
       if (p.empty || p.slot !== slot) continue;   // 各槽位只列出归属该槽位的驾驶员（none 不再作为选项展示）
       const card = document.createElement('div');
-      card.className = 'armor-card pilot-card' + (p.id === equipped.id ? ' selected' : '') + (p.special ? ' special' : '');   // special = 特殊驾驶员：卡片右上角白光角标（style.css .pilot-card.special）
+      card.className = 'armor-card pilot-card' + (p.id === equipped.id ? ' selected' : '') + (p.special ? ' special' : '')   // special = 特殊驾驶员：卡片右上角白光角标（style.css .pilot-card.special）
+        + (p.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.pilot = p.id;
       if (!p.empty) {
         const glyph = document.createElement('div');
@@ -1047,6 +1072,7 @@
       desc.innerHTML = p.brief || p.desc;   // 卡片用简短文案（brief）；详细机制见数值与机制图鉴「装备 → 驾驶员」子页
       card.append(name, desc);
       card.addEventListener('click', () => {
+        if (p.placeholder) return;   // 占位驾驶员：不可选中（currentPilotMain/Sub 永不指向占位条目）
         // 槽位写入 + 同名互斥：选中一侧时从另一侧卸下同名驾驶员
         if (slot === 'main') {
           setPilotMain(p);

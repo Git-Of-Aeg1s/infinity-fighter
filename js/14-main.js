@@ -6,14 +6,14 @@
   //   state.{cheatInvuln, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postClearT, postDelay, postWaveClear, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
+  import { BERSERK, berserkDuration, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
   import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updatePoemRearCards } from './04-spawn.js';
+  import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updateHarbLeadQueue, updatePoemRearCards } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
@@ -49,7 +49,7 @@
     achvNoteCheat();   // 成就：武器等级直设属作弊（无垠 / 无垠战机排除）
     if (n === 5) {
       player.weapon = 5;
-      player.berserk = BERSERK.duration;
+      player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，与自然暴走同口径）
       player.berserkBanner = Math.max(player.berserkBanner || 0, 1.5);
       spawnParticles(player.x, player.y, currentPlane.berserkColor || '#ffb545', 20, 240);
       tryChengyueShield();
@@ -72,7 +72,7 @@
     // （右Ctrl 同为修饰键：按住时按 W 仍会触发浏览器关标签页且无法拦截——与马兴犬弃用 Ctrl 的原因相同，玩家自担）
     if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
-    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（天秀忧郁王子：友方大风暴，量表满方可触发 / 迪奥：强行暴走，冷却结束方可触发 / 萧杨：原石抽卡充能满时释放）
+    if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（迪奥：强行暴走，冷却结束方可触发 / 大狗：计数表满层齐射 / 萧杨：原石抽卡充能满时释放——天秀忧郁王子已改量表充满自动释放，不走按键）
     // 叮咚鸡导弹雨连发开关（作弊键，不要求装备叮咚鸡——任意驾驶员均可触发）：
     // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备叮咚鸡时：开启即启用整套导弹雨系统并以连发间隔运行）。
     // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
@@ -123,7 +123,18 @@
       // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
       // 事件（keydown ~30Hz 连发会疯狂重复清场+群召）
       if ((k === '=' || k === '+') && !e.repeat && state.challenge) {
-        if (state.challenge.kind === 'enemy') {
+        if (state.challenge.kind === 'enemy' && e.shiftKey && state.challenge.type === 'crystalCore') {
+          // 水晶核芯艇测试页 Shift+= / +（2026-10-16 用户定稿）：立刻清场 + 立刻刷新一波 BOSS 后
+          // 特殊波次（水晶核芯艇四编成随机其一，spawnPostBossWave；清场同测试3口径——直接移除
+          // 不留尸爆 + 同步清敌方弹幕。updateChallenge 见 ch.type 在场即不补刷，与特殊波次共存无冲突）
+          for (let guard = enemies.length * 4 + 16; enemies.length > 0 && guard > 0; guard--) {
+            const en = enemies[0];
+            if (!en || en._deathSettled) { if (en) enemies.splice(0, 1); continue; }
+            enemies.splice(0, 1);
+          }
+          clearEnemyBullets();
+          spawnPostBossWave();
+        } else if (state.challenge.kind === 'enemy') {
           // Shift+=：场上仅 1 个测试目标（召唤物不计）时先清场再统一召唤 10 个；已有多个则直接追加 10 个
           if (e.shiftKey && challengeTargets().length === 1) {
             // 上限保护：killEnemy 对 _deathSettled 残留体会直接 return 不移除（重入保护），
@@ -147,9 +158,20 @@
             clearEnemyBullets();
             spawnChallengeWave(state.challenge);
           } else {
-            // 波次测试：按 = 额外刷出一整波（不清除场上敌人，可观察多波叠加；Shift+=（产生 '+'）无事发生）
+            // 波次测试：按 = 额外刷出一整波（不清除场上敌人，可观察多波叠加；Shift+= 见下一分支）
             spawnChallengeWave(state.challenge);
           }
+        } else if (state.challenge.kind === 'wave' && (k === '+' || e.shiftKey)) {
+          // 波次测试 Shift+= / +（2026-10-16 用户定稿）：立刻清场 + 立刻刷新一波 BOSS 后特殊波次
+          //（水晶核芯艇四编成随机其一，spawnPostBossWave；清场同测试3口径——直接移除不留尸爆 + 同步清敌方弹幕。
+          //  触发 = k 为 '+' 不论 shiftKey（用户单独按 + 即触发；Shift+= 布局差异产生 '=' 时按 shiftKey 兜底））
+          for (let guard = enemies.length * 4 + 16; enemies.length > 0 && guard > 0; guard--) {
+            const en = enemies[0];
+            if (!en || en._deathSettled) { if (en) enemies.splice(0, 1); continue; }
+            enemies.splice(0, 1);
+          }
+          clearEnemyBullets();
+          spawnPostBossWave();
         }
       }
     }
@@ -364,6 +386,7 @@
       // 延迟出场队列（z*8 单点排队等）逐帧倒计时到点生成——通用推进（2026-10-12 bug 修复：
       // 原仅在挑战分支调用，正常波抽到 z*8 且命中排队侧时该侧敌机入队后永不生成、整侧静默丢失）
       updateDelayedSpawns(dt);
+      updateHarbLeadQueue(dt);   // 先导 3B：3s 预警期满生成实体（独立队列——不被波次清空，2026-10-17）
       updatePoemRearCards(dt);   // 诗篇后波延迟落地推进（前/后波 0.3~0.7s 随机间隔；无条件每帧——波阶段结束也不冻结）
       // 萧杨抽卡停火窗口递减（无条件每帧——玩家死亡/演出异常也不残留停火；startGacha 置位、updateGachaFx shock 结束归零兜底）
       if (state.gachaHaltT > 0) state.gachaHaltT = Math.max(0, state.gachaHaltT - dt);
@@ -512,7 +535,8 @@
           // 场上仅剩威龙时同样不阻断（2026-10-12 用户定稿：威龙悬停极久，「全清等它」易成节奏死角——
           // 下一波照常刷新、威龙留场）。BOSS 波次不适用本豁免：本分支仅在常规波次未刷满
           // （poemWaveIdx < phaseWaves）时进入，波次耗尽后的 BOSS 触发清场仍要求全部清完
-          const blocking = enemies.filter(en => en && !en.elRevive);
+          // 先导炮火先兆者（harbingerLead）同样不阻止诗篇波次刷新（2026-10-17 用户定稿——延迟生成+落位期均豁免）
+          const blocking = enemies.filter(en => en && !en.elRevive && en.type !== 'harbingerLead');
           if (!blocking.length || blocking.every(en => en.type === 'weilong')) {
             levelFlow.poemClearT += dt;
             if (levelFlow.poemClearT >= levelFlow.poemClearNext) {

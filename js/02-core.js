@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(9 名) 05-boss(18 名) 06-enemy(40 名) 07-player(50 名) 08-entities(21 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(40 名) 07-player(50 名) 08-entities(21 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -25,7 +25,7 @@
 
   const hpFill = document.getElementById('hpFill');
   const hpBar = document.getElementById('hpBar');   // 血条轨道：迪奥 Q 扣生命上限时右侧缩短（12-ui updateHUD 驱动宽度 = 当前 maxHp / 满血 armorMaxHp）
-  const hpBarrier = document.getElementById('hpBarrier');   // 青时炮艇支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
+  const hpBarrier = document.getElementById('hpBarrier');   // 青时战舰支援弹屏障：玩家 HP 条右缘白蓝覆盖条（12-ui updateHUD 驱动宽度）
   const hpPermBarrier = document.getElementById('hpPermBarrier');   // 瓶中精灵永久屏障：HP 条右缘青色覆盖条（位于普通屏障右侧；12-ui updateHUD 驱动宽度）
   const scoreText = document.getElementById('scoreText');
   const stonePanel = document.getElementById('stonePanel');   // 原石收集计数面板（当局；12-ui updateHUD 驱动显隐）
@@ -175,9 +175,8 @@
     laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +40%
     laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.40/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
     magnetBonus: 0,        // 磁力菇：水晶拾取半径加成（px；一整局、可叠加，08-entities 水晶吸附读取）
-    swordStormT: 0,        // 不再陵落：螺旋飞剑剩余时长（s；0 = 无效）
-    swordStormAng: 0,      // 不再陵落：下一发飞剑射向角（弧度，0=+x；起始 -π/2 朝上，每发 +40° = 每圈自带 40° 偏移）
-    swordStormAcc: 0,      // 不再陵落：发射累加器（16 发/s，07-player 推进）
+    swordStormT: 0,        // 不再陵落：飞剑风暴剩余时长（s；0 = 无效）
+    swordStormAcc: 0,      // 不再陵落：轮发射累加器（0.12s/轮 × 每轮 4 发，07-player 推进）
     frostField: null,      // 寒霜发生器：{ x, y, r:160, t, launched, vy }（未发射时随机体；到期朝上 80px/s 离场；07-player updateFrostField 推进，06-enemy/08-entities 读减速）
     bombCapAdd: 0,         // 绷绷背包：爆弹携带上限加成（+1；一整局；拾取 08-entities / HUD 12-ui 共同读取）
     bengbagGot: false,     // 绷绷背包：本局已获得标记（一局限一次，06-enemy grantRewardItem 过滤——效果直接生效，见 applyRewardItem）
@@ -259,7 +258,7 @@
     shield: 0,         // 量子护盾剩余时间
     shieldMax: 0,      // 本次护盾的总时长（读条分母：通用与澄月均 6s，见 12-ui）
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
-    barrier: 0,        // 青时炮艇支援弹屏障（临时，优先吸收；重复命中叠加、到期自动消散）
+    barrier: 0,        // 青时战舰支援弹屏障（临时，优先吸收；重复命中叠加、到期自动消散）
     barrierMax: 0,     // 本次屏障的总量（绘制/衰减分母）
     barrierT: 0,       // 屏障剩余时长
     permBarrier: 0,    // 永久屏障（击坠赞助无人舰获得瓶中精灵时立即赋予：整局不随时间衰减，在 barrier 右侧以青色段显示）

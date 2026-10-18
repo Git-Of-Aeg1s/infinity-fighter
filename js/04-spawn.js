@@ -1,17 +1,17 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(5 名) 06-enemy(9 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(24 名)
+  // 被依赖：05-boss(7 名) 06-enemy(9 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(25 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, WAR_GHOST, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
+  import { ANVIL, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
-  import { bossFlow, clamp, enemies, frostZones, levelFlow, player, rand, shake, state } from './02-core.js';
+  import { bossFlow, clamp, enemies, frostZones, levelFlow, missileWarns, player, rand, shake, state } from './02-core.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
   import { clearMissiles } from './06-enemy.js';
@@ -77,6 +77,7 @@
   // 原先不随重开清空——上一局的排队机会在新局开头到点补放、破片复用上局最后一批停留高度
   function resetSpawnWaveState() {
     delayedSpawns.length = 0;
+    harbLeadQueue.length = 0;
     poemRearQueue.length = 0;
     popianBatch.t = -9; popianBatch.tpY = 0;
     crystalWaveRoundsLeft = 0;   // BOSS 后特殊波次未落地轮次计数归零（跨局清理）
@@ -86,6 +87,24 @@
       const q = delayedSpawns[i];
       q.t -= dt;
       if (q.t <= 0) { delayedSpawns.splice(i, 1); q.fn(); }
+    }
+  }
+
+  // ---------- 先导炮火先兆者延迟生成队列（2026-10-17 用户定稿） ----------
+  // 判定生成瞬间只立开场导弹预警（不生成实体——预警期内机体不显示、不可被攻击、不占场面压力权重），
+  // 3s 预警期满才真正 spawn 实体（渐显浮现+落位）。独立于 delayedSpawns（后者被 spawnDesignedWave
+  // 每波开局清空——先导 3s 延迟若跨波边界会被误清丢敌）；由 14-main 每帧无条件推进，resetGame 清空
+  const harbLeadQueue = [];   // { t, x, opts }
+  function queueHarbingerLead(x, opts) {
+    const o = opts || {};
+    missileWarns.push({ x: clamp(player.x, 14, CANVAS_W - 14), t: 0, dur: HARBINGER_LEAD.matT });   // 判定瞬间立刻立线（锁玩家当前 x）
+    harbLeadQueue.push({ t: HARBINGER_LEAD.matT, x, opts: o });
+  }
+  function updateHarbLeadQueue(dt) {
+    for (let i = harbLeadQueue.length - 1; i >= 0; i--) {
+      const q = harbLeadQueue[i];
+      q.t -= dt;
+      if (q.t <= 0) { harbLeadQueue.splice(i, 1); spawnHarbingerLead(q.x, q.opts); }
     }
   }
 
@@ -131,7 +150,7 @@
     const variant = (type === 'striker' || type === 'gunship' || type === 'capital')
       ? (opts.variant ? (VARIANTS[type].find(v => v.id === opts.variant) || pickVariant(type)) : pickVariant(type))
       : null;
-    // 初次发射延迟：优先取调用方 fireTimer；否则用变体专属首射（如炮艇三变体），再回落 cfg.firstFire / fireInterval（变体 iv 优先）
+    // 初次发射延迟：优先取调用方 fireTimer；否则用变体专属首射（如战舰三变体），再回落 cfg.firstFire / fireInterval（变体 iv 优先）
     const firstFire = (variant && variant.firstFire) || cfg.firstFire;
     const baseIv = (variant && variant.iv) || cfg.fireInterval;
     let initFire = opts.fireTimer != null ? opts.fireTimer
@@ -185,7 +204,7 @@
       firedThisCycle: false, // 仅 harbinger：本轮是否已召唤导弹
       missilesGuided: 0,     // 仅 harbinger：已导引导弹数（上限 5）
     };
-    // 变体血量覆盖（炮艇三变体独立血量 350/350/400 覆盖注册表基准；幽暮的血量在其后单独处理）
+    // 变体血量覆盖（战舰三变体独立血量 350/350/400 覆盖注册表基准；幽暮的血量在其后单独处理）
     if (variant && variant.hp != null) e.hp = e.maxHp = variant.hp * hpMul;
     // 变体专属攻击间隔（烈橙 1.4~2.4s）：首射后经 updateEnemyFire 使用
     if (variant && variant.iv) e.fireIv = variant.iv;
@@ -197,7 +216,9 @@
       e.score = SIDE_SCORE;
     }
     // 水晶核芯艇（1S）：水晶三色随机（CRYSTAL_CORE_COLORS，绘制消费见 10-draw-world）+
-    // 无入场加成（_entryMul 预置 1——速度恒 200 直线穿越，侧翼/顶部/对角入场同规则，见 06-enemy 1类家族分支）
+    // _entryMul 预置 1（防 06-enemy 1类家族分支对 undefined 取 SIDE_ENTRY_BOOST 1.6 默认冲刺；
+    // 特殊波次生成 spawnCrystalUnit 随后覆盖为 entryBoost 1.7——2026-10-16 用户定稿「入场 170%、
+    // 1s 内快速衰减」；挑战页补刷单只保持预置 1 恒速平缓，便于观察）
     if (type === 'crystalCore') {
       e.crystalColor = CRYSTAL_CORE_COLORS[(Math.random() * CRYSTAL_CORE_COLORS.length) | 0];
       e._entryMul = 1;
@@ -546,7 +567,7 @@
     }
   }
 
-  // 「32223」：左右各一艘 3类炮艇压阵（悬停，同帧保持左右对称），中央 3 架 2类护航——波次统一停留 5s（诗篇 8s）；
+  // 「32223」：左右各一艘 3类战舰压阵（悬停，同帧保持左右对称），中央 3 架 2类护航——波次统一停留 5s（诗篇 8s）；
   // 2类错峰入场：出生 y 依次上移 64px ≈ 0.4s 行军间隔（2026-10-11 用户定稿阵型波不同时入场）
   function spawnGunshipWings() {
     const hold = strikerHold();   // 波次统一：本波 3 架 2类停留完全一致（8s，诗篇 11s）
@@ -630,7 +651,8 @@
   // 艇体：速度恒 200、无入场加成（_entryMul 预置 1，makeEnemy）、直线穿越不停留（移动见 06-enemy 1类家族分支）；
   // 波次全部落地且场上清空后 0.6s 恢复正常刷怪并解除等级冻结（状态机见 14-main postWaveClear 块）
   const CRYSTAL_WAVE = {
-    roundGap: 0.25,    // 轮间隔（= 同槽位跟进间距 50px 的来源：0.25s × 200px/s）
+    roundGap: 0.3,     // 轮间隔（2026-10-17 用户定稿 0.25→0.3；同槽位跟进间距 = 0.3s × 200px/s = 60px；
+                       // 许凯狗冲刺期与其他波次同口径 ÷3 = 0.1s，见 crystalScheduleRounds）
     total: 40,         // 每种波次总艘数（按排程全额落地）
     clearDelay: 0.6,   // 清场后恢复正常刷怪的延迟（14-main 消费）
     edge: 36,          // 屏外出生裕度（侧翼/顶部，同 1类惯例 ±36）
@@ -639,6 +661,10 @@
   let crystalWaveRoundsLeft = 0;   // 未落地轮次计数（0 = 全部落地）；resetSpawnWaveState 跨局归零
   const crystalWaveSpawning = () => crystalWaveRoundsLeft > 0;
   const crystalWaveStats = { spawned: 0 };   // 本波已生成艘数（spawnPostBossWave 重置；smoke 断言出场数 = 40 用）
+  // 特殊波次代次（2026-10-17 用户定稿修波次叠加：spawnPostBossWave 每次调用 ++，旧波次驻留
+  // delayedSpawns 的未落地轮次闭包凭「捕获 gen ≠ 当前 gen」静默作废——否则测试页连按 + 会叠加
+  // N×40 艘；gen 单调递增不随 resetSpawnWaveState 重置，跨局清队列后旧 gen 闭包随之无宿主）
+  let crystalWaveGen = 0;
 
   // 轮次艘数分配：total 分 rounds 轮、每轮 ≥1——先均摊、余量随机散布（40/12 → 8×3 + 4×4；40/8 → 8×5）
   function crystalRoundSizes(rounds, total) {
@@ -655,22 +681,33 @@
     while (picks.length < n && p.length) picks.push(p.splice((Math.random() * p.length) | 0, 1)[0]);
     return picks;
   }
-  // 单艇生成：方向基值归一到恒速 200（无入场加成在 makeEnemy 预置）
+  // 单艇生成：方向基值归一到恒速 200；入场 ×1.7 冲刺、1s 内快速衰减至巡航（entryBoost 单一来源
+  // 01-config-enemies，2026-10-16 用户定稿——显式预置绕开 06-enemy 对 undefined 取 SIDE_ENTRY_BOOST 1.6
+  // 的 1类默认值；衰减走 1类家族统一 SIDE_ENTRY_DECAY 曲线）
   function spawnCrystalUnit(x, y, vx, vy) {
     const e = makeEnemy('crystalCore', x, y, {});
+    e._entryMul = ENEMY_TYPES.crystalCore.entryBoost;
     const l = Math.hypot(vx, vy) || 1;
     e._sideVel = { vx: vx / l * 200, vy: vy / l * 200 };
     crystalWaveStats.spawned++;
     return e;
   }
   // 轮次排程公共壳：第 r 轮延迟 r×roundGap 落地（全局延迟队列 delayedSpawns——特殊波次期刷怪通道全冻结，
-  // 无跨波清队列风险；resetSpawnWaveState 跨局清空 + crystalWaveRoundsLeft 归零）
+  // 无跨波清队列风险；resetSpawnWaveState 跨局清空 + crystalWaveRoundsLeft 归零）；
+  // 许凯狗冲刺期轮间隔 ÷3（2026-10-17 用户定稿——与其他波次同口径：14-main 冲刺刷怪间隔 base/3；
+  // 排程按 spawnPostBossWave 调用时刻的冲刺状态一次性取值，与普通波每波独立判断语义一致）
   function crystalScheduleRounds(rounds, total, roundFn) {
+    const gap = state.pilotDashT > 0 ? CRYSTAL_WAVE.roundGap / 3 : CRYSTAL_WAVE.roundGap;
+    const gen = crystalWaveGen;   // 闭包捕获本波代次——spawnPostBossWave 再调用时旧轮次全部作废
     let delay = 0;
     for (const n of crystalRoundSizes(rounds, total)) {
       crystalWaveRoundsLeft++;
-      queueDelayedSpawn(delay, () => { crystalWaveRoundsLeft--; roundFn(n); });
-      delay += CRYSTAL_WAVE.roundGap;
+      queueDelayedSpawn(delay, () => {
+        if (gen !== crystalWaveGen) return;   // 旧代次排程：已被新波次取代，静默作废（不生成、不减计数）
+        crystalWaveRoundsLeft--;
+        roundFn(n);
+      });
+      delay += gap;
     }
   }
 
@@ -731,8 +768,11 @@
   }
 
   // BOSS 击败后的特殊波次入口（2026-10-15 改版）：四种水晶核芯艇编成独立随机抽一
-  //（2026-10-15 用户定稿「每个 BOSS 独立随机」；forceKind 仅供 smoke 场景定向测试）
+  //（2026-10-15 用户定稿「每个 BOSS 独立随机」；forceKind 仅供 smoke 场景定向测试）；
+  // crystalWaveGen++ 使上一波的未落地排程轮全部作废（2026-10-17 修波次叠加——测试页连按 +
+  // 不再叠加 N×40 艘，每次都是全新的一波）
   function spawnPostBossWave(forceKind) {
+    crystalWaveGen++;
     crystalWaveRoundsLeft = 0;
     crystalWaveStats.spawned = 0;
     const kinds = [crystalWaveSideLanes, crystalWaveDualLanes, crystalWaveTopCols, crystalWaveCorners];
@@ -774,13 +814,13 @@
   // 特殊3类权重表：随波生成抽取 与「数值与机制图鉴」共用（改数值只需改这里）
   // wLow = Lv11 以下权重 / wHigh = Lv11 起权重；配置 w1/w10 时 Lv1~10 由 w1→w10 线性过渡（优先于 wLow，同 waveFormationWeight）；
   // 0 = 该阶段不出场
-  // 普通炮艇三色为独立条目：抽取直接决定涂装（紫80 / 赤100 / 金80，Lv11 起各 20）
+  // 普通战舰三色为独立条目：抽取直接决定涂装（紫80 / 赤100 / 金80，Lv11 起各 20）
   const SPECIAL3_POOL = [
-    { name: '紫晶炮艇',     ency: 'gunship_violet',  type: 'gunship',  fn: () => spawnGunship('violet'),  wLow: 80,  wHigh: 20 },
-    { name: '赤红炮艇',     ency: 'gunship_crimson', type: 'gunship',  fn: () => spawnGunship('crimson'), wLow: 100, wHigh: 20 },
-    { name: '金曜炮艇',     ency: 'gunship_amber',   type: 'gunship',  fn: () => spawnGunship('amber'),   wLow: 80,  wHigh: 20 },
-    { name: '橙焰炮艇',     ency: 'gunship_orange',  type: 'gunship',  fn: () => spawnGunship('orange'),  wLow: 70,  wHigh: 20 },
-    { name: '青时炮艇',     ency: 'gunship_cyan',    type: 'gunship',  fn: () => spawnGunship('cyan'),    wLow: 60,  wHigh: 20 },
+    { name: '紫晶战舰',     ency: 'gunship_violet',  type: 'gunship',  fn: () => spawnGunship('violet'),  wLow: 80,  wHigh: 20 },
+    { name: '赤红战舰',     ency: 'gunship_crimson', type: 'gunship',  fn: () => spawnGunship('crimson'), wLow: 100, wHigh: 20 },
+    { name: '金曜战舰',     ency: 'gunship_amber',   type: 'gunship',  fn: () => spawnGunship('amber'),   wLow: 80,  wHigh: 20 },
+    { name: '橙焰战舰',     ency: 'gunship_orange',  type: 'gunship',  fn: () => spawnGunship('orange'),  wLow: 70,  wHigh: 20 },
+    { name: '青时战舰',     ency: 'gunship_cyan',    type: 'gunship',  fn: () => spawnGunship('cyan'),    wLow: 60,  wHigh: 20 },
     
     { name: '炮火先兆者',   ency: 'harbinger',      type: 'harbinger', fn: spawnHarbinger, wLow: 30, wHigh: 30 },
     { name: '寒霜',         ency: 'hanshuang',      type: 'hanshuang', fn: spawnHanshuang, wLow: 0,  wHigh: 30 },
@@ -804,8 +844,8 @@
     return it.wHigh;
   }
 
-  // 特殊3类随波抽取：按阶段权重（Lv11 前：五色炮艇 390（紫80/赤100/金80/橙70/增60）/ 先兆者 30 / 御4 0→10 线性过渡；
-  // Lv11 起：炮艇 100（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 25 / 焦香螺旋桨 25 / 脉冲矩阵 15 / 虚幻 15 / 威龙 15 / 铁砧 15）。
+  // 特殊3类随波抽取：按阶段权重（Lv11 前：五色战舰 390（紫80/赤100/金80/橙70/增60）/ 先兆者 30 / 御4 0→10 线性过渡；
+  // Lv11 起：战舰 100（各 20）/ 先兆者 30 / 寒霜 30 / 御4 20 / 法术大师A2 30 / 暴鸰 25 / 焦香螺旋桨 25 / 脉冲矩阵 15 / 虚幻 15 / 威龙 15 / 铁砧 15）。
   // 抽中 寒霜 / 御4 / 铁砧 时，若场上已有同种机体则本次跳过（同屏同种限 1）
   function spawnWaveSpecial3() {
     const lv = levelFlow.level;
@@ -841,7 +881,7 @@
 
   // 编队权重表：每波按权重随机抽取编队（与「数值与机制图鉴-怪物权重」单一数据源同步）
   //   w1 / w10 = Lv1 / Lv10 权重（Lv1~10 线性过渡）；wHigh = Lv11~20 恒定权重；0 = 该等级不出现
-  // slotGunship 仅标记"含炮艇编队"：组合波追加位排除（避免同波两支炮艇编队），无其他特殊规则
+  // slotGunship 仅标记"含战舰编队"：组合波追加位排除（避免同波两支战舰编队），无其他特殊规则
   const WAVE_FORMATIONS = [
     { fn: spawnSideGroup,          w1: 10, w10: 5,  wHigh: 20, sideEntry: true },        // 1类小队 3~5 架（侧翼斜插）
     { fn: spawnStrikerGroup,       w1: 30, w10: 20, wHigh: 5  },                            // 2类小组 2 架
@@ -850,7 +890,7 @@
     { fn: spawnSideSweep,          w1: 0,  w10: 10, wHigh: 10, sideEntry: true },        // 双侧斜扫
     { fn: spawnStrikerVee,         w1: 0,  w10: 30, wHigh: 30 },                            // 2类 V 字俯冲
     { fn: spawnSideKamikazeStream, w1: 0,  w10: 5,  wHigh: 15, sideEntry: true },        // 紫自爆流（两侧纵列）
-    { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 232111（含炮艇）
+    { fn: spawnDiagonalRaid,       w1: 5,  w10: 40, wHigh: 40, slotGunship: true, sideEntry: true },   // 232111（含战舰）
     { fn: spawnGunshipWings,       w1: 0,  w10: 30, wHigh: 40, slotGunship: true },         // 双炮艇压阵
   ];
 
@@ -860,7 +900,7 @@
     return f.wHigh;
   }
 
-  // 按权重抽编队；excludeSlot 为 true 时排除含炮艇编队（组合波追加位不用）；
+  // 按权重抽编队；excludeSlot 为 true 时排除含战舰编队（组合波追加位不用）；
   // 许凯狗冲刺期间排除侧翼入场编队（sideEntry）——冲刺时两侧不会刷怪，全部改为顶部入场编队
   function pickFormation(excludeSlot) {
     const dashNoSide = state.pilotDashT > 0;
@@ -898,7 +938,7 @@
 
   function spawnWaveBody() {
     pickFormation(false).fn();
-    // 组合波：Lv5 起有概率同波追加一个编队（追加位不含炮艇编队）
+    // 组合波：Lv5 起有概率同波追加一个编队（追加位不含战舰编队）
     if (Math.random() < comboWaveChance(levelFlow.level)) {
       pickFormation(true).fn();
     }
@@ -910,9 +950,9 @@
     if (isPoem() && levelFlow.level >= 6 && Math.random() < WAVE_POEM.capitalWaveChance) spawnCapitalSlot();
   }
 
-  // 3类：炮艇，上方悬停很久后才缓慢下压
+  // 3类：战舰，上方悬停很久后才缓慢下压
   //   variant：指定涂装（随波生成按三色独立权重 80/100/80 选取，见 SPECIAL3_POOL）；缺省走 makeEnemy 内变体抽取
-  //   （暴鸰不再由炮艇替换产生：仅 Lv11 起随波按 SPECIAL3_POOL 权重登场）
+  //   （暴鸰不再由战舰替换产生：仅 Lv11 起随波按 SPECIAL3_POOL 权重登场）
   function spawnGunship(variant) {
     makeEnemy('gunship', rand(110, CANVAS_W - 110), -60, {
       hoverY: rand(110, 170),
@@ -1053,10 +1093,10 @@
     e.warn = null;
     e.popBurst = null;
     e.popBurstTimer = 0;
-    // 破片：锁停后才计时（06-enemy 到位时重置）；U型：入场即计时，1.8~2s（诗篇 1.6~2s）后才能射击
+    // 破片：锁停后才计时（06-enemy 到位时重置为随机 0.8~1.6s）；U型：入场即计时，1.8~2s（诗篇 1.6~2s）后才能射击
     e.atkT = type === 'popianU'
       ? rand(...(isPoem() ? POPIAN_U.firstDelayPoem : POPIAN_U.firstDelay)) + firstFireAdd()
-      : POPIAN.firstDelay + firstFireAdd();
+      : rand(...POPIAN.firstDelay) + firstFireAdd();
     return e;
   }
 
@@ -1066,6 +1106,50 @@
   // 战争幽灵半血召唤也经此入口（幽灵身侧横位、顶部入场，目标点为其身后水平线）
   function spawnPopianU(x, y, o) {
     return spawnPopian(x, y, o, 'popianU');
+  }
+
+  // 特殊2类：浮海飘航者（2026-10-16 用户定稿实装；同日五项回调改版）—— 白色杆体绕核心、机头朝向跟随移动方向
+  //（右移→右下 20° / 左移→左下 20° / 下移→左右随机）+ 长条加速弹；
+  // 75% 侧翼（「[」/「]」三段路径：屏高 20%~40% 入场 → 朝另一侧横移 70%~90% 屏宽 → 下移 40% 屏高 →
+  // 反向水平离场）25% 顶部（**仅竖直向下移动**——2026-10-16 用户定稿取消横向分量）；入场初速 200、
+  // 1s 内线性衰减回巡航 75；2类侧位波次生成（o.flankFrom 指定侧）强制侧翼登场；
+  // 机头朝向角约定：绘制本地 +y = 机头；α=faceAng，α=0 机头正下、α=-70° 机头右下（与水平夹角 20°）、
+  // α=+70° 左下；下移段随机侧 ±20°（α=∓faceTilt）由 06-enemy 进入下移状态时抽取（e.faceSide 缓存）
+  function spawnVoyager(x, y, o = {}) {
+    const forceFlank = o.flankFrom != null;
+    const fromLeft = forceFlank ? o.flankFrom < 0 : Math.random() < 0.5;
+    const useFlank = forceFlank || Math.random() < VOYAGER.flankChance;
+    const firstDelay = (isPoem() ? VOYAGER.firstPoem : VOYAGER.first) + firstFireAdd();
+    let e;
+    if (useFlank) {
+      const y0 = CANVAS_H * rand(VOYAGER.flankYPctMin, VOYAGER.flankYPctMax);
+      const sx = fromLeft ? -40 : CANVAS_W + 40;
+      const dir = fromLeft ? 1 : -1;
+      const span = rand(VOYAGER.flankSpanMin, VOYAGER.flankSpanMax);
+      e = makeEnemy('voyager', sx, y0, { fireTimer: firstDelay });
+      e.vMode = 'flank';
+      e.vDir = dir;                       // 首段横移方向（1=向右）
+      e.vTurnX = fromLeft ? CANVAS_W * span : CANVAS_W * (1 - span);   // 第一转角 x（「[」/「]」竖边所在）
+      e.vTurn2Y = y0 + CANVAS_H * VOYAGER.downPct;   // 第二转角 y（下移 40% 屏高终点，恒在场内 0.60~0.80 屏高带）
+      e.vSeg = 0;                         // 0=首段横移 1=竖直下移 2=反向横移离场
+      e.faceAng = dir > 0 ? -Math.PI / 2 + VOYAGER.faceTilt : Math.PI / 2 - VOYAGER.faceTilt;
+      // 机头初朝向 = 首段航向 + 下倾 20°（dir>0 右移 → 右下 20° = α=-70°；左移反之）——避免出生首帧转向
+      e.faceSide = null;                  // 下移段机头左右侧缓存（进入下移段时随机抽取）
+    } else {
+      e = makeEnemy('voyager', rand(60, CANVAS_W - 60), -40, { fireTimer: firstDelay });
+      e.vMode = 'top';
+      e.vSeg = 3;                         // 纯竖直下移穿越（2026-10-16 用户定稿：顶部入场仅往下移动），出屏走通用检测移除
+      e.faceSide = Math.random() < 0.5 ? -1 : 1;   // 顶部即下移状态：机头左右侧出生即随机
+      e.faceAng = e.faceSide * VOYAGER.faceTilt;   // α=±20°（右下/左下随机）
+    }
+    e.vx = 0; e.vy = 0;
+    e.vBoostT = VOYAGER.entryDecay;       // 入场加成倒计时（137.5 → 75，1s 线性；06-enemy 消费）
+    e.vAtk = null;                        // 攻击状态机（A1/A2 同款刹停）：null=巡航 / 'brake' 刹停 / 'fire' 静置发射收势
+    e.vFired = false;                     // 本轮刹停是否已发射
+    e.vAtkT = 0;                          // fire 态计时（静置 firePause → 发射 → fireLinger 收势）
+    e.pulseT = 0;                         // 攻击脉冲剩余时长（发射时写入 pulseDur；09b 绘制消费）
+    e.pulseDir = 1;                       // 攻击抖动方向（发射时按玩家竖直相对位置重写；1=朝上 -1=朝下）
+    return e;
   }
 
   // 特殊4类：战争幽灵（诗篇新敌实装 2026-09-29）—— 白色风波预警 → 极速入场冲撞 → 抵达演出 →
@@ -1237,9 +1321,9 @@
     return e;
   }
 
-  // 特殊3类：暴鸰 —— 自爆无人机：不悬停、以炮艇 40% 速度径直下压；登场 0.8s 后进入玩家距离内即
+  // 特殊3类：暴鸰 —— 自爆无人机：不悬停、以战舰 40% 速度径直下压；登场 0.8s 后进入玩家距离内即
   // 停车锁定（玩家位置浮现红色预警区）→ 炸弹向下脱离（火星四溅）→ 1s 后极速加速冲向预警区中心爆炸（仅伤玩家）；
-  // 投弹后以炮艇 110% 速度继续俯冲离场；被击毁时若炸弹尚未投出 → 原地爆炸（敌我通杀）
+  // 投弹后以战舰 110% 速度继续俯冲离场；被击毁时若炸弹尚未投出 → 原地爆炸（敌我通杀）
   function spawnBaoling(x) {
     return makeEnemy('baoling', x != null ? x : rand(110, CANVAS_W - 110), -60, {});
   }
@@ -1269,8 +1353,60 @@
     return e;
   }
 
+  // 特殊3类：先导炮火先兆者（先兆者家族 3B，2026-10-16 用户定稿；2026-10-17 改版）——本函数只负责实体生成
+  //（在停留点上方 40px 渐显浮现 + smoothstep 平滑落位 1.1s，起停速度均为 0、位置严格连续——铁律）；
+  // 判定生成瞬间的开场导弹预警已由 queueHarbingerLead 立线（3s 预警期不生成实体、期满才调用本函数）；
+  // 停留线 = 常规3类停留线（战舰 110~170）附近上下浮动区间；落位后充能循环与 3A 一致（连开场共 5 发）
+  function spawnHarbingerLead(x, opts) {
+    const o = opts || {};
+    const hoverY = o.hoverY != null ? o.hoverY : rand(HARBINGER_LEAD.hoverYMin, HARBINGER_LEAD.hoverYMax);
+    const fromY = Math.max(50, hoverY - 40);   // 浮现位置：停留点上方 40px（不低于 y=50）
+    const e = makeEnemy('harbingerLead', x != null ? x : rand(120, CANVAS_W - 120), fromY, {
+      hoverY,
+      holdTimer: HARBINGER.hold,
+      staticX: o.staticX || false,
+    });
+    e.matFromY = fromY;                 // 落位插值起点（06-enemy 移动分支消费）
+    e.landT = HARBINGER_LEAD.landDur;   // 生成即落位起步（smoothstep 插值）
+    e.chargeFirstDur = rand(HARBINGER.chargeFirstMin, HARBINGER.chargeFirstMax);   // 落位后首充 1.5~2.5s（同 3A）
+    e.cycleJit = -rand(0.2, 0.8);   // 攻击间隔随机减少 0.2~0.8s（2026-10-17 用户定稿；负偏移压缩灰保持段 1.5→0.7~1.3s 吸收）
+    return e;
+  }
+
+  // 特殊3类：中枢炮火先兆者（先兆者家族 3C，2026-10-16 用户定稿）——下降就位同 3A（停留线同 75~110）；
+  // 首轮充能 2~3.2s、后续每 5s 齐召 2~3 枚（各 50%）垂直导弹（不瞄准玩家、同波间距 ≥9% 屏宽保底），
+  // 共 4 轮后离场；击坠分数/水晶 = 3A ×1.2（注册表 score 660 / 掉落分支见 06-enemy killEnemy）
+  function spawnHarbingerHub(x, opts) {
+    const o = opts || {};
+    const e = makeEnemy('harbingerHub', x != null ? x : rand(120, CANVAS_W - 120), -50, {
+      hoverY: o.hoverY != null ? o.hoverY : rand(75, 110),
+      holdTimer: HARBINGER.hold,
+      staticX: o.staticX || false,
+      speedMul: o.speedMul,   // 旧日之歌诗篇召唤体：移动速度 = 常态巡航 × speedMul（05-boss 传 0.35；hoverY 置屏外恒速下移不停留）
+    });
+    e.chargeFirstDur = rand(HARBINGER_HUB.chargeFirstMin, HARBINGER_HUB.chargeFirstMax);
+    e.cycleJit = o.cycleJit != null ? o.cycleJit : rand(0, 0.9);   // 诗篇召唤体显式错开攻击间隔
+    return e;
+  }
+
+  // 特殊3类：极夜炮火先兆者（先兆者家族 3D，2026-10-16 用户定稿）——移速/入场速度 = 3A ×1.6（06-enemy
+  // 移动分支按 HARBINGER_POLAR.speedMul 消费）；停留线 = 常规3类停留线整体往上一点（80~140）；
+  // 首轮充能 1~2s、后续每 4s 召唤横向导弹，共 5 发后离场（2026-10-16 二次定稿：不再具有护盾）
+  function spawnHarbingerPolar(x, opts) {
+    const o = opts || {};
+    const e = makeEnemy('harbingerPolar', x != null ? x : rand(120, CANVAS_W - 120), -50, {
+      hoverY: o.hoverY != null ? o.hoverY : rand(HARBINGER_POLAR.hoverYMin, HARBINGER_POLAR.hoverYMax),
+      holdTimer: HARBINGER.hold,
+      staticX: o.staticX || false,
+      speedMul: o.speedMul,   // 旧日之歌诗篇召唤体：移动速度 = 常态巡航 × speedMul（05-boss 传 0.35；hoverY 置屏外恒速下移不停留）
+    });
+    e.chargeFirstDur = rand(HARBINGER_POLAR.chargeFirstMin, HARBINGER_POLAR.chargeFirstMax);
+    e.cycleJit = o.cycleJit != null ? o.cycleJit : rand(0, 0.9);   // 诗篇召唤体显式错开攻击间隔
+    return e;
+  }
+
   // 特殊4类：法术阵列 —— 血红三菱法师母机：匀速下降（整体速度 = 先兆者基准 ×0.65），下降到屏幕上方 20%~30% 后
-  // 像法术矩阵一样胡乱移动（不脱离屏幕）并散发血红雾气，朝玩家发射大号红色正方体（飞行途中分裂为 3 枚常规正方体），
+  // 像法术矩阵一样胡乱移动（不脱离屏幕）并散发血红雾气，朝玩家发射大号红色正四面体（飞行途中分裂为 3 枚常规正方体），
   // 每 4s 闪动红光并在周围召唤一个法术矩阵（召唤体无奖励），30s 后下移离场（状态机见 updateEnemyMovement 的 fashiArray 分支）
   function spawnFashiArray() {
     const e = makeEnemy('fashiArray', rand(120, CANVAS_W - 120), -60, {
@@ -1287,13 +1423,24 @@
     return e;
   }
 
-  // 诗篇级 4B：战争矩阵（2026-10-03 占位待设计）——矩阵类敌人的诗篇级上位，机制/数值/外观待定。
-  // 占位行为：入场下降到屏幕上方 20%~30% 悬停区后永驻场（不攻击、不召唤）；专属移动/开火/绘制待实装。
+  // 诗篇级 4B：战争矩阵（2026-10-17 实装）——登场的横置巨型法术矩阵：停留位（水平随机、屏高 18%~28% 随机）
+  // 直接播放登场动画（红门框 + 菱形落点框同步描画 0.75s → 闪亮 0.2s → 本体浮现 0.44s + 菱形冲击波；
+  // 期间 phase 虚化＝不受伤害、炮弹穿过、与玩家互穿——引擎通用机制，见 08-entities/06-enemy），
+  // 随后胡乱移动（同法术矩阵带内目标点漫游、速度降低），30s（赤红主力舰同款）后向下加速离场；
+  // 攻击间隔/首攻同赤红主力舰、弹幕内容待技能设计批次（状态机见 06-enemy warMatrix 分支，参数见 WAR_MATRIX）
   function spawnWarMatrix() {
-    const e = makeEnemy('warMatrix', rand(120, CANVAS_W - 120), -60, {
-      hoverY: rand(CANVAS_H * 0.20, CANVAS_H * 0.30),
-      holdTimer: 1e9,   // 占位：永驻场，机制待设计
+    const e = makeEnemy('warMatrix', rand(80, CANVAS_W - 80),
+      CANVAS_H * rand(WAR_MATRIX.hoverTopPct, WAR_MATRIX.hoverBotPct), {
+      holdTimer: WAR_MATRIX.hold,
+      fireTimer: WAR_MATRIX.firstDelay,   // 首攻延迟（赤红主力舰同款 1.8s，就位后计；技能状态机消费）
     });
+    e.arrived = true;                    // 直接驻留（登场动画在停留位原地播放，无飞入段）
+    e.wmSpawnT = 0;                      // 登场动画计时（09b drawWarMatrixBody 演出时间轴 / 06-enemy 移动门控消费）
+    e.phase = WAR_MATRIX.introEnd;       // 登场演出全程虚化（不受伤害、炮弹穿过、与玩家互穿；06-enemy 通用递减保持同步）——
+                                         // 含双冲击波在内的演出完全结束才视为正常生成（2026-10-17 用户定稿）
+    e.wanderT = 0; e.wanderRetarget = 0; e.wanderTX = null; e.wanderTY = null;
+    e.wmSkill = (Math.random() * 5) | 0; // 初始技能随机（S1~S5），释放后按序循环（2026-10-18 用户定稿）
+    e.wmCastT = 0; e.wmS1T = 0; e.wmS1Fired = false;   // S2 施法计时 / S1 姿态过程计时与齐射标记
     return e;
   }
 
@@ -1477,11 +1624,11 @@
     return next;
   }
 
-  // 特殊3类：御4 —— 防御型无人机：下降到与常规 3 类炮艇一致的悬停高度停留 25s（速度为其 80%）；
+  // 特殊3类：御4 —— 防御型无人机：下降到与常规 3 类战舰一致的悬停高度停留 25s（速度为其 80%）；
   // 登场 0.5s 后展开金色六边力场（光环内敌人受到的非真实伤害 -30%），不攻击
   function spawnYu4(holdTimer) {
     const e = makeEnemy('yu4', rand(110, CANVAS_W - 110), -60, {
-      hoverY: rand(110, 170),   // 与常规 3 类炮艇相同的悬停带
+      hoverY: rand(110, 170),   // 与常规 3 类战舰相同的悬停带
       holdTimer: holdTimer != null ? holdTimer : YU4.dwell,
       // 不传 fireTimer：沿用注册表 fireInterval[1e9,1e9] 天文默认（此前误传 1.2s，导致登场后穿透通用开火
       // 逻辑放出一波默认弹幕——与铁砧同款问题，见 spawnAnvil 注释）
@@ -1628,6 +1775,15 @@
       case 'harbinger':
         makeEnemy('harbinger', cx, -50, { hoverY: 95, holdTimer: 1e9 });
         break;
+      case 'harbingerLead':
+        queueHarbingerLead(rand(120, CANVAS_W - 120), { holdTimer: 1e9 });   // 先导 3B：判定即预警、3s 后浮现（挑战口径永驻场）
+        break;
+      case 'harbingerHub':
+        spawnHarbingerHub(rand(120, CANVAS_W - 120)).holdTimer = 1e9;    // 中枢 3C：齐召 2~3 枚不瞄准（挑战口径永驻场）
+        break;
+      case 'harbingerPolar':
+        spawnHarbingerPolar(rand(120, CANVAS_W - 120)).holdTimer = 1e9;  // 极夜 3D：横弹+登场护盾（挑战口径永驻场）
+        break;
       case 'weilong':
         spawnWeilong();   // 蛇形巡航；飞出屏幕后由 updateChallenge 重新生成
         break;
@@ -1671,6 +1827,9 @@
       case 'popianU':
         spawnPopianU(cx, -50);   // 破片U型：同破片流程（途中即瞄准、入场 1.8~2s 后即可攻击）；停稳后永驻场
         break;
+      case 'voyager':
+        spawnVoyager(null, 0, {});   // 浮海飘航者：75% 侧翼「[」/「]」路径 / 25% 顶部斜插；出屏后由 updateChallenge 重新生成
+        break;
       case 'warGhost':
         spawnWarGhost(true);   // 战争幽灵：风波预警极速入场 → 驻留中场技能循环（技能1/2/3）；挑战模式永驻场（不离场、不触发离场斩）
         break;
@@ -1691,7 +1850,7 @@
         break;
       }
       case 'warMatrix':
-        spawnWarMatrix();   // 战争矩阵（占位）：入场悬停永驻场，机制待设计
+        spawnWarMatrix();   // 战争矩阵：停留位直接播登场动画（挑战模式永驻场，见 06-enemy warMatrix 分支 challenge gate）
         break;
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
@@ -1768,7 +1927,7 @@
     for (const p of plan) {
       // 兜底（2026-10-12 用户定稿）：计划解析出「不存在的敌人」——类型不在注册表（防御性）或命中
       // WIP_PLACEHOLDER_TYPES 占位清单（如战争矩阵：图鉴职能表预留条目带真我/诗篇权重，池抽取不滤
-      // reserved 会漏入正式波次）→ 统一更换为 3类赤红炮艇（gunship crimson），占位白方块不再入常。
+      // reserved 会漏入正式波次）→ 统一更换为 3类赤红战舰（gunship crimson），占位白方块不再入常。
       // 图鉴挑战直召路径（ch.kind 'enemy' → spawnChallengeTargetOne）不走本入口，占位机挑战测试照常。
       if (!ENEMY_TYPES[p.type] || WIP_PLACEHOLDER_TYPES.includes(p.type)) {
         p.type = 'gunship';
@@ -1888,6 +2047,23 @@
           hb.holdTimer = 1e9;   // 波次口径：停留时长由波次控制，不走 HARBINGER.hold
           break;
         }
+        case 'harbingerLead': {
+          // 先导 3B：判定生成即立开场预警，3s 后实体浮现（queueHarbingerLead）；浮现于卡位停留线上下浮动区（±40px，可上可下）
+          queueHarbingerLead(tx, { hoverY: clamp(holdY + rand(-40, 40), 70, 240), holdTimer: 1e9 });
+          break;
+        }
+        case 'harbingerHub': {
+          // 中枢 3C：停留线同 3A 口径（不低于 90）
+          const hb3c = spawnHarbingerHub(tx, { hoverY: Math.max(holdY, 90) });
+          hb3c.holdTimer = 1e9;
+          break;
+        }
+        case 'harbingerPolar': {
+          // 极夜 3D：停留线较卡位整体往上一点（-30px）
+          const hb3d = spawnHarbingerPolar(tx, { hoverY: clamp(holdY - 30, 60, 220) });
+          hb3d.holdTimer = 1e9;
+          break;
+        }
         case 'popian':
         case 'popianU': {
           // 破片/破片U：非侧翼卡锁停点按卡；侧翼卡（2侧+1*2 等）flankFrom 模式——先生成点（所属侧屏外 ±50、
@@ -1896,6 +2072,14 @@
           const fromLeft = (sideSel === 0 ? (tx < CANVAS_W / 2) : (sideSel < 0));
           if (flankCard) spawnPopian(null, holdY, { flankFrom: fromLeft ? -1 : 1 }, p.type);
           else spawnPopian(tx, sy0, { tpX: tx, tpY: holdY }, p.type);
+          break;
+        }
+        case 'voyager': {
+          // 浮海飘航者（2类侧位，2026-10-16 用户定稿）：作为 2类侧位刷新时仅从侧翼登场（用户定稿口径）——
+          // 侧别随卡槽 clsSide（跨两侧卡各点就近入侧 / 单侧卡整波同侧），路径自走「[」/「]」三段，不吃卡位 dots
+          const sideSel = clsSide[p.cls];
+          const fromLeft = (sideSel === 0 ? (tx < CANVAS_W / 2) : (sideSel < 0));
+          spawnVoyager(null, 0, { flankFrom: fromLeft ? -1 : 1 });
           break;
         }
         case 'baoling':
@@ -1996,9 +2180,11 @@
     }
     // 测试模式改版：敌方测试血量统一 20000（非 BOSS，由 makeEnemy 在生成时覆盖；swarm 与 BOSS 测试伴生的 1类强制波除外——正常血量），
     // 不再每帧回满、不再锁定 BOSS 测试血量；
-    // 炮火先兆者导引导弹满一轮后重置充能循环，便于持续观察
+    // 炮火先兆者家族（3A/3B/3C/3D）导引导弹满一轮后重置充能循环，便于持续观察
     for (const e of enemies) {
-      if (e.type === 'harbinger' && e.missilesGuided >= HARBINGER.maxMissiles) {
+      const cap = e.type === 'harbingerHub' ? HARBINGER_HUB.maxVolleys : HARBINGER.maxMissiles;
+      if ((e.type === 'harbinger' || e.type === 'harbingerLead' || e.type === 'harbingerHub' || e.type === 'harbingerPolar')
+        && e.missilesGuided >= cap) {
         e.missilesGuided = 0; e.chargeT = 0; e.chargeWave = 0; e.firedThisCycle = false;   // 导引满一轮后重置循环（回首波动画）
       }
     }
@@ -2039,6 +2225,8 @@
     spawnWaveBody, spawnGunship, rollFashiA1, spawnFashiA1, spawnFashiA2,
     spawnPoemExtraWave, queuePoemRearCard, updatePoemRearCards, flushPoemRearCards,
     rollPopian, spawnPopian, rollFashiMatrix, spawnFashiMatrix, spawnBaoling, spawnHarbinger,
+    spawnVoyager,
+    spawnHarbingerLead, spawnHarbingerHub, spawnHarbingerPolar, queueHarbingerLead, updateHarbLeadQueue,
     spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, enemyFrostZoneMoveMul, gachaBottomSlowMul,

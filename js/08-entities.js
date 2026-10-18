@@ -6,7 +6,7 @@
   //   state.{bombs, score}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
   import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, ELITES, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
   import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
@@ -63,11 +63,16 @@
     }
     // 黑暗之手：本段击坠增伤优先于护卫减伤（2026-10-08 用户定稿）——当前血量窗口的精英被击坠（e.dhAmp，
     // 登记见 02-core dhOnLinkedEliteKilled）→ 减伤撤销、受到的普通伤害 +100%（至本段结束/下一窗口召唤止）；
-    // 否则场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时 -70%
+    // 否则场上存在任意一名连携精英（dhLink，80/60/40/20% 血量阈值召唤）时减伤分档（2026-10-17 用户定稿）：
+    // 在场连携精英全为辛国栋/韩希先（第二组）→ guardDRXinHan -60%；混有夏勇/朴学峰或仅第一组 → guardDR -65%
     //（主武器/僚机弹幕/斩击；高能爆弹/绷绷炸弹为真实伤害，两种修正均不受、连携精英亦同受爆弹伤害——2026-10-04 用户定稿；见 01-config DARKHAND.summon）
     if (e.type === 'boss' && e.bossId === 'darkhand') {
       if (e.dhAmp) mul *= 1 + DARKHAND.summon.guardAmp;
-      else if (dhGuardActive()) mul *= 1 - DARKHAND.summon.guardDR;
+      else if (dhGuardActive()) {
+        const xinHanOnly = enemies.every(el => !el || !el.dhLink || el.hp <= 0 ||
+          el.type === 'xinguodong' || el.type === 'hanxixian');   // 在场连携精英全为第二组（辛国栋/韩希先）
+        mul *= 1 - (xinHanOnly ? DARKHAND.summon.guardDRXinHan : DARKHAND.summon.guardDR);
+      }
     }
     // 铜皮夏勇·牛角减伤（被动常驻，2026-10-03 用户定稿）：命中点落在两翼折角（牛角）头部时 ×0.5——
     // 主炮/僚机弹幕传弹体坐标判定；空间斩击等大范围伤害不传命中点、不判部位（见 01-config xiayongHornDmgMul）
@@ -77,7 +82,7 @@
 
   // ---------- 子弹 ----------
   function updateBullets(dt) {
-  // 玩家屏障（青时炮艇支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
+  // 玩家屏障（青时战舰支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
   // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿）；
   // 重复命中叠加（barrier/barrierMax 同步增长，2026-10-12 用户定稿）并刷新持续时间，由支援弹命中处重置
   if (player.barrierT > 0) {
@@ -136,6 +141,8 @@
       }
       // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
       if (b.lenTarget && b.len < b.lenTarget) b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
+      // 弹径生长：浮海飘航者长条弹出膛整体 20%（长宽同步；rTarget/rGrowRate 缺省无此字段不生长）
+      if (b.rTarget && b.r < b.rTarget) b.r = Math.min(b.rTarget, b.r + (b.rGrowRate || 20) * dt);
       // 极夜流光出手生长：初始光束长 len0（40），以二次缓动（大加速度）在 growDur 内长到全长 lenFull
       if (b.growDur != null && b.growT < b.growDur) {
         b.growT += dt;
@@ -167,7 +174,7 @@
         if (e.type === 'boss' && bossEntranceActive()) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
-          // 青时炮艇召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）；
+          // 青时战舰召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）；
           // 群星允诺暴走弹（僚机 b.wing + b.glow，守愿者 oval 弹除外）无视次数盾直接伤害
           if ((e.chargeShield || 0) > 0 && !(b.wing && b.glow && !b.oval)) {
             e.chargeShield--;
@@ -180,11 +187,12 @@
           // mainPierce 穿透弱化：无衰减率弹（副武器·极夜流光激光）穿透后伤害减半（b.weakened 标记）
           // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +60%（2026-10-10 用户定稿由 +80% 下调）
           // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
-          // 奖励道具·不再陵落：螺旋飞剑射出方向在水平线以下（lowArc）——对 BOSS 仅 50% 伤害
+          // 奖励道具·不再陵落：所有来自该道具的飞剑（llSword 标记）对 BOSS 减伤 20%（2026-10-18 用户定稿——原低弧 lowArc 50% 规则随螺旋改版删除）
           let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
             * (b.mainShot && e.type !== 'boss' && enemyGrade(e.type) !== '4S' ? CHAOS_SMALL_DMG_MUL : 1)
+            * (b.princeStorm && isPoem() && e.type !== 'boss' ? PRINCE_STORM.poemNonBossMul : 1)   // 天秀风弹：诗篇对非 BOSS 敌人 ×3（2026-10-17 用户定稿；按实际命中目标判定，BOSS 不乘）
             * rewardOutMul();
-          if (b.lowArc && e.type === 'boss') dmg *= 0.5;
+          if (b.llSword && e.type === 'boss') dmg *= 0.8;
           if (e.barrier > 0) {
             const abs = Math.min(e.barrier, dmg);
             e.barrier -= abs; dmg -= abs;   // 屏障优先吸收（dmg 需可变：吸收后余量继续扣血）
@@ -195,7 +203,7 @@
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
           // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
           // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，
-          // 不再陵落螺旋飞剑（mainPierce 2 + pierceStep 线性衰减）：每次穿透伤害 -20% 基准（100% → 80% → 60%，
+          // 不再陵落飞剑（mainPierce 2 + pierceStep 线性衰减）：每次穿透伤害 -20% 基准（100% → 80% → 60%，
           // 2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；衰减按 pierceBase 重算进 b.dmg，并记 lastHit 防同机重复结算）；
           // 无 pierceStep 的弹穿透后伤害减半（b.weakened）
           let pierce = false;
@@ -307,6 +315,8 @@
       } else if (b.lenTarget && b.len < b.lenTarget) {
         b.len = Math.min(b.lenTarget, b.len + (b.growRate || 130) * dt);
       }
+      // 弹径生长（同玩家弹侧：浮海飘航者出膛整体 20%，长宽同步长满）
+      if (b.rTarget && b.r < b.rTarget) b.r = Math.min(b.rTarget, b.r + (b.rGrowRate || 20) * dt);
       // 分裂弹：飞行一段距离→短时间内减速（可选 frac：剩余速度比例 ≤ frac 即提前分裂，"快没速度就炸"不必减为 0）→分裂成 N 个小子弹（互相等角）
       if (b.split) {
         const s = b.split;
@@ -432,7 +442,7 @@
       if (b.y > CANVAS_H + 20 + trailPad + bigPad || b.y < -40 - trailPad - bigPad || b.x < -20 - bigPad || b.x > CANVAS_W + 20 + bigPad) {
         eBullets.splice(i, 1); continue;
       }
-      // 青时炮艇支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）
+      // 青时战舰支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）
       // 持续 10s（2026-10-12 用户定稿：重复命中叠加——barrier/barrierMax 同步增长，被伤害消耗过的量不回填，并刷新持续时间）；对双方均无伤害
       if (b.support) {
         let hit = false;
@@ -654,7 +664,15 @@
   function spawnPowerup(x, y, kind, r) {
     // 防御性守卫：非有限坐标的道具会在绘制端产生 NaN（真实画布静默不绘制 → 道具凭空消失），直接拒绝生成
     if (!Number.isFinite(x) || !Number.isFinite(y)) { console.error('spawnPowerup 拒绝非有限坐标：', kind, x, y); return; }
-    powerups.push({ x, y, kind, r, vy: rand(72, 99), vx: rand(-46, 46) });   // 1.8x 原速(40~55)
+    // 龚粥：量子护盾道具在生成层替换为回血道具（2026-10-17 用户定稿）——场上出现的即为回血道具
+    //（图标 / 拾取效果均为回血），healPct 标记于道具对象（applyPowerupPickup 'hp' 分支消费）；
+    // 替换后场上不存在量子护盾道具，叠盾掉率惩罚（06-enemy rollItemDrops：powerups.some(kind==='shield')）自然失效
+    let kind2 = kind, healPct;
+    if (kind === 'shield' && hasPilot('gongzhou')) {
+      kind2 = 'hp';
+      healPct = PILOTS.gongzhou.shieldHealPct;
+    }
+    powerups.push({ x, y, kind: kind2, r, vy: rand(72, 99), vx: rand(-46, 46), healPct });   // 1.8x 原速(40~55)
   }
 
   // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
@@ -675,7 +693,11 @@
       // 全难度统一（2026-10-12 用户定稿）：回复量 = 当前血量上限 × 40%（四舍五入：迪奥 60→24 / 铜皮夏勇 140→56）——
       //   HP_KIT_HEAL_PCT（01-config-difficulty），取代原双轨「其他难度固定 +40 / 诗篇 ×35%」。
       //   小艺拾取回血（上方）为独立机制不受影响
-      const heal = Math.round((player.maxHp || PLAYER_CFG.maxHp) * HP_KIT_HEAL_PCT);
+      //   龚粥：量子护盾道具在生成层替换为回血道具（spawnPowerup），道具对象带 healPct 0.20（覆盖常规 40%）；
+      //   小艺+洄连携（2026-10-17 用户定稿）：回血道具额外回复 5% 生命上限——叠加在龚粥 20% 上即 25%（常规 40% 即 45%）
+      let healPct = p.healPct ?? HP_KIT_HEAL_PCT;
+      if (hasPilot('xiaoyi') && currentArmor.id === 'hui') healPct += 0.05;
+      const heal = Math.round((player.maxHp || PLAYER_CFG.maxHp) * healPct);
       player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
       spawnParticles(p.x, p.y, '#66e39a', 12, 160);
     } else if (p.kind === 'bomb') {

@@ -3124,8 +3124,28 @@
       ctx.restore();
     };
 
-    // 图鉴预览：直接完整机体
-    if (e.phase === 'preview') { drawBody(1); return; }
+    // 图鉴预览（2026-10-17 动画化 + 同日回调「动效仅大图」）：live 大图 = 完整机体 + 尾部引擎尾焰（摆动/脉动）
+    // + 暗红辉光呼吸 + 红白流光（flameT 由预览 mock 随独立时钟推进）；缩略图小图（flameT=null）= 旧静帧仅机体
+    if (e.phase === 'preview') {
+      if (e.flameT == null) { drawBody(1); return; }
+      ensureDhRedMask();
+      dhEngineFlame(e, 1);
+      ctx.shadowColor = 'rgba(224, 40, 40, 0.5)';   // 周身暗红气息辉光（口径同 combat）
+      ctx.shadowBlur = 11 + Math.sin(state.time * 2.2) * 3.5;
+      drawBody(1);
+      ctx.shadowBlur = 0;
+      if (dhRedMask) {
+        paintDhRedFlow(e.flameT || 0);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55 + Math.sin((e.flameT || 0) * 2.6) * 0.15;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(dhFlowTmp, -e.w / 2, -e.h / 2, e.w, e.h);
+        ctx.restore();
+      }
+      return;
+    }
 
     // 登场演出（2026-10-01 四段式，替换旧黑洞入场；状态机见 05-boss updateBossDarkhand，时长参数见 01-config DARKHAND.entrance）：
     //   lurk 潜伏不可见 → sweep 黑色阴影沿中线飞速掠过 → outline 白主体红边轮廓 → reveal 渐变深邃黑（结束释放震荡波）

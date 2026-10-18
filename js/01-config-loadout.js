@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(9 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(28 名) 13-encyclopedia(13 名) 14-main(6 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(27 名) 08-entities(10 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(29 名) 13-encyclopedia(13 名) 14-main(7 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
@@ -78,6 +78,14 @@
       wingmanHaste: 1.2,        // 非 boss 战时僚机射速 ×1.2（补偿清杂弱）
       coreY: -14,               // 视觉机头核心相对机体的纵向偏移（群星之杀核心位于 y-14；装甲环绕图标等对准用）
     },
+
+    // ── 占位战机（2026-10-17 用户指定名称占位）：尚未实装——选机页仅展示（灰阶降透明，12-ui 点击不选中），
+    //    图鉴「战机/僚机」DPS 表跳过。仅 id/name/glyph/color/desc 占位键，无任何战斗键（current 永不指向占位条目，
+    //    主炮消费点 bulletColor/startWeapon 等零风险）；选机卡片缩略图不画机体、统一显示占位菱形字形 ◇（12-ui 占位分支）。
+    //    实装时按实际机制补全战斗键并删除 placeholder；条目顺序 = 选机页展示顺序
+    finalJudgment: { id: 'finalJudgment', name: '最终审判', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    daybreak: { id: 'daybreak', name: '拂晓', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    nadir: { id: 'nadir', name: '天底', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
   };
   let currentPlane = PLANES.chaos;   // 默认机型：混乱将至（2026-10-10 用户定稿，原群星之杀）
   // 选机写入入口：currentPlane / currentWingman 是被全仓库读取的顶层 let，
@@ -147,6 +155,12 @@
     standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8', noEffect: true,
       brief: '标准制式护甲<br>无效果',
       desc: '标准护甲。<br>没有任何效果。' },
+
+    // ── 占位护甲（2026-10-17 用户指定名称占位）：尚未实装——护甲选择页仅展示（灰阶降透明，12-ui 点击不选中），
+    //    图鉴「护甲」页跳过。仅占位键，无效果键（current 永不指向占位条目，armorMaxHp 等消费点零风险）；
+    //    special: true = 特殊装备（与天使璃同约定——图鉴页特殊角色，实装后使用期间无法获得挑战成就）；
+    //    实装时按实际机制补全效果键并删除 placeholder
+    qunxingGate: { id: 'qunxingGate', name: '群星之扉', glyph: '◇', color: '#8a97a8', special: true, placeholder: true, brief: '未实装', desc: '未实装。' },
   };
   let currentArmor = ARMORS.tongpi;   // 默认装甲：铜皮夏勇（2026-10-10 用户定稿，原群星守望）
   // 装甲写入入口：与 setPlane/setWingman/setDifficulty 同约定——顶层 let 的写操作必须经由 setter
@@ -283,6 +297,14 @@
         },
       },
     },
+
+    // ── 占位僚机（2026-10-17 用户指定名称占位）：尚未实装——选择页仅展示（灰阶降透明，12-ui 点击不选中），
+    //    图鉴「战机/僚机」DPS 表跳过。仅 id/name/glyph/color/desc 占位键，无 weapon 键（current 永不指向占位条目，
+    //    开火消费点零风险）；选择页卡片缩略图不画机体、统一显示占位菱形字形 ◇（12-ui 占位分支）。
+    //    实装时按实际机制补全 weapon/站位等键并删除 placeholder；条目顺序 = 选择页展示顺序
+    xixianEye: { id: 'xixianEye', name: '希先之瞳', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    cheyue: { id: 'cheyue', name: '彻月', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    jinxiao: { id: 'jinxiao', name: '今宵', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
   };
   let currentWingman = WINGMEN_CFG.stars;   // 当前僚机配置（默认群星允诺，2026-10-10 用户定稿，原守愿者；写操作经 setWingman）
 
@@ -375,6 +397,13 @@
         },
       },
     },
+
+    // ── 占位副武器（2026-10-17 用户指定名称占位）：尚未实装——选择页仅展示（灰阶降透明，12-ui 点击不选中），
+    //    图鉴「副武器」页与对比表格跳过（无 fire 键：subWeaponDps 读 fire.levels 会 TypeError，必须跳过）。
+    //    current 永不指向占位条目（07-player currentSubWeapon.fire 消费点零风险）；
+    //    实装时按实际机制补全 fire 配置与图标并删除 placeholder；条目顺序 = 选择页展示顺序
+    zhuixingSpear: { id: 'zhuixingSpear', name: '坠星长枪', glyph: '◇', color: '#8a97a8', placeholder: true, brief: '未实装', desc: '未实装。' },
+    shiliuRain: { id: 'shiliuRain', name: '时流之雨', glyph: '◇', color: '#8a97a8', placeholder: true, brief: '未实装', desc: '未实装。' },
   };
   let currentSubWeapon = SUB_WEAPONS.daodan;   // 当前副武器配置（默认捣蛋来袭，用户 2026-10-02 指定；写操作经 setSubWeapon，同 currentArmor/currentWingman 约定）
   function setSubWeapon(w) { currentSubWeapon = w; }
@@ -472,12 +501,36 @@
       brief: '无效果',
       desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
     },
+
+    // ── 东坤蝰（2026-10-17 用户定稿实装）：暴走强化型主驾驶员——
+    //    berserkDurAdd 暴走时长延长（s；全部触发/续时赋值统一走 berserkDuration() 入口）/ 
+    //    berserkDmgCut 暴走期间受到的伤害降低（消费点 07-player damagePlayer 驾驶员乘区段，player.berserk > 0 判定）。
+    //    𓆙 埃及圣书体眼镜蛇象形（U+13199，完整立蛇形象；Win10+ Segoe UI Historic 支持——2026-10-17 用户授权选形）；
+    //    #b57bee 毒紫；brief/desc = 用户给定原文
+    dongkun: {
+      id: 'dongkun', name: '东坤蝰', glyph: '𓆙', color: '#b57bee', slot: 'main',
+      berserkDurAdd: 0.8, berserkDmgCut: 0.2,
+      brief: '暴走时间增长<br>暴走时有减伤',
+      desc: '暴走时间增长<br>暴走时有减伤',
+    },
+    // ── 龚粥（2026-10-17 用户定稿实装）：道具改造型主驾驶员——
+    //    shieldHealPct 量子护盾道具替换为回血道具的回血量（×生命上限）：
+    //    生成层替换（08-entities spawnPowerup：shield → hp + healPct 标记于道具对象，场上出现即回血外观），
+    //    回血结算（08-entities applyPowerupPickup 'hp' 分支：p.healPct ?? HP_KIT_HEAL_PCT）；
+    //    小艺+洄连携（回血道具额外 +5%）同在该分支叠加。♨ 温泉符号（一碗热粥冒热气意象，2026-10-17 用户授权选形）；
+    //    #e6b960 粥米黄；brief/desc = 用户给定原文
+    gongzhou: {
+      id: 'gongzhou', name: '龚粥', glyph: '♨', color: '#e6b960', slot: 'main',
+      shieldHealPct: 0.20,
+      brief: '所有量子护盾变为加血道具，但恢复效果减弱',
+      desc: '所有量子护盾变为加血道具，但恢复效果减弱',
+    },
     xiaoyi: {
       id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub', default: true,
       pickupHealPct: 0.05, pickupHealPctLow: 0.10, pickupHealHpGateLow: 40,   // 拾取回复（×最大生命）/ 低血阈值（任意血量拾取回 5%——2026-10-12 用户定稿取消 60 门槛；低于 40 改回 10%；水晶不算）
       huiBossHealPct: 0.60,   // 与洄连携：击败 BOSS 立刻恢复 60% 生命（取代洄自身 35% 已损失口径）
       brief: '拾取回血，可与洄联动',
-      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 5% 生命；<br>血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）',
+      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 5% 生命；<br>血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）<br>回血道具额外回复 5% 生命（与龚粥叠加为 25%）',
     },
     king: {
       id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffffff', slot: 'sub',   // ♛ 三尖王冠保留（⚔ 试行弃用），颜色 #ffd166 → 白色
@@ -502,8 +555,8 @@
       stormDmgCut: 0.5, stormCrashCut: 0.6,
       // stormKillGain：友方大风暴（风弹 / 主体接触）击杀 1/2/3/4 类敌人时，量表立刻增加的百分比
       stormKillGain: { 1: 0.004, 2: 0.008, 3: 0.016, 4: 0.032 },
-      brief: '按Q召唤风暴',
-      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 30000 充满<br>（真我 / 诗篇 36000；BOSS 战 +2%/s；<br>暴风之眼战 +10%~16%/s 随机）<br>友方大风暴击杀 1/2/3/4 类敌人时<br>量表立刻增加 0.4%/0.8%/1.6%/3.2%<br>满时按 Q：向前方召唤友方大风暴（并射出风弹）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3<br>（其余我方伤害不再削减，暴风之眼血量 ×2）',
+      brief: '充满自动释放风暴',
+      desc: '天秀忧郁王子呼唤暴风。白色量表：非水晶得分 30000 充满<br>（真我 / 诗篇 36000；BOSS 战 +2%/s；<br>暴风之眼战 +10%~16%/s 随机）<br>友方大风暴击杀 1/2/3/4 类敌人时<br>量表立刻增加 0.4%/0.8%/1.6%/3.2%<br><b>充满后自动</b>：向前方召唤友方大风暴（并射出风弹）<br><b>诗篇难度</b>：风暴碰撞与风弹对非 BOSS 敌人<br>伤害 <b>×3</b>（每跳 3% 最大生命削血不乘）<br>来自暴风之眼的伤害 -50%（碰撞伤害 -60%）<br>暴风之眼战期间：友方大风暴伤害 ×3<br>（其余我方伤害不再削减，暴风之眼血量 ×2）',
     },
     lianjinLovely: {
       id: 'lianjinLovely', name: '炼金璃', glyph: '⊛', color: '#f5b8d0', slot: 'sub',   // ⊛ 圆环放射冲击波（⍟ 试行后回调；原⚔与武器无关）
@@ -586,6 +639,16 @@
       brief: '无限重生',
       desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
+
+    // ── 占位特殊驾驶员（2026-10-17 用户指定名称占位）：尚未实装——special: true（与天使璃同约定，实装后
+    //    使用期间无法获得挑战成就；选择页卡片右上角青粉三角角标）+ placeholder: true（选择页仅展示、
+    //    灰阶降透明、点击不选中；图鉴「驾驶员」页跳过）。current 永不指向占位条目，specialGearActive 不触发；
+    //    实装时按实际机制补全效果键并删除 placeholder。特殊驾驶员排序约定：登记于本表末尾（区头注释）
+    tianxiuChaos: {
+      id: 'tianxiuChaos', name: '天秀混沌王子', glyph: '◇', color: '#8a97a8', slot: 'main', special: true, placeholder: true,
+      brief: '未实装',
+      desc: '未实装。',
+    },
   };
   // ---------- 主/副驾驶员槽位 ----------
   // 每名驾驶员归属 slot（'main' 主驾驶员 / 'sub' 副驾驶员，暂定分野、可随设计调整）；
@@ -630,6 +693,9 @@
   //   天秀限定：风弹仅朝前方 240° 扇形发射（以竖直向上为中心 ±120°，正下方 ±60° 扇区不射）
   //   bulletDmg 风弹伤害 / stormFightDmgMul 暴风之眼战期间的伤害倍率（+200%）
   //     / bulletAlphaStormFight 暴风之眼战中我方风弹透明度（与敌弹样式相同，压透明度区分）
+  //   poemNonBossMul 诗篇难度：风暴主体接触伤害与风弹伤害对非 BOSS 敌人的额外倍率（×3，2026-10-17 用户定稿）——
+  //     消费点：07-player updateFriendStorms（主体逐敌乘算）/ 08-entities 玩家弹命中乘区（风弹按实际命中目标判定）；
+  //     非晶体每跳 3% 最大生命的百分比削血不乘此倍率（07-player updateFriendStorms 内固定值原样保留）
   const PRINCE_STORM = {
     dur: 7, riseSpd: 130, r: 110,
     tickDmg: 100, tickIv: 0.1,   // 风暴主体接触伤害 100 / 每 0.1s 一跳（2026-10-14 用户定稿 80→100）；非 BOSS 类敌人每跳额外扣 3% 最大生命（07-player updateFriendStorms，不乘减伤链）
@@ -638,6 +704,7 @@
     bulletR: 5.6, bulletLen0: 14.4, bulletLenMax: 84, growRate: 150,
     bulletDmg: 100,
     stormFightDmgMul: 3, bulletAlphaStormFight: 0.35,
+    poemNonBossMul: 3,   // 诗篇：对非 BOSS 敌人 ×3（2026-10-17 用户定稿；百分比削血部分不乘）
     dbgRiseSpdMul: 1.8,   // 按 8 连发模式期间发射的风暴：向上移速 ×1.8
   };
 
@@ -684,6 +751,13 @@
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
   const WEAPON_DROP_HITS = 2;         // 统一：累计受击 2 次掉 1 级火力（全场景同规则；导弹命中不计入；2026-10-13 用户定稿 3→2）
 
+  // 暴走时长统一入口（2026-10-17 东坤蝰实装）：基准 BERSERK.duration 4s + 东坤蝰 berserkDurAdd 0.8s。
+  // 全部暴走触发 / 续时赋值统一走本函数（07-player：最终壁垒复活暴走 / 大狗 Q / 迪奥 Q 触发·续时 / pickupKit /
+  // pickupBerserk / 主菜单演示；14-main debugSetWeapon），暴走量表分母 12-ui 同步（否则东坤蝰 4.8s 时量表溢出）
+  function berserkDuration() {
+    return BERSERK.duration + (hasPilot('dongkun') ? PILOTS.dongkun.berserkDurAdd : 0);
+  }
+
   export {
     PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     PLANES, currentPlane, setPlane, setWingman,
@@ -693,6 +767,7 @@
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain,
     setPilotSub, hasPilot, pilotEntry, pilotBombDmgMul,
     pilotBombStartAdd, dagouWaveIv, specialGearActive, PRINCE_STORM,
+    berserkDuration,
     BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD, MAX_BOMBS,
     BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, WEAPON_DROP_HITS,
   };

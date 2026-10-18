@@ -6,8 +6,8 @@
  *   classic  按序拼接全部脚本（与 index.html 加载顺序一致），以 new Function 单作用域执行
  *   modules  按序动态 import 全部模块（top-level 代码随 import 执行）
  *
- * 场景：19 个具名场景（SCENES 注册表），覆盖主路径战斗 / 驾驶员 / 副武器 / 图鉴 /
- * 挑战测试 / 精英与 BOSS 状态机 / 原石 / 手柄 / 教程，合计约 18,500 帧（≈309s 游戏时间，2026-10-13 实测 18544 帧）。
+ * 场景：22 个具名场景（SCENES 注册表），覆盖主路径战斗 / 驾驶员 / 副武器 / 图鉴 /
+ * 挑战测试 / 精英与 BOSS 状态机 / 原石 / 手柄 / 教程 / 先兆者家族三变种 / 浮海飘航者，合计约 23,600 帧（≈393s 游戏时间，2026-10-19 实测 23586 帧）。
  *
  * 判定：任何未捕获异常、主循环帧内异常（14-main 的 catch 会 console.error）都记为 FAIL。
  * 用法：node tools/smoke.js              全量跑（默认）
@@ -495,6 +495,150 @@ async function sceneStarslayer() {
     key('p'); frames(5); key('p', false);
     elements.pauseHomeBtn.click(); frames(10);
     sample('群星之杀暴走三线斩击 hp 有限性');
+  }
+}
+
+async function sceneVoyager() {
+  // 浮海飘航者（2类侧位新敌）跑帧：modules 模式直调 spawnVoyager——覆盖移动/开火状态机：
+  // ① 侧翼「[」形三段路径逐帧跟踪：段推进按坐标过线、最大帧步长 ≤ 巡航上限（速度曲线铁律）、
+  //    入场加成衰减（200→75）后合速恒 ≈75、转角处速度方向连续（水平/竖直通道分算，无 90° 瞬向）、
+  //    下移段机头与首段航向左右翻转（faceSide = -vDir，2026-10-16 用户回调）
+  // ② 攻击节奏（A1/A2 同款刹停，2026-10-17 移植；停稳立即发射无静置）：攻击计时到点 → 刹停停稳（<8px/s）→
+  //    发射长条加速弹（出膛整体 20% 长宽同步长满/机头出弹点 + 脉冲 pulseT + 抖动方向 pulseDir）→ 静止 0.05s 收势 → 恢复移动
+  // ③ 顶部纯竖直下移（25% 概率路径，2026-10-16 用户回调：顶部入场仅往下移动）验证无横向速度
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    const cfg = await importConfig();
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+    elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+    core.enemies.length = 0;
+    const e = spawn.spawnVoyager(null, 0, { flankFrom: -1 });   // 强制侧翼左入（确定性）
+    if (!e || e.type !== 'voyager') {
+      errors.push({ key: '浮海飘航者生成失败', stack: 'spawnVoyager 未返回 voyager 实体' });
+      return;
+    }
+    if (e.vMode !== 'flank' || e.vSeg !== 0) {
+      errors.push({ key: '浮海飘航者初始段异常', stack: 'vMode=' + e.vMode + ' vSeg=' + e.vSeg + '（应为 flank/0）' });
+    }
+    const isolate = () => {
+      for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+      if (playerMod.clearEnemyBullets) playerMod.clearEnemyBullets();
+      if (core.pBullets) core.pBullets.length = 0;
+    };
+    // ① 三段路径全程跟踪（首段 ≤0.9W/100px/s ≈4.3s + 加成期减半 ≈6s；下移 0.4H ≈2.6s；末段离场；总窗口 800 帧足够）
+    let maxStep = 0, prev = null, segsSeen = new Set(), minSpd = Infinity, maxSpd = 0;
+    let shotBullet = null, shotSpd = 0, shotExpDir = 0, shotMuzzleErr = 0;   // ②段捕获：弹 + 发射帧合速 + 抖动方向期望 + 机头出弹偏差
+    for (let f = 0; f < 900 && core.enemies.includes(e); f++) {
+      frames(1);
+      if (!shotBullet) {
+        const sb = core.eBullets.find(x => x.owner === e);
+        if (sb) {
+          shotBullet = sb; shotSpd = Math.hypot(e.vx, e.vy); shotExpDir = core.player.y < e.y ? 1 : -1;
+          const tip = 94 * 0.35;   // 出弹点 = 机头（2026-10-16 用户定稿）——捕获帧同步校验（同帧内位移 <1 帧步长）
+          shotMuzzleErr = Math.hypot(sb.x - (e.x - Math.sin(e.faceAng) * tip), sb.y - (e.y + Math.cos(e.faceAng) * tip));
+        }
+      }
+      isolate();
+      const spd = Math.hypot(e.vx, e.vy);
+      if (spd > 5) { minSpd = Math.min(minSpd, spd); maxSpd = Math.max(maxSpd, spd); }
+      if (prev) maxStep = Math.max(maxStep, Math.hypot(e.x - prev.x, e.y - prev.y));
+      prev = { x: e.x, y: e.y };
+      segsSeen.add(e.vSeg);
+      if (!core.enemies.includes(e)) break;   // 已离场（第三段横移出屏 = 正常生命周期终点）
+    }
+    if (maxStep > 7) {
+      errors.push({ key: '浮海飘航者存在瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（> 7px，巡航 200px/s @60fps 上限余量）——速度曲线铁律' });
+    }
+    if (!segsSeen.has(1)) {
+      errors.push({ key: '浮海飘航者未进入下移段', stack: '900 帧内 vSeg 未见 1（首段横移未过线或坐标判定异常）；segs=' + [...segsSeen] });
+    }
+    // 下移段机头翻转（2026-10-16 用户定稿；2026-10-17 符号根修）：强制左入（vDir=1 → 首段右移、机头右下）
+    // → 下移段机头应翻转朝【左下】= faceAng ≈ +20°（sin(faceAng)>0）且 faceSide === vDir。
+    // 断言机头**实际朝向符号**而非仅 faceSide（此前 faceSide 与左右下映射写反过，符号断言防再犯）
+    if (segsSeen.has(1) && core.enemies.includes(e) && e.vSeg === 1 && e.vMode === 'flank') {
+      if (e.faceSide !== e.vDir) {
+        errors.push({ key: '下移段机头未翻转', stack: 'vDir=' + e.vDir + ' faceSide=' + e.faceSide + '（下移段应为 +vDir 首段翻转侧——faceSide=+1→机头左下）' });
+      }
+      if (Math.sin(e.faceAng) <= 0) {
+        errors.push({ key: '下移段机头朝向符号错误', stack: 'faceAng=' + (e.faceAng * 180 / Math.PI).toFixed(1) + '°（右移进入下移段机头应朝左下 = faceAng +20° 附近，sin>0）' });
+      }
+    }
+    // 速度护栏：入场加成峰值不超 210（200 目标 + 低通爬升不会过冲）；下限不设——攻击停移期速度合法衰减到 ≈0，
+    // 转角处合速短暂低于巡航同样是通道分算的设计行为（平滑圆滑过渡）
+    if (maxSpd > 0 && maxSpd > 210) {
+      errors.push({ key: '浮海飘航者速度档位异常', stack: '最大合速 ' + maxSpd.toFixed(1) + '（入场加成目标 ≈200，低通爬升不应过冲到 210+）' });
+    }
+    // ② 攻击验证（就地捕获——①段 900 帧窗口内首攻 1.5s 必然自然发射，二次 spawn 的环境时序不稳）：
+    //    循环内在清理前采样 owner===e 的弹，捕获后断言弹体字段/出弹点/脉冲/抖动方向/不减速
+    const b = shotBullet;
+    if (!b) {
+      errors.push({ key: '浮海飘航者未发射', stack: '900 帧窗口未见本体弹（首攻 1.5s 应已发射；fire 分支异常？）' });
+    } else {
+      if (!(b.accel === cfg.VOYAGER.bulletAccel && b.maxSpeed === cfg.VOYAGER.bulletMax)) {
+        errors.push({ key: '长条弹加速字段缺失', stack: 'accel=' + b.accel + ' maxSpeed=' + b.maxSpeed + '（应为 ' + cfg.VOYAGER.bulletAccel + '/' + cfg.VOYAGER.bulletMax + '）' });
+      }
+      // 出膛整体 20%（2026-10-17 用户定稿：长与宽初始都为最终值 20%，快速同步长满）；
+      // 断言捕获在发射后 ≥1 帧，len/r 可能已生长，区间 [初值, 初值 + 2 帧生长量] 均为合法
+      const len0 = cfg.VOYAGER.bulletLen * cfg.VOYAGER.bulletGrow0;
+      const finalR = cfg.ENEMY_TYPES.voyager.bulletR;   // 弹径最终值在 ENEMY_TYPES.voyager（VOYAGER 常量无此键）
+      const r0 = finalR * cfg.VOYAGER.bulletGrow0;
+      if (!(b.len >= len0 - 0.6 && b.len <= len0 + (b.growRate || cfg.VOYAGER.bulletGrowRate) * 2 / 60 + 0.6)) {
+        errors.push({ key: '长条弹出膛长异常', stack: 'len=' + b.len.toFixed(2) + '（应 ≈初长 ' + len0.toFixed(2) + ' = 最终长 ×20% 起步生长至 ' + cfg.VOYAGER.bulletLen + '）' });
+      }
+      if (!(b.r >= r0 - 0.3 && b.r <= r0 + (b.rGrowRate || 20) * 2 / 60 + 0.3)) {
+        errors.push({ key: '长条弹出膛弹径异常', stack: 'r=' + b.r.toFixed(2) + '（应 ≈初径 ' + r0.toFixed(2) + ' = 最终径 ×20% 起步生长至 ' + finalR + '）' });
+      }
+      if (b.lenTarget !== cfg.VOYAGER.bulletLen || b.rTarget !== finalR || !(b.growRate > 0 && b.rGrowRate > 0)) {
+        errors.push({ key: '长条弹生长字段缺失', stack: 'lenTarget=' + b.lenTarget + ' rTarget=' + b.rTarget + ' growRate=' + b.growRate + ' rGrowRate=' + b.rGrowRate + '（应为 ' + cfg.VOYAGER.bulletLen + ' / ' + finalR + ' / >0 / >0）' });
+      }
+      // 出弹点 = 机头（2026-10-16 用户定稿）：捕获帧同步测得弹起点与机头点距离（应 ≈tip 32.9px 附近——
+      // 弹在帧内先 spawn 后推进，误差 = 1 帧飞行 ≈1.5~5px + 机头方向插值，容差 14px + 1 帧弹速）
+      if (shotMuzzleErr > 14 + cfg.VOYAGER.bulletV0 / 60) {
+        errors.push({ key: '出弹点不在机头', stack: '弹起点距机头 ' + shotMuzzleErr.toFixed(1) + 'px（应 ≈tip 32.9px + 帧内飞行）' });
+      }
+    }
+    // 攻击脉冲与抖动方向（2026-10-16 用户定稿：玩家在上→朝上抖 / 在下→朝下抖）——捕获到弹即证明发射帧已写入
+    // pulseT/pulseDir（pulseT 采样时可能已衰减归零，不再断言剩余量；pulseDir 恒保留可断言）
+    if (shotBullet) {
+      const expDir = shotExpDir;
+      if (e.pulseDir !== expDir && Math.abs(e.pulseDir) === 1) {
+        errors.push({ key: '抖动方向异常', stack: 'pulseDir=' + e.pulseDir + '（发射帧期望 ' + expDir + '；玩家 y=' + core.player.y.toFixed(0) + ' 敌 y=' + e.y.toFixed(0) + '）' });
+      }
+      // A1/A2 同款刹停（2026-10-17 用户定稿移植）：发射瞬间机体应已停稳（shotSpd ≈0，<8px/s 吸附阈值）
+      if (shotSpd > 8) {
+        errors.push({ key: '发射时未停稳', stack: '发射帧合速 ' + shotSpd.toFixed(1) + 'px/s（A1/A2 同款刹停应 <8px/s 停稳后发射）' });
+      }
+    }
+    // ③ 顶部纯竖直下移强制验证（2026-10-16 用户回调：顶部入场仅往下移动）：直调再生成（25% 概率路径）
+    core.enemies.length = 0;
+    core.eBullets.length = 0;
+    let topSeen = false;
+    for (let k = 0; k < 60 && !topSeen; k++) {
+      const t2 = spawn.spawnVoyager(null, 0, {});
+      core.enemies.length = 0; core.enemies.push(t2);
+      if (t2.vMode === 'top') {
+        topSeen = true;
+        if (t2.vSeg !== 3) {
+          errors.push({ key: '顶部入场段异常', stack: 'vSeg=' + t2.vSeg + '（应为 3 纯竖直下移）' });
+        }
+        // 机头朝向：下移状态随机侧 ±20°（"竖直向下移动时朝向左下还是右下是随机的"）
+        const expTilt = cfg.VOYAGER.faceTilt;
+        if (!(Math.abs(Math.abs(t2.faceAng) - expTilt) < 1e-6)) {
+          errors.push({ key: '顶部入场朝向异常', stack: 'faceAng=' + t2.faceAng.toFixed(3) + '（应为 ±' + expTilt.toFixed(3) + ' 随机侧）' });
+        }
+        // 前几帧位移应纯竖直（vx 通道目标为 0，低通残余 <1px/帧）
+        const p0 = { x: t2.x, y: t2.y };
+        frames(3); isolate();
+        const dx = Math.abs(t2.x - p0.x), dy = t2.y - p0.y;
+        if (!(dx < 1 && dy > 0)) {
+          errors.push({ key: '顶部入场存在横向速度', stack: '前 3 帧 dx=' + dx.toFixed(2) + ' dy=' + dy.toFixed(2) + '（应 dx≈0、纯竖直下移）' });
+        }
+      }
+    }
+    if (!topSeen) errors.push({ key: '顶部下移路径未抽到', stack: '60 次生成均未出现 vMode=top（概率 0.25，P≈0 越界）' });
   }
 }
 
@@ -1495,7 +1639,7 @@ async function sceneCrystalWave() {
     }
     if (first.score !== 100) errors.push({ key: '水晶核芯艇分数≠100（' + names[k] + '）', stack: 'score=' + first.score });
     let failed = false;
-    for (let c = 0; c < 42 && !failed; c++) {   // 42×10 帧 ≈ 7s：12×0.25s 排程 + 穿越 ≈2.8~3.4s + 余量
+    for (let c = 0; c < 48 && !failed; c++) {   // 48×10 帧 ≈ 8s：12×0.3s 排程（2026-10-17 用户定稿 0.25→0.3）+ 穿越 ≈3.4~4s + 余量
       frames(10);
       const ships = core.enemies.filter(e => e.type === 'crystalCore');
       for (let i = 0; i < ships.length && !failed; i++) {
@@ -1556,6 +1700,162 @@ async function sceneFinale() {
   frames(10);
 }
 
+// 先兆者家族三变种（3B 先导 / 3C 中枢 / 3D 极夜，2026-10-16 实装）：数值 / 开场预警浮现落位 / 齐召间距 / 横弹与护盾
+async function sceneHarb3() {
+  const cfgC = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);
+  const cfgE = await import(pathToFileURL(join(jsDir, '01-config-enemies.js')).href);
+  const cfgD = await import(pathToFileURL(join(jsDir, '01-config-difficulty.js')).href);
+  const cfgS = await import(pathToFileURL(join(jsDir, '01-config-spawn.js')).href);
+  const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+  const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+  const uiMod = await import(pathToFileURL(join(jsDir, '12-ui.js')).href);
+
+  // ---- Part A：注册表数值 ----
+  const T = cfgE.ENEMY_TYPES;
+  if (T.harbingerLead.hp !== 800 || T.harbingerHub.hp !== 1500 || T.harbingerPolar.hp !== 800) {
+    errors.push({ key: '三变种基准血量不符', stack: `lead=${T.harbingerLead.hp} hub=${T.harbingerHub.hp} polar=${T.harbingerPolar.hp}（期望 800/1500/800）` });
+  }
+  if (T.harbingerLead.score !== 550 || T.harbingerHub.score !== 700 || T.harbingerPolar.score !== 550) {
+        errors.push({ key: '三变种分数不符', stack: `lead=${T.harbingerLead.score} hub=${T.harbingerHub.score} polar=${T.harbingerPolar.score}（期望 550/700/550，中枢 2026-10-17 定稿 700）` });
+  }
+  if (cfgE.ENEMY_GRADES.harbinger !== '3A' || cfgE.ENEMY_GRADES.harbingerLead !== '3B'
+    || cfgE.ENEMY_GRADES.harbingerHub !== '3C' || cfgE.ENEMY_GRADES.harbingerPolar !== '3D') {
+    errors.push({ key: '先兆者家族档位不符', stack: `3A=${cfgE.ENEMY_GRADES.harbinger} 3B=${cfgE.ENEMY_GRADES.harbingerLead} 3C=${cfgE.ENEMY_GRADES.harbingerHub} 3D=${cfgE.ENEMY_GRADES.harbingerPolar}` });
+  }
+  if (cfgD.POEM_HP.harbingerLead !== 2400 || cfgD.POEM_HP.harbingerHub !== 4500 || cfgD.POEM_HP.harbingerPolar !== 2400) {
+    errors.push({ key: '三变种诗篇血量不符', stack: `lead=${cfgD.POEM_HP.harbingerLead} hub=${cfgD.POEM_HP.harbingerHub} polar=${cfgD.POEM_HP.harbingerPolar}（期望 2400/4500/2400）` });
+  }
+  if (cfgE.ENEMY_CLASS.harbingerLead !== 3 || cfgE.ENEMY_CLASS.harbingerHub !== 3 || cfgE.ENEMY_CLASS.harbingerPolar !== 3) {
+    errors.push({ key: '三变种未归 3 类', stack: 'ENEMY_CLASS 应为 3' });
+  }
+  if (cfgS.PRESSURE_W.harbingerLead != null || cfgS.PRESSURE_W.harbingerHub !== 2 || cfgS.PRESSURE_W.harbingerPolar !== 2) {
+        errors.push({ key: '三变种压力权重不符', stack: 'PRESSURE_W：先导应不注册（0 权重），中枢/极夜应 = 2' });
+  }
+  const CW = cfgC.CANVAS_W, CH = cfgC.CANVAS_H;
+
+  // ---- Part B：先导 3B —— 判定即立开场预警（dur 3s）+ 3s 内不生成实体 + 期满浮现落位（1.1s smoothstep）----
+  uiMod.resetGame(true);
+  core.bossFlow.postDelay = 1e9;   // 冻结常规刷怪
+  spawn.queueHarbingerLead(CW / 2, { hoverY: 120 });
+  frames(2);
+  const openWarn = core.missileWarns.find(w => !w.horiz && w.dur === 3);
+  if (!openWarn) errors.push({ key: '先导开场预警未立', stack: 'missileWarns 无 dur=3 竖线（判定生成瞬间应立线）' });
+  // 预警期内不生成实体（2026-10-17 用户定稿：隐形占位改为延迟生成标记）
+  if (core.enemies.some(e => e.type === 'harbingerLead')) {
+    errors.push({ key: '先导预警期内不应生成实体', stack: '场上已有 harbingerLead（应 3s 后才 spawn）' });
+  }
+  let sawLeadMissile = false;
+  for (let c = 0; c < 45 && !core.enemies.some(e => e.type === 'harbingerLead'); c++) {
+    frames(10);   // 等待 3s 预警期满实体生成（并行捕获开场导弹——3s 期满转出后 ≈0.64s 即落地消失）
+    if (core.missiles.some(m => m.vy > 0)) sawLeadMissile = true;
+  }
+  const lead = core.enemies.find(e => e.type === 'harbingerLead');
+  if (!lead) errors.push({ key: '先导实体未生成', stack: '7.5s 后场上无 harbingerLead' });
+  else {
+    lead.hp = lead.maxHp = 1e9;   // 生成即保活（基准 800 会在落位期被僚机火力击毁）
+    for (let c = 0; c < 45 && !lead.arrived; c++) frames(10);   // ≈7.5s 上限：落位 1.1s + 余量
+    if (!lead.arrived) errors.push({ key: '先导未落位', stack: '生成后 7.5s arrived 仍 false（landT=' + lead.landT + '）' });
+    else if (Math.abs(lead.y - lead.hoverY) > 0.5) errors.push({ key: '先导落位终点不符', stack: `y=${lead.y.toFixed(1)} hoverY=${lead.hoverY}` });
+  }
+
+  if (!sawLeadMissile) errors.push({ key: '先导开场导弹未落下', stack: '预警期满后无垂直导弹' });
+
+  sample('先导 3B（判定即预警 / 预警期无实体 / 期满浮现落位）');
+
+  // ---- Part C：中枢 3C —— 齐召 2~3 枚不瞄准 + 同波间距 ≥8% 屏宽 + 4 轮上限 ----
+  uiMod.resetGame(true);
+  core.bossFlow.postDelay = 1e9;
+  const hub = spawn.spawnHarbingerHub(CW / 2, { hoverY: 95 });
+  hub.hp = hub.maxHp = 1e9;
+  if (hub.chargeFirstDur < 2 || hub.chargeFirstDur > 3.2) {
+    errors.push({ key: '中枢首充区间不符', stack: 'chargeFirstDur=' + hub.chargeFirstDur.toFixed(2) + '（期望 2~3.2s）' });
+  }
+  for (let c = 0; c < 30 && hub.y < 0; c++) frames(1);   // 入场（e.y ≥ 0 才开火——未入场不开火门控，同 3A）
+  hub.chargeT = 3.3;   // 越过首充上限强制充满
+  frames(2);
+  const volley = core.missileWarns.filter(w => !w.horiz);
+  // 2026-10-17 分档：smoke 默认真我 + 本轮为首轮（chargeWave=0）→ 必定 2 枚（虚象/具象恒 2 / 真我诗篇首轮必 2）
+  if (volley.length !== 2) {
+    errors.push({ key: '中枢首轮齐召应恒 2 枚', stack: 'warns=' + volley.length + '（期望 2）' });
+  } else {
+    const xs = volley.map(w => w.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) {
+      if (xs[i] - xs[i - 1] < CW * 0.08 - 0.5) {
+        errors.push({ key: '中枢同波间距 <8% 屏宽', stack: `间距 ${(xs[i] - xs[i - 1]).toFixed(1)}（≥ ${(CW * 0.08).toFixed(0)}）` });
+        break;
+      }
+    }
+  }
+  // 多中枢在场（2026-10-17 二次澄清）：第二只中枢非首轮充能时，因第一只在场 → 也必召 2 枚
+  core.missileWarns.length = 0;   // 清第一只残留预警
+  const hub2 = spawn.spawnHarbingerHub(CW * 0.75, { hoverY: 110 });
+  hub2.hp = hub2.maxHp = 1e9;
+  for (let c = 0; c < 30 && hub2.y < 0; c++) frames(1);   // 入场
+  hub2.chargeWave = 1;   // 非首轮（首轮本就必 2，测不出分档差异）
+  hub2.chargeT = 2.1;    // 越过后续轮红相强制充满
+  const vBefore = core.missileWarns.filter(w => !w.horiz).length;
+  frames(2);
+  const vAfter = core.missileWarns.filter(w => !w.horiz).length;
+  if (vAfter - vBefore !== 2) {
+    errors.push({ key: '多中枢在场未触发恒 2 枚', stack: '新增竖线 ' + (vAfter - vBefore) + '（期望 2——场上有其他中枢）' });
+  }
+  // 4 轮上限：3 轮已召 + 强制充满第 4 轮 → 末轮后 holdTimer 置 0（释放完即离场）
+  hub.missilesGuided = 3; hub.firedThisCycle = false; hub.chargeT = 2.1; hub.chargeWave = 1;
+  frames(2);
+  if (hub.missilesGuided !== 4 || hub.holdTimer !== 0) {
+    errors.push({ key: '中枢 4 轮上限/离场口径不符', stack: `guided=${hub.missilesGuided} holdTimer=${hub.holdTimer}` });
+  }
+  sample('中枢 3C（齐召 2~3 枚 / 间距 ≥8% 屏宽 / 4 轮上限）');
+
+  // ---- Part D：极夜 3D —— 登场护盾 70%/25%/5% + 横向导弹（横置预警线 + 水平飞行）----
+  uiMod.resetGame(true);
+  core.bossFlow.postDelay = 1e9;
+  const polar = spawn.spawnHarbingerPolar(CW / 2, { hoverY: 100 });
+  // 不设巨额血量：额外断言「玩家火力可命中」（hp < maxHp）；2026-10-16 二次定稿：极夜不再具有护盾
+  if (polar.shielded || polar.phase > 0) {
+    errors.push({ key: '极夜不应带护盾', stack: 'shielded=' + polar.shielded + ' phase=' + polar.phase + '（期望均无）' });
+  }
+  polar.hp = polar.maxHp = 20000;   // 挑战口径测试血量保活（基准 800 有被僚机火力在充能期击毁的随机风险）
+  const polarCfd = polar.chargeFirstDur;   // 充满即召时序基准（自然充能）
+  if (polar.chargeFirstDur < 1 || polar.chargeFirstDur > 2) {
+    errors.push({ key: '极夜首充区间不符', stack: 'chargeFirstDur=' + polar.chargeFirstDur.toFixed(2) + '（期望 1~2s = 3A −0.5）' });
+  }
+  for (let c = 0; c < 30 && polar.y < 0; c++) frames(1);   // 入场后开火（同上）
+  // 充满即召验证（2026-10-16 用户质疑排查）：自然充能跑帧，横线出现时 chargeT 应 ≈ 首充时长（容差 2 帧）
+  let warnAtT = null;
+  for (let c = 0; c < 300 && warnAtT == null; c++) {
+    frames(1);
+    if (core.missileWarns.some(w => w.horiz)) warnAtT = polar.chargeT;
+  }
+  if (warnAtT == null) errors.push({ key: '极夜自然充能未出横线', stack: '5s 内无 horiz 预警' });
+  else if (Math.abs(warnAtT - polarCfd) > 2 / 60) {
+    errors.push({ key: '极夜充满与预警不同帧', stack: '预警时 chargeT=' + warnAtT.toFixed(3) + ' 首充=' + polarCfd.toFixed(3) + '（差 ' + (Math.abs(warnAtT - polarCfd) * 60).toFixed(1) + ' 帧）' });
+  }
+  polar.chargeT = 2.1;   // 越过首充上限强制充满（后续横弹断言用）
+  frames(2);
+  const hw = core.missileWarns.find(w => w.horiz);
+  if (!hw) {
+    errors.push({ key: '极夜横置预警未立', stack: 'missileWarns 无 horiz 线' });
+  } else {
+    for (let c = 0; c < 15 && !core.missiles.some(m => m.rot != null); c++) frames(10);   // 预警期满（2s = 120 帧）转横弹
+    const hm = core.missiles.find(m => m.rot != null);
+    if (!hm) errors.push({ key: '极夜横弹未生成', stack: '预警期满后无 vx 导弹' });
+    else {
+      if (!(hm.vy === 0 && Math.abs(hm.vx) === cfgE.HARBINGER.missileSpeed)) {
+        errors.push({ key: '极夜横弹速度不符', stack: `vx=${hm.vx} vy=${hm.vy}` });
+      }
+      if (hm.y < 0 || hm.y > CH) errors.push({ key: '极夜横弹出界', stack: 'y=' + hm.y });
+    }
+  }
+  // 玩家火力应可命中（≤12s 内 hp 必须低于满值——命中链路验证）
+  for (let c = 0; c < 720 && polar.hp >= 20000; c++) frames(1);
+  for (let c = 0; c < 720 && polar.hp >= polar.maxHp; c++) frames(1);
+  if (polar.hp >= polar.maxHp) {
+        errors.push({ key: '极夜玩家火力 12s 无法命中', stack: 'phase=' + polar.phase + ' hp=' + polar.hp + '/20000' });
+  }
+  sample('极夜 3D（充满即召时序 / 横置预警 / 横弹同色红橙）');
+}
+
 // ---------------- SCENES 注册表（批次 2a 场景化）----------------
 // 速查：改动文件 → 建议场景（02-core / 01x 配置域 / 14-main 改动跑全量，共享层不省）
 const SCENES = [
@@ -1568,6 +1868,7 @@ const SCENES = [
   { name: 'starslayer', desc: '群星之杀暴走三线斩击 hp 有限性（血条消失+无敌回归哨兵）', files: '07-player 08-entities 01-config-loadout', run: sceneStarslayer },
   { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
   { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
+  { name: 'voyager', desc: '浮海飘航者（「[」形三段路径平滑 / 加速长条弹 + 攻击脉冲 / 顶部纯竖直下移 / 减速 50%）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneVoyager },
   { name: 'war-ghost', desc: '战争幽灵全相位（入场 / 技能 2→3→1 / 半血召唤 / 离场）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneWarGhost },
   { name: 'pulse-matrix', desc: '脉冲矩阵 20s 自爆链路 + 分裂三法术矩阵 + 击坠孤儿波（波不随死亡消失）', files: '04-spawn 06-enemy', run: scenePulseMatrix },
   { name: 'darkhand', desc: '黑暗之手（登场 / 技能循环 / 蛋挞技能4 / 连携召唤离场 / 爆弹波及）', files: '05-boss 07-player 01-config-boss', run: sceneDarkhand },
@@ -1577,6 +1878,7 @@ const SCENES = [
   { name: 'gacha', desc: '原石规则（非萧杨不计数 / 16 颗充能 / Q 释放 / 转化概率）', files: '07-player 01-config-loadout', run: sceneGacha },
   { name: 'gamepad', desc: '手柄全链路（认领 / 菜单导航 / 摇杆死区 / 爆弹暂停 / 拔出回退）', files: '02-core 14-main 07-player 12-ui', run: sceneGamepad },
   { name: 'crystal-wave', desc: 'BOSS 后特殊波次（水晶核芯艇四编成：数值 / 恒速 200 / 不重叠 / 出场 40 / 清场 0.6s 恢复）', files: '04-spawn 06-enemy 14-main 12-ui 01-config-enemies', run: sceneCrystalWave },
+  { name: 'harb3', desc: '先兆者家族三变种（3B 先导判定即预警+延迟生成+浮现落位 / 3C 中枢齐召分档+多中枢 / 3D 极夜横弹+充满即召时序 + 家族数值档位）', files: '01-config-enemies 01-config-difficulty 01-config-spawn 04-spawn 06-enemy', run: sceneHarb3 },
   { name: 'help-pad', desc: '教程面板手柄页切换（切出 / 切回 / 收起）', files: '12-ui', run: sceneHelpPad },
   { name: 'finale', desc: '静音开关收尾', files: '03-audio', run: sceneFinale },
 ];

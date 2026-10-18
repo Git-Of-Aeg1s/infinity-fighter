@@ -5,7 +5,7 @@
   //
   import { CANVAS_H, CANVAS_W, hanxixianImg, puxuefengImg, xiayongImg, xinguodongImg } from './01-config-core.js';
   import { ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, STARSLAYER, SUB_WEAPONS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMEN_CFG, currentPlane } from './01-config-loadout.js';
-  import { DOUZHI, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, POPIAN, VARIANTS, enemyGrade } from './01-config-enemies.js';
+  import { DOUZHI, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_ARRAY, FASHI_MATRIX, HARBINGER, JIAOXIANG, POPIAN, PULSE_MATRIX, VARIANTS, enemyGrade } from './01-config-enemies.js';
   import { BOSS, DARKHAND, STORM, STORM2 } from './01-config-boss.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, eliteHpOf, isPoem, poemHpOf, resolveBossHp, setDifficulty } from './01-config-difficulty.js';
   import { REWARD_DRONES, REWARD_ITEMS, rewardDroneChance, WAVE_SPAWN_DRAW_W, WAVE_SPAWN_LIST, WAVE_SPAWN_W, WAVE_SPAWN_W_DEFAULT } from './01-config-spawn.js';   // 刷怪权重（波次刷怪权重）/抽取权重数据自 2026-10-12 迁 01-config-spawn（供 04-spawn 抽取消费，13 单向引用展示）
@@ -27,13 +27,13 @@
     // 【登记规则】之后再新增某等级的新敌人时，图鉴位置**暂时放到该等级分页的最下方**（当前各档全等级齐备的排序为基准），
     // 下次整档重排时再归入颜色/机型序列
     { name: '虚象级', entries: ['side_moon', 'side_swirl', 'side_shoot', 'side_pass', 'side_kamikaze', 'prolifera', 'crystalCore'] },   // 赤月/橙旋/黄芒/白影（黄芒之下）/紫电 + 增生（青）+ 水晶核芯艇（1S 特殊档，按登记规则暂置本页最下方）
-    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'fashiMatrix', 'popian', 'popianU', 'fashiA1', 'douzhi', 'sponsor', 'sponsorDeluxe'] },   // 赤红/烈橙/幽蓝/紫晶/霜白（紫晶之下）/坚垒(黄)/幽暮(黑) + 矩阵/破片/破片U/A1/斗志/赞助/豪华
-    { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻
+    { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'fashiMatrix', 'popian', 'popianU', 'voyager', 'fashiA1', 'douzhi', 'sponsor', 'sponsorDeluxe', 'collapseConstruct', 'beyondWing_red', 'beyondWing_blue', 'beyondWing_violet', 'beyondWing_cyan', 'beyondWing_pink'] },   // 赤红/烈橙/幽蓝/紫晶/霜白（紫晶之下）/坚垒(黄)/幽暮(黑) + 矩阵/破片/破片U/浮海飘航者/A1/斗志/赞助/豪华 + 2D 坍缩构造体 / 2C 超越艇五变体（2026-10-19 占位，按登记规则暂置本页最下方）
+    { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal', 'harbingerLead', 'harbingerHub', 'harbingerPolar', 'stasisUnreal', 'cocoonDream', 'lanxinShip_blue', 'lanxinShip_white', 'lanxinShip_black', 'lanxinShip_violet', 'lanxinShip_pink'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻 + 先兆者家族三变种（3B/3C/3D，2026-10-16 按登记规则暂置本页最下方）+ 3D 静滞虚幻 / 3E 破茧之梦 / 3C 澜心舰五变体（2026-10-19 占位，同上）
     // 诗篇级：张华&张策 = wip 白方块占位，其余全部实装（专属外观预览）；四精英顺序 = 朴→夏→韩→辛
-    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策
+    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-10-19 占位，按登记规则暂置本页最下方）
 
-    // 长歌级：黑暗之手紧跟旧日之歌下方（2026-10-01 用户定稿排序）
-    { name: '长歌级', entries: ['boss', 'boss_darkhand', 'boss_storm', 'boss_storm2'] },
+    // 长歌级：黑暗之手紧跟旧日之歌下方（2026-10-01 用户定稿排序）；5D/5E 占位（2026-10-19）置本页最下方
+    { name: '长歌级', entries: ['boss', 'boss_darkhand', 'boss_storm', 'boss_storm2', 'returnStar', 'starsVoice'] },
 
     // 衍生级（escort / tornado）不设标签页：无法从分页列表直接点击，仅经母体条目 desc 内的名称跳转进入
     // （跳转时不选中任何标签，见 jumpToEncyEntry；反向跳转见条目 parent 字段）
@@ -70,8 +70,8 @@
     },
     crystalCore: {
       name: '水晶核芯艇', type: 'crystalCore', color: '#f2f5fa', hp: 100, score: 100, crystalColor: '#39c5bb',
-      // pvZoom/pvDy：视觉纵向超盒（牵引框顶 → 机头 ≈56 世界像素 vs 碰撞盒 34）——小预览 40×28 缩小防裁切 + 下移构图居中（沿 暴鸰·G pvDy 先例）
-      pvZoom: 0.75, pvDy: 6,
+      // pvZoom/pvDy：视觉纵向超盒（水晶尾焰尖 → 机头 ≈67 世界像素 vs 碰撞盒 34；2026-10-16 加尾焰后自 ≈56 调）——小预览 40×28 缩小防裁切 + 下移构图居中（沿 暴鸰·G pvDy 先例）
+      pvZoom: 0.62, pvDy: 10,
       desc: '无攻击能力。<br>只在击败 BOSS 后的特殊波次中成群出现（四种编成随机其一）。<br>水晶有青/水蓝/粉三种颜色随机。<br>击毁后掉落 10~24 或 54 水晶。',
     },
     striker_crimson: {
@@ -103,29 +103,41 @@
       desc: '能在场地 30%~80% 高度的随机位置上方浮现，下移一段距离后以随机方向为基准向四周正六边形或正八边形的均匀方向各射 出1 枚子弹，随后下移并离场。<br>无碰撞伤害。',
     },
     gunship_violet: {
-      name: '紫晶炮艇', type: 'gunship', variant: 'violet', color: '#c084fc', hp: 400, score: 350,
+      name: '紫晶战舰', type: 'gunship', variant: 'violet', color: '#c084fc', hp: 400, score: 350,
       desc: '初始技能随机，技能循环如下：<br>①双向 22222 加速长条弹：锁定玩家当前位置方向及其反方向各 10 发、前后 5 波每波 2 发，两发垂直错位不重叠；自机体核心快照点射出，后发不随机体移动漂移。<br>②三发平行贴弹：同时射出、同向平行，中间弹出射点更靠前；共两轮，第一轮发射随机 0.2~0.4s 后发射第二轮。<br>③锁定侧扫：向玩家方位 60° 区间依次均分 4 发加速长条弹；诗篇改为 5 发且左右两侧同时对称扫射。',
     },
     gunship_crimson: {
-      name: '赤红炮艇', type: 'gunship', variant: 'crimson', color: '#ff5a5a', hp: 400, score: 350,
+      name: '赤红战舰', type: 'gunship', variant: 'crimson', color: '#ff5a5a', hp: 400, score: 350,
       desc: '初始技能随机，技能循环如下：<br>①瞄准双连射 + 左右双曲线弹流：中间弹固定垂直向下不追踪，双曲线向两侧外扩。<br>②反向双曲线弹流：每侧发射 5 发，镜像对在随机屏高 50%~100% 处交汇。<br>③三方向两轮齐射：垂直向下与下±20°，每方向发射 2 发 ，共 2 轮、轮间隔 0.75s；诗篇改为加速长条弹，且第二轮扩为五方向。',
     },
     gunship_amber: {
-      name: '金曜炮艇', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 420, score: 350,
+      name: '金曜战舰', type: 'gunship', variant: 'amber', color: '#ffbf47', hp: 420, score: 350,
       desc: '初始技能随机，技能循环如下：<br>①10 发环形爆发：诗篇改为加速长条弹且为 12 发。<br>②两轮 6 发环形爆发：选定两个随机方向、先后顺序随机各射一轮，两轮间隔 ≈0.35s。<br>③三方向 3×3 加速长条弹：首轮竖直朝上或朝下随机、后续两轮依次旋转 60°，每发两发连射，出弹点以施放瞬间为准快照；诗篇改为每波 5 方向均分整圆、波间依次旋转 180°，且首轮方向完全随机。',
     },
     gunship_orange: {
-      name: '橙焰炮艇', type: 'gunship', variant: 'orange', color: '#ff7e2e', hp: 400, score: 350,
+      name: '橙焰战舰', type: 'gunship', variant: 'orange', color: '#ff7e2e', hp: 400, score: 350,
       desc: '初始技能随机，技能循环如下：<br>①发射一枚红橙巨型弹：飞行 25% 屏高后减速滑行、临近停速时分裂 6 发均匀散射。<br>②大范围散射：朝下方 150° 均匀发射 6 发子弹。<br>③双轮 2×2 加速长条弹：夹角 40°→60°，出弹点以施放瞬间为准快照。<br>④中范围散射：朝下方 120° 均匀发射 4 发子弹，诗篇改为 7 发。',
     },
     gunship_cyan: {
-      name: '青时炮艇', type: 'gunship', variant: 'cyan', color: '#45e0e8', hp: 400, score: 350,
+      name: '青时战舰', type: 'gunship', variant: 'cyan', color: '#45e0e8', hp: 400, score: 350,
       desc: '初始技能随机，技能循环如下：<br>①召唤增生侧翼艇 ×3：两翼各 1 个 + 机头正下方 1 个；诗篇第二次及之后释放时连续召唤两波；召唤体与卫护飞船无分数和水晶奖励，且召唤体带有次数盾——常态 1 层、诗篇 2 层。<br>②支援弹：随机方向 2 发、诗篇 4 发：命中敌机加 200 屏障、命中玩家机身则施加持续10s的 24 屏障，诗篇屏障值改为28。<br>③DNA 双螺旋四连弹：朝玩家 2×2，全部自机头出膛；左右两束相位相反的加速蛇行弹持续交绕成双螺旋，摆幅 0.385 rad；诗篇改为六连弹——3 批×2 发。',
     },
     harbinger: {
       name: '炮火先兆者', type: 'harbinger', color: '#3a3f4a', hp: 1000, score: 550,
       lore: '炮舰术师操作的无人战舰，装甲厚重，材质坚实。正是他们引导了炮舰猛烈的导弹袭击。',
       desc: '核心充能循环召唤垂直落下的导弹，登场 1.5~2.5s 后首次召唤，后续每 4.5s 召唤一次。会停留在较靠后的位置。<br>导弹：召唤瞬间锁定玩家当前位置并出现持续2s的预警线，随后自屏顶以 1400px/s 垂直砸下。命中玩家时造成虚象 60 / 具象 60 / 真我 80 / 诗篇 95 伤害，且会使武器等级 -1、暴走中断，碰撞半径 12.5。',
+    },
+    harbingerLead: {
+      name: '先导炮火先兆者', type: 'harbingerLead', color: '#3a3f4a', hp: 800, score: 550,
+      desc: '生成判定瞬间即在玩家当前位置立导弹预警线（3s，预警期内机体不显示）；3s 预警期满后机体才开始原地渐显浮现（幽暮式，场上不会有蓝色预警）并平滑减速落位，随后开始与炮火先兆者一致的充能循环（导弹连开场共 5 发，攻击间隔随机减少 0.2~0.8s）。<br>停留线在常规3类敌人停留线附近的一个区间（可能在上、可能在下）；分数与水晶掉落同炮火先兆者；不阻止波次刷新。',
+    },
+    harbingerHub: {
+      name: '中枢炮火先兆者', type: 'harbingerHub', color: '#3a3f4a', hp: 1500, score: 660,
+      desc: '充能充满后召唤垂直导弹——不瞄准玩家，同一次召唤中导弹间距不低于 8% 屏宽。数量分档：虚象/具象难度必定召唤 2 枚；真我/诗篇难度首次必定 2 枚，其后当场上有任何其他炮火先兆者时也只召唤 2 枚，否则 50% 两枚 / 50% 三枚。入场首次充能 2~3.2s，后续每 5s 一轮，共 4 轮齐召后离场。<br>外观：左右厚杆固定于左右两侧（常态灰偏红、随充能越来越红），上下薄杆恒反向旋转，外环外三座小炮座沿正圆轨道公转。停留线同炮火先兆者；击坠分数 700、水晶掉落为炮火先兆者的 1.2 倍。',
+    },
+    harbingerPolar: {
+      name: '极夜炮火先兆者', type: 'harbingerPolar', color: '#42445c', hp: 800, score: 550,
+      desc: '召唤横向导弹：50% 锁定玩家（沿玩家行）、50% 不锁定（在玩家 ±20% 屏高区间内随机位置生成、不出界），可能从左侧或右侧飞入；预警线横置（样式与效果同现有预警线），导弹为现役弹体横置、颜色与其它导弹一致（红橙）。<br>移速与入场速度为炮火先兆者的 1.6 倍；首次充能 1~2s、后续每 4s 一波（均比炮火先兆者少 0.5s），共 5 发后离场。停留线在常规3类敌人停留线往上一点；分数与水晶掉落同炮火先兆者。',
     },
     weilong: {
       name: '威龙', type: 'weilong', color: '#ff9a1a', hp: 5000, score: 1100,
@@ -191,13 +203,12 @@
     fashiArray: {
       name: '法术阵列', type: 'fashiArray', color: '#c22b3d', hp: 3500, score: 1200,   // 分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
       pvZoom: 1.45,   // 详情预览放大：三菱形+底座的视觉尺寸紧凑，按碰撞盒适配会显得偏小
-      desc: '能朝玩家附近发射旋转的大正方体射弹，飞行随机行程（射程的 30%~60%）后分裂为 3 枚正方体射弹（三枚夹角互为 120°、其中一枚沿原瞄准方向）。<br>就位后每5s在身侧召唤一个法术矩阵，首次召唤缩短为2.5s。<br>死亡时召唤一个法术矩阵。<br>在场时增强所有法术矩阵：偏移角增至 ±25°、正方体速度 +10%<br>到达停留点后会随机漂移。',
+      desc: '能朝玩家附近发射旋转的大正四面体射弹，飞行随机行程（射程的 30%~60%）后分裂为 3 枚正方体射弹（三枚夹角互为 120°、其中一枚沿原瞄准方向）。<br>就位后每5s在身侧召唤一个法术矩阵，首次召唤缩短为2.5s。<br>死亡时召唤一个法术矩阵。<br>在场时增强所有法术矩阵：偏移角增至 ±25°、正方体速度 +10%<br>到达停留点后会随机漂移。',
     },
 
     warMatrix: {
-      name: '战争矩阵', type: 'warMatrix', color: '#7a3b2e', hp: 4500, score: 1200,   // 血量 4500（2026-10-04 用户定稿：虚象/具象/真我同基准、诗篇 10000 走 POEM_HP.warMatrix）；分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
-      wip: true,   // 未实装：图鉴预览白色方块占位（drawEncyPreview 兜底）；机制/数值/外观待设计
-      desc: '大型矩阵装置，具体机制、外观待定。<br>当前仅注册占位，不进入常规出怪。',
+      name: '战争矩阵', type: 'warMatrix', color: '#7a3b2e', hp: 4000, score: 1200,   // 血量 4000（2026-10-17 用户定稿，原 4500 作废）、诗篇 8000（POEM_HP.warMatrix）；分数 1200 同法术阵列（总表待同步）
+      desc: '登场的横置巨型法术矩阵，本体轮廓 1:1.8 同法术矩阵比例。<br>登场时在停留位（屏高 18%~28% 随机）原地播放演出：红色门框与菱形落点框同时描画（0.75s）→ 闪亮 → 本体浮现并触发菱形冲击波，期间虚化不受伤害、炮弹穿过、与机体互穿。<br>随后胡乱移动（同法术矩阵、速度降低），30s 后向下加速离场。<br>碰撞伤害 50；分数与水晶掉落同法术阵列。<br>技能（初始随机后循环，间隔 1.5~2.4s）：①顶部卫星下移至底排、底部卫星外移，四卫星朝核心正上方随机一点（玩家上方 0~25% 屏高）同射程齐射 ②移速降至 20%，核心红圈收缩 0.4s 后朝下直射红色大正方体（三轴翻滚，法术阵列旧版大正方体样式），其每移动 18%~30% 屏高向左右横裂出无射程限制的小正方体（初速 0、1s 加速到全速）③四卫星朝下扇形齐射（上排偏 5°、下排偏 20°~40°）④核心发射大号正四面体（法术阵列同款），分裂行程同法术阵列，裂为 4/诗篇 5 枚均匀角度小正方体 ⑤四卫星同角度齐射（虚象/具象为下方 150° 内随机、真我/诗篇为下方 100° 内随机）。',
     },
 
     capital_crimson: {
@@ -220,7 +231,7 @@
         '②散射大子弹3 轮，每轮随机缺失 20%~35%；<br />' +
         '③四部位标记三连发（标记释放时锁定，不追踪；<br />' +
         '④双管乱射长条弹（血量＞50% 为 270° 大范围散射、≤50% 收敛到下半球。<br />' +
-        '血量 70%：在最左侧召唤一位炮火先兆者并掉落暴走道具（各一次）；血量 40%：在最右侧再召唤一位炮火先兆者（就位后同样固定靠边、不巡航）；诗篇：两个血量点均改为左右同时各召唤一位（首攻时间强制 1.5s / 2.5s 各一，随机分配左右）；&lt;50% 技能间隔减半。<br />' +
+        '召唤改版（2026-10-17 用户定稿）：虚象难度不召唤；具象难度仅血量 70% 时在随机一侧召唤一位炮火先兆者（固定靠边、不巡航）并掉落暴走道具；真我难度 70% 时随机一侧召唤一位炮火先兆者、40% 时在另一侧再召唤一位（并掉落暴走道具）；诗篇难度在场地 25% / 75% 屏宽两位置召唤——70% 时两位置各一位极夜炮火先兆者、40% 时两位置各一位中枢炮火先兆者（四台攻击间隔错开），召唤体无入场初速段，速度自生成起始终为常态巡航速度的 35%（中枢 3C ≈ 63px/s、极夜 3D ≈ 100.8px/s）下移直到离场（不停留），正常掉落分数与水晶；&lt;50% 技能间隔减半。<br />' +
         '<b>真我&诗篇难度下有如下修正：</b><br />' +
         '技能释放间隔降低；<br />' +
         '①：双曲线弹流升级为4条旋转双曲线弹流，且释放其他技能时概率连携此技能。<br />' +
@@ -317,6 +328,14 @@ boss_storm: {
       lore: '敌方更先进的攻击型空援无人战舰，攻击造成更强的范围性物理伤害。',
       desc: '入场后沿直线飞行至停留点，到达停留点后能锁定玩家位置发射三连发高速炮弹，造成范围伤害。前两发炮弹不会触发无敌。<br>能从顶部和侧翼入场。',
     },
+    voyager: {
+      name: '浮海飘航者', type: 'voyager', color: '#dfe7f7', hp: 300, score: 160,
+      // pvZoomSmall/pvZoom：杆体视觉跨度 ≈138 设计像素（×0.35 ≈48 世界像素）远超 60×60 碰撞盒——小/详情预览 fit
+      // 按盒算过小，条目级放大显示；pvDrawScale：源分辨率 ×3（杆体源像素 48×3×DPR ≥ 显示需求——2026-10-17 根治预览发糊）
+      pvZoomSmall: 1.6, pvZoom: 1.7, pvDrawScale: 3,
+      lore: '漂浮在太空中的恐鱼。下一代似乎会更擅长在真空中游弋。',
+      desc: '机头朝向<b>跟随移动方向</b>（最大转向角速度同破片）：水平向右移动时机头朝<b>右下</b>（与水平方向夹角 <b>20°</b>）、向左反之；侧翼路径进入竖直下移段时机头<b>与首段航向左右翻转</b>（右移进入→朝左下 / 左移进入→朝右下）。朝玩家射出<b>自机头发出的橙红长条加速子弹</b>（配色同赤红主力舰长条弹；弹速 <b>135 → 450</b>；出膛<b>整体 20%</b>——长与宽初始都为最终值的 20%、≈0.19s 快速同步长满），造成 <b>16 伤害</b>（诗篇 <b>22</b>）。<br><b>攻击时白色部分略微增大一瞬</b>，机头同时<b>朝上或朝下抖动</b>——方向取决于其与玩家的竖直相对距离（玩家在上方→朝上抖 / 在下方→朝下抖），攻击后回位。<br><b>攻击为刹停射击</b>（同法术大师 A1/A2）：攻击计时到点即<b>刹停停稳</b>，停稳后<b>立即发射</b>，再静止 <b>0.05s</b> 收势后恢复移动；<b>射击间隔 1.6~2.4s</b>（自发射瞬间起算）、登场后首次攻击 1.5s——诗篇难度间隔区间整体 <b>-0.5s</b>（1.1~1.9s）。<br><b>75% 概率从侧翼入场</b>：于屏高 <b>20%~40%</b> 高度登场，水平向另一侧移动 <b>70%~90% 屏宽</b>后转竖直向下 <b>40% 屏高</b>，再反向水平移动离场（轨迹如「[」或「]」，转角平滑圆弧）；<b>25% 概率从顶部入场（仅竖直向下移动）</b>。<b>作为 2类侧位刷新时仅从侧翼登场</b>。速度较慢（巡航 <b>75</b>，入场 <b>137.5</b> 一秒内衰减）。碰撞伤害同幽蓝突击艇（<b>28</b>）。<br>分数与水晶掉落同破片。血量 <b>300</b>（诗篇 <b>1000</b>）。',
+    },
     baolingG: {
       name: '暴鸰·G', type: 'baolingG', color: '#ffd8a8', hp: 800, score: 500,
       lore: '敌方人员操纵的无人战舰，飞行速度缓慢。携带有大型爆破弹头，将会在接近我方战机时投掷，并造成群体物理伤害。据说设计灵感来自某种幻想生物。虽然在投弹之后不再具有任何攻击性，但是因重量减轻而得以更快速地移动。',
@@ -340,7 +359,7 @@ boss_storm: {
     boss_darkhand: {
       name: '黑暗之手', type: 'boss', bossId: 'darkhand', color: '#c22030', hp: 48000, score: 4000,   // 具象血量 48000（2026-10-03 用户定稿调整；2026-10-12 用户定稿虚象 40000→36000、诗篇 90000→80000；2026-10-14 用户定稿真我 70000→64000——36000/48000/64000/80000，总表待同步；四难度表见 01-config DARKHAND.hpByDiff）；主题色黑红化（2026-10-03，原紫 #b04ad4）；分数 4000（2026-10-10 按怪物属性总表同步，原 0）
       quote: '迪奥来袭',   // 图鉴引言（颜色与标题一致）
-      desc: '<b>第二轮BOSS。</b><br>登场时冲撞并造成大量伤害。有连携精英在场时攻击间隔增大。<br>①<b>四管炮幕</b>——1s 同时齐射各 1 发，连射 4 轮，随难度增大，发射间隔减小、发射轮数增多；<br>②<b>黑暗涟漪</b>——从本体中心向外扩散 3 道环形弹幕，弹幕角度完全随机，每环弹数按难度递增；<br>③<b>巨大蛋挞</b>——向前方直射一枚不停旋转的巨大蛋挞；<br>④<b>爪翼毁灭蛋挞</b>——依次发射三轮超长蛋挞，真我/诗篇难度下蛋挞能在左右边界反弹1/2次；<br>⑤<b>暗影导弹雨</b>——机体发射大量黑红小型导弹，释放期间本体移速降至 20%；<br>⑥<b>双标记导弹</b>——该技能为真我/诗篇专属，仅当场上有连携精英时才会释放。标记玩家当前瞬时位置与其水平镜像位置，机体发射大量黑红小型导弹落到这两个标记位置。<br><b>连携召唤</b>：血量降至 80% / 60% / 40% / 20% 时依次召唤连携精英协战（前两名在<span class="ency-link" data-ency="xiayong">铜皮夏勇</span>/<span class="ency-link" data-ency="puxuefeng">狞笑朴学峰</span>中随机排序、后两名在<span class="ency-link" data-ency="hanxixian">猩红韩希先</span>/<span class="ency-link" data-ency="xinguodong">暴怒辛国栋</span>中随机排序）；<br>精英在其对应血量窗口内未被击杀则迅速离场，第三轮刷怪期按固定等级返场——先回复已损失生命值的 50%，随后当前生命与生命上限均翻倍。四人全数被击败则第三轮 Lv25 召唤张华&张策；<br>场上存在任一连携精英时，黑暗之手受到的伤害降低 65%；当前血量窗口的精英在本段血量内被击坠后，黑暗之手在本段血量内不再拥有减伤，且受到的普通伤害额外 +100%，随后黑暗之手永久获得该精英对应的额外技能（入池随机权重为基础技能的 2 倍）：<br>击坠<span class="ency-link" data-ency="xiayong">铜皮夏勇</span>获得<b>碎翼回旋镖</b>——左右前爪各射一枚夏勇同款回旋刃，轨道瞄准玩家当前位置并显示同款预警曲线（真我/诗篇难度下每爪快速连发两枚——两边各两枚、共四枚，单次释放）。<br>击坠<span class="ency-link" data-ency="puxuefeng">狞笑朴学峰</span>获得<b>翼根散射</b>——左右前爪各射两轮朴学峰同款扇形散射；<br>击坠<span class="ency-link" data-ency="hanxixian">猩红韩希先</span>获得<b>旋眼火螺</b>——本体两侧随机一侧释放同款三炮塔旋眼，真我/诗篇难度下两侧同时释放；<br>击坠<span class="ency-link" data-ency="xinguodong">暴怒辛国栋</span>获得<b>边界轰炸</b>——左右屏缘两列竖直依次投弹，同时本体中心竖直向下释放一轮辛国栋同款扇形轻追踪导弹；<br>如果黑暗之手死亡时有尚未召唤的精英：此前有精英逃走 → 视作未被击杀、血量仍为满；此前无任何逃走 → 视作被击杀，计入四精英全数击败。',
+      desc: '<b>第二轮BOSS。</b><br>登场时冲撞并造成大量伤害。有连携精英在场时攻击间隔增大。<br>①<b>四管炮幕</b>——1s 同时齐射各 1 发，连射 4 轮，随难度增大，发射间隔减小、发射轮数增多；非诗篇难度第 4 轮仅内侧两炮各射 1 发，诗篇难度第 3 与第 4 轮之间间隔翻倍；<br>②<b>黑暗涟漪</b>——从本体中心向外扩散 3 道环形弹幕，弹幕角度完全随机，每环弹数按难度递增；<br>③<b>巨大蛋挞</b>——向前方直射一枚不停旋转的巨大蛋挞；<br>④<b>爪翼毁灭蛋挞</b>——依次发射三轮超长蛋挞，真我/诗篇难度下蛋挞能在左右边界反弹1/2次；<br>⑤<b>暗影导弹雨</b>——机体发射大量黑红小型导弹，每发导弹的速度与加速度存在随机差异（0.6~1.3 倍独立浮动），释放期间本体移速降至 20%；<br>⑥<b>双标记导弹</b>——标记玩家当前瞬时位置与其水平镜像位置，机体发射大量黑红小型导弹落到这两个标记位置。<br><b>连携召唤</b>：血量降至 80% / 60% / 40% / 20% 时依次召唤连携精英协战（前两名在<span class="ency-link" data-ency="xiayong">铜皮夏勇</span>/<span class="ency-link" data-ency="puxuefeng">狞笑朴学峰</span>中随机排序、后两名在<span class="ency-link" data-ency="hanxixian">猩红韩希先</span>/<span class="ency-link" data-ency="xinguodong">暴怒辛国栋</span>中随机排序）；<br>精英在其对应血量窗口内未被击杀则迅速离场，第三轮刷怪期按固定等级返场——先回复已损失生命值的 50%，随后当前生命与生命上限均翻倍。四人全数被击败则第三轮 Lv25 召唤张华&张策；<br>场上存在任一连携精英时，黑暗之手受到的伤害降低 65%（当前为辛国栋、韩希先时改为降低 60%）；当前血量窗口的精英在本段血量内被击坠后，黑暗之手在本段血量内不再拥有减伤，且受到的普通伤害额外 +100%，随后黑暗之手永久获得该精英对应的额外技能（入池随机权重为基础技能的 2 倍）：<br>击坠<span class="ency-link" data-ency="xiayong">铜皮夏勇</span>获得<b>碎翼回旋镖</b>——左右前爪各射一枚夏勇同款回旋刃，轨道瞄准玩家当前位置并显示同款预警曲线（真我/诗篇难度下每爪快速连发两枚——两边各两枚、共四枚，单次释放）。<br>击坠<span class="ency-link" data-ency="puxuefeng">狞笑朴学峰</span>获得<b>翼根散射</b>——左右前爪各射两轮朴学峰同款扇形散射；<br>击坠<span class="ency-link" data-ency="hanxixian">猩红韩希先</span>获得<b>旋眼火螺</b>——本体两侧随机一侧释放同款三炮塔旋眼，真我/诗篇难度下两侧同时释放；<br>击坠<span class="ency-link" data-ency="xinguodong">暴怒辛国栋</span>获得<b>边界轰炸</b>——左右屏缘两列竖直依次投弹，同时本体中心竖直向下释放一轮辛国栋同款扇形轻追踪导弹；<br>如果黑暗之手死亡时有尚未召唤的精英：此前有精英逃走 → 视作未被击杀、血量仍为满；此前无任何逃走 → 视作被击杀，计入四精英全数击败。',
     },
     puxuefeng: {
       name: '狞笑朴学峰', type: 'puxuefeng', color: '#b21820', hp: 9000, score: 600,   // hp = 显示基准（具象）；实装随难度走机型级 hpByDiff（eliteHpOf，2026-10-04 用户定稿）；四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）
@@ -350,7 +369,7 @@ boss_storm: {
     hanxixian: {
       name: '猩红韩希先', type: 'hanxixian', color: '#b21820', hp: 10000, score: 600,   // hp = 显示基准（具象）；实装随难度走机型级 hpByDiff（eliteHpOf，2026-10-04 用户定稿）；四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）
       pvZoom: 0.6,   // 同四精英预览缩放（立绘放大后超出预览框）
-      desc: '驻留期尝试低速向玩家水平所在位置移动。<br>初始技能随机，技能循环如下：<br>①凝视锁定：顶部大眼射出黑红细追踪线持续跟随玩家 0.5s，随后锁定静止 0.5s（方向固定、不开火），静止结束射出粗重黑红激光（持续时长按难度 0.5/0.6/0.8/0.9s；半宽 15px、45 伤害——诗篇 55，保持横移可让激光扫空）；<br>②旋眼火螺：召唤三座发射炮塔，旋转 3s 并持续沿径向射处子弹，构成螺旋线弹幕，旋转方向中途反转一次。诗篇难度改为射出加速长条弹。<br>该敌人只能由黑暗之手召唤出现，如果未在黑暗之手战斗中被击坠，则会恢复50%已损失生命并于后续波次中再度出现。',
+      desc: '驻留期尝试低速向玩家水平所在位置移动。<br>初始技能随机，技能循环如下：<br>①凝视锁定：顶部大眼射出黑红追踪线（初始宽度 2.5 倍、逐渐收细至发射瞬间 1 倍，大眼发射位置伴随一圈收缩预警圈——出现时最大且较淡、随预警推进收缩并变实，于发射瞬间收缩完毕）持续跟随玩家 0.5s，随后锁定静止 0.5s（方向固定、不开火），静止结束射出粗重黑红激光（持续时长按难度 0.5/0.6/0.8/0.9s；半宽 15px、45 伤害——诗篇 55，保持横移可让激光扫空）；<br>②旋眼火螺：召唤三座发射炮塔，旋转 3s 并持续沿径向射处子弹，构成螺旋线弹幕，旋转方向中途反转一次。诗篇难度改为射出加速长条弹。<br>该敌人只能由黑暗之手召唤出现，如果未在黑暗之手战斗中被击坠，则会恢复50%已损失生命并于后续波次中再度出现。',
     },
     xiayong: {
       name: '铜皮夏勇', type: 'xiayong', color: '#b21820', hp: 12000, score: 600,   // hp = 显示基准（具象）；实装随难度走机型级 hpByDiff（eliteHpOf，2026-10-04 用户定稿）；四精英统一黑红；分数 600（2026-10-13 用户定稿 1000→600，总表待同步）
@@ -375,6 +394,89 @@ boss_storm: {
       name: '虚幻', type: 'unreal', color: '#bfe8ff', hp: 600, score: 500,
       lore: '敌方人员操纵的无人战舰，飞行速度缓慢。携带有特殊冰爆弹头，将会在接近我方战机时投掷，造成群体法术伤害以及寒冷效果。属于暴鸰的衍生机体，为了携带特殊弹头而失去了空载加速的能力。',
       desc: '能够投掷一次自身携带的寒霜炸弹，造成范围伤害并留下减速区域，使得范围内我方战机射速/移速 -35%。<br>玩家进入索敌半径后，停止移动、在玩家位置浮现蓝色预警区，随后炸弹脱离，经 0.6~0.8s低速下坠再极速加速冲向预警区中心爆炸。<br>预警区形成前被击毁则原地殉爆，对周围 200px 内所有敌方单位造成 420 + 14% 最大生命伤害（封顶 1400，可连锁殉爆），并留下一片只对敌人生效的寒冷区域；预警区一旦形成，炸弹即视为脱离，击坠虚幻也无法终止，炸弹仍将抵达目标位置并爆炸。<br>能从顶部和侧翼入场。',
+    },
+
+    // ---------- 2026-10-19 占位批次（16 条，用户定稿登记）：wip 白方块占位，名称与（颜色）后缀、「归星」书名号均按用户原文；
+    // 等级代号见 01-config ENEMY_GRADES（图鉴名称行右侧角标自动拼出「2D 坍缩构造体」等），实装时逐个换专属外观/数值/机制 ----------
+    collapseConstruct: {
+      name: '坍缩构造体', type: 'collapseConstruct', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    stasisUnreal: {
+      name: '静滞虚幻', type: 'stasisUnreal', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    cocoonDream: {
+      name: '破茧之梦', type: 'cocoonDream', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    guiltGrail: {
+      name: '愧悔魂灵圣杯', type: 'guiltGrail', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    returnStar: {
+      name: '「归星」', type: 'returnStar', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记；名称含书名号按用户原文）。',
+    },
+    starsVoice: {
+      name: '群星之音', type: 'starsVoice', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    beyondWing_red: {
+      name: '炽翼超越艇（红）', type: 'beyondWing_red', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记；（颜色）后缀按用户原文）。',
+    },
+    beyondWing_blue: {
+      name: '奔雷超越艇（蓝）', type: 'beyondWing_blue', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    beyondWing_violet: {
+      name: '织夜超越艇（深蓝紫）', type: 'beyondWing_violet', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    beyondWing_cyan: {
+      name: '时流超越艇（青）', type: 'beyondWing_cyan', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    beyondWing_pink: {
+      name: '浮梦超越艇（淡粉）', type: 'beyondWing_pink', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    lanxinShip_blue: {
+      name: '洪流澜心舰（蓝）', type: 'lanxinShip_blue', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    lanxinShip_white: {
+      name: '白影澜心舰（白）', type: 'lanxinShip_white', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    lanxinShip_black: {
+      name: '终日澜心舰（黑）', type: 'lanxinShip_black', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    lanxinShip_violet: {
+      name: '洄星澜心舰（深蓝紫）', type: 'lanxinShip_violet', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+    },
+    lanxinShip_pink: {
+      name: '似幻澜心舰（淡粉）', type: 'lanxinShip_pink', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
     },
   };
 
@@ -462,8 +564,8 @@ boss_storm: {
       ? `<button class="ency-challenge-btn boss" id="encyTrialBtn">⚔ BOSS 试炼</button>
          <button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>
          <div class="ency-challenge-hint">BOSS 试炼：正常战斗，敌我均会受损、可被击坠<br />测试该敌人：1~5 切换火力等级 · 高能爆弹无限（直接击杀全场）<br />= 召唤 1 个 · Shift+= 召唤 10 个（场上仅 1 个目标时先清场）</div>`
-      : d.derived
-        ? ''
+      : d.derived || d.wip
+        ? ''   // 衍生条目无独立入场；wip 占位条目未实装（ENEMY_TYPES 无键——测试会 makeEnemy 崩）不提供测试
         : `<button class="ency-challenge-btn" id="encyChallengeBtn">🔬 测试该敌人</button>`;
     // 等级（类别 + 类内强度档 A~F，权威表见 01-config ENEMY_GRADES）：仅普通敌机有条目 key；
     // BOSS（长歌级）/ 卫护飞船 escort / 龙卷 tornado 等衍生条目无 key → 名称行右侧不显示
@@ -483,8 +585,8 @@ boss_storm: {
       <div class="ency-detail-desc">${d.lore ? `<div class="ency-detail-lore">${d.lore}</div><div class="ency-lore-divider"></div>` : ''}${d.desc}${diffNote ? `<hr /><div class="ency-diff-note"><b>${currentDifficulty.name} · 技能组修正</b><br />${diffNote}</div>` : ''}</div>
       ${actionHtml}
     `;
-    // 绘制预览（220×140 大图）
-    drawEncyPreview(d, document.getElementById('encyPreview'));
+    // 绘制预览（220×140 大图，live 动画循环：常态动效逐帧播放）
+    startEncyPreviewLoop(d, document.getElementById('encyPreview'));
     // 跨条目跳转链接（衍生级 ↔ 母体互链）：点击切换分页并选中目标条目
     encyDetail.querySelectorAll('.ency-link').forEach(el => {
       el.addEventListener('click', () => jumpToEncyEntry(el.dataset.ency));
@@ -531,7 +633,7 @@ boss_storm: {
   // 1) 每类别按表权重加权随机一个职能池（大类）——多槽同类整组共用这一次大类判定；池内按职能表「当前等级档」权重随机具体敌人
   // 2) 整组 8% 概率锁定为同一种具体敌人（如 2*7 的 7 架全部刷成赤红突击艇）
   // 3) 回退链：落到的池在当前等级档全无权重 → 按表权重序环形找下一个有权重的池；全部大类均不可刷 →
-  //    固定生成 赤月侧翼艇（1类）/ 赤红突击艇（2类）/ 赤红炮艇（3类）/ 赤红主力舰（4类）
+  //    固定生成 赤月侧翼艇（1类）/ 赤红突击艇（2类）/ 赤红战舰（3类）/ 赤红主力舰（4类）
   // 「N类全部」池 = 该类全部职能组成员并集去重（排除 reserved 与奖励无人舰）；fixed 波（z*/y*/h*）不走抽取直接映射。
   // 抽取在图鉴侧完成（职能表 INFO_T1_GROUPS / 权重表 WAVE_SPAWN_W 在本模块，04-spawn 反向 import 会成环），
   // plan 元素 { type, variant, behavior } 直接喂给 04-spawn 的 spawnChallengeTargetOne(ovr) 正规骨架。
@@ -604,16 +706,21 @@ boss_storm: {
       } else if (cls === 'w') entries = ['warGhost'];
       else if (cls === 'y') entries = Array(n).fill('striker_dusk');
       else if (cls === 'h') {
-        // h*1/h*2（单导弹/双导弹）：召唤「3类攻击后位」池敌人（2026-10-12 用户定稿）——
-        // 当前池仅炮火先兆者 → 实际生成不变；后续后位池扩员（如 3C 中枢炮火先兆者）自动跟上
-        const pool = t3ResolvePool('3类攻击后位', 3);
-        entries = [];
-        for (let k = 0; k < n; k++) entries.push((pool && t3PickFromPool(pool, tier)) || 'harbinger');
+      // h*1/h*2（单导弹/双导弹）：召唤「3类攻击后位」池敌人（2026-10-12 用户定稿；2026-10-16 池扩员为
+      // 先兆者家族四型 3A/3B/3C/3D——按后位权重表抽取）
+      const pool = t3ResolvePool('3类攻击后位', 3);
+      entries = [];
+      for (let k = 0; k < n; k++) entries.push((pool && t3PickFromPool(pool, tier)) || 'harbinger');
       }
       else {
         const pools = (WAVE_SPAWN_W[f.id] && WAVE_SPAWN_W[f.id][cls]) || WAVE_SPAWN_W_DEFAULT[cls] || [];
+        // Lv≤5 不出现 3类攻击重装 / 3类攻击后位（2026-10-18 用户定稿，后位同日追加）：先从大类权重表剔除这两个池
+        // 再抽取，落空走既有环形回退链（各卡其余 3类池均非空，不会触发兜底）
+        const poolsEff = levelFlow.level <= 5
+          ? pools.filter(p => p[0] !== '3类攻击重装' && p[0] !== '3类攻击后位')
+          : pools;
         // 大类抽取：按表权重加权随机落点；落到的池当前档不可刷 → 从落点起按表权重序环形回退找下一个有权重的池
-        const weighted = pools.filter(p => p[1] > 0);
+        const weighted = poolsEff.filter(p => p[1] > 0);
         let pool = null;
         if (weighted.length) {
           let total = 0;
@@ -688,8 +795,29 @@ boss_storm: {
 
   // 图鉴预览：复用游戏内真实绘制逻辑（经 withPreviewCtx 临时将全局 ctx 指向目标画布）
   // 详情大图与列表缩略图共用；small = 缩略图模式：严格按比例完整显示（不设缩放上下限）
+  // live = 动画渲染（2026-10-17 预览动画化）：以独立单调时钟逐帧重绘，常态动效（旋翼/尾焰/光环呼吸/
+  // 充能循环等）全部播放、本体位置不动；静态路径（缩略图等）保持冻结 T=10 的单帧渲染。
 
-  function drawEncyPreview(d, cvs, LW = 220, LH = 140, small = false) {
+  // live 渲染的帧间复用缓存（按条目对象键；静态路径每次新建画布不受影响，live 首帧建、后续帧复用）
+  const pvOffCache = new Map();      // d → { off, dim } 离屏画布（避免动画循环每帧新建 canvas）
+  const pvBoxLayout = new Map();     // d → { bcx, bcy, s } BOSS / 战争幽灵 alpha 包围盒扫描结果（逐帧 getImageData 扫描太贵）
+  function getPvOff(d, dim, live) {
+    if (!live) {
+      const off = document.createElement('canvas');
+      off.width = dim; off.height = dim;
+      return off;
+    }
+    let c = pvOffCache.get(d);
+    if (!c || c.dim !== dim) {
+      const off = document.createElement('canvas');
+      off.width = dim; off.height = dim;
+      c = { off, dim };
+      pvOffCache.set(d, c);
+    }
+    return c.off;
+  }
+
+  function drawEncyPreview(d, cvs, LW = 220, LH = 140, small = false, live = false) {
     if (!cvs) return;
     // 高 DPI 适配：物理像素按 DPR 放大
     cvs.width = LW * DPR;
@@ -699,11 +827,11 @@ boss_storm: {
     const pctx = cvs.getContext('2d');
     pctx.scale(DPR, DPR);
     pctx.clearRect(0, 0, LW, LH);
-    // 预览时间基准冻结（2026-10-03 修复：多次点击威龙预览图变化）——威龙旋翼相位 spin = state.time*26、
-    // 脉动 glow 等绘制内读 state.time，单次渲染取点击时刻相位导致每次点击画面不同；
-    // 预览统一固定 T=10 静态一帧（warGhost 分支显式取 t=1.2 静态帧同一思路），同步渲染先存后还原
+    // 预览时间基准：静态渲染冻结 T=10（2026-10-03 修复：多次点击威龙预览图变化——单次渲染取点击时刻
+    // 相位导致每次点击画面不同）；live 动画渲染改用独立单调时钟（performance.now——图鉴打开期间或暂停中
+    // state.time 可能停走，独立时钟保证动效连续），渲染完恢复
     const timeSaved = state.time;
-    state.time = 10;
+    state.time = live ? performance.now() / 1000 : 10;
     try {
     withPreviewCtx(pctx, () => {
       if (d.wip) {
@@ -736,85 +864,96 @@ boss_storm: {
         const gl = 1.7;   // 离屏覆盖的世界边长系数：max(w,h) × 1.7，为辉光外溢留边距
         const world = Math.max(spec.w, spec.h) * gl;
         const dim = Math.ceil(world * DPR);
-        const off = document.createElement('canvas');
-        off.width = dim; off.height = dim;
+        const off = getPvOff(d, dim, live);
         const octx = off.getContext('2d');
         withPreviewCtx(octx, () => {
+          octx.setTransform(1, 0, 0, 1, 0, 0);
+          octx.clearRect(0, 0, off.width, off.height);   // live 复用画布需清屏（静态路径新建本就空白，clear 幂等）
           octx.scale(DPR, DPR);
           octx.translate(dim / (2 * DPR), dim / (2 * DPR));
           if (spec.bossId === 'storm2') {
-            drawBoss({ type: 'boss', bossId: 'storm2', x: 0, y: 0, w: spec.w, phase: 'preview', ency: true });
+            drawBoss({ type: 'boss', bossId: 'storm2', x: 0, y: 0, w: spec.w, phase: 'preview', ency: !live, flameT: live ? state.time : null });
           } else {
-            // phase:'preview' 跳过血条和黑洞特效，直接展示完整机体
-            drawBoss({ type: 'boss', bossId: spec.bossId, x: 0, y: 0, w: spec.w, h: spec.h, hp: spec.w, maxHp: spec.w, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [], rot: 0, ency: true });
+            // phase:'preview' 跳过血条和黑洞特效，直接展示完整机体；
+            // rot/flameT：暴风之眼自转 & 黑暗之手尾焰/流光相位（live 大图随时钟推进——常态动效；小图 null = 旧静帧机体；
+            // ency:live 解锁旧日之歌流彩转色——小图仍锁定泛白紫）
+            drawBoss({ type: 'boss', bossId: spec.bossId, x: 0, y: 0, w: spec.w, h: spec.h, hp: spec.w, maxHp: spec.w, phase: 'preview', scale: 1, skill: null, unfoldT: 1, parts: [], rot: live ? -state.time * 1.4 : 0, flameT: live ? state.time : null, ency: !live });
           }
         });
-        // 扫描 alpha 包围盒（设备像素）
-        const img = octx.getImageData(0, 0, dim, dim).data;
-        let minX = dim, minY = dim, maxX = -1, maxY = -1;
-        for (let y = 0; y < dim; y++) {
-          for (let x = 0; x < dim; x++) {
-            if (img[(y * dim + x) * 4 + 3] > 8) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
+        // alpha 包围盒扫描：静态路径每次算；live 动画循环按条目缓存（逐帧 getImageData 全屏扫描太贵——
+        // 动效相位变化不改变机体轮廓量级，首帧包围盒的 gl 边距余量足够容纳）
+        let lay = live ? pvBoxLayout.get(d) : null;
+        if (!lay) {
+          const img = octx.getImageData(0, 0, dim, dim).data;
+          let minX = dim, minY = dim, maxX = -1, maxY = -1;
+          for (let y = 0; y < dim; y++) {
+            for (let x = 0; x < dim; x++) {
+              if (img[(y * dim + x) * 4 + 3] > 8) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
             }
           }
+          if (maxX < 0) return;   // 离屏无内容（异常兜底）
+          // 包围盒换算为 CSS 像素（相对画布中心的世界坐标）
+          const bx0 = minX / DPR - world / 2, bx1 = (maxX + 1) / DPR - world / 2;
+          const by0 = minY / DPR - world / 2, by1 = (maxY + 1) / DPR - world / 2;
+          const bw = bx1 - bx0, bh = by1 - by0;
+          // 目标缩放：包围盒尽量占满画布（留 6% 边距），宽高取小者；缩略图同规则自动适配
+          // fitMul：条目级二次缩放（风暴编织者本体较小，预览不再撑满，与前两位 BOSS 保持体量差）
+          lay = { bcx: (bx0 + bx1) / 2, bcy: (by0 + by1) / 2, s: Math.min(LW * 0.88 / bw, LH * 0.88 / bh) * (spec.fitMul || 1) };
+          if (live) pvBoxLayout.set(d, lay);
         }
-        if (maxX < 0) return;   // 离屏无内容（异常兜底）
-        // 包围盒换算为 CSS 像素（相对画布中心的世界坐标）
-        const bx0 = minX / DPR - world / 2, bx1 = (maxX + 1) / DPR - world / 2;
-        const by0 = minY / DPR - world / 2, by1 = (maxY + 1) / DPR - world / 2;
-        const bw = bx1 - bx0, bh = by1 - by0;
-        const bcx = (bx0 + bx1) / 2, bcy = (by0 + by1) / 2;
-        // 目标缩放：包围盒尽量占满画布（留 6% 边距），宽高取小者；缩略图同规则自动适配
-        // fitMul：条目级二次缩放（风暴编织者本体较小，预览不再撑满，与前两位 BOSS 保持体量差）
-        const s = Math.min(LW * 0.88 / bw, LH * 0.88 / bh) * (spec.fitMul || 1);
         pctx.save();
         pctx.imageSmoothingEnabled = true;
         pctx.imageSmoothingQuality = 'high';
-        pctx.translate(LW / 2 - bcx * s, LH / 2 - bcy * s);
-        pctx.scale(s, s);
+        pctx.translate(LW / 2 - lay.bcx * lay.s, LH / 2 - lay.bcy * lay.s);
+        pctx.scale(lay.s, lay.s);
         pctx.drawImage(off, -world / 2, -world / 2, world, world);
         pctx.restore();
       } else if (d.type === 'warGhost') {
         // 战争幽灵：测试1候选绘制器（B2 定稿图 paintWarGhostCandidate）+ alpha 包围盒自适应居中缩放（同 BOSS 法）。
         // 巨镰前指 66 / 四帆远扫 / 尾焰等绘制内容远超碰撞盒，按碰撞盒 fit 会裁切或偏小——按包围盒完整入图定大小；
-        // 静态一帧取 t=1.2（流光行至中段、核脉动中等相位）；详情大图与列表缩略图共用本分支
+        // 静态一帧取 t=1.2（流光行至中段、核脉动中等相位）；live 动画：t 随独立时钟连续推进（流光/呼吸/尾焰全程播放）
         const world = 150;   // 离屏覆盖边长（±75）：候选形态绘制半径约 56（镰尖 54 / 帆 44 / 焰尾 46）+ 辉光外溢裕量
         const dim = Math.ceil(world * DPR);
-        const off = document.createElement('canvas');
-        off.width = dim; off.height = dim;
+        const off = getPvOff(d, dim, live);
         const octx = off.getContext('2d');
         withPreviewCtx(octx, () => {
+          octx.setTransform(1, 0, 0, 1, 0, 0);
+          octx.clearRect(0, 0, off.width, off.height);
           octx.scale(DPR, DPR);
           octx.translate(dim / (2 * DPR), dim / (2 * DPR));
-          paintWarGhostCandidate(octx, 1.2);
+          paintWarGhostCandidate(octx, live ? state.time : 1.2);
         });
-        const img = octx.getImageData(0, 0, dim, dim).data;
-        let minX = dim, minY = dim, maxX = -1, maxY = -1;
-        for (let y = 0; y < dim; y++) {
-          for (let x = 0; x < dim; x++) {
-            if (img[(y * dim + x) * 4 + 3] > 8) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
+        let lay = live ? pvBoxLayout.get(d) : null;
+        if (!lay) {
+          const img = octx.getImageData(0, 0, dim, dim).data;
+          let minX = dim, minY = dim, maxX = -1, maxY = -1;
+          for (let y = 0; y < dim; y++) {
+            for (let x = 0; x < dim; x++) {
+              if (img[(y * dim + x) * 4 + 3] > 8) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
             }
           }
+          if (maxX < 0) return;
+          const bx0 = minX / DPR - world / 2, bx1 = (maxX + 1) / DPR - world / 2;
+          const by0 = minY / DPR - world / 2, by1 = (maxY + 1) / DPR - world / 2;
+          const bw = bx1 - bx0, bh = by1 - by0;
+          lay = { bcx: (bx0 + bx1) / 2, bcy: (by0 + by1) / 2, s: Math.min(LW * 0.88 / bw, LH * 0.88 / bh) };
+          if (live) pvBoxLayout.set(d, lay);
         }
-        if (maxX < 0) return;
-        const bx0 = minX / DPR - world / 2, bx1 = (maxX + 1) / DPR - world / 2;
-        const by0 = minY / DPR - world / 2, by1 = (maxY + 1) / DPR - world / 2;
-        const bw = bx1 - bx0, bh = by1 - by0;
-        const bcx = (bx0 + bx1) / 2, bcy = (by0 + by1) / 2;
-        const s = Math.min(LW * 0.88 / bw, LH * 0.88 / bh);
         pctx.save();
         pctx.imageSmoothingEnabled = true;
         pctx.imageSmoothingQuality = 'high';
-        pctx.translate(LW / 2 - bcx * s, LH / 2 - bcy * s);
-        pctx.scale(s, s);
+        pctx.translate(LW / 2 - lay.bcx * lay.s, LH / 2 - lay.bcy * lay.s);
+        pctx.scale(lay.s, lay.s);
         pctx.drawImage(off, -world / 2, -world / 2, world, world);
         pctx.restore();
       } else {
@@ -827,14 +966,19 @@ boss_storm: {
         // （A2 等强发光敌人的缩略图会被辉光糊成一片白）；先大后小可让辉光/实体比例与游戏内完全一致。
         const drawOffscreen = (spec) => {
           const t = ENEMY_TYPES[spec.type];
-          const gl = 1.9;   // 离屏边长 = max(w,h) × 1.9：为辉光外溢留边距
-          const dim = Math.ceil(Math.max(t.w, t.h) * gl * DPR);
-          const off = document.createElement('canvas');
-          off.width = dim; off.height = dim;
+          // pvDrawScale：条目级绘制分辨率倍率（浮海飘航者——杆体视觉 138 设计像素 ×drawScale 0.35 ≈48 世界像素，
+          // 按盒算的离屏源里只占 ≈48×DPR 物理像素、blit 放大后必然发糊；K 倍率 = octx.scale(DPR×K) → 内容占源像素 ×K，
+          // dim 同比放大防裁切，world 返回值不含 K → blit 显示尺寸不变、仅分辨率提高；未设条目 K=1 行为不变）
+          const K = spec.pvDrawScale || 1;
+          const gl = 1.9;   // 离屏覆盖世界边长 = max(w,h) × 1.9：为辉光外溢留边距（与 K 无关）
+          const dim = Math.ceil(Math.max(t.w, t.h) * gl * K * DPR);
+          const off = getPvOff(spec, dim, live);
           const octx = off.getContext('2d');
           withPreviewCtx(octx, () => {
-            octx.scale(DPR, DPR);
-            octx.translate(dim / (2 * DPR), dim / (2 * DPR));
+            octx.setTransform(1, 0, 0, 1, 0, 0);
+            octx.clearRect(0, 0, off.width, off.height);
+            octx.scale(DPR * K, DPR * K);
+            octx.translate(dim / (2 * DPR * K), dim / (2 * DPR * K));
             drawEnemy({
               type: spec.type, x: 0, y: 0, w: t.w, h: t.h,
               color: spec.color, variant: spec.variant || null, behavior: spec.behavior || null, skill: sk(spec),
@@ -845,10 +989,26 @@ boss_storm: {
               ringsLeft: spec.variant === 'crgold' ? 2 : null, ringT: spec.variant === 'crgold' ? 1 : null,
               // 4S 精英（drawEnemy 精英绘制分支按 elPhase 路由）：预览按驻留相位走精英立绘（无技能状态、特效全空）
               elPhase: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'].includes(spec.type) ? 1 : null,
-              encyPreview: true,   // 图鉴预览标记：辛国栋尾焰等动态机身特效在预览中不绘制（drawEliteBody 门控）
+              // 绘制门控（09b 浮海尾鳍 / 10 精英尾焰消费）：小图缩略图 true = 旧静帧（尾鳍对称、无精英尾焰）；
+              // 大图 live 渲染 false = 常态动效照常播放（2026-10-17 回调：动效仅大图，小图不注入任何动效字段）
+              encyPreview: !live,
+              // ── 常态动效 mock（仅 live 大图展开；小图保持改动前的静帧 mock，一个动效字段都不带）──
+              ...(live ? {
+                wobble: 0,
+                auraT: 99,                 // 寒霜/御4/铁砧/焦香/法术阵列 光环满渐显
+                chargeWave: 1,             // 先兆者家族按后续波节奏（2s 红 + 1s 灰 + 保持）
+                chargeT: state.time % 4.5, // 充能循环推进
+                rot: state.time * FASHI_MATRIX.bodySpinMin,   // 法术矩阵/脉冲矩阵本体自旋
+                jxSpinA: state.time * JIAOXIANG.spinA,        // 焦香三横杠异速旋转
+                jxSpinB: state.time * JIAOXIANG.spinB,
+                jxSpinC: state.time * JIAOXIANG.spinC,
+                fireTimer: PULSE_MATRIX.fireInterval * (1 - (state.time % PULSE_MATRIX.fireInterval) / PULSE_MATRIX.fireInterval),   // 脉冲矩阵五档张合循环（fireTimer==null 会落入离场分支，必须给值）
+                vx: 0, vy: POPIAN.speed,   // 破片/破片U 尾焰按巡航移动状态显现（spdF=1；vy 正向与 faceAng=0 机头朝下一致）
+                elT: state.time,           // 4S 精英尾焰抖动相位
+              } : {}),
             });
           });
-          return { off, world: Math.max(t.w, t.h) * gl };   // world：离屏覆盖的世界边长（含辉光边距）
+          return { off, world: Math.max(t.w, t.h) * gl };   // world：离屏覆盖的世界边长（含辉光边距；不含 K——blit 显示尺寸不变）
         };
         // 贴图辅助：把离屏画布缩放后居中贴到目标画布（cx, cy 为 CSS 像素中心，s 为世界→CSS 像素缩放）
         const blit = (img, cx, cy, s) => {
@@ -860,8 +1020,9 @@ boss_storm: {
         {
           const z = d.pvZoom || 1;   // 条目级预览缩放（法术阵列等视觉紧凑的敌机放大展示）
           // 缩略图：不设下限（4 类等大体型完整入图），上限与详情图一致（1.7）；pvZoom 仅允许缩小缩略图
-          // （Math.min(1, z) 封顶——放大展示不作用于缩略图；卫护飞船等小体型衍生体则按实机大小展示）
-          const scale = small ? Math.min(fit, 1.7) * Math.min(1, z) : clamp(fit * z, 0.4, 1.7 * z);
+          // （Math.min(1, z) 封顶——放大展示不作用于缩略图；卫护飞船等小体型衍生体则按实机大小展示）；
+          // pvZoomSmall：条目级小预览专用放大（浮海飘航者——杆体视觉跨度远超碰撞盒，fit 按盒算过小；未设条目行为不变）
+          const scale = small ? Math.min(fit, 1.7) * (d.pvZoomSmall || Math.min(1, z)) : clamp(fit * z, 0.4, 1.7 * z);
           // pvDy：条目级预览垂直偏移（世界像素，随 scale 缩放）——机身挂载大件炸弹的敌机（暴鸰·G）
           // 构图包围盒中心偏下，据此上移使视觉中心与暴鸰一致
           blit(drawOffscreen(d), LW / 2, LH / 2 + (d.pvDy || 0) * scale, scale);
@@ -871,6 +1032,31 @@ boss_storm: {
     } finally {
       state.time = timeSaved;
     }
+  }
+
+  // ---------- 详情预览动画循环（2026-10-17：预览图带常态动效——本体不动、动效播放） ----------
+  // 单画布 rAF 循环：showEncyDetail 启动 / closeEncyclopedia 或画布随详情面板重建离场时自停。
+  // isConnected 仅在真实 DOM 上为 boolean——smoke 无头画布桩返回桩值（非 boolean）→ 只同步渲染首帧、不入循环，
+  // 保证 smoke 不因逐帧预览渲染而拖慢/超时。
+  let pvAnimRaf = 0, pvAnimEntry = null, pvAnimCvs = null;
+  function stopEncyPreviewLoop() {
+    if (pvAnimRaf) cancelAnimationFrame(pvAnimRaf);
+    pvAnimRaf = 0; pvAnimEntry = null; pvAnimCvs = null;
+  }
+  function pvAnimFrame() {
+    pvAnimRaf = 0;
+    if (!pvAnimEntry || !pvAnimCvs) return;
+    if (!pvAnimCvs.isConnected) { stopEncyPreviewLoop(); return; }   // 详情面板已重建/移除
+    drawEncyPreview(pvAnimEntry, pvAnimCvs, 220, 140, false, true);
+    pvAnimRaf = requestAnimationFrame(pvAnimFrame);
+  }
+  function startEncyPreviewLoop(d, cvs) {
+    stopEncyPreviewLoop();
+    if (!cvs) return;
+    drawEncyPreview(d, cvs, 220, 140, false, true);   // 首帧同步渲染（覆盖 smoke 无头路径的渲染验证）
+    if (typeof cvs.isConnected !== 'boolean' || !cvs.isConnected) return;   // 无头桩：不入循环
+    pvAnimEntry = d; pvAnimCvs = cvs;
+    pvAnimRaf = requestAnimationFrame(pvAnimFrame);
   }
 
   // ---------- 快捷切换难度（图鉴头部，关闭按钮左侧） ----------
@@ -914,6 +1100,7 @@ boss_storm: {
   }
 
   function closeEncyclopedia() {
+    stopEncyPreviewLoop();   // 详情预览动画循环随面板关闭停止（画布仅被隐藏不移除，必须显式停）
     encyclopedia.classList.add('hidden');
     // 仅战斗态遮罩（暂停 / 结算）需要恢复显示；主菜单（idle 且非胜利结算）本就无遮罩，
     // 关闭图鉴时不得把遮罩（含其初始占位文案「已暂停 / 继续游戏」）带到主菜单上
@@ -981,7 +1168,7 @@ boss_storm: {
     },
     {
       fn: spawnMirrorRow, name: '232232', ency: 'striker_crimson', period: 5.6,
-      note: '「232232」对称横排：4 架 2类（短停留后冲锋）+ 2 架 3类炮艇（稍慢、悬停压阵）',
+      note: '「232232」对称横排：4 架 2类（短停留后冲锋）+ 2 架 3类战舰（稍慢、悬停压阵）',
       sim: () => {
         const x0 = (CANVAS_W - 5 * 70) / 2, out = [];
         for (let k = 0; k < 6; k++) {
@@ -1029,7 +1216,7 @@ boss_storm: {
     },
     {
       fn: spawnDiagonalRaid, name: '232111', ency: 'gunship_violet', period: 11,
-      note: '「232111」：6 架混编沿对角线自上角斜插——2类领头、3类炮艇第二、2类第三、三个 1类殿后（1类近竖直下落、2类停留后冲锋、炮艇悬停）',
+      note: '「232111」：6 架混编沿对角线自上角斜插——2类领头、3类战舰第二、2类第三、三个 1类殿后（1类近竖直下落、2类停留后冲锋、战舰悬停）',
       sim: () => {
         const out = [];
         for (let k = 0; k < 6; k++) {
@@ -1043,7 +1230,7 @@ boss_storm: {
     },
     {
       fn: spawnGunshipWings, name: '32223', ency: 'gunship_violet', period: 5.6,
-      note: '「32223」：左右各 1 艘 3类炮艇压阵（悬停）+ 中央 3 架 2类护航（短停留后冲锋）',
+      note: '「32223」：左右各 1 艘 3类战舰压阵（悬停）+ 中央 3 架 2类护航（短停留后冲锋）',
       sim: () => {
         const cx = CANVAS_W / 2, out = [];
         for (const sx of [-1, 1]) out.push(fu('gunship_violet', cx + sx * 150, -60, 0, 62, { holdY: 140 }));
@@ -1363,7 +1550,7 @@ boss_storm: {
     return rows;
   }
 
-  // 真我级（3类）行：槽位权重（普通炮艇三色为独立条目，槽位抽取直接决定涂装；
+  // 真我级（3类）行：槽位权重（普通战舰三色为独立条目，槽位抽取直接决定涂装；
   // 御4 Lv1~10 由 0→10 线性过渡，表中取各档起始等级值）；0 = 该阶段不出场
   function infoSpecial3Rows() {
     return SPECIAL3_POOL.map(it => ({
@@ -1448,7 +1635,7 @@ boss_storm: {
       infoAppendNote(INFO_TIER_NOTE + '2类突击艇出场时按变体权重选取涂装，权重按关卡分两档直接取值（Lv1~10：赤红30/烈橙30/幽蓝25/紫晶25/霜白20/坚垒25/幽暮2；Lv11~20：10/10/10/10/5/10/5）。法术大师A1 / 破片 / 法术矩阵为 2类突击艇的<b>出场替换概率</b>（判定顺序 A1 → 破片 → 法术矩阵）；<b>奖励无人舰</b>（斗志昂扬 / 赞助无人舰 / 豪华赞助无人舰）为<b>每次关卡提升</b>时按当前难度概率刷新一架（每次至多一架，非波次权重，击败 BOSS 的跳变升级不触发），三种按 ' + REWARD_DRONES.weights.douzhi + '/' + REWARD_DRONES.weights.sponsor + '/' + REWARD_DRONES.weights.sponsorDeluxe + ' 加权抽取（触发概率：虚象 12% / 具象 10% / 真我与诗篇 7%）。');
     } else if (infoWeightKind === 'special3') {
       infoBody.appendChild(buildWeightTable(headers, infoSpecial3Rows()));
-      infoAppendNote(INFO_TIER_NOTE + '特殊3类<b>随常规波次登场</b>（每波 25% 概率附带一台，按表中权重抽取）。<b>0 表示该阶段不出场</b>；Lv11 以下仅三色炮艇（合计 260） / 先兆者出场，Lv11 起按高权重列抽取。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>（场上已有同种则该次不生成），其余特殊3类不限数量。紫晶 / 赤红 / 金曜炮艇为<b>独立条目</b>（紫80 / 赤100 / 金80），抽取直接决定涂装。');
+      infoAppendNote(INFO_TIER_NOTE + '特殊3类<b>随常规波次登场</b>（每波 25% 概率附带一台，按表中权重抽取）。<b>0 表示该阶段不出场</b>；Lv11 以下仅三色战舰（合计 260） / 先兆者出场，Lv11 起按高权重列抽取。<b>寒霜 / 御4 / 铁砧 同屏同种限 1</b>（场上已有同种则该次不生成），其余特殊3类不限数量。紫晶 / 赤红 / 金曜战舰为<b>独立条目</b>（紫80 / 赤100 / 金80），抽取直接决定涂装。');
     } else if (infoWeightKind === 'capital') {
       infoBody.appendChild(buildWeightTable(headers, infoCapitalRows()));
       infoAppendNote(INFO_TIER_NOTE + '4类主力舰<b>同屏限 1</b>，由场面压力系统驱动出场，表中为出场时的<b>变体选取权重</b>（按关卡分两档）。苍蓝主力舰 20% 概率带护盾（前 5s 虚化不受伤害、炮弹穿过）。');
@@ -1462,7 +1649,7 @@ boss_storm: {
       swarmBtn.addEventListener('click', () => startSwarmTest());
       infoBody.appendChild(swarmBtn);
       infoAppendNote('持续刷怪测试：<b>锁定 Lv20 强度一直刷怪</b>——不推进等级、永不进警报 / BOSS，波次刷新与正常战斗一致（敌方按注册表<b>正常血量</b>，不加分、不掉水晶 / 道具）。页内常规作弊键（1~5 / 8 / 9）全部停用，数字键改为直接发放奖励道具（<b>立刻生效</b>）：<b>1</b> 牢大特饮 · <b>2</b> 磁力菇 · <b>3</b> 不再陵落 · <b>4</b> 寒霜发生器 · <b>5</b> 辛国栋大怒 · <b>6</b> 轰轰炸弹 · <b>8</b> 绷绷背包 · <b>9</b> 酒客之影 · <b>0</b> 瓶中精灵。');
-      infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含炮艇编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。点击行内「<b>测试</b>」按钮可整波实测：场上清空后自动补刷同编队，战斗中按 <b>=</b> 额外追加一整波（不清场，可观察多波叠加）。');
+      infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含战舰编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。点击行内「<b>测试</b>」按钮可整波实测：场上清空后自动补刷同编队，战斗中按 <b>=</b> 额外追加一整波（不清场，可观察多波叠加）。');
     }
   }
 
@@ -1601,7 +1788,7 @@ boss_storm: {
       ['增益无人舰', '6%', '6%', '6%'],
     ]);
     infoAppendNote('「波次权重」表中这三张卡填的是<b>每波触发概率</b>（非权重）：逐项独立掷取、与①②互不影响；<b>单导弹与双导弹互斥</b>（单导弹命中则本波不再判双导弹）；任何权重抽取（主战 / 侧翼 / 额外）都不会随机到这三张卡。');
-    infoAppendNote('数值来源：桌面《波次权重填数表.xlsx》（2026-10-12 用户填写，以表为准）；机制登记见《诗篇难度修正.md》。非诗篇难度：主战波同走「等级权重 → tier 内按表抽卡」（<b>不限定位</b>——无 1前1后配对要求，侧翼随池、许凯狗冲刺仍排除侧翼；Lv5 起保留概率组合波），仍走场面压力系统（低于阈值加速召唤下一波）；<b>特殊级 / 额外级</b>改为<b>每次升级时判定</b>（概率/权重同诗篇额外通道：额外波次 50%/100%/100% + 真额外三项；BOSS 战/结算窗口内升级不判定）；游戏等级上限 31（终局 BOSS 关），Lv31 档沿用 Lv21~30 行等级权重。');
+    infoAppendNote('数值来源：桌面《波次权重填数表.xlsx》（2026-10-12 用户填写，以表为准）；机制登记见《诗篇难度修正.md》。非诗篇难度：主战波同走「等级权重 → tier 内按表抽卡」（<b>不限定位</b>——无 1前1后配对要求，侧翼随池、许凯狗冲刺仍排除侧翼；Lv5 起保留概率组合波），仍走场面压力系统（低于阈值加速召唤下一波）；<b>特殊级 / 额外级</b>改为<b>每次升级时判定</b>（概率/权重同诗篇额外通道：额外波次 50%/100%/100% + 真额外三项；BOSS 战/结算窗口内升级不判定）；游戏等级上限 31（终局 BOSS 关），Lv31 档沿用 Lv21~30 行等级权重。<b>Lv5 及之前不出现「3类攻击重装 / 3类攻击后位」池</b>——波次构成抽取与单导弹概率卡一并封禁（单导弹 = 召唤后位池敌人；2026-10-18 用户定稿，重装同日先批）。');
   }
 
   // 刷怪权重板块（权重 → 「刷怪权重」子页，原「波次刷怪权重」2026-10-12 用户定稿更名；承接测试3各波次，数据见 WAVE_SPAWN_W / WAVE_SPAWN_LIST）
@@ -1671,7 +1858,7 @@ boss_storm: {
     infoAppendNote('每个波次按 <b>1/2/3/4 类别</b>设定<b>职能池权重</b>（池成员见「怪物权重」页职能表）：刷怪时按权重随机一个职能池，再在池内按职能表权重随机具体敌人——如「3类攻击20、3类攻击后位2」＝ 20 权重从 3类攻击 随机、2 权重从 3类攻击后位 随机（<b>N类全部</b>＝该类「全部敌人」总表）。'
       + '<b>多个同类敌人</b>的波次：整组先随机一个池（大类），该组同类敌人全部只从该池刷新；随后整组 <b>8%</b> 概率锁定为<b>同一种</b>具体敌人（如 2*7 的 7 架全部刷成赤红突击艇）。'
       + '<b>前波敌人</b>停留线统一<b>下移屏高 8%</b>、<b>后波</b>统一<b>上移 8%</b>（「前后均可」每次刷新随机按其一；基于各敌人自身基准位置，不会导致出界或出场不完全）。'
-      + '<b>生成回退</b>：该类别所选池在当前等级均无权重 → 换一个大类刷新；全部大类均不可刷 → 固定生成 <b>赤月侧翼艇</b>（1类）/ <b>赤红突击艇</b>（2类）/ <b>赤红炮艇</b>（3类）/ <b>赤红主力舰</b>（4类）。'
+      + '<b>生成回退</b>：该类别所选池在当前等级均无权重 → 换一个大类刷新；全部大类均不可刷 → 固定生成 <b>赤月侧翼艇</b>（1类）/ <b>赤红突击艇</b>（2类）/ <b>赤红战舰</b>（3类）/ <b>赤红主力舰</b>（4类）。'
       + '表中标「默认」的波次尚未登记专属权重，按类别套用默认：<b>1类</b> 全部20；<b>2类</b> 攻击20、侧位1；<b>3类</b> 攻击25、攻击后位3、攻击压制2、增益辅助2、削弱辅助2；<b>4类</b> 攻击50、召唤10、突进5。'
       + '<b>适用难度</b>：本表波次构成适用于<b>全部难度</b>——仅诗篇为波次制（每等级固定刷前波 + 后波各一波），其他难度的波次刷新同样从本表抽取（2026-10-12 起替换旧编队系统）：场面压力节奏不变，每次刷新按<b>剩余权重</b>随机一张波次卡整波刷出（刷过的卡 16s 内线性恢复、自然轮换），并<b>倾向平衡</b>——与上次刷新同定位（后波 / 侧翼等）的卡权重 ×0.35，较少连续刷出同定位波次。波次卡抽取<b>等级先行</b>（2026-10-12 用户定稿）：先按「等级权重」选 tier（Lv1~10 = 虚象10/具象10/真我8/诗篇5、Lv11~20 = 5/10/15/8、Lv21~30+ = 2/5/20/10；<b>Lv5 及之前不抽「诗篇级」tier</b>——2026-10-13 用户定稿，Lv6 起恢复），再在 tier 内按本页上方各卡权重抽取；特殊级 / 额外级不经此通道——诗篇每波判定、非诗篇每次升级判定（概率/权重同诗篇额外通道）。'
       + '<b>特殊波（诗篇）</b>：不占前/后波名额，随机刷新于<b>前波之前 / 前后波之间 / 后波之后</b>——有停留的敌人停留线相应取<b>基准 +12% / 不变 / 基准 -4%</b>（不过界）。');
@@ -1688,11 +1875,11 @@ boss_storm: {
       { h: '难度 · 诗篇', p: '<b>疯狂难度</b>，得分 ×2.2（+120%，2026-10-12 由 +100% 上调）。刷怪改波次制；敌人血量和伤害大幅提升；BOSS 技能再次加强。<b>高能爆弹初始 0 颗、携带上限 1 颗</b>：每局最多掉落 <b>2 颗</b>——掉过 1 颗<b>未使用（持有或掉落物未拾取）不再掉第 2 颗</b>；使用后其余掉落途径概率 <b>×0.35</b>（携带<b>可莉</b>不减；绷绷背包补弹不受以上限制）。Lv1~4 期间每波保底掉落 1 个升级套件（<b>低火力判定 ≤4 时生效</b>，见「升级套件保底」卡）——波内无套件掉落时最后一个被击坠的敌人必掉，离场则作废。' },
       { h: '升级套件保底（低火力补偿）', p: '判定口径：<b>火力等级 + 场上升级套件数 + 5×场上暴走道具数 ≤ 4</b>（场上的待捡道具也计入，捡了再算）。满足时两路保底：<b>① 进 BOSS 前末敌保底</b>——停怪 / 波次刷满等清场期间，清空场上的最后一杀必掉 <b>1 个升级套件</b>（全难度，含 5% 暴走变体）；<b>② 诗篇 Lv1~4 每波保底</b>——诗篇难度 Lv1~4 每波至少掉落 1 个升级套件，波内无套件掉落时最后一个被击坠的敌人必掉（最后一个敌人离场则本波作废）。图鉴挑战 / BOSS 试炼豁免。' },
       { h: '加血套件等级窗口（虚象/具象/真我/诗篇）', p: '每 <b>lv2 / 3 / 4 / 4</b>（虚象/具象/真我/诗篇）最多掉落 <b>1 个加血套件</b>（普通敌人掉落，<b>4S 精英掉率 10%</b> 同受约束）——某级实际掉落后，窗口内后续等级不再掉落（如诗篇 lv22 掉落，则 lv22/23/24/25 均不掉）。<b>不跨 BOSS 轮</b>：清场 / 警报 / BOSS 战期间的加血掉落（含 BOSS 战脚本化加血）不受窗口限制、也不登记窗口（如 lv29 掉落不会影响下一轮 lv31）；图鉴挑战 / BOSS 试炼豁免。诗篇难度下另与波次节流（每 2 波限 1）叠加生效。' },
-      { h: 'BOSS 统一修正（全难度）', p: 'BOSS 战期间<b>每 6~12s 强制刷新一波 1类</b>（不走压力系统）：击杀<b>不加分、不掉水晶</b>（道具掉率走通用 1类修正链）。玩家火力 <b>Lv1/2/3 对 BOSS 与 4S 敌人武器伤害 +30%/+20%/+10%</b>（低火力补偿，2026-10-13 用户定稿改版——原仅 Lv1 对 BOSS +20%；高能爆弹不受影响）；进入 BOSS 战<b>重置受击掉级计数</b>（掉级阈值全场景统一 2 次，2026-10-13 由 3 次收紧）。同一技能连续释放：<b>弹速 ×1.4</b>、下一技能间隔 ×0.2（全 BOSS 统一；黑暗之手弹速 2026-10-12 起对齐，其个别技能不连放等例外见各 BOSS 条目）。' },
-      { h: '双编队组合波', p: '<b>Lv5 起</b>有概率在同一波内追加一个编队（追加位不含炮艇编队）：<b>Lv5~10 概率由 10% 线性升至 30%、Lv11~20 由 10% 线性升至 40%</b>。' },
+      { h: 'BOSS 统一修正（全难度）', p: 'BOSS 战期间<b>每 6~12s 强制刷新一波 1类</b>（不走压力系统）：击杀<b>不加分、不掉水晶</b>（道具掉率走通用 1类修正链）。玩家火力 <b>Lv1/2/3 对 BOSS 与 4S 敌人武器伤害 +30%/+20%/+10%</b>（低火力补偿，2026-10-13 用户定稿改版——原仅 Lv1 对 BOSS +20%；高能爆弹不受影响）；进入 BOSS 战<b>重置受击掉级计数</b>（掉级阈值全场景统一 2 次，2026-10-13 由 3 次收紧）。同一技能连续释放：<b>弹速 ×1.4</b>、下一技能间隔 ×0.2（全 BOSS 统一；黑暗之手弹速 2026-10-12 起对齐——其四管炮幕/爪翼毁灭蛋挞不吃弹速加成（2026-10-16 定稿），个别技能不连放等例外见各 BOSS 条目）。' },
+      { h: '双编队组合波', p: '<b>Lv5 起</b>有概率在同一波内追加一个编队（追加位不含战舰编队）：<b>Lv5~10 概率由 10% 线性升至 30%、Lv11~20 由 10% 线性升至 40%</b>。' },
       { h: '开局缓冲与低级血量修正', p: '开始游戏后 <b>0.4s</b> 缓冲内不出怪（2026-10-13 用户定稿——诗篇波次制首波 0.4s 缓冲，非诗篇首波间隔本就 ≥0.4s）。<b>Lv1 / Lv2 期间刷新的敌人血量分别 ×0.70 / ×0.85</b>（-30% / -15%，Lv3 起恢复基准；诗篇波 N = 等级 N 同口径——第 1/2 波同享修正，BOSS 后各阶段等级 ≥11 不再触发）。' },
       { h: 'BOSS 击败后特殊波次（水晶核芯艇）', p: '击败 BOSS 后先缓冲 <b>2s</b>，随后从四种编成中<b>随机抽一</b>刷新特殊波次——<b>水晶核芯艇</b>成群出现（白色短艇携带大比例水晶，青/水蓝/粉三色随机；无攻击、碰撞伤害 10、<b>速度恒 200 直线穿越不停留</b>）。每种共 <b>40 艘</b>、<b>轮间隔 0.25s</b>、同轮全部同时落地（初始位置同齐），每轮从全部槽位随机取不重复槽位同时落地，<b>同槽位相邻轮次的艇以 50px 间距依次跟进</b>（不重叠）：①<b>单侧五高度</b>（20%~60% 屏高五档）×12 轮，每轮随机左右侧；②<b>双侧四高度</b>（30%~60% 四档）×12 轮，每轮每侧至少 1 艘；③<b>顶部五列</b>（占屏宽 26%~74% 五档）×12 轮，竖直下穿；④<b>四角 12 位</b>（顶边两角 + 边长 = 屏宽的正方形下方两点 + 各点沿「点↔正方形中点」垂线两侧 60px）×8 轮，同角三艇沿「角点→中点」方向平行斜扫。击坠分数 <b>100</b>、<b>必定掉落 10~24 或 54 水晶</b>（16 值等概率）。波次全部落地且场上清空后 <b>0.6s</b> 恢复正常刷怪；2s 缓冲与特殊波次期均不计入关卡推进。' },
-      { h: '驻留增压', p: '会停留的敌人登场一段时间后，攻击间隔减少 50%：2 类（突击艇 / 破片 / 法术矩阵等）登场 <b>6s</b> 后、3 类普通炮艇登场 <b>10s</b> 后、4 类（主力舰 / 法术阵列 / 战争幽灵等）登场 <b>14s</b> 后；<b>诗篇难度阈值缩短</b>：2 类 <b>5s</b> / 3 类 <b>7.5s</b> / 4 类 <b>10s</b>。战争幽灵技能间隔同按所属类别阈值加速。3 类仅普通炮艇纳入本效果（威龙 / 先兆者 / 脉冲矩阵 / 大型龙卷等其余 3 类不生效，之后新增的非炮艇 3 类同样如此）。2类防御（坚垒护卫艇）、不停留的敌人（法术大师 A1/A2）与 4S 精英不计入。' },
+      { h: '驻留增压', p: '会停留的敌人登场一段时间后，攻击间隔减少 50%：2 类（突击艇 / 破片 / 法术矩阵等）登场 <b>6s</b> 后、3 类普通战舰登场 <b>10s</b> 后、4 类（主力舰 / 法术阵列 / 战争幽灵等）登场 <b>14s</b> 后；<b>诗篇难度阈值缩短</b>：2 类 <b>5s</b> / 3 类 <b>7.5s</b> / 4 类 <b>10s</b>。战争幽灵技能间隔同按所属类别阈值加速。3 类仅普通战舰纳入本效果（威龙 / 先兆者 / 脉冲矩阵 / 大型龙卷等其余 3 类不生效，之后新增的非战舰 3 类同样如此）。2类防御（坚垒护卫艇）、不停留的敌人（法术大师 A1/A2）与 4S 精英不计入。' },
       { h: '成就', p: '挑战成就在使用特殊战机&僚机&护甲&副武器&驾驶员期间无法获得。右上角有青粉标识的为特殊装备。开启作弊模式后，无法正常获得绝大部分成就，仅能获得部分彩蛋成就。' },
     ];
     for (const c of cards) {
@@ -1889,6 +2076,7 @@ boss_storm: {
     // 战机（主炮）：注册表驱动，新增机型自动追加行
     for (const id in PLANES) {
       const p = PLANES[id];
+      if (p.placeholder) continue;   // 占位战机（未实装）：跳过——无战斗键，planeDps 会出 NaN 行
       rows.push({
         canvas: infoFighterCanvas('plane', null, p),
         label: p.name + '（主炮）',
@@ -1898,7 +2086,7 @@ boss_storm: {
     // 僚机（左右两架合计）：注册表驱动，新增僚机自动追加行
     for (const id in WINGMEN_CFG) {
       const wm = WINGMEN_CFG[id];
-      if (wm.empty) continue;
+      if (wm.empty || wm.placeholder) continue;   // 「无僚机」不展示；占位僚机（未实装）跳过——无 weapon 键，wingmanDps 会崩
       rows.push({
         canvas: infoFighterCanvas('wingman', wm),
         label: wm.name + '（双僚机）',
@@ -1914,6 +2102,7 @@ boss_storm: {
     infoBody.innerHTML = '';
     for (const id in ARMORS) {
       const a = ARMORS[id];
+      if (a.placeholder) continue;   // 占位护甲（未实装）：跳过——选择页占位卡不进图鉴
       const div = document.createElement('div');
       div.className = 'info-wave-card';
       const h = document.createElement('h4');
@@ -1972,6 +2161,7 @@ boss_storm: {
     infoBody.innerHTML = '';
     for (const id in SUB_WEAPONS) {
       const w = SUB_WEAPONS[id];
+      if (w.placeholder) continue;   // 占位副武器（未实装）：跳过——选择页占位卡不进图鉴
       const div = document.createElement('div');
       div.className = 'info-wave-card';
       const h = document.createElement('h4');
@@ -1997,6 +2187,7 @@ boss_storm: {
     const paramRows = [];
     for (const id in SUB_WEAPONS) {
       const w = SUB_WEAPONS[id];
+      if (w.placeholder) continue;   // 占位副武器（未实装）：跳过——无 fire 键，subWeaponDps 读 fire.levels 会 TypeError
       dpsRows.push({ label: w.name, vals: INFO_FIRE_LEVELS.map(lv => subWeaponDps(w, lv)) });
       pushSubParamRows(paramRows, w);
     }
@@ -2010,7 +2201,7 @@ boss_storm: {
     infoBody.innerHTML = '';
     for (const id in PILOTS) {
       const p = PILOTS[id];
-      if (p.empty) continue;   // 「无驾驶员」为同名互斥的内部回退值，不作条目展示
+      if (p.empty || p.placeholder) continue;   // 「无驾驶员」为同名互斥的内部回退值，不作条目展示；占位驾驶员（未实装）跳过——选择页占位卡不进图鉴
       const div = document.createElement('div');
       div.className = 'info-wave-card info-pilot-card';
       const h = document.createElement('h4');
@@ -2144,633 +2335,24 @@ boss_storm: {
     infoAppendNote('道具由击坠赞助无人舰获得：常规赞助 90% 普通 / 10% 稀有，豪华赞助 100% 稀有；<b>获得瞬间立刻生效</b>。');
   }
 
-  // ---------- 测试1：水晶核芯艇设计稿（2026-10-14 用户任务） ----------
-  // 新敌「1S 水晶核芯艇」外观候选：四版式 × CRYSTAL_COLORS 三色（青/水蓝/粉）动画演示卡。
-  // 前史：2026-10-10 用户清空原「敌方子弹样式图鉴」（e95600a v0.3.11，drawOneEBullet + withPreviewCtx
-  // 实机弹体对比页）——需要找回时看 git 历史。
-  // 仅设计预览：白机 + 尾部携带大比例水晶；实装待样式定稿后另行批次（ENEMY_TYPES / 04-spawn / 06-enemy / 09b）。
-  // 草稿区约定：不放页顶说明段，版式名与一句特征写入演示卡 sub。
+  // ---------- 测试1：水晶核芯艇设计稿（已清空） ----------
+  // 1S 水晶核芯艇已于 2026-10-15 按 C 版定稿实装（ENEMY_TYPES.crystalCore / 09b drawCrystalCoreBody /
+  // BOSS 后特殊波次）；四版式外观候选页按用户指令清空（2026-10-17），t1* 小工具随页面一并移除。
+  // 需要找回时看 git 历史（备份 %TEMP%-encyclopedia_backup_clear123_1017.js）。
   function renderInfoBullets() {
     infoBody.innerHTML = '';
-    const colors = [['青', '#39c5bb'], ['水蓝', '#46aaff'], ['粉', '#ffc0cb']];
-    const versions = [
-      { name: 'A · 尾拖晶簇', sub: '双臂后撑 · 单晶尾挂', draw: t1DrawCruiserA },
-      { name: 'B · 环抱晶环', sub: '白环抱晶 · 前置驾驶锥', draw: t1DrawCruiserB },
-      { name: 'C · 背驮晶台', sub: '驮台载晶 · 双绑带固定', draw: t1DrawCruiserC },
-      { name: 'D · 悬浮牵引', sub: '晶舰分离 · 能量索牵引', draw: t1DrawCruiserD },
-    ];
-    for (const v of versions) {
-      t1DemoGrid(colors.map(([cn, hex]) => ({ title: v.name, sub: v.sub + ' · ' + cn, color: hex, draw: v.draw })));
-    }
   }
 
-  // ── 测试1 公共小工具（前缀 t1 与测试4 t4 区分）：演示卡网格 / 星空 / 水晶 / 机体涂装 ──
-  function t1DemoGrid(demos) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px';
-    demos.forEach(d => row.appendChild(t1Demo(d)));
-    infoBody.appendChild(row);
-  }
-  function t1Demo(opt) {
-    const { title, sub, color, draw } = opt;
-    const card = document.createElement('div');
-    card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
-    const W = 176, H = 216, dpr = Math.min(2, window.devicePixelRatio || 1);
-    const cvs = document.createElement('canvas');
-    cvs.width = W * dpr; cvs.height = H * dpr;
-    cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#070a13;border:1px solid rgba(140,190,255,0.16)';
-    const c = cvs.getContext('2d');
-    c.scale(dpr, dpr);
-    let last = performance.now();
-    function frame(now) {
-      if (!cvs.isConnected) return;                 // 脱链即停（切页签 / 关弹窗）
-      let dt = (now - last) / 1000; last = now;
-      if (dt > 0.1) dt = 0.1;
-      const t = (now / 1000) % 6;
-      c.clearRect(0, 0, W, H);
-      t1Field(c, W, H, t);
-      draw(c, t, W, H, color);
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
-    const lbl = document.createElement('div');
-    lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:176px';
-    lbl.innerHTML = '<b style="color:#cfe0ff">' + title + '</b><br>' + sub;
-    card.append(cvs, lbl);
-    return card;
-  }
-  // 背景星点（缓慢下移制造纵深感，与测试4 t4Field 同思路独立实现）
-  function t1Field(c, W, H, t) {
-    c.fillStyle = 'rgba(150,180,240,0.14)';
-    for (let i = 0; i < 18; i++) {
-      const x = (i * 61) % W, y = (i * 83 + t * 12) % H;
-      c.fillRect(x, y, 1, 1);
-    }
-  }
-  // 颜色明暗衍生：k>0 向白混合 / k<0 向黑混合（水晶各面明暗用）
-  function t1Shade(hex, k) {
-    const n = parseInt(hex.slice(1), 16);
-    const mix = v => Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k));
-    return 'rgb(' + mix((n >> 16) & 255) + ',' + mix((n >> 8) & 255) + ',' + mix(n & 255) + ')';
-  }
-  // 大水晶：尖顶六边形（同掉落水晶小档正视剪影：顶锥 + 腰带 + 底锥），六面明暗交替 + 棱线 + 缓移高光
-  function t1Crystal(c, x, y, w, h, col, t) {
-    const hw = w / 2, belt = h * 0.2, mid = h * 0.04;
-    const top = y - h / 2, bot = y + h / 2;
-    const light = t1Shade(col, 0.5), dark = t1Shade(col, -0.36), deep = t1Shade(col, -0.58);
-    c.save();
-    c.shadowColor = col; c.shadowBlur = 14;
-    const face = (pts, fill) => {
-      c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
-      c.closePath(); c.fillStyle = fill; c.fill();
-    };
-    face([[x, top], [x - hw, y - belt], [x, y - mid]], light);                              // 顶锥左
-    face([[x, top], [x + hw, y - belt], [x, y - mid]], col);                                // 顶锥右
-    face([[x - hw, y - belt], [x, y - mid], [x, y + mid], [x - hw, y + belt]], col);        // 腰带左
-    face([[x + hw, y - belt], [x, y - mid], [x, y + mid], [x + hw, y + belt]], light);      // 腰带右
-    face([[x - hw, y + belt], [x, y + mid], [x, bot]], dark);                               // 底锥左
-    face([[x + hw, y + belt], [x, y + mid], [x, bot]], deep);                               // 底锥右
-    c.shadowBlur = 0;
-    c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = 1;
-    c.beginPath();
-    c.moveTo(x, top); c.lineTo(x - hw, y - belt); c.lineTo(x - hw, y + belt); c.lineTo(x, bot);
-    c.lineTo(x + hw, y + belt); c.lineTo(x + hw, y - belt); c.closePath();
-    c.moveTo(x, top); c.lineTo(x, bot);
-    c.moveTo(x - hw, y - belt); c.lineTo(x + hw, y - belt);
-    c.moveTo(x - hw, y + belt); c.lineTo(x + hw, y + belt);
-    c.stroke();
-    c.fillStyle = 'rgba(255,255,255,' + (0.3 + 0.22 * Math.sin(t * 2.1)).toFixed(3) + ')';
-    c.beginPath(); c.ellipse(x - w * 0.16, y - h * 0.18, w * 0.09, h * 0.14, -0.5, 0, Math.PI * 2); c.fill();
-    c.restore();
-  }
-  // 白色机体：多边形填涂（亮面 + 灰蓝描边）
-  function t1Hull(c, pts) {
-    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
-    c.closePath();
-    c.fillStyle = '#eef2fa'; c.fill();
-    c.strokeStyle = 'rgba(120,140,175,0.85)'; c.lineWidth = 1; c.stroke();
-  }
-  // 引擎辉光（尾部脉冲）
-  function t1Engine(c, x, y, t, r) {
-    const a = 0.5 + 0.3 * Math.sin(t * 7);
-    const g = c.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(185,220,255,' + a.toFixed(3) + ')');
-    g.addColorStop(1, 'rgba(185,220,255,0)');
-    c.fillStyle = g;
-    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
-  }
-  // 双层支臂 / 绑带（暗底 + 亮面）
-  function t1Strut(c, x1, y1, x2, y2, wDark, wLight) {
-    c.lineCap = 'round';
-    c.strokeStyle = 'rgba(120,140,175,0.9)'; c.lineWidth = wDark;
-    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-    c.strokeStyle = '#eef2fa'; c.lineWidth = wLight;
-    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-  }
 
-  // A · 尾拖晶簇：白色小镖艇 + 尾部双臂后撑夹持大水晶（晶占整体 ≈60% 体量，拖曳滞后浮动）
-  function t1DrawCruiserA(c, t, W, H, col) {
-    const cy = H / 2;
-    const bobS = Math.sin(t * 1.5) * 3;
-    const bobC = Math.sin(t * 1.5 + 0.4) * 3.4;
-    const cxc = 48, cyC = cy + bobC, cyS = cy + bobS;
-    t1Crystal(c, cxc, cyC, 52, 86, col, t);
-    // 双臂后撑（机体尾部 → 晶腰带右缘）+ 臂端夹板
-    t1Strut(c, 95, cyS - 7, 76, cyC - 13, 6, 3.5);
-    t1Strut(c, 95, cyS + 7, 76, cyC + 13, 6, 3.5);
-    c.fillStyle = '#dfe6f2';
-    c.fillRect(72, cyC - 17, 7, 9);
-    c.fillRect(72, cyC + 8, 7, 9);
-    // 机体（右向镖形）+ 尾翼 + 座舱
-    t1Engine(c, 89, cyS, t, 6);
-    t1Hull(c, [[160, cyS], [138, cyS - 12], [98, cyS - 12], [92, cyS - 7], [92, cyS + 7], [98, cyS + 12], [138, cyS + 12]]);
-    t1Hull(c, [[104, cyS - 12], [96, cyS - 22], [90, cyS - 12]]);
-    t1Hull(c, [[104, cyS + 12], [96, cyS + 22], [90, cyS + 12]]);
-    c.fillStyle = '#2b3550';
-    c.beginPath(); c.ellipse(140, cyS - 2, 9, 3.6, 0, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.6)'; c.lineWidth = 1; c.stroke();
-  }
-
-  // B · 环抱晶环：白环抱持大水晶（晶贯穿环面、上下尖探出）+ 四角定位座 + 环右短锥驾驶舱
-  function t1DrawCruiserB(c, t, W, H, col) {
-    const cy = H / 2;
-    const rx = 86, ry = cy + Math.sin(t * 1.4) * 2;
-    const bobC = Math.sin(t * 1.4 + 0.3) * 2.2;
-    t1Crystal(c, rx, ry + bobC, 48, 80, col, t);
-    // 白环（暗底环 + 亮环 + 双缘描边）
-    c.strokeStyle = 'rgba(120,140,175,0.95)'; c.lineWidth = 15;
-    c.beginPath(); c.arc(rx, ry, 42, 0, Math.PI * 2); c.stroke();
-    c.strokeStyle = '#eef2fa'; c.lineWidth = 11;
-    c.beginPath(); c.arc(rx, ry, 42, 0, Math.PI * 2); c.stroke();
-    c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1;
-    c.beginPath(); c.arc(rx, ry, 49, 0, Math.PI * 2); c.stroke();
-    c.beginPath(); c.arc(rx, ry, 35, 0, Math.PI * 2); c.stroke();
-    // 四角定位座（45° 斜位小方座）
-    for (let i = 0; i < 4; i++) {
-      const a = Math.PI / 4 + i * Math.PI / 2;
-      c.save();
-      c.translate(rx + Math.cos(a) * 42, ry + Math.sin(a) * 42); c.rotate(a);
-      c.fillStyle = '#dfe6f2'; c.fillRect(-4, -6, 8, 12);
-      c.strokeStyle = 'rgba(120,140,175,0.9)'; c.lineWidth = 1; c.strokeRect(-4, -6, 8, 12);
-      c.restore();
-    }
-    // 环面高光弧（慢转）
-    c.strokeStyle = 'rgba(255,255,255,' + (0.25 + 0.2 * Math.sin(t * 1.7)).toFixed(3) + ')';
-    c.lineWidth = 3;
-    c.beginPath(); c.arc(rx, ry, 42, t * 0.8, t * 0.8 + 0.8); c.stroke();
-    // 前置短锥驾驶舱（环右缘 → 艇首）
-    t1Hull(c, [[168, ry], [154, ry - 8], [132, ry - 6], [132, ry + 6], [154, ry + 8]]);
-    c.fillStyle = '#2b3550';
-    c.beginPath(); c.ellipse(150, ry - 1.5, 6.5, 2.8, 0, 0, Math.PI * 2); c.fill();
-  }
-
-  // C · 背驮晶台：扁平驮台在下、大晶驮于甲板（底尖触台），双斜绑带 + 带扣 + 右舷驾驶舱罩
-  function t1DrawCruiserC(c, t, W, H, col) {
-    const cy = H / 2;
-    const bobS = Math.sin(t * 1.4) * 2.6;
-    const bobC = Math.sin(t * 1.4 + 0.25) * 2.6;
-    const deckY = cy + 26 + bobS, cyC = cy - 22 + bobC;
-    t1Crystal(c, 96, cyC, 50, 80, col, t);
-    // 双绑带（斜跨晶面，带扣在右）
-    t1Strut(c, 76, cyC - 10 + 3, 116, cyC - 10 - 3, 6, 4);
-    t1Strut(c, 81, cyC + 24 + 3, 111, cyC + 24 - 3, 6, 4);
-    c.fillStyle = '#c9d4e4';
-    c.fillRect(109, cyC - 16.5, 6, 7);
-    c.fillRect(104, cyC + 17.5, 6, 7);
-    // 驮台（扁六边板，右舷上翘艏）+ 侧裙 + 甲板棱线
-    t1Engine(c, 56, deckY + 2, t, 6);
-    t1Hull(c, [[52, deckY + 4], [66, deckY - 8], [140, deckY - 8], [162, deckY + 2], [140, deckY + 12], [66, deckY + 12]]);
-    t1Hull(c, [[84, deckY + 12], [78, deckY + 19], [94, deckY + 12]]);
-    t1Hull(c, [[120, deckY + 12], [114, deckY + 19], [130, deckY + 12]]);
-    c.strokeStyle = 'rgba(120,140,175,0.5)'; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(66, deckY - 3); c.lineTo(140, deckY - 3); c.stroke();
-    // 右舷驾驶舱（半圆罩）
-    c.fillStyle = '#2b3550';
-    c.beginPath(); c.arc(138, deckY - 8, 7, Math.PI, 0); c.closePath(); c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.6)'; c.lineWidth = 1; c.stroke();
-  }
-
-  // D · 悬浮牵引：小艇在前、大晶悬浮在后（浮动相位错开、幅度更大），三根能量索虚线脉动牵引
-  function t1DrawCruiserD(c, t, W, H, col) {
-    const cy = H / 2;
-    const bobS = Math.sin(t * 1.5) * 3;
-    const bobC = Math.sin(t * 1.5 + 0.9) * 4.2;
-    const cyS = cy + bobS, cyC = cy + bobC;
-    t1Crystal(c, 44, cyC, 52, 88, col, t);
-    // 三根能量索（虚线脉动 + 索端节点）
-    for (let i = -1; i <= 1; i++) {
-      const a = 0.3 + 0.22 * Math.sin(t * 2.6 + i * 1.4);
-      c.save();
-      c.setLineDash([5, 4]);
-      c.strokeStyle = col; c.globalAlpha = a; c.lineWidth = 2;
-      c.beginPath();
-      c.moveTo(108, cyS + i * 5);
-      c.lineTo(71, cyC + i * 13);
-      c.stroke();
-      c.restore();
-      c.globalAlpha = Math.min(1, a + 0.25);
-      c.fillStyle = col;
-      c.beginPath(); c.arc(71, cyC + i * 13, 2.2, 0, Math.PI * 2); c.fill();
-      c.globalAlpha = 1;
-    }
-    // 小艇（右向小镖）+ 小翼 + 座舱
-    t1Engine(c, 101, cyS, t, 7);
-    t1Hull(c, [[158, cyS], [138, cyS - 9], [110, cyS - 8], [104, cyS - 4], [104, cyS + 4], [110, cyS + 8], [138, cyS + 9]]);
-    t1Hull(c, [[120, cyS - 8], [114, cyS - 17], [108, cyS - 8]]);
-    t1Hull(c, [[120, cyS + 8], [114, cyS + 17], [108, cyS + 8]]);
-    c.fillStyle = '#2b3550';
-    c.beginPath(); c.ellipse(140, cyS - 1.5, 7, 3, 0, 0, Math.PI * 2); c.fill();
-  }
-
-  // ---------- 测试3：2A 浮海飘航者 · 外观候选（2026-10-15 用户命题；同日回调改版）----------
-  // 前史：2026-10-12 新增占位空页（原顶级「测试3 波次示意」已于 2026-10-11 迁入「权重」页子页签）；
-  // 2026-10-15 用户命题「2A 浮海飘航者」样式设计，本页填充四版外观动画演示卡供挑选。
-  // 结构（2026-10-15 回调定稿，自上而下）：尾部三条摆尾（唯一动态）→ 很短的白色尾段 → 深蓝色圆形核心
-  // → 白色机身跨于核心之上（z 序：机身后画、盖住核心中段），前段有一定长度渐细、最前端弯曲幅度最大。
-  // 机身宽度 ≈ 核心直径 1/3；总长收紧。除尾部外全身静止（一般敌人乱动占用太大——删整体浮沉与机身行波）。
-  // 回调2（2026-10-15）：C 版暂定——机身竖直朝下、左右对称（bend0=0 去静态弯），三片装甲板节删除（panel 键与绘制块已删）；
-  // 尾部三片硬鳍 + 核心金属环保留；A/B/D 备选卡保留不动。
-  // 回调3（2026-10-15）：用户「去掉ABD」——A/B/D 备选卡与 VA/VB/VD 删除，仅保留暂定 C 版单卡；
-  // 连带清理死代码：sCurve 项、飘带尾分支、tailStyle 键。标题改「外观（暂定）」。
-  // 回调4（2026-10-15）：用户「继续」→ 行为候选——页面改四节（外观暂定 / 攻击技能 S1~S4 动画演示 +
-  // 文字补充 / 纯文字备选 S5~S7 / 基础行为与定位候选），沿测试4战争矩阵候选格式；演示加假玩家
-  //（t3PlayerPos/t3Player/t3Battle 嵌套公共件），t3Demo 帧驱动加 dt。
-  // 仅设计预览（草稿区约定）：不改 ENEMY_TYPES / 刷怪 / ENCY_DATA；t3 前缀小工具全部嵌套于本函数内
-  //（零新增顶层名，沿 2026-10-14 先兆者变种设计窗口先例——与并行窗口共用本文件时互不可见）。
+  // ---------- 测试3：2A 浮海飘航者 · 外观候选（已清空） ----------
+  // 浮海飘航者已于 2026-10-16 按本页定稿实装（ENEMY_TYPES.voyager / spawnVoyager / 06-enemy voyager 分支 /
+  // 09b drawVoyagerBody）；本设计工作区页面按用户指令清空（2026-10-17）。
+  // 注：权重页「波次」子页仍使用 renderInfoTest3（波次编队设计画廊）与 t3GroupsAll/t3SpawnCardById（运行时
+  // 波次生成依赖，export 至 14-main）——均不在本次清空范围。
   function renderInfoTest3Draft() {
     infoBody.innerHTML = '';
-
-    const t3Head = (text) => {
-      const h = document.createElement('h3');
-      h.className = 'info-achv-tier-head';
-      h.style.color = '#7fc4ff';
-      h.textContent = text;
-      return h;
-    };
-    const t3TextCard = (title, desc) => {
-      const d = document.createElement('div');
-      d.className = 'info-wave-card';
-      const h = document.createElement('h4');
-      h.style.color = '#8fc8ff';
-      h.textContent = title;
-      const p = document.createElement('p');
-      p.innerHTML = desc;
-      d.append(h, p);
-      return d;
-    };
-    const t3DemoGrid = (demos) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px';
-      demos.forEach(d => row.appendChild(t3Demo(d)));
-      infoBody.appendChild(row);
-    };
-    const t3Demo = (opt) => {
-      const { title, sub, draw } = opt;
-      const card = document.createElement('div');
-      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
-      const W = 190, H = 300, dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cvs = document.createElement('canvas');
-      cvs.width = W * dpr; cvs.height = H * dpr;
-      cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#050b16;border:1px solid rgba(90,170,255,0.18)';
-      const c = cvs.getContext('2d');
-      c.scale(dpr, dpr);
-      let last = performance.now();
-      function frame(now) {
-        if (!cvs.isConnected) return;                 // 脱链即停（切页签 / 关弹窗）
-        let dt = (now - last) / 1000; last = now;
-        if (dt > 0.1) dt = 0.1;
-        const t = now / 1000;
-        c.clearRect(0, 0, W, H);
-        t3Field(c, W, H, t);
-        draw(c, t, dt, W, H);
-        requestAnimationFrame(frame);
-      }
-      requestAnimationFrame(frame);
-      const lbl = document.createElement('div');
-      lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:190px';
-      lbl.innerHTML = '<b style="color:#bcdcff">' + title + '</b><br>' + sub;
-      card.append(cvs, lbl);
-      return card;
-    };
-    // 深海浮游粒子（缓慢下坠，衬「浮海」氛围）
-    const t3Field = (c, W, H, t) => {
-      c.fillStyle = 'rgba(120,180,255,0.13)';
-      for (let i = 0; i < 22; i++) {
-        const x = (i * 61 + 17) % W;
-        const y = (i * 113 + t * 16) % H;
-        c.fillRect(x, y, 1.4, 1.4);
-      }
-    };
-    // 带状体绘制：pts=[{x,y}…] 中心线采样，ws=各点半宽（沿法向偏移），fill/edge=填充与描边
-    const t3Ribbon = (c, pts, ws, fill, edge) => {
-      const n = pts.length;
-      const L = [], R = [];
-      for (let i = 0; i < n; i++) {
-        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const nx = -dy / len, ny = dx / len;      // 左法向
-        const w = ws[i] / 2;
-        L.push({ x: pts[i].x + nx * w, y: pts[i].y + ny * w });
-        R.push({ x: pts[i].x - nx * w, y: pts[i].y - ny * w });
-      }
-      c.beginPath();
-      c.moveTo(L[0].x, L[0].y);
-      for (let i = 1; i < n; i++) c.lineTo(L[i].x, L[i].y);
-      for (let i = n - 1; i >= 0; i--) c.lineTo(R[i].x, R[i].y);
-      c.closePath();
-      c.fillStyle = fill; c.fill();
-      if (edge) { c.strokeStyle = edge; c.lineWidth = 1; c.stroke(); }
-    };
-    // 浮海飘航者总绘制（o = 变体参数；全部动画由 t 驱动、无状态，四版共用）
-    const t3Drifter = (c, W, H, t, o) => {
-      const cx = W / 2;
-      c.save();
-      // 2026-10-15 用户回调：除尾部摆动外全身静止（一般敌人乱动占用太大）——删整体浮沉与机身行波
-
-      // ---- 机身中心线采样：p∈[0,1]（0=尾端，1=最前端尖）----
-      // 弯曲 = 静态弯（p^bendPow：越靠前端弯幅越大）；暂定版 bend0=0 = 竖直朝下、左右对称
-      const N = 26;
-      const bendAt = (p) => o.bend0 * Math.pow(p, o.bendPow);
-      const tailY = o.tailY, tipY = o.tipY;
-      const pts = [];
-      for (let i = 0; i <= N; i++) {
-        const p = i / N;
-        pts.push({ x: cx + bendAt(p), y: tailY + (tipY - tailY) * p, p });
-      }
-      // 宽度剖面：尾粗前细，最后 18% 收尖
-      const hullW = (p) => {
-        const base = o.tailW + (o.tipW - o.tailW) * p;
-        const point = p > 0.82 ? Math.pow((1 - p) / 0.18, 0.7) : 1;
-        return Math.max(0.5, base * point);
-      };
-
-      // ---- 尾部三条硬鳍（全身唯一动态；画在最底层，根端被尾毂盖住）----
-      // 回调3：飘带尾分支与 tailStyle 键已随 A/B/D 删除（仅暂定 C 版的硬鳍尾）
-      const rootX = pts[0].x, rootY = pts[0].y;
-      for (let k = 0; k < 3; k++) {
-        const ang = (k - 1) * o.tailSpread + Math.sin(t * o.tailSpd + k * 2.1) * 0.38;
-        const L = o.tailLen * (k === 1 ? 1 : 0.82);
-        const dx = Math.sin(ang), dy = -Math.cos(ang);
-        const px = -dy, py = dx;
-        c.beginPath();
-        c.moveTo(rootX + px * 4.5, rootY + py * 4.5);
-        c.quadraticCurveTo(rootX + px * 6 + dx * L * 0.5, rootY + py * 6 + dy * L * 0.5, rootX + dx * L, rootY + dy * L);
-        c.quadraticCurveTo(rootX - px * 6 + dx * L * 0.5, rootY - py * 6 + dy * L * 0.5, rootX - px * 4.5, rootY - py * 4.5);
-        c.closePath();
-        c.fillStyle = 'rgba(210,226,248,0.94)'; c.fill();
-        c.strokeStyle = 'rgba(110,140,195,0.55)'; c.lineWidth = 1; c.stroke();
-      }
-      // ---- 核心：深蓝圆形 + 流动浅蓝斑块（先画；白色机身随后跨于其上——2026-10-15 回调）----
-      const coreP = (o.coreY - tailY) / (tipY - tailY);
-      const coreX = cx + bendAt(coreP);
-      const R = o.coreR;
-      c.save();
-      c.shadowColor = 'rgba(70,150,255,0.45)'; c.shadowBlur = 14;
-      const cg = c.createRadialGradient(coreX - R * 0.25, o.coreY - R * 0.3, R * 0.15, coreX, o.coreY, R);
-      cg.addColorStop(0, '#1c4cb4'); cg.addColorStop(0.62, '#123074'); cg.addColorStop(1, '#0a1c48');
-      c.beginPath(); c.arc(coreX, o.coreY, R, 0, Math.PI * 2);
-      c.fillStyle = cg; c.fill();
-      c.shadowBlur = 0;
-      c.beginPath(); c.arc(coreX, o.coreY, R - 0.5, 0, Math.PI * 2); c.clip();
-      c.globalCompositeOperation = 'lighter';
-      for (let i = 0; i < o.patchN; i++) {
-        const a1 = t * o.patchSpd + i * (Math.PI * 2 / o.patchN) * 1.7;
-        const px = coreX + Math.cos(a1) * R * 0.52 + Math.sin(t * 0.7 + i * 2.3) * R * 0.18;
-        const py = o.coreY + Math.sin(a1 * 0.83 + i) * R * 0.5;
-        const pr = Math.max(1, R * (0.3 + 0.13 * Math.sin(t * 0.9 + i * 1.9)));
-        const pg = c.createRadialGradient(px, py, 0, px, py, pr);
-        pg.addColorStop(0, 'rgba(125,205,255,0.55)');
-        pg.addColorStop(0.55, 'rgba(60,140,255,0.22)');
-        pg.addColorStop(1, 'rgba(60,140,255,0)');
-        c.beginPath(); c.arc(px, py, pr, 0, Math.PI * 2);
-        c.fillStyle = pg; c.fill();
-      }
-      c.globalCompositeOperation = 'source-over';
-      c.restore();
-      // 金属环 + 铆点（C 版）
-      if (o.ring) {
-        c.beginPath(); c.arc(coreX, o.coreY, R + 2.5, 0, Math.PI * 2);
-        c.strokeStyle = '#c7d3e8'; c.lineWidth = 3; c.stroke();
-        c.fillStyle = '#8fa3c4';
-        for (let k = 0; k < 4; k++) {
-          const a = k * Math.PI / 2 + Math.PI / 4;
-          c.beginPath(); c.arc(coreX + Math.cos(a) * (R + 2.5), o.coreY + Math.sin(a) * (R + 2.5), 1.4, 0, Math.PI * 2); c.fill();
-        }
-      }
-      // 核心边缘：细描边 + 左上高光弧
-      c.beginPath(); c.arc(coreX, o.coreY, R, 0, Math.PI * 2);
-      c.strokeStyle = 'rgba(18,36,80,0.85)'; c.lineWidth = 1; c.stroke();
-      c.beginPath(); c.arc(coreX, o.coreY, R - 1.8, Math.PI * 1.02, Math.PI * 1.62);
-      c.strokeStyle = 'rgba(160,215,255,0.6)'; c.lineWidth = 1.6; c.stroke();
-
-      // ---- 机身：银白渐变带跨于核心之上（核心之上尾段很短、之下前段渐细；横向渐变读作金属圆柱受光）----
-      const wsH = pts.map(pt => hullW(pt.p));
-      let gx0 = 1e9, gx1 = -1e9;
-      for (const pt of pts) { gx0 = Math.min(gx0, pt.x - o.tailW); gx1 = Math.max(gx1, pt.x + o.tailW); }
-      const g = c.createLinearGradient(gx0, 0, gx1, 0);
-      g.addColorStop(0, '#46597f'); g.addColorStop(0.24, '#dfe7f7'); g.addColorStop(0.46, '#ffffff');
-      g.addColorStop(0.64, '#c2cfe6'); g.addColorStop(1, '#31436a');
-      t3Ribbon(c, pts, wsH, g, 'rgba(24,38,72,0.55)');
-      // 脊线高光
-      c.beginPath();
-      c.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i <= N; i++) c.lineTo(pts[i].x, pts[i].y);
-      c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1; c.stroke();
-
-      // 尾毂：盖住三条摆尾根端的圆头（画在机身之后——后端圆头收尾）
-      c.beginPath(); c.arc(rootX, rootY, o.tailW * 0.62, 0, Math.PI * 2);
-      c.fillStyle = '#dde6f6'; c.fill();
-      c.strokeStyle = 'rgba(90,115,165,0.6)'; c.lineWidth = 1; c.stroke();
-      c.restore();
-    };
-
-    // 暂定版参数（2026-10-15 回调3：A/B/D 备选卡与 VA/VB/VD 已按用户要求删除，仅保留 C）
-    // 口径：核心靠上、机身跨核心之上、宽度 ≈ 核心直径 1/3（tailW = 2×coreR/3）、总长收紧、
-    // 机身竖直朝下左右对称（bend0 0）、除尾部硬鳍拍动外全身静止
-    const VC = { tailY: 71, tipY: 209, coreY: 115, coreR: 30, tailW: 20, tipW: 13,
-      bend0: 0, bendPow: 2,
-      tailLen: 26, tailAmp: 0.35, tailSpd: 1.8, tailSpread: 0.62,
-      patchN: 4, patchSpd: 0.4, ring: true };
-
-    // ---- 行为演示公共件（2026-10-15 用户「继续」：攻击技能候选，沿测试4战争矩阵候选格式）----
-    // 演示用假玩家：规律横移的蓝白三角（读攻防关系用）
-    const t3PlayerPos = (t, W, H) => [W / 2 + Math.sin(t * 0.85) * W * 0.27, H - 30];
-    const t3Player = (c, x, y) => {
-      c.save();
-      c.translate(x, y);
-      c.fillStyle = 'rgba(214,232,255,0.95)';
-      c.beginPath();
-      c.moveTo(0, -11); c.lineTo(7.5, 9); c.lineTo(0, 5); c.lineTo(-7.5, 9);
-      c.closePath(); c.fill();
-      c.strokeStyle = 'rgba(110,160,230,0.7)'; c.lineWidth = 1; c.stroke();
-      c.restore();
-    };
-    // 演示底景：暂定 C 版敌机（整体上移腾出弹幕区）+ 假玩家；返回玩家坐标
-    const t3Battle = (c, t, W, H) => {
-      c.save();
-      c.translate(0, -14);
-      t3Drifter(c, W, H, t, VC);
-      c.restore();
-      const pp = t3PlayerPos(t, W, H);
-      t3Player(c, pp[0], pp[1]);
-      return pp;
-    };
-    // S1 潮泡齐射：充能 0.6s → 依次 4 枚慢泡（正弦横漂、可击消设定），屏底前自破成水花
-    const t3DrawS1 = (c, t, W, H) => {
-      const cyc = 5.4, tc = t % cyc, cx = W / 2, y0 = 122;
-      if (tc > 0.3 && tc < 0.9) {   // 充能：核心外圈亮起
-        const k = Math.sin((tc - 0.3) / 0.6 * Math.PI);
-        c.beginPath(); c.arc(cx, 101, 34 + 7 * k, 0, Math.PI * 2);
-        c.strokeStyle = 'rgba(140,210,255,' + (0.55 * k).toFixed(3) + ')'; c.lineWidth = 3; c.stroke();
-      }
-      for (let i = 0; i < 4; i++) {
-        const t0 = 0.9 + i * 0.32;
-        if (tc < t0) continue;
-        const age = tc - t0;
-        const bx = cx + (i - 1.5) * 16 + Math.sin(age * 3.1 + i * 1.7) * 10;
-        const by = y0 + age * 62;
-        const popY = H - 58;
-        if (by < popY) {
-          const g = c.createRadialGradient(bx, by, 0, bx, by, 7);
-          g.addColorStop(0, 'rgba(225,245,255,0.95)');
-          g.addColorStop(0.55, 'rgba(120,190,255,0.55)');
-          g.addColorStop(1, 'rgba(120,190,255,0.12)');
-          c.beginPath(); c.arc(bx, by, 7, 0, Math.PI * 2);
-          c.fillStyle = g; c.fill();
-          c.strokeStyle = 'rgba(170,220,255,0.6)'; c.lineWidth = 1; c.stroke();
-        } else {
-          const pa = age - (popY - y0) / 62;   // 破裂水花
-          if (pa < 0.32) {
-            const k = pa / 0.32;
-            c.beginPath(); c.arc(bx, popY, 4 + 20 * k, 0, Math.PI * 2);
-            c.strokeStyle = 'rgba(160,215,255,' + (0.6 * (1 - k)).toFixed(3) + ')'; c.lineWidth = 1.5; c.stroke();
-          }
-        }
-      }
-      t3Battle(c, t, W, H);
-    };
-    // S2 潮汐环：每 2s 自核心扩出一圈椭圆环（扩散扫向玩家、渐隐消散）
-    const t3DrawS2 = (c, t, W, H) => {
-      const cyc = 6, tc = t % cyc, cx = W / 2, cy = 101;
-      for (const t0 of [0.6, 2.6, 4.6]) {
-        if (tc < t0) continue;
-        const r = (tc - t0) * 95;
-        if (r > 150) continue;
-        const al = r > 128 ? 1 - (r - 128) / 22 : 1;
-        c.beginPath();
-        c.ellipse(cx, cy + r * 0.18, r, r * 0.85, 0, 0, Math.PI * 2);
-        c.strokeStyle = 'rgba(130,200,255,' + (0.6 * al).toFixed(3) + ')';
-        c.lineWidth = 2.5; c.stroke();
-        c.beginPath();
-        c.ellipse(cx, cy + r * 0.18, r * 0.93, r * 0.79, 0, 0, Math.PI * 2);
-        c.strokeStyle = 'rgba(200,235,255,' + (0.28 * al).toFixed(3) + ')'; c.lineWidth = 1; c.stroke();
-      }
-      t3Battle(c, t, W, H);
-    };
-    // S3 涡流牵引：身下场控区（三臂涡旋 + 卷入粒子 + 玩家拉力虚线），无直接伤害
-    const t3DrawS3 = (c, t, W, H) => {
-      const cyc = 6.5, tc = t % cyc;
-      const ppx = W / 2 + Math.sin(t * 0.85) * W * 0.27;
-      const active = tc > 0.8 && tc < 4.3;
-      const ramp = active ? Math.min(1, (tc - 0.8) / 0.6) * Math.min(1, (4.3 - tc) / 0.5) : 0;
-      const zx = W / 2 + (ppx - W / 2) * 0.35 * ramp, zy = 205;
-      if (active) {
-        const R = 42 + Math.sin(t * 3.2) * 3;
-        c.save();
-        c.translate(zx, zy);
-        c.rotate(t * 2.4);
-        for (let k = 0; k < 3; k++) {
-          c.beginPath();
-          c.arc(0, 0, R * 0.8, k * 2.094, k * 2.094 + 1.5);
-          c.strokeStyle = 'rgba(120,195,255,' + (0.5 * ramp).toFixed(3) + ')';
-          c.lineWidth = 2.5; c.stroke();
-        }
-        c.restore();
-        c.beginPath(); c.arc(zx, zy, 10, 0, Math.PI * 2);
-        c.strokeStyle = 'rgba(190,230,255,' + (0.65 * ramp).toFixed(3) + ')'; c.lineWidth = 1.5; c.stroke();
-        for (let i = 0; i < 8; i++) {
-          const ph = (t * 0.55 + i / 8) % 1;
-          const rr = R * (1 - ph);
-          const aa = t * 2.6 + i * 0.785 + ph * 4;
-          c.beginPath();
-          c.arc(zx + Math.cos(aa) * rr, zy + Math.sin(aa) * rr * 0.7, 1.6, 0, Math.PI * 2);
-          c.fillStyle = 'rgba(170,220,255,' + (0.7 * (1 - ph) * ramp).toFixed(3) + ')'; c.fill();
-        }
-      }
-      const pp = t3Battle(c, t, W, H);
-      if (active) {   // 拉力示意：玩家 → 涡心虚线
-        c.setLineDash([3, 4]);
-        c.beginPath(); c.moveTo(pp[0], pp[1] - 12); c.lineTo(zx, zy);
-        c.strokeStyle = 'rgba(140,200,255,0.35)'; c.lineWidth = 1; c.stroke();
-        c.setLineDash([]);
-      }
-    };
-    // S4 尾鳍水刃：三拍硬鳍拍击 → 左右鳍尖各甩一枚弧形水刃（外抛后坠落）
-    const t3DrawS4 = (c, t, W, H) => {
-      const cyc = 5.5, tc = t % cyc, cx = W / 2;
-      for (const t0 of [0.6, 1.5, 2.4]) {
-        if (tc < t0) continue;
-        const age = tc - t0;
-        if (age > 2.4) continue;
-        for (const s of [-1, 1]) {
-          const bx = cx + s * (16 + age * 95);
-          const by = 66 + age * 50 + age * age * 42;
-          const rot = s * (0.7 + age * 1.5);
-          c.save();
-          c.translate(bx, by);
-          c.rotate(rot);
-          c.beginPath();
-          c.arc(0, 0, 9, -0.55 * Math.PI, 0.25 * Math.PI);
-          c.strokeStyle = 'rgba(160,215,255,' + Math.max(0, 0.85 - age * 0.35).toFixed(3) + ')';
-          c.lineWidth = 3; c.stroke();
-          c.beginPath();
-          c.arc(0, 0, 9, -0.4 * Math.PI, 0.1 * Math.PI);
-          c.strokeStyle = 'rgba(235,248,255,' + Math.max(0, 0.5 - age * 0.2).toFixed(3) + ')';
-          c.lineWidth = 1.4; c.stroke();
-          c.restore();
-        }
-      }
-      t3Battle(c, t, W, H);
-    };
-
-    infoBody.appendChild(t3Head('一、外观（暂定：舰节装甲）'));
-    t3DemoGrid([
-      { title: 'C · 舰节装甲（暂定）', sub: '机身竖直对称，三片硬鳍拍动 + 核心金属环，斑块四枚', draw: (c, t, dt, W, H) => t3Drifter(c, W, H, t, VC) },
-    ]);
-    infoBody.appendChild(t3TextCard('C · 舰节装甲（暂定）',
-      '暂定版。机身竖直朝下、左右对称（静态弯曲已去），无装甲板节；尾部三片硬鳍往复拍动（全身唯一动态），核心外圈金属环与铆点、斑块四枚；机身宽度 ≈ 核心直径 1/3，核心之上白色很短、之下前段渐细。'));
-
-    infoBody.appendChild(t3Head('二、攻击技能候选（动画演示，可多选）'));
-    t3DemoGrid([
-      { title: 'S1 潮泡齐射', sub: '充能 0.6s → 依次吐出 4 枚慢速水泡（正弦横漂、屏底前自行破裂）', draw: t3DrawS1 },
-      { title: 'S2 潮汐环', sub: '每 2s 自核心扩出一圈潮汐环（扩散扫向玩家、触环结算一次）', draw: t3DrawS2 },
-      { title: 'S3 涡流牵引', sub: '身下涡流区：我方子弹减速被拖向涡心、玩家移速 -15%（无直接伤害）', draw: t3DrawS3 },
-      { title: 'S4 尾鳍水刃', sub: '硬鳍三拍，左右鳍尖各甩出一枚弧形水刃（外抛后坠落）', draw: t3DrawS4 },
-    ]);
-    [
-      ['S1 潮泡齐射（文字补充）', '核心亮起 0.6s 充能后，朝玩家方向依次吐出 4 枚慢速水泡（间隔 0.32s、弹速 ≈62、正弦横漂）；水泡可被玩家子弹直接击消（低威胁弹），行进至屏底前 ≈80% 处自行破裂成小水花（无伤害）——压迫感来自「持续不断」而非单发伤害。'],
-      ['S2 潮汐环（文字补充）', '每隔 2s 自核心扩出一圈潮汐环（水平椭圆、扩散 ≈95/s、半径 150 后消散）；环面接触玩家结算 1 次伤害（每环最多 1 次）；环不消除我方子弹——走位穿环是主要交互。'],
-      ['S3 涡流牵引（文字补充）', '停留期间周期生成涡流区（半径 ≈45、持续 3.5s、缓慢追踪玩家横向位置）：范围内我方子弹减速 40% 并被缓慢拖向涡心（可被拖出弹道），玩家在范围内移速 -15%；涡流不直接造成伤害——场控型技能，限制走位与输出窗口。'],
-      ['S4 尾鳍水刃（文字补充）', '三片硬鳍依次大幅拍击（间隔 0.8s），每次拍击自左右鳍尖各甩出一枚弧形水刃（横向初速 ≈120 + 下坠加速，外抛后坠出屏底）；水刃不可被消除，命中一次伤害——与驻留节奏绑定，拍击瞬间鳍有蓄势动作。'],
-    ].forEach(([n, d]) => infoBody.appendChild(t3TextCard(n, d)));
-
-    infoBody.appendChild(t3Head('三、纯文字备选（可点名实装）'));
-    [
-      ['S5 蓝斑护体', '每受击 3 次触发一次：核心表面一枚浅蓝斑块脱落化作一枚短程追踪水珠（场上最多 2 枚、速度慢、可击消）——低频反罚。'],
-      ['S6 潜航下潜', '血量 <40% 时整体下潜改贴屏底横移游走（不攻击、持续 10s）后浮回原位——中途改变交战几何，打乱预瞄。'],
-      ['S7 浮游护航', '登场自带 2 枚环绕水泡（各自抵消 1 次命中，破后不复）——低成本护盾，泡存续期间核心外观微亮提示。'],
-    ].forEach(([n, d]) => infoBody.appendChild(t3TextCard(n, d)));
-
-    infoBody.appendChild(t3Head('四、基础行为候选（文字，供定稿）'));
-    [
-      ['移动 · 停留漂移（推荐）', '顶部入场 → 停留 20s（2类标准），停留期间 ±40px 缓慢左右漂移（正弦、无速度突变），期满加速离场——攻击技能在停留期循环释放。'],
-      ['移动 · 侧翼悬停', '侧翼入场 → 悬停于 30%~50% 屏高，攻击节奏同上；适合与顶部系敌人混波、拉开弹道角度。'],
-      ['定位候选', '进既有「2类攻击」池（与赤红/烈橙/幽蓝/紫晶/霜白同池按权重抽取），或独立「2A」档小池（参照 1S 水晶核芯艇的独立档先例）；碰撞伤害建议 12（核心体积大，贴近惩罚略高于突击艇）。'],
-    ].forEach(([n, d]) => infoBody.appendChild(t3TextCard(n, d)));
   }
+
 
   // ---------- 权重：波次权重 / 刷怪权重 / 怪物权重 / 波次 / 旧怪物权重 / 刷怪机制 六合一（2026-10-11 四合一 + 2026-10-12 刷怪机制）----------
   // 子页签行格式对齐「装备」页（info-subtabs + info-chip）。chips 在子页内容渲染完成后插到 infoBody 顶部；
@@ -2820,7 +2402,7 @@ boss_storm: {
   // ---------- 权重 · 怪物权重子页（原测试1 / 原顶级「波次权重」页）：敌机种类划分 + 权重设计工作区（2026-10-03 启用；2026-10-09 页签更名，测试1 让位给敌方子弹样式图鉴；2026-10-11 迁入「权重」页做子页签并更名「怪物权重」）----------
   // 用途：后续波次设计按本页「类别 × 职能」组织。顶部按敌人类别（1类/2类/3类/4类）切换；
   // 选中某类后，先展示该类「全部敌人」总表（去重后的完整花名册），再依次展示该类下各职能分组表。
-  // 权重来源：桌面《敌机权重设计表_测试1.xlsx》（2026-10-03 填写 Lv30 前三档 = Lv1/Lv11/Lv21，
+  // 权重来源：《docs/敌机权重设计表_测试1.xlsx》（2026-10-03 填写 Lv30 前三档 = Lv1/Lv11/Lv21，
   // Lv31/Lv41 待定稿）。总表（INFO_T1_ROSTER_W）与职能表（member.w）为两套独立数值，按表如实同步；
   // 未填档位在页面显示「—」。本页为纯设计稿，不接入刷怪逻辑（实装权威表见本组「旧怪物权重」子页——原顶级页签 2026-10-12 迁入）。
   // 同一敌人可带多个职能标签而在多张表重复出现（炮火先兆者 = 3类攻击 + 3类攻击后位；
@@ -2836,13 +2418,15 @@ boss_storm: {
     striker_violet: [15, 10, 5], striker_white: [15, 10, 5],
     fashiMatrix: [0, 80, 20], fashiA1: [0, 0, 140],   // fashiMatrix Lv11 90→80（2026-10-14 用户定稿，与职能表「2类攻击」同值对齐）
     striker_fortress: [10, 20, 20], striker_dusk: [0, 10, 20],
-    popian: [0, 30, 20], popianU: [0, 0, 20],
+    popian: [0, 30, 20], popianU: [0, 0, 20], voyager: [10, 5, 5],   // 浮海飘航者（2026-10-16 用户定稿）；破片U型 0/1/10 → 0/0/20 同批定稿
     douzhi: null, sponsor: null, sponsorDeluxe: null,
     jiaoxiang: [0, 0, 15], hanshuang: [0, 10, 20], pulseMatrix: [0, 20, 5],
     yu4: [0, 5, 10], anvil: [0, 5, 10],
-    gunship_violet: [20, 15, 15], gunship_crimson: [20, 15, 15], gunship_amber: [20, 15, 15],   // Lv21 10→15（2026-10-14 用户定稿，紫晶/赤红/金曜/橙焰四炮艇；青时不在此列）
+    gunship_violet: [20, 15, 15], gunship_crimson: [20, 15, 15], gunship_amber: [20, 15, 15],   // Lv21 10→15（2026-10-14 用户定稿，紫晶/赤红/金曜/橙焰四战舰；青时不在此列）
     gunship_orange: [20, 15, 15], gunship_cyan: [15, 20, 30],   // 橙焰同改 Lv21 15（2026-10-14）/ 青 30 不变
-    harbinger: [5, 20, 20], baoling: [0, 15, 10], baolingG: [0, 1, 5],
+    harbinger: [5, 10, 10, 5],   // 先兆者家族权重改版（2026-10-16 用户定稿四行表）：3A 5/10/10/5
+    harbingerLead: [0, 5, 5, 5], harbingerHub: [0, 0, 5, 5], harbingerPolar: [0, 0, 0, 10],   // 3B / 3C / 3D
+    baoling: [0, 15, 10], baolingG: [0, 1, 5],
     fashiA2: [0, 0, 50], unreal: [0, 0, 1], weilong: [0, 5, 10],
     capital_crimson: [10, 10, 10], capital_crgold: [10, 10, 10], capital_azure: [10, 10, 10],
     warMatrix: [0, 30, 30], fashiArray: [0, 30, 30], warGhost: [0, 0, 80],
@@ -2871,7 +2455,7 @@ boss_storm: {
     ]},
     { name: '2类防御', members: [{ ency: 'striker_fortress', w: [10, 10, 10] }] },               // 黄=坚垒
     { name: '2类突进', members: [{ ency: 'striker_dusk', w: [10, 10, 10] }] },
-    { name: '2类侧位', members: [{ ency: 'popian', w: [10, 20, 10] }, { ency: 'popianU', w: [0, 1, 10] }] },
+    { name: '2类侧位', members: [{ ency: 'popian', w: [10, 20, 10] }, { ency: 'popianU', w: [0, 0, 20] }, { ency: 'voyager', w: [10, 5, 5] }] },
     { name: '2类奖励', members: [
       { ency: 'douzhi', w: [5, 5, 5, 5, 5] }, { ency: 'sponsor', w: [4, 4, 4, 4, 4] }, { ency: 'sponsorDeluxe', w: [1, 1, 1, 1, 1] },
     ]},
@@ -2881,18 +2465,23 @@ boss_storm: {
     ]},
     { name: '3类增益辅助', members: [{ ency: 'anvil', w: [0, 0, 10] }, { ency: 'yu4', w: [0, 10, 10] }] },
     { name: '3类攻击', members: [
-      { ency: 'gunship_violet', w: [20, 15, 15] }, { ency: 'gunship_crimson', w: [20, 15, 15] }, { ency: 'gunship_amber', w: [20, 15, 15] },   // 5 种普通炮艇：紫 / 赤 / 金——Lv21 10→15（2026-10-14 用户定稿，紫晶/赤红/金曜/橙焰四艇）
+      { ency: 'gunship_violet', w: [20, 15, 15] }, { ency: 'gunship_crimson', w: [20, 15, 15] }, { ency: 'gunship_amber', w: [20, 15, 15] },   // 5 种普通战舰：紫 / 赤 / 金——Lv21 10→15（2026-10-14 用户定稿，紫晶/赤红/金曜/橙焰四艇）
       { ency: 'gunship_orange', w: [20, 15, 15] }, { ency: 'gunship_cyan', w: [15, 20, 30] },    // 橙（同改 Lv21 15）/ 青（30 不变）
       { ency: 'harbinger', w: [5, 20, 20] }, { ency: 'fashiA2', w: [0, 0, 50] },
       { ency: 'baoling', w: [0, 15, 10] }, { ency: 'baolingG', w: [0, 1, 5] }, { ency: 'unreal', w: [0, 0, 1] },
     ]},
-    { name: '3类攻击后位', members: [{ ency: 'harbinger', w: [10, 10, 10] }] },
+    { name: '3类攻击后位', members: [
+      { ency: 'harbinger', w: [10, 10, 10, 5] },          // 先兆者家族后位权重改版（2026-10-16 用户定稿）：3A 10/10/10/5
+      { ency: 'harbingerLead', w: [0, 5, 5, 5] },         // 3B 先导
+      { ency: 'harbingerHub', w: [0, 0, 5, 5] },          // 3C 中枢
+      { ency: 'harbingerPolar', w: [0, 0, 0, 10] },       // 3D 极夜
+    ] },
     { name: '3类攻击压制', members: [{ ency: 'baoling', w: [0, 10, 10] }, { ency: 'baolingG', w: [0, 1, 5] }, { ency: 'unreal', w: [0, 0, 1] }] },
     { name: '3类攻击重装', members: [{ ency: 'weilong', w: [10, 10, 10] }] },
 
     { name: '4类攻击', members: [
       { ency: 'capital_crimson', w: [10, 10, 10] }, { ency: 'capital_crgold', w: [10, 10, 10] }, { ency: 'capital_azure', w: [10, 10, 10] },   // 红 / 金 / 蓝
-      { ency: 'warMatrix', name: '战争矩阵', reserved: true, w: [0, 30, 30] },                    // 预留
+      { ency: 'warMatrix', name: '战争矩阵', w: [0, 30, 30] },                    // 已实装（2026-10-17），预留池权重沿用（真我/诗篇 30）
     ]},
     { name: '4类召唤', members: [{ ency: 'fashiArray', w: [0, 20, 10] }] },
     { name: '4类突进', members: [{ ency: 'warGhost', w: [0, 0, 10] }] },
@@ -3030,7 +2619,7 @@ boss_storm: {
         { id: '121', name: '夹心品字', comp: '1×2类+2×1类', role: '前后均可', desc: '2类居中、两架 1类分列——三机同帧同步出现',
           dots: [[0.5, 0.35, '2'], [0.3, 0.35, '1'], [0.7, 0.35, '1']], arrows: [[0.5, -0.15, 0.5, 0.25]],
           period: 7, sim: () => [S_dive('striker_crimson', CANVAS_W / 2, 0, 110, 1.6), S_dive('side_pass', CANVAS_W / 2 - 72, 0.3, 135, 1.6), S_dive('side_pass', CANVAS_W / 2 + 72, 0.3, 135, 1.6)] },
-        { id: '131', name: '', comp: '2×1类+1×3类', role: '后波', desc: '中央 3类炮艇先现，随后左右两架 1类同步斜向落穿越（8~20° 向中线）',
+        { id: '131', name: '', comp: '2×1类+1×3类', role: '后波', desc: '中央 3类战舰先现，随后左右两架 1类同步斜向落穿越（8~20° 向中线）',
           dots: [[0.5, 0.3, '3'], [0.25, 0.22, '1'], [0.75, 0.22, '1']], arrows: [[0.25, -0.15, 0.25, 0.12], [0.75, -0.15, 0.75, 0.12]],
           period: 6, sim: () => [S_hover('gunship_violet', CANVAS_W * 0.5), fu('side_pass', CANVAS_W * 0.25, -46, 0, 95, { t0: 0.5 }), fu('side_pass', CANVAS_W * 0.75, -46, 0, 95, { t0: 0.5 })] },
         { id: '1类小队', name: '', comp: '3~5×1类', role: '侧翼', tag: '当前实装', desc: '现行标准编队：3~5 架 1类自单侧斜插穿越（队形随机）',
@@ -3056,11 +2645,11 @@ boss_storm: {
           dots: [[0.15, 0.5, '2'], [0.325, 0.3, '2'], [0.5, 0.5, '2'], [0.675, 0.3, '2'], [0.85, 0.5, '2']],
           arrows: [[0.5, -0.15, 0.5, 0.2]],
           period: 7.5, sim: () => [S_dive('striker_crimson', 0.125 * CANVAS_W, 0, 120, 1.0), S_dive('striker_crimson', 0.3125 * CANVAS_W, 0, 120, 1.0), S_dive('striker_crimson', 0.5 * CANVAS_W, 0, 120, 1.0), S_dive('striker_crimson', 0.6875 * CANVAS_W, 0.35, 90, 1.0), S_dive('striker_crimson', 0.875 * CANVAS_W, 0.35, 90, 1.0)] },
-        { id: '23', name: '护航截击', comp: '2×2类+1×3类', role: '后波', desc: '2类先入扫场、炮艇约0.4s后跟进悬停',
+        { id: '23', name: '护航截击', comp: '2×2类+1×3类', role: '后波', desc: '2类先入扫场、战舰约0.4s后跟进悬停',
           dots: [[0.35, 0.55, '2'], [0.65, 0.55, '2'], [0.5, 0.25, '3']],
           arrows: [[0.35, -0.15, 0.35, 0.45], [0.65, -0.15, 0.65, 0.45], [0.5, -0.15, 0.5, 0.15]],
           period: 8, sim: () => [S_dive('striker_crimson', CANVAS_W * 0.35, 0, 105, 1.5), S_dive('striker_crimson', CANVAS_W * 0.65, 0, 105, 1.5), S_hover('gunship_violet', CANVAS_W / 2, 0.35)] },
-        { id: '33', name: '对称双艇', comp: '2×3类', role: '前后均可', desc: '左右对称位置各浮现 1 艘 3类炮艇',
+        { id: '33', name: '对称双艇', comp: '2×3类', role: '前后均可', desc: '左右对称位置各浮现 1 艘 3类战舰',
           dots: [[0.3, 0.32, '3'], [0.7, 0.32, '3']], arrows: [],
           period: 6, sim: () => [S_hover('gunship_violet', CANVAS_W * 0.3, 0, 130), S_hover('gunship_violet', CANVAS_W * 0.7, 0, 130)] },
         { id: '3-2-3', name: '品字炮阵', comp: '2×3类+1×2类', role: '前后均可', desc: '3类上2类下品字悬停',
@@ -3135,7 +2724,7 @@ boss_storm: {
                  [0.6, 0.43, '2'], [0.7, 0.36, '2'], [0.8, 0.29, '2']],
           arrows: [],
           period: 7, sim: () => { const cx = CANVAS_W / 2, hy = [150, 120, 90, 60], out = [S_dive('striker_crimson', cx, 0, hy[0], 0.7)]; for (let k = 1; k <= 3; k++) for (const sx of [-1, 1]) out.push(S_dive('striker_crimson', cx + sx * k * 56, k * 0.25, hy[k], 0.7)); return out; } },
-        { id: '232232', name: '', comp: '4×2类+2×3类', role: '后波', tag: '当前实装', desc: '现行标准编队：4 架 2类短停留冲锋 + 2 架 3类炮艇悬停压阵，对称横排',
+        { id: '232232', name: '', comp: '4×2类+2×3类', role: '后波', tag: '当前实装', desc: '现行标准编队：4 架 2类短停留冲锋 + 2 架 3类战舰悬停压阵，对称横排',
           dots: [[0.125, 0.4, '2'], [0.275, 0.4, '3'], [0.425, 0.4, '2'], [0.575, 0.4, '2'], [0.725, 0.4, '3'], [0.875, 0.4, '2']],
           arrows: [[0.5, -0.15, 0.5, 0.3]],
           period: 5.6, sim: () => { const x0 = (CANVAS_W - 5 * 70) / 2, out = []; for (let k = 0; k < 6; k++) { if (k === 1 || k === 4) out.push(fu('gunship_violet', x0 + k * 70, -60, 0, 62, { holdY: 140 })); else out.push(fu('striker_crimson', x0 + k * 70, -50, 0, 120, { holdY: 100, holdDur: 0.9, chargeVy: 460 })); } return out; } },
@@ -3143,7 +2732,7 @@ boss_storm: {
           dots: [[0.12, 0.3, '1'], [0.12, 0.5, '1'], [0.12, 0.7, '1'], [0.88, 0.3, '1'], [0.88, 0.5, '1'], [0.88, 0.7, '1']],
           arrows: [[0.02, 0.5, 0.12, 0.5], [0.98, 0.5, 0.88, 0.5]],
           period: 6.5, sim: () => { const y0 = CANVAS_H * 0.40, out = []; for (let k = 0; k < 7; k++) { out.push(fu('side_pass', -30 - k * 46, y0 - k * 25, 108, 61)); out.push(fu('side_pass', CANVAS_W + 30 + k * 46, y0 - k * 25, -108, 61)); } return out; } },
-        { id: '32223', name: '', comp: '2×3类+3×2类', role: '前后均可', tag: '当前实装', desc: '现行标准编队：左右各 1 艘 3类炮艇压阵（悬停）+ 中央 3 架 2类护航',
+        { id: '32223', name: '', comp: '2×3类+3×2类', role: '前后均可', tag: '当前实装', desc: '现行标准编队：左右各 1 艘 3类战舰压阵（悬停）+ 中央 3 架 2类护航',
           dots: [[0.15, 0.4, '3'], [0.325, 0.4, '2'], [0.5, 0.4, '2'], [0.675, 0.4, '2'], [0.85, 0.4, '3']],
           arrows: [[0.5, -0.15, 0.5, 0.3]],
           period: 5.6, sim: () => { const cx = CANVAS_W / 2, out = []; for (const sx of [-1, 1]) out.push(fu('gunship_violet', cx + sx * 150, -60, 0, 62, { holdY: 140 })); for (const k of [-1, 0, 1]) out.push(fu('striker_crimson', cx + k * 60, -50, 0, 120, { holdY: 105, holdDur: 0.9, chargeVy: 460 })); return out; } },
@@ -3197,10 +2786,10 @@ boss_storm: {
         { id: '2R', name: '增益无人舰', comp: '1×2R类', role: '特殊', tag: '定稿待实装', desc: '从侧翼横穿一架 2R 无人舰（现行行为：余弦上下浮动）——斗志昂扬10 / 赞助无人舰8 / 豪华赞助无人舰2',
           dots: [[0.5, 0.42, 'r']], arrows: [[0.02, 0.42, 0.14, 0.42]],
           period: 6, sim: () => [fu('douzhi', -60, CANVAS_H * 0.4, 150, 0)] },
-        { id: 'h*1', name: '单导弹', comp: '1×3类攻击后位', role: '特殊', tag: '定稿待实装', desc: '召唤 1 个「3类攻击后位」池敌人（现池仅炮火先兆者——顶部水平位置随机浮现，定点召唤导弹雨；后位池扩员后自动跟进）',
+        { id: 'h*1', name: '单导弹', comp: '1×3类攻击后位', role: '特殊', tag: '定稿待实装', desc: '召唤 1 个「3类攻击后位」池敌人（2026-10-16 池扩员为先兆者家族四型 3A/3B/3C/3D，按后位权重表抽取——顶部水平位置随机浮现，定点召唤导弹雨）',
           dots: [[0.5, 0.2, 'h']], arrows: [[0.5, -0.15, 0.5, 0.12]],
           period: 6, sim: () => [S_fade('harbinger', CANVAS_W * 0.5, 110)] },
-        { id: 'h*2', name: '双导弹', comp: '2×3类攻击后位', role: '特殊', tag: '定稿待实装', desc: '召唤 2 个「3类攻击后位」池敌人（现池仅炮火先兆者——顶部左右各浮现一个，定点召唤导弹雨）',
+        { id: 'h*2', name: '双导弹', comp: '2×3类攻击后位', role: '特殊', tag: '定稿待实装', desc: '召唤 2 个「3类攻击后位」池敌人（池 = 先兆者家族四型 3A/3B/3C/3D——顶部左右各浮现一个，定点召唤导弹雨）',
           dots: [[0.2, 0.2, 'h'], [0.8, 0.2, 'h']],
           arrows: [[0.2, -0.15, 0.2, 0.12], [0.8, -0.15, 0.8, 0.12]],
           period: 6, sim: () => [S_fade('harbinger', CANVAS_W * 0.2, 110), S_fade('harbinger', CANVAS_W * 0.8, 110)] },
@@ -3238,13 +2827,13 @@ boss_storm: {
         { id: '特10', name: '连发三2直落', comp: '3×2类', role: '特殊', desc: '顶部随机位置接连生成 3 个 2类战机，不停留直接走',
           dots: [[0.5, 0.08, '2'], [0.5, 0.26, '2'], [0.5, 0.44, '2']], arrows: [[0.5, -0.15, 0.5, 0.35]],
           period: 6.5, sim: () => [0, 1, 2].map(k => fu('striker_crimson', CANVAS_W / 2, -50 - k * 40, 0, 120, { t0: k * 0.25 })) },
-        { id: '特11', name: '单点3类', comp: '1×3类', role: '特殊', desc: '顶部随机位置生成 1 个 3类炮艇（悬停）',
+        { id: '特11', name: '单点3类', comp: '1×3类', role: '特殊', desc: '顶部随机位置生成 1 个 3类战舰（悬停）',
           dots: [[0.62, 0.28, '3']], arrows: [],
           period: 6, sim: () => [S_hover('gunship_violet', CANVAS_W * 0.62)] },
-        { id: '特12', name: '双点3类', comp: '2×3类', role: '特殊', desc: '顶部随机两个位置各生成 1 个 3类炮艇（悬停）',
+        { id: '特12', name: '双点3类', comp: '2×3类', role: '特殊', desc: '顶部随机两个位置各生成 1 个 3类战舰（悬停）',
           dots: [[0.28, 0.28, '3'], [0.72, 0.28, '3']], arrows: [],
           period: 6, sim: () => [S_hover('gunship_violet', CANVAS_W * 0.28), S_hover('gunship_violet', CANVAS_W * 0.72)] },
-        { id: '特13', name: '相邻双3', comp: '2×3类', role: '特殊', desc: '顶部随机两个挨着的位置各生成 1 个 3类炮艇（悬停）',
+        { id: '特13', name: '相邻双3', comp: '2×3类', role: '特殊', desc: '顶部随机两个挨着的位置各生成 1 个 3类战舰（悬停）',
           dots: [[0.43, 0.28, '3'], [0.57, 0.28, '3']], arrows: [],
           period: 6, sim: () => [S_hover('gunship_violet', CANVAS_W / 2 - 35), S_hover('gunship_violet', CANVAS_W / 2 + 35)] },
       ]},,
@@ -3407,38 +2996,49 @@ boss_storm: {
     });
   }
 
-  // ---------- 测试4：战争矩阵 设计工作区（2026-10-03 改版）----------
-  // 旧内容（黑暗之手 + 四连携随从技能方案，2026-09-29 批次）已全部实装定稿，按用户指令清空。
-  // 战争矩阵（warMatrix，诗篇级 4B）：法术矩阵类敌人的强大上位单位。本页：一、外观候选 A~D；二、技能候选 S1~S4（动画演示）；三、纯文字候选。
-  // 动画为循环轻量模拟（188x246 竖版小场，蓝三角＝玩家，位置按 sin 规律横移）；每帧自检 isConnected，脱链自动停帧。
+  // ---------- 测试4：战争矩阵 设计工作区（2026-10-16 四轮定稿：B+D 融合）----------
+  // 前史：2026-10-03 首版外观 A~D 为「多座小菱拼簇」方案；2026-10-16 一轮改版提出横置大矩阵四案（A 破阵之门
+  // / B 仪装战列 / C 武装母舰 / D 裂核战旗）；同日二轮用户定稿 B+D 融合为单一外观——主体＝横置巨型法术矩阵
+  // （长轴横向、高:长=1:1.8 同法术矩阵比例、整体仅比 4 类主力舰 192×134 略小）；同日三轮四条修订（裂核改竖长
+  // 菱形 / 卫星横置 90° 且 +40% / 门框修 per bug 改上下中点四段对称伸展 / 环缩小删符文环）；同日四轮三条修订
+  // 定稿——①外圈圆环整体删除（B 案仅存左右尖端白棱镜）②碎裂残角向中心收 ③四枚卫星加略微上下浮动
+  // （上排两枚同步、下排两枚同步、排间反相）。现行登场演出＝红色矩形门框自中间上下两点同时向左右伸展
+  // （四段等长完全对称、≈0.75s）→ 门框闪亮 → 本体浮现（0.44s，较原 0.8s 提速 80%）→ 门框碎裂成四残角
+  // 悬浮不消失（上下两排各自完全镜像对称、小幅漂移）；中央竖长菱形裂核白光呼吸（暗色裂纹已删）；
+  // 四枚缩小版法术矩阵形卫星菱横置 90°（中心白、边框发红——同法术矩阵发射正方体配色）上窄下宽环绕
+  // （左上/右上两枚靠近中线、左下/右下两枚远离中线），不独立旋转、随本体移动并叠加排内同步上下浮动。
+  // 九轮定稿：①冲击波改双道（第一条贴框触发、第二条延迟 0.15s 跟进）②演出全程（含双冲击波）结束才视为
+  // 正常生成（phase 虚化覆盖 introEnd 1.842s）③常态持续释放脉冲白色菱形光波（自核心扩散至本体边缘、
+  // 形状同本体菱形，周期 1.2s 循环）。
+  // 五轮定稿：登场增加菱形落点框——本体出现位置的轮廓预告，与门框同一时间（0.75s）到达完全状态；
+  // 本体浮现期间框线被长大的本体逐渐覆盖。八轮回调：门框改自上方中点出发先往左绕行、菱形框改自上顶点
+  // 出发先往右下绕行（单条闭合路径 dash 截断，0.75s 不变）；冲击波外扩 0.85→1.1。
+  // 本页：一、外观定稿（B+D 融合）；二、技能候选 S1~S4（动画演示，机体用定稿案简形）；三、纯文字候选。
+  // 动画为循环轻量模拟（竖版小场，蓝三角＝玩家，位置按 sin 规律横移）；每帧自检 isConnected，脱链自动停帧。
   function renderInfoTest4() {
     infoBody.innerHTML = '';
 
-    // ── 一、外观候选（四选一）──
-    infoBody.appendChild(t4Head('一、外观候选（四选一）'));
+    // ── 一、外观定稿（B+D 融合）──
+    infoBody.appendChild(t4Head('一、外观定稿（B+D 融合）'));
     t4DemoGrid([
-      { title: 'A · 王冠矩阵', sub: '巨型竖菱主舰 + 顶部三小菱排成王冠弧', period: 6, draw: t4DrawWmA },
-      { title: 'B · 五芒战阵', sub: '五座矩阵菱形拼五角星顶点 + 中央战争核心', period: 6, draw: t4DrawWmB },
-      { title: 'C · 十字卫阵', sub: '四座菱十字环绕 + 中央方核整体缓旋', period: 6, draw: t4DrawWmC },
-      { title: 'D · 双子矩阵', sub: '两座巨菱镜像绕转 + 中央能量连线脉动', period: 6, draw: t4DrawWmD },
+      { title: 'B+D · 裂核旗舰', sub: '碎框残角 + 四菱卫星（上窄下宽·上下浮动）+ 裂核白光 + 尖端棱镜', period: 6, draw: t4DrawWmBD, w: 252, h: 264 },
     ]);
     [
-      ['A · 王冠矩阵', '中央巨型竖菹形主体自旋，顶部三座小菹形沿弧形排列如王冠；主菱血红、小菱暗金。读作「矩阵族群之王」，体型最大、压迫感最强。'],
-      ['B · 五芒战阵', '五座法术矩阵样式菹形分居五角星顶点、径向朝外，中央嵌旋转方块核心；整体缓慢旋转。读作「战术阵法」，与脉冲矩阵（三角拼合）形成进阶感。'],
-      ['C · 十字卫阵', '四座菹形十字方向环绕中央大方核，整体缓旋、四菱反向自旋；方核随呼吸明暗。读作「移动要塞」，防御感/重装感最强。'],
-      ['D · 双子矩阵', '两座巨型菹形互为镜像绕中心对转，两者之间能量连线脉动；中心虚空。读作「双生守卫」，可配合双生/共享机制（击毁一半另一半暴走）。'],
+      ['共同基调（B+D 融合定稿）', '主体＝横置巨型法术矩阵：长轴横向、高：长＝1:1.8 同法术矩阵比例，白红渐变菱体 + 细黑菱环 + 横长核心，整体尺寸仅比 4 类主力舰（192×134）略小。'],
+      ['登场演出（门框 + 菱形落点框）', '登场时红色矩形门框自上方中点出发、先往左沿框顺次绕行描画；同时以红色描画本体出现位置的菱形落点框——自上方顶点出发、先往右下沿菱形顺次绕行描画；两者 ≈0.75s 同步完成整框 → 闪亮 → 本体浮现（0.44s，较原 0.8s 提速 80%），本体从小长大逐渐覆盖菱形落点框（贴框瞬间菱形框向外高速扩大渐隐成冲击波，第一条放出一小段时间后第二条跟进，共两道）、门框则碎裂成残角。<b>演出全程（含双冲击波）结束才视为正常生成</b>——期间虚化：不受伤害、炮弹穿过、与机体互穿、位置固定。'],
+      ['登场后（碎框残角 + 四菱卫星 + 裂核 + 脉冲光波）', '门框在本体浮现瞬间碎裂成四块残角、小幅漂移悬浮不消失（上面两枚互为完全镜像、下面两枚互为完全镜像）。四枚缩小版法术矩阵形卫星菱环绕（横置 90°、中心白、边框发红，同法术矩阵发射正方体配色，较初版 +40%）：左上/右上两枚靠近中线、左下/右下两枚远离中线（上窄下宽）；不独立旋转、随本体移动，并叠加略微上下浮动（上排两枚同步、下排两枚同步、排间反相）。菱体左右尖端各嵌一枚白棱镜；中央竖长菱形裂核白光呼吸明暗（暗色裂纹已删）。本体常态持续释放脉冲白色菱形光波——形状与本体菱形一致，自核心周期扩散至本体边缘后渐隐循环。机制可挂：血量越低裂核越亮、攻击间隔越短。'],
     ].forEach(([n, d]) => infoBody.appendChild(t4TextCard(n, d, '#e0a05a')));
 
-    // ── 二、技能候选（动画演示，暂用 B 外观）──
+    // ── 二、技能候选（动画演示，机体用定稿案简形）──
     infoBody.appendChild(t4Head('二、技能候选（动画演示，可多选）'));
     t4DemoGrid([
-      { title: 'S1 矩阵齐射', sub: '五菱依次充能亮起 → 朝玩家扇形齐射发光正方体', period: 4.2, draw: t4DrawWmVolley },
+      { title: 'S1 矩阵齐射', sub: '四菱形卫星依次充能亮起 → 朝玩家扇形齐射发光正方体', period: 4.2, draw: t4DrawWmVolley },
       { title: 'S2 棱镜分裂弹', sub: '大正方体飞行中段 → 预警圈收缩 → 分裂四枚 X 形小正方体', period: 4.4, draw: t4DrawWmSplit },
       { title: 'S3 封印方界', sub: '玩家周围四点成结界 → 方形收缩挤压', period: 4.6, draw: t4DrawWmSeal },
       { title: 'S4 矩阵坠落', sub: '落点预警圈 → 大正方体依次砸落 + 冲击波', period: 4.8, draw: t4DrawWmRain },
     ]);
     [
-      ['S1 矩阵齐射（文字补充）', '各菹形依次充能（每座 0.24s 间隔亮起），齐亮后 0.3s 齐射：每座朝玩家方向发射 1 枚正方体（总 5 枚、扇形散布 ±20°）；正方体速度/伤害与法术阵列大号正方体同档。齐射后 1.2s 全体熄灭进兠装填（输出窗口）。'],
+      ['S1 矩阵齐射（文字补充）', '四枚菱形卫星依次充能（每枚 0.3s 间隔亮起），齐亮后 0.3s 齐射：弹幕自本体核心齐出、朝玩家方向发射 5 枚正方体（扇形散布 ±20°，与卫星数量解耦——卫星是充能指示不是炮口）；正方体速度/伤害与法术阵列大号正方体同档。齐射后 1.2s 全体熄灭进入装填（输出窗口）。'],
       ['S2 棱镜分裂弹（文字补充）', '中央核心发射一枚特大正方体（伤害高、速度慢），飞行至射程 55% 处分裂为 4 枚小正方体沿 X 形四向扩散；与法术阵列的「1 同向 + 2 垂直」分裂形成差异化。'],
       ['S3 封印方界（文字补充）', '在玩家周围生成四个光点（方形四角，距离 46px）→ 光点连线成结界（虚线渐实）→ 整体以渐加速收缩至 16px，收缩完成瞬间结界内闪光伤害；及时离开结界范围可破。'],
       ['S4 矩阵坠落（文字补充）', '屏幕上方出现 5 个落点预警圈（水平随机、不重叠），0.9s 后大正方体依次砸落（间隔 0.18s），落地瞬间产生小范围冲击波环（半径 40）。'],
@@ -3452,8 +3052,8 @@ boss_storm: {
       ['S7 核心暴走（残血狂怒）', '血量 ≤30% 时核心过载：全体通红、攻击间隔减半，但自身每秒受到固定伤害（双向加速）。'],
     ].forEach(([n, d]) => infoBody.appendChild(t4TextCard(n, d, '#c8a048')));
 
-    infoAppendNote('<b>怎么用本页</b>：告诉我外观选哪个 + 技能勾哪几个（例如：「外观 B；技能 S1 + S3 + S6」），'
-      + '我据此实装到 01-config（参数）/ 04-spawn（spawnWarMatrix）/ 06-enemy（状态机）/ 09-draw-ships（专属外观）。'
+    infoAppendNote('<b>怎么用本页</b>：告诉我外观选哪个 + 技能勾哪几个（例如：「外观 A；技能 S1 + S3 + S6」），'
+      + '我据此实装到 01-config（参数）/ 04-spawn（spawnWarMatrix）/ 06-enemy（状态机）/ 09b-draw-enemies（专属外观）。'
       + '实装后从 WIP_PLACEHOLDER_TYPES 移除、图鉴条目去掉 wip。');
   }
 
@@ -3483,10 +3083,10 @@ boss_storm: {
     infoBody.appendChild(row);
   }
   function t4Demo(opt) {
-    const { title, sub, period = 4, draw } = opt;
+    const { title, sub, period = 4, draw, w: W = 188, h: H = 246 } = opt;   // w/h：定稿案主卡用大画布
     const card = document.createElement('div');
     card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
-    const W = 188, H = 246, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const cvs = document.createElement('canvas');
     cvs.width = W * dpr; cvs.height = H * dpr;
     cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#070a13;border:1px solid rgba(255,90,90,0.16)';
@@ -3508,7 +3108,7 @@ boss_storm: {
     }
     requestAnimationFrame(frame);
     const lbl = document.createElement('div');
-    lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:188px';
+    lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:' + W + 'px';
     lbl.innerHTML = '<b style="color:#e8c0c0">' + title + '</b><br>' + sub;
     card.append(cvs, lbl);
     return card;
@@ -3542,98 +3142,261 @@ boss_storm: {
     c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
     c.restore();
   }
-  function t4WarnLine(c, x1, y1, x2, y2, alpha) {
+  // ── 测试4 战争矩阵小件（2026-10-16 横置大矩阵改版：登场红框 + 横置巨菱体系）──
+  // 缓出曲线（本体浮现用）
+  function t4EaseOutCubic(k) { return 1 - Math.pow(1 - k, 3); }
+  // 渐进描边：按 prog(0~1) 沿 buildPath 路径从起点描画到 prog 处（dash 截断法；perimeter≈路径周长）
+  function t4ProgStroke(c, prog, perimeter, buildPath, color, width, glow) {
     c.save();
-    c.setLineDash([6, 5]);
-    c.strokeStyle = 'rgba(255,80,80,' + alpha + ')'; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    if (glow) { c.shadowColor = '#ff4d5e'; c.shadowBlur = glow; }
+    c.setLineDash([Math.max(0.01, prog * perimeter), perimeter + 10]);
+    c.strokeStyle = color; c.lineWidth = width; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    buildPath(c);
+    c.stroke();
     c.restore();
   }
-  // ── 测试4 战争矩阵小件：单座法术矩阵菹形（竖菹形外体 + 内核心；s=半高，rot=自旋角，col=主色）──
-  function t4Shard(c, x, y, s, rot, col, glow) {
-    c.save();
-    c.translate(x, y); c.rotate(rot || 0);
-    if (glow) { c.shadowColor = col; c.shadowBlur = glow; }
-    c.fillStyle = '#1a1420';
-    c.strokeStyle = col; c.lineWidth = 1.2;
-    c.beginPath();
-    c.moveTo(0, -s); c.lineTo(s * 0.56, 0); c.lineTo(0, s); c.lineTo(-s * 0.56, 0);
-    c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = col;
-    c.beginPath(); c.arc(0, 0, s * 0.22, 0, Math.PI * 2); c.fill();
-    c.restore();
-  }
-  // 中央旋转方核（外观 B/C 与技能演示共用）
-  function t4Core(c, x, y, s, rot, col) {
-    c.save();
-    c.translate(x, y); c.rotate(rot || 0);
-    c.shadowColor = col; c.shadowBlur = 10;
-    c.fillStyle = '#241722'; c.strokeStyle = col; c.lineWidth = 1.4;
-    c.beginPath();
-    c.moveTo(-s, -s); c.lineTo(s, -s); c.lineTo(s, s); c.lineTo(-s, s);
-    c.closePath(); c.fill(); c.stroke();
-    c.rotate(Math.PI / 4);
-    c.strokeStyle = 'rgba(255,255,255,0.35)'; c.lineWidth = 0.8;
-    const s2 = s * 0.55;
-    c.beginPath();
-    c.moveTo(-s2, -s2); c.lineTo(s2, -s2); c.lineTo(s2, s2); c.lineTo(-s2, s2);
-    c.closePath(); c.stroke();
-    c.restore();
-  }
-  // B 外观简形（技能演示的机体，缩小版五芒战阵）
-  function t4WmShipB(c, x, y, s, t, charge) {
-    const R = 30 * s;
-    for (let i = 0; i < 5; i++) {
-      const a = -Math.PI / 2 + i * Math.PI * 2 / 5 + t * 0.25;
-      const gl = charge != null ? Math.max(0, Math.min(1, (charge - i * 0.24) / 0.3)) * 8 : 0;
-      t4Shard(c, x + Math.cos(a) * R, y + Math.sin(a) * R, 8 * s, a + Math.PI / 2, gl > 0.5 ? '#ffd28a' : '#c86a4a', gl);
+  // 登场门框（八轮回调）：起始点＝上方中间那一个点，先往左走——单条闭合路径顺次绕行
+  // （上中点→左上角→左下角→右下角→右上角→回上中点）dash 截断生长，0.75s 完成整框（与此前一致）；
+  // 四角准星角架在路径描画路过该角时逐个亮起（路径距离自上中点起算：左上 w/2、左下 w/2+h、右下 1.5w+h、右上 1.5w+2h）
+  function t4WmFrameSplit(c, cx, cy, w, h, prog) {
+    const per = 2 * (w + h);
+    t4ProgStroke(c, prog, per, (g) => {
+      g.moveTo(cx, cy - h / 2);           // 上中点（唯一起点）
+      g.lineTo(cx - w / 2, cy - h / 2);   // 先往左 → 左上角
+      g.lineTo(cx - w / 2, cy + h / 2);   // 左边向下 → 左下角
+      g.lineTo(cx + w / 2, cy + h / 2);   // 下边向右 → 右下角
+      g.lineTo(cx + w / 2, cy - h / 2);   // 右边向上 → 右上角
+      g.lineTo(cx, cy - h / 2);           // 上边向左回到起点
+    }, 'rgba(255,77,94,0.9)', 1.5, 6);
+    const arm = 10;
+    for (const [sx, sy, dist] of [[-1, -1, w / 2], [-1, 1, w / 2 + h], [1, 1, w / 2 + h + w], [1, -1, w / 2 + 2 * h + w]]) {
+      const a = Math.max(0, Math.min(1, (prog * per - dist) / (arm * 0.8)));
+      if (a <= 0) continue;
+      c.save();
+      c.globalAlpha = 0.35 + 0.65 * a;
+      c.shadowColor = '#ff4d5e'; c.shadowBlur = 8;
+      c.strokeStyle = '#ff6a7a'; c.lineWidth = 3; c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(cx + sx * (w / 2 - arm), cy + sy * h / 2);
+      c.lineTo(cx + sx * w / 2, cy + sy * h / 2);
+      c.lineTo(cx + sx * w / 2, cy + sy * (h / 2 - arm));
+      c.stroke();
+      c.restore();
     }
-    t4Core(c, x, y, 7 * s, t * 0.8, '#e86a3a');
   }
-
-  // ── 外观候选演示（循环微动画：呼吸浮动 + 自旋）──
-  function t4DrawWmA(c, t, dt, W, H, st) {
-    const cx = W / 2, cy = H * 0.42 + Math.sin(t * 1.2) * 3;
-    for (let i = -1; i <= 1; i++) {
-      const a = -Math.PI / 2 + i * 0.7;
-      t4Shard(c, cx + Math.cos(a) * 34, cy + Math.sin(a) * 34, 9, -t * 1.2, '#c8a04a', 4);
+  // 登场菱形落点框（八轮回调）：起始点＝上方中间那个顶点，先往右下走——单条闭合路径顺次绕行
+  // （上顶点→右顶点→下顶点→左顶点→回上顶点）dash 截断生长，0.75s 完成整框（与门框一致）；
+  // 本体浮现期间框线继续显示、被长大的本体逐渐覆盖，故调用方在 emerge=1 后停画即可
+  function t4WmDiamondSplit(c, cx, cy, hw, hh, prog) {
+    const per = 4 * Math.hypot(hw, hh);
+    t4ProgStroke(c, prog, per, (g) => {
+      g.moveTo(cx, cy - hh);       // 上顶点（唯一起点）
+      g.lineTo(cx + hw, cy);       // 先往右下 → 右顶点
+      g.lineTo(cx, cy + hh);       // → 下顶点
+      g.lineTo(cx - hw, cy);       // → 左顶点
+      g.lineTo(cx, cy - hh);       // → 回上顶点
+    }, 'rgba(255,77,94,0.9)', 1.5, 6);
+  }
+  // 横置大法术矩阵主体：白红渐变菱体（高:长=1:1.8 同法术矩阵比例、长轴横向）+ 细黑菱环 + 横长菱核
+  // hw=半长 hh=半高；pulse=脉动 0~1；emerge=浮现进度 0~1（缓出放大+渐显，null=常驻全尺寸）
+  function t4WmBody(c, cx, cy, hw, hh, pulse, emerge) {
+    const sc = emerge == null ? 1 : 0.25 + 0.75 * t4EaseOutCubic(emerge);
+    const al = emerge == null ? 1 : Math.min(1, emerge * 1.4);
+    c.save();
+    c.translate(cx, cy);
+    c.scale(sc, sc);
+    c.globalAlpha = al;
+    const dia = (k) => {
+      c.beginPath();
+      c.moveTo(0, -hh * k); c.lineTo(hw * k, 0); c.lineTo(0, hh * k); c.lineTo(-hw * k, 0);
+      c.closePath();
+    };
+    c.shadowColor = 'rgba(255,90,110,0.9)';
+    c.shadowBlur = 10 + pulse * 8;
+    const g0 = c.createLinearGradient(0, -hh, 0, hh);
+    g0.addColorStop(0, '#fff2f2'); g0.addColorStop(0.5, '#ff9a9a'); g0.addColorStop(1, '#ff4d5e');
+    dia(1); c.fillStyle = g0; c.fill();
+    c.shadowBlur = 0;
+    dia(1); c.strokeStyle = 'rgba(255,240,240,0.85)'; c.lineWidth = 1.2; c.stroke();
+    dia(0.6); c.strokeStyle = 'rgba(12,7,9,0.92)'; c.lineWidth = 1.6; c.stroke();
+    // 横长核心（法术矩阵圆核 → 沿长轴拉长的菱核，强调横置方向）
+    c.save();
+    c.shadowColor = '#ff5566'; c.shadowBlur = 6 + pulse * 6;
+    const cg = c.createRadialGradient(0, 0, 0, 0, 0, hh * 0.62);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.5, '#ffd6d6'); cg.addColorStop(1, '#ff5566');
+    c.beginPath();
+    c.moveTo(hw * 0.34, 0); c.lineTo(0, hh * 0.3); c.lineTo(-hw * 0.34, 0); c.lineTo(0, -hh * 0.3);
+    c.closePath();
+    c.fillStyle = cg; c.fill();
+    c.restore();
+    c.restore();
+    // 脉冲白色菱形光波（九轮新增常态持续释放；十轮回调：图层提至最高——高于本体黑色菱环等全部本体层，
+    // 并增宽 1.6→2.8）：形状与本体菱形一致，自核心 18% 周期扩散至本体边缘后渐隐循环，lighter 叠加
+    if (emerge == null || emerge >= 1) {
+      const ph = (performance.now() / 1000 / 2.4) % 1;   // 周期 2.4s（2026-10-18 用户回调「速率减半」，与实装 pulsePeriod 同步）
+      const k = 0.18 + 0.82 * ph;
+      c.save();
+      c.translate(cx, cy);
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = 0.65 * (1 - ph);
+      c.shadowColor = '#ffffff'; c.shadowBlur = 6;
+      c.strokeStyle = '#ffffff'; c.lineWidth = 2.8; c.lineJoin = 'round';
+      c.beginPath();
+      c.moveTo(0, -hh * k); c.lineTo(hw * k, 0); c.lineTo(0, hh * k); c.lineTo(-hw * k, 0);
+      c.closePath(); c.stroke();
+      c.restore();
     }
-    t4Shard(c, cx, cy, 26, t * 0.5, '#c22b3d', 10);
   }
-  function t4DrawWmB(c, t, dt, W, H, st) {
-    const cx = W / 2, cy = H * 0.42 + Math.sin(t * 1.2) * 3;
-    t4WmShipB(c, cx, cy, 1.35, t, null);
+  // 卫星小菱（定稿案四菱卫星）：缩小版法术矩阵形横菱（2026-10-16 三轮定稿：旋转 90°，半宽=s、
+  // 半高=s/1.8），中心白、边框发红——同法术矩阵发射正方体配色；不独立旋转（恒横向），
+  // 位置完全由调用方绑定本体
+  function t4WmMini(c, x, y, s, glow) {
+    c.save();
+    c.translate(x, y);
+    c.shadowColor = '#ff5566'; c.shadowBlur = 5 + glow * 7;
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, s);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.7, '#ffd6d6'); g.addColorStop(1, '#ffb0b0');
+    c.fillStyle = g;
+    c.strokeStyle = '#ff5566'; c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(-s, 0); c.lineTo(0, -s / 1.8); c.lineTo(s, 0); c.lineTo(0, s / 1.8);
+    c.closePath(); c.fill(); c.stroke();
+    c.restore();
   }
-  function t4DrawWmC(c, t, dt, W, H, st) {
-    const cx = W / 2, cy = H * 0.42 + Math.sin(t * 1.2) * 3;
-    const R = 32;
+  // 白棱镜小件（B 案左右尖端）：竖长小白菱
+  function t4Prism(c, x, y, s, glow) {
+    c.save();
+    c.translate(x, y);
+    c.shadowColor = '#ffffff'; c.shadowBlur = 4 + glow * 6;
+    c.fillStyle = '#ffffff';
+    c.strokeStyle = 'rgba(255,120,120,0.9)'; c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, -s); c.lineTo(s * 0.5, 0); c.lineTo(0, s); c.lineTo(-s * 0.5, 0);
+    c.closePath(); c.fill(); c.stroke();
+    c.restore();
+  }
+  // 技能演示共用机体简形：定稿案（B+D 融合）缩小版——横置菱体 + 四菱卫星（小卡空间有限，碎框残角省略；
+  // 卫星上窄下宽、恒横向、随体不独转并叠加排内同步上下浮动，charge 作依次亮起的充能指示）
+  // charge=null 常态；charge=0~1.6 时四枚卫星按 0.4 间隔依次亮起
+  function t4WmShip(c, x, y, s, t, charge) {
+    const hw = 25 * s, hh = 14 * s;
+    t4WmBody(c, x, y, hw, hh, 0.5 + Math.sin(t * 3.2) * 0.5, null);
+    const sat = [[-hw * 0.5, -hh * 0.85], [hw * 0.5, -hh * 0.85], [-hw * 0.82, hh * 0.9], [hw * 0.82, hh * 0.9]];
+    const bobUp = Math.sin(t * 1.6) * 2 * s, bobLo = Math.sin(t * 1.6 + Math.PI) * 2 * s;   // 上排同步/下排同步
     for (let i = 0; i < 4; i++) {
-      const a = i * Math.PI / 2 + t * 0.4;
-      t4Shard(c, cx + Math.cos(a) * R, cy + Math.sin(a) * R, 12, -t * 0.9, '#b85a3a', 5);
+      const gl = charge != null ? Math.max(0, Math.min(1, (charge - i * 0.4) / 0.3)) : 0;
+      t4WmMini(c, x + sat[i][0], y + sat[i][1] + (i < 2 ? bobUp : bobLo), 5.9 * s, 0.35 + gl * 0.65);
     }
-    const pl = 0.75 + Math.sin(t * 2.4) * 0.25;
-    t4Core(c, cx, cy, 12 * pl, t * 0.8, '#ff8a4a');
-  }
-  function t4DrawWmD(c, t, dt, W, H, st) {
-    const cx = W / 2, cy = H * 0.42 + Math.sin(t * 1.2) * 3;
-    const R = 24;
-    const a1 = t * 0.7, a2 = a1 + Math.PI;
-    const x1 = cx + Math.cos(a1) * R, y1 = cy + Math.sin(a1) * R;
-    const x2 = cx + Math.cos(a2) * R, y2 = cy + Math.sin(a2) * R;
-    const pl = 0.5 + Math.sin(t * 4) * 0.3;
-    t4Line(c, x1, y1, x2, y2, 1.5, 'rgba(255,140,70,' + pl.toFixed(3) + ')', 8);
-    t4Shard(c, x1, y1, 17, t * 0.9, '#d86a3a', 6);
-    t4Shard(c, x2, y2, 17, -t * 0.9, '#d86a3a', 6);
   }
 
-  // ── 技能候选演示（机体统一用 B 外观简形）──
-  // S1 矩阵齐射：五菱依次充能 → 齐射 5 枚正方体（扇形 ±20°）
+  // ── B+D 融合定稿演示（时间轴：0~0.75s 门框四段对称描画 → 0.75~0.95s 闪亮 → 0.95~1.394s 本体浮现
+  // （提速 80%）→ 待机；四轮定稿：外圈圆环整体删除；五轮定稿：增加菱形落点框——本体轮廓预告，
+  // 自左右顶点向上下伸展与门框同步，浮现期间被长大的本体逐渐覆盖）──
+  function t4DrawWmBD(c, t, dt, W, H, st) {
+    const cx = W / 2, cy = H * 0.48;
+    const fw = 136, fh = 100, hw = 62, hh = 36;   // 矩形较初版缩小一档（三轮定稿）
+    const prog = Math.min(1, t / 0.75);
+    const flash = t >= 0.75 && t < 0.95 ? 1 - Math.abs((t - 0.85) / 0.1) : 0;
+    const emerge = t < 0.95 ? 0 : Math.min(1, (t - 0.95) / 0.444);   // 0.8s / 1.8 ≈ 0.444s（提速 80%）
+    // 1) D 门框：描画（上下两点向左右伸展）→ 闪亮 → 本体浮现瞬间碎裂成四残角悬浮不消失
+    if (t < 0.95) {
+      c.save();
+      if (flash > 0) { c.shadowColor = '#ff4d5e'; c.shadowBlur = 20 * flash; }
+      t4WmFrameSplit(c, cx, cy, fw, fh, prog);
+      c.restore();
+    } else {
+      // 碎裂残角：缓出小幅漂移 + 慢旋（缓出无瞬跳）；运动量仅由 (|sx|, sy) 决定、方向项乘 sx——
+      // 上面两枚互为完全镜像、下面两枚互为完全镜像（三轮定稿；四轮定稿：外漂幅度收小、更靠中心）
+      const k = t4EaseOutCubic(Math.min(1, (t - 0.95) / 0.45));
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => {
+        const drift = 4 + 2 * Math.sin(t * 0.8 + (sy < 0 ? 0 : 1.7));   // 上排同相 / 下排同相
+        c.save();
+        c.globalAlpha = 1 - k * 0.55;
+        c.translate(cx + sx * (fw / 2 + k * drift), cy + sy * (fh / 2 + k * drift * 0.7));
+        c.rotate(sx * Math.sin(t * 0.8 + (sy < 0 ? 0 : 1.7)) * 0.14 * k);   // 出现角度 ±8° 内摆动（镜像、不转圈）
+        c.strokeStyle = 'rgba(255,77,94,0.85)'; c.lineWidth = 3; c.lineCap = 'round';
+        c.shadowColor = '#ff4d5e'; c.shadowBlur = 6;
+        c.beginPath();
+        c.moveTo(-sx * 12, 0); c.lineTo(0, 0); c.lineTo(0, -sy * 12);
+        c.stroke();
+        c.restore();
+      });
+    }
+    // 1b) 菱形落点框（五轮新增；十二轮回调）：描画期至冲击波触发瞬间显示、被长大的本体逐渐覆盖——
+    // 冲击波开始扩散的瞬间红框消失，由冲击波接管外扩（画在本体之下）
+    const swT = t - 1.1;
+    if (swT < 0) {
+      c.save();
+      if (flash > 0) { c.shadowColor = '#ff4d5e'; c.shadowBlur = 20 * flash; }
+      t4WmDiamondSplit(c, cx, cy, hw, hh, prog);
+      c.restore();
+    }
+    // 1c) 菱形冲击波 ×2（九轮改双波；十轮提早 0.08s、十一轮再提早 0.062s）：第一条贴框前后（t≈1.100）外扩渐隐，
+    // 第二条延迟 0.15s 跟进（缓出外扩 1.1 + alpha 线性衰减；画在本体图层之下、从机体后方扩散）
+    for (const delay of [0, 0.15]) {
+      const wt = swT - delay;
+      if (wt < 0 || wt >= 0.45) continue;
+      const k = wt / 0.45;
+      const esc = 1 + t4EaseOutCubic(k) * 1.1;
+      c.save();
+      c.globalAlpha = 0.9 * (1 - k);
+      c.shadowColor = '#ff4d5e'; c.shadowBlur = 10;
+      c.strokeStyle = '#ff6a7a'; c.lineWidth = 1.5 * (1 - k * 0.35);
+      c.beginPath();
+      c.moveTo(cx, cy - hh * esc); c.lineTo(cx + hw * esc, cy);
+      c.lineTo(cx, cy + hh * esc); c.lineTo(cx - hw * esc, cy);
+      c.closePath(); c.stroke();
+      c.restore();
+    }
+    // 2) 本体（微浮幅度随浮现缓入、位置帧间连续）
+    const bob = emerge * Math.sin(t * 1.2) * 2.5;
+    t4WmBody(c, cx, cy + bob, hw, hh, 0.5 + Math.sin(t * 3.2) * 0.5, emerge);
+    if (emerge <= 0) return;
+    // 3) 中缝裂核：竖长菱形白光（上下对角线远长于左右，三轮定稿改菱形）呼吸外泄（暗色裂纹已删）
+    const lg = 0.5 + Math.sin(t * 5) * 0.5;
+    c.save();
+    c.translate(cx, cy + bob);
+    c.globalCompositeOperation = 'lighter';
+    c.fillStyle = 'rgba(255,120,120,' + (emerge * 0.35 * (0.5 + lg * 0.5)).toFixed(3) + ')';
+    c.beginPath();
+    c.moveTo(0, -30); c.lineTo(9, 0); c.lineTo(0, 30); c.lineTo(-9, 0);
+    c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,' + (emerge * (0.45 + lg * 0.45)).toFixed(3) + ')';
+    c.beginPath();
+    c.moveTo(0, -26); c.lineTo(4, 0); c.lineTo(0, 26); c.lineTo(-4, 0);
+    c.closePath(); c.fill();
+    c.restore();
+    // 4) 左右尖端白棱镜（浮现过半后渐入）
+    if (emerge > 0.6) {
+      const gl = 0.5 + Math.sin(t * 2.2) * 0.5;
+      t4Prism(c, cx - hw, cy + bob, 6, gl);
+      t4Prism(c, cx + hw, cy + bob, 6, gl);
+    }
+    // 5) 四枚卫星小菱（上窄下宽：上排 ±hw·0.5 / 下排 ±hw·0.82；恒横向不独立旋转、随体移动；三轮 +40%；
+    // 四轮定稿：略微上下浮动——上排两枚同步、下排两枚同步（排间反相））
+    if (emerge > 0.2) {
+      const sa = Math.min(1, (emerge - 0.2) / 0.8);
+      const sat = [[-hw * 0.5, -hh * 0.85], [hw * 0.5, -hh * 0.85], [-hw * 0.82, hh * 0.9], [hw * 0.82, hh * 0.9]];
+      const bobUp = Math.sin(t * 1.6) * 2, bobLo = Math.sin(t * 1.6 + Math.PI) * 2;
+      const gl2 = 0.5 + Math.sin(t * 3 + 1) * 0.5;
+      for (let i = 0; i < 4; i++) {
+        c.save();
+        c.globalAlpha = sa;
+        t4WmMini(c, cx + sat[i][0], cy + bob + sat[i][1] + (i < 2 ? bobUp : bobLo), 11.2, gl2);
+        c.restore();
+      }
+    }
+  }
+
+  // ── 技能候选演示（机体统一用定稿案简形）──
+  // S1 矩阵齐射：四菱形卫星依次充能 → 齐射 5 枚正方体（扇形 ±20°）
   function t4DrawWmVolley(c, t, dt, W, H, st) {
     if (t < (st.misc.pt || 0)) { st.bullets.length = 0; st.misc.fired = 0; }
     st.misc.pt = t;
     const cx = W / 2, cy = 52;
     const charge = Math.max(0, Math.min(1.6, t / 1.2 * 1.6));
-    t4WmShipB(c, cx, cy, 0.9, t, t < 1.2 ? charge : 1.6);
+    t4WmShip(c, cx, cy, 0.9, t, t < 1.2 ? charge : 1.6);
     const pp = t4PlayerPos(t, W, H);
     if (t >= 1.5 && !st.misc.fired) {
       st.misc.fired = 1;
@@ -3666,7 +3429,7 @@ boss_storm: {
     if (t < (st.misc.pt || 0)) { st.bullets.length = 0; st.misc.big = null; st.misc.warnT = -1; }
     st.misc.pt = t;
     const cx = W / 2, cy = 52;
-    t4WmShipB(c, cx, cy, 0.9, t, null);
+    t4WmShip(c, cx, cy, 0.9, t, null);
     const pp = t4PlayerPos(t, W, H);
     if (t >= 0.4 && !st.misc.big && !st.misc.done) {
       const a = Math.atan2(pp[1] - cy, pp[0] - cx);
@@ -3707,7 +3470,7 @@ boss_storm: {
   // S3 封印方界：四点结界 → 收缩挤压
   function t4DrawWmSeal(c, t, dt, W, H, st) {
     const cx = W / 2, cy = 52;
-    t4WmShipB(c, cx, cy, 0.9, t, t < 1.6 ? t / 1.6 : 0);
+    t4WmShip(c, cx, cy, 0.9, t, t < 1.6 ? t / 1.6 : 0);
     const pp = t4PlayerPos(t, W, H);
     let R = 46, lineA = 0, coreA = 0;
     if (t < 0.8) { R = 46; lineA = 0; }
@@ -3746,7 +3509,7 @@ boss_storm: {
     }
     st.misc.pt = t;
     const cx = W / 2, cy = 52;
-    t4WmShipB(c, cx, cy, 0.9, t, null);
+    t4WmShip(c, cx, cy, 0.9, t, null);
     if (!st.misc.spots) {
       const rnd = (i) => { const v = Math.sin(st.misc.seed * 37.7 + i * 91.3) * 43758.5453; return v - Math.floor(v); };
       st.misc.spots = [];
@@ -3807,512 +3570,412 @@ boss_storm: {
     }
   }
 
-  // ---------- 测试2：炮火先兆者三变种 · 外观设计稿（2026-10-14，第二轮按用户定稿更新）----------
-  // 中枢炮火先兆者 / 先导炮火先兆者 / 极夜炮火先兆者——样式已定稿（中枢 = 原 A+B 合并 /
-  // 先导 = 正七边形一角朝下 + 幽暮式浮现瞄准入场 / 极夜 = 正方形框芯一角朝下 + 四向连接杆 + 冰蓝充能），
-  // 均在先兆者基础形体语言之上（原型见 09b drawHarbingerBody）。卡内齐召落点 / 浮现瞄准 / 横向弹道等为机制
-  // 示意，未实装——确认后另行认领：01-config-enemies（变种参数）/ 04-spawn（生成）/ 06-enemy（召唤）/
-  // 09b-draw-enemies（专属外观）+ 图鉴条目。
-  // 本页小工具 t2 前缀自包含（与测试4 t4 系列互不依赖）；演示卡帧驱动、脱链即停（同 t4Demo 模式）。
+  // ---------- 测试2：战机「拂晓」原型复刻（2026-10-18 七轮：仅常规形态，待审核） ----------
+  // 六轮暴走参数保留在 git 中；本轮按用户反馈重做常规：晶体竖直、横向排列、总体朝上；尖端不做针尖。
   function renderInfoTest2() {
     infoBody.innerHTML = '';
-    const TAU = Math.PI * 2;
-    const cl01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
-    // 十六进制颜色线性插值（p 0~1）——中枢臂体随充能变红用
-    const mixCol = (a, b, p) => {
-      const ca = [1, 3, 5].map(i => parseInt(a.substr(i, 2), 16));
-      const cb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16));
-      return 'rgb(' + ca.map((v, i) => Math.round(v + (cb[i] - v) * cl01(p))).join(',') + ')';
-    };
-
-    // ── 页面小件 ──
-    function t2Head(text, col) {
-      const h = document.createElement('h3');
-      h.className = 'info-achv-tier-head';
-      h.style.color = col || '#ff8585';
-      h.textContent = text;
-      return h;
-    }
-    function t2TextCard(title, desc, color) {
-      const d = document.createElement('div');
-      d.className = 'info-wave-card';
-      const h = document.createElement('h4');
-      h.style.color = color || '#ff9a9a';
-      h.textContent = title;
-      const p = document.createElement('p');
-      p.innerHTML = desc;
-      d.append(h, p);
-      return d;
-    }
-    function t2Grid(demos) {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 10px';
-      demos.forEach(d => row.appendChild(t2Demo(d)));
-      infoBody.appendChild(row);
-    }
-    // 横版帧驱动演示卡（236×172，dpr≤2，脱链即停——同测试4 t4Demo 模式）
-    function t2Demo(opt) {
-      const { title, sub, period = 6, draw } = opt;
-      const card = document.createElement('div');
-      card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
-      const W = 236, H = 172, dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cvs = document.createElement('canvas');
-      cvs.width = W * dpr; cvs.height = H * dpr;
-      cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#070a13;border:1px solid rgba(255,90,90,0.16)';
-      const c = cvs.getContext('2d');
-      c.scale(dpr, dpr);
-      let last = performance.now();
-      function frame(now) {
-        if (!cvs.isConnected) return;                 // 脱链即停（切页签 / 关弹窗）
-        let dt = (now - last) / 1000; last = now;
-        if (dt > 0.1) dt = 0.1;
-        const t = (now / 1000) % period;
-        c.clearRect(0, 0, W, H);
-        t2Field(c, W, H, t);
-        draw(c, t, W, H, now / 1000);                 // 第 5 参 = 绝对时间（不取模）——供杆组连续旋转角度积分
-        requestAnimationFrame(frame);
-      }
-      requestAnimationFrame(frame);
-      const lbl = document.createElement('div');
-      lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:236px';
-      lbl.innerHTML = '<b style="color:#e8c0c0">' + title + '</b><br>' + sub;
-      card.append(cvs, lbl);
-      return card;
-    }
-    // 背景星点（缓下移）
-    function t2Field(c, W, H, t) {
-      c.fillStyle = 'rgba(130,160,230,0.14)';
-      for (let i = 0; i < 20; i++) {
-        const x = (i * 53) % W, y = (i * 97 + t * 14) % H;
-        c.fillRect(x, y, 1, 1);
-      }
-    }
-    // 假玩家（蓝白三角，同 09a 主机体剪影风格）
-    function t2Player(c, x, y) {
-      c.save();
-      c.fillStyle = '#8fd6ff'; c.strokeStyle = '#dff4ff'; c.lineWidth = 1;
-      c.beginPath();
-      c.moveTo(x, y - 9); c.lineTo(x - 8, y + 8); c.lineTo(x + 8, y + 8);
-      c.closePath(); c.fill(); c.stroke();
-      c.restore();
-    }
-
-    // ── 先兆者基础形体（复刻 09b drawHarbingerBody shape：外环 R24 + 环带内径 19 + 芯 R9 + 横杠；
-    //    反向 arc 挖环带、nonzero 规则；bars 'h' 左右横杠（原型） / 'v' 上下竖杠（极夜） / false 关闭） ──
-    function t2HarbPath(g, o) {
-      const R = o.R || 24, Rin = o.Rin || 19, Rc = o.Rc || 9;
-      const barY = o.barY || 2.6, barIn = o.barIn || 9, barOut = o.barOut || 22;
-      g.beginPath();
-      g.arc(0, 0, R, 0, TAU);
-      g.arc(0, 0, Rin, 0, TAU, true);
-      g.moveTo(Rc, 0); g.arc(0, 0, Rc, 0, TAU);
-      if (o.bars === 'v') {
-        g.rect(-barY, -barOut, barY * 2, barOut - barIn);
-        g.rect(-barY, barIn, barY * 2, barOut - barIn);
-      } else if (o.bars !== false) {
-        g.rect(-barOut, -barY, barOut - barIn, barY * 2);
-        g.rect(barIn, -barY, barOut - barIn, barY * 2);
-      }
-    }
-    // 正多边形环带路径（首顶点竖直朝下：a0=90°）——先导六边形外圈（n=6、圆角、圆芯+横杠）/
-    // 极夜定稿菱形框（n=4 正方形一角朝下、方芯 core:'poly'、四向杆 bars:'cross'）
-    // 外圈顺时针 + 内圈逆时针（nonzero 挖环带）；芯/杆为分离子路径直接填充
-    // o.round（0~1）= 顶点切角圆滑比例（顶点处 quadratic 过渡，0 = 直角）
-    function t2PolyPath(g, o) {
-      const n = o.n || 7, R = o.R || 24, Rin = o.Rin || 19;
-      const a0 = Math.PI / 2;
-      const round = o.round || 0;
-      // 顶点描线（round>0 时逐顶点 入边切点 → quadratic 经顶点 → 出边切点）
-      const tracePoly = (pts) => {
-        const n = pts.length;
-        if (round <= 0) {
-          for (let k = 0; k < n; k++) {
-            if (k === 0) g.moveTo(pts[k][0], pts[k][1]); else g.lineTo(pts[k][0], pts[k][1]);
-          }
-          g.closePath();
-          return;
-        }
-        for (let k = 0; k < n; k++) {
-          const v = pts[k], prev = pts[(k - 1 + n) % n], next = pts[(k + 1) % n];
-          const tin = [v[0] + (prev[0] - v[0]) * round, v[1] + (prev[1] - v[1]) * round];
-          const tout = [v[0] + (next[0] - v[0]) * round, v[1] + (next[1] - v[1]) * round];
-          if (k === 0) g.moveTo(tin[0], tin[1]); else g.lineTo(tin[0], tin[1]);
-          g.quadraticCurveTo(v[0], v[1], tout[0], tout[1]);
-        }
-        g.closePath();
-      };
-      const poly = (r, rev) => {
-        const pts = [];
-        for (let k = 0; k < n; k++) {
-          const a = a0 + (rev ? -1 : 1) * k * TAU / n;
-          pts.push([Math.cos(a) * r, Math.sin(a) * r]);
-        }
-        tracePoly(pts);
-      };
-      g.beginPath();
-      poly(R, false);
-      poly(Rin, true);
-      const Rc = o.Rc || 9;
-      if (o.core === 'poly') {
-        const pts = [];
-        for (let k = 0; k < 4; k++) {
-          const a = a0 + k * TAU / 4;
-          pts.push([Math.cos(a) * Rc, Math.sin(a) * Rc]);
-        }
-        tracePoly(pts);   // 小方芯与外框同姿态、同 round 圆滑
-      } else {
-        g.moveTo(Rc, 0); g.arc(0, 0, Rc, 0, TAU);
-      }
-      const barY = o.barY || 2.6, barIn = o.barIn || 9, barOut = o.barOut || 22;
-      if (o.bars === 'cross') {
-        g.rect(-barOut, -barY, barOut - barIn, barY * 2);
-        g.rect(barIn, -barY, barOut - barIn, barY * 2);
-        g.rect(-barY, -barOut, barY * 2, barOut - barIn);
-        g.rect(-barY, barIn, barY * 2, barOut - barIn);
-      } else if (o.bars === 'v') {
-        g.rect(-barY, -barOut, barY * 2, barOut - barIn);
-        g.rect(-barY, barIn, barY * 2, barOut - barIn);
-      } else if (o.bars !== false) {
-        g.rect(-barOut, -barY, barOut - barIn, barY * 2);
-        g.rect(barIn, -barY, barOut - barIn, barY * 2);
-      }
-    }
-    // 基础机体：填充 + 充能盘（clip 到形体、从中心扩展）+ 灰覆盖 + 描边
-    // o: {shapePath(自定义形体路径), bars, scale, scaleX, scaleY, fill, stroke, charge(0~1), chargeCol, cover(0~1), coverCol, alpha, lw, dash}
-    function t2HarbCore(c, x, y, o) {
-      const R = o.R || 24;
-      const sx = o.scaleX || o.scale || 1, sy = o.scaleY || o.scale || 1;
-      const path = o.shapePath ? () => o.shapePath(c) : () => t2HarbPath(c, o);
-      c.save();
-      c.translate(x, y);
-      c.scale(sx, sy);
-      if (o.alpha != null) c.globalAlpha *= o.alpha;
-      path();
-      c.fillStyle = o.fill || '#3a3f4a';
-      c.fill();
-      const ch = o.charge || 0;
-      if (ch > 0) {
-        c.save();
-        path(); c.clip();
-        c.fillStyle = o.chargeCol || '#ff2b2b';
-        c.shadowColor = o.chargeCol || '#ff2b2b';
-        c.shadowBlur = ch >= 1 ? 14 : 6;
-        c.beginPath(); c.arc(0, 0, (R + 8) * ch, 0, TAU); c.fill();
-        c.restore();
-      }
-      const cov = o.cover || 0;   // 灰黑从中心覆盖红（复刻原型复位语言）
-      if (cov > 0) {
-        c.save();
-        path(); c.clip();
-        c.fillStyle = o.coverCol || '#3a3f4a';
-        c.beginPath(); c.arc(0, 0, (R + 8) * cov, 0, TAU); c.fill();
-        c.restore();
-      }
-      path();
-      if (o.dash) c.setLineDash(o.dash);
-      c.strokeStyle = o.stroke || '#22262e';
-      c.lineWidth = o.lw || 1.6;
-      c.stroke();
-      c.restore();
-    }
-    // 简化导弹：尖头朝 ang 方向（0=右 / π/2=下）+ 短尾焰（剪影复刻 09a drawMissiles 弹体）
-    function t2Missile(c, x, y, r, ang, col) {
-      c.save();
-      c.translate(x, y); c.rotate(ang);
-      const tg = c.createLinearGradient(-r * 4.5, 0, 0, 0);
-      tg.addColorStop(0, 'rgba(255,120,40,0)');
-      tg.addColorStop(1, 'rgba(255,200,90,0.85)');
-      c.fillStyle = tg;
-      c.beginPath();
-      c.moveTo(0, -r * 0.6); c.lineTo(0, r * 0.6); c.lineTo(-r * 4.5, r * 0.3); c.lineTo(-r * 4.5, -r * 0.3);
-      c.closePath(); c.fill();
-      c.fillStyle = col; c.shadowColor = col; c.shadowBlur = 10;
-      c.beginPath();
-      c.moveTo(r * 1.7, 0); c.lineTo(-r * 0.4, -r); c.lineTo(-r, -r * 0.45); c.lineTo(-r, r * 0.45); c.lineTo(-r * 0.4, r);
-      c.closePath(); c.fill();
-      c.restore();
-    }
-    // 落点标记：收缩圈 + 内菱（p 0~1 扩散衰减）
-    function t2Drop(c, x, y, p, col) {
-      c.save();
-      c.globalAlpha = 1 - p * 0.6;
-      c.strokeStyle = col; c.lineWidth = 2; c.shadowColor = col; c.shadowBlur = 8;
-      c.beginPath(); c.arc(x, y, 16 - p * 9, 0, TAU); c.stroke();
-      c.fillStyle = col;
-      c.translate(x, y); c.rotate(Math.PI / 4);
-      c.fillRect(-3.4, -3.4, 6.8, 6.8);
-      c.restore();
-    }
-    // 垂直预警线（红橙闪动 + 顶部三角!，复刻 09a drawMissileWarns 风格）
-    function t2WarnV(c, x, H, tt, p) {
-      const col = Math.sin(tt * 18) >= 0 ? '#ff2b2b' : '#ff9a2b';
-      c.save();
-      c.globalAlpha = 0.55;
-      c.strokeStyle = col; c.shadowColor = col; c.shadowBlur = 10;
-      c.lineWidth = (2 + p * 3) * 0.6;
-      c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
-      c.globalAlpha = 0.1 + p * 0.06;
-      c.fillStyle = col;
-      c.fillRect(x - 5.4, 0, 10.8, H);
-      c.shadowBlur = 0;
-      c.globalAlpha = 1;
-      c.translate(x, 16);
-      c.fillStyle = col;
-      c.beginPath(); c.moveTo(0, -7); c.lineTo(7, 6); c.lineTo(-7, 6); c.closePath(); c.fill();
-      c.fillStyle = '#0a0d14'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center';
-      c.fillText('!', 0, 5);
-      c.restore();
-    }
-    // 水平预警线（极夜横向导弹：预警线样式与效果沿用现有竖直预警线，仅方向随弹道横置）
-    function t2WarnH(c, y, x0, x1, tt, p) {
-      const col = Math.sin(tt * 18) >= 0 ? '#ff2b2b' : '#ff9a2b';
-      c.save();
-      c.globalAlpha = 0.5;
-      c.strokeStyle = col; c.shadowColor = col; c.shadowBlur = 8;
-      c.lineWidth = (2 + p * 3) * 0.6;
-      c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
-      c.globalAlpha = 0.1 + p * 0.06;
-      c.fillStyle = col;
-      c.fillRect(x0, y - 5.4, x1 - x0, 10.8);
-      c.shadowBlur = 0;
-      // 左缘警告图标（三角 + !，同现有预警线顶部图标）
-      c.globalAlpha = 1;
-      c.translate(x0 + 16, y);
-      c.fillStyle = col;
-      c.beginPath(); c.moveTo(-6, 6); c.lineTo(6, 6); c.lineTo(0, -6); c.closePath(); c.fill();
-      c.fillStyle = '#0a0d14'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center';
-      c.fillText('!', 0, 3.5);
-      c.restore();
-    }
-    function t2Tag(c, txt, x, y, col, align) {
-      c.save();
-      c.fillStyle = col || '#9fb4d8'; c.font = '10px "Microsoft YaHei",sans-serif';
-      c.textAlign = align || 'left';
-      c.fillText(txt, x, y);
-      c.restore();
-    }
-    // 间距标注：双端短线 + 虚线 + 文字
-    function t2Gap(c, x1, x2, y, txt) {
-      c.save();
-      c.strokeStyle = 'rgba(255,170,120,0.85)'; c.lineWidth = 1;
-      c.setLineDash([3, 3]);
-      c.beginPath();
-      c.moveTo(x1, y - 4); c.lineTo(x1, y + 4);
-      c.moveTo(x2, y - 4); c.lineTo(x2, y + 4);
-      c.moveTo(x1, y); c.lineTo(x2, y);
-      c.stroke();
-      c.setLineDash([]);
-      c.fillStyle = 'rgba(255,190,150,0.95)'; c.font = '9px "Microsoft YaHei",sans-serif'; c.textAlign = 'center';
-      c.fillText(txt, (x1 + x2) / 2, y - 6);
-      c.restore();
-    }
-    // 中枢演示：n 枚导弹自上而下落向等距落点（等距 > 8% 屏宽演示）
-    function t2VolleyDemo(c, t, W, H, n, dropP) {
-      const ys = 136;
-      for (let i = 0; i < n; i++) {
-        const x = W * (0.5 + (i - (n - 1) / 2) * 0.27);
-        if (dropP > 0 && dropP < 1) t2Missile(c, x, 98 + dropP * (ys - 98), 7, Math.PI / 2, '#ff4d2b');
-        else if (dropP >= 1) t2Drop(c, x, ys, cl01((dropP - 1) * 3), '#ff6a55');
-      }
-      // 间距标注：中点落点 → 右侧落点（相邻间距 ≈ 27% 屏宽，远大于 8% 下限）
-      t2Gap(c, W * 0.5 + 10, W * (0.5 + 0.27) - 10, ys + 16, '同波间距 ≥ 8% 屏宽');
-    }
-
-    // ════ 一、中枢炮火先兆者（每次齐召 50% 两枚 / 50% 三枚 · 不瞄准玩家 · 同波间距 ≥ 8% 屏宽）════
-    // 样式定稿（2026-10-14 二轮合并 + 三轮修订）：A「三联发射巢」+ B「环转炮座」合并——
-    // 三臂均分 360°（竖臂竖直向下不动、左右两臂各偏 120°），臂体随充能渐变红；外环外等距 120°
-    // 三小炮座缓旋；保留原型红自芯扩展 → 灰黑覆盖充能语言
-    infoBody.appendChild(t2Head('一、中枢炮火先兆者（齐召 2~3 枚 · 不瞄准 · 同波间距 ≥ 8% 屏宽）【样式定稿：A+B 合并】'));
-    t2Grid([
-      { title: '中枢 · 定稿合并样式', sub: '左右厚杆(-30% 宽·随充能变红·慢旋) + 上下原型薄杆(最低层·反向慢旋) + 三叉纹；外环 120° 三炮座正圆缓旋', period: 7, draw: t2DrawHubM },
+    infoBody.appendChild(t2Head('常规形态（待审核）'));
+    t2DemoGrid([
+      { title: '拂晓 · 常规形态', sub: '晶簇冠朝上 · 非针尖凿刻端 · 双引擎蓝焰', draw: t2DrawRegular, w: 264, h: 348 },
     ]);
-    infoBody.appendChild(t2TextCard('中枢定稿说明', '样式 = 原 A「三联发射巢」+ B「环转炮座」合并，六轮定稿：<b>左右两根厚杆（现款连接杆，宽度 -30%，随充能从灰渐变红、臂端红条齐射点亮）</b> + <b>上下两根炮火先兆者同款薄杆（图层最低）</b>；<b>左右厚杆组缓慢随机方向旋转，上下薄杆组较慢且恒反向旋转</b>（平滑角度积分，无方向瞬跳）；核心与外环图层在连接臂之上（杆内端被环芯盖住、只露中段），芯内三叉分发纹为固定三向装饰；外环外等距 120° 三座小炮座沿正圆轨道缓慢公转。'
-      + '机制定稿：每次齐召 <b>50% 两枚 / 50% 三枚</b>，<b>不瞄准玩家</b>，同一次召唤中导弹间距不低于 <b>8% 屏宽</b>（演示落点间距远大于下限）。'
-      + '充能语言沿用原型：红色自芯扩展 → 灰黑覆盖。', '#e0a05a'));
-
-    // 中枢 M：定稿合并样式（半周期 2 枚 / 3 枚交替演示；炮座全程缓旋）
-    // 图层顺序（2026-10-14 六轮定稿）：上下两根原型同款薄杆（最低层）→ 左右两根厚杆（宽 -30%、随充能变红）
-    // → 外环 + 核心盖住杆内端 → 三叉分发纹（芯表面）→ 环外三炮座；
-    // 左右厚杆组缓慢「随机」方向旋转、上下薄杆组较慢且恒反向（两不可通约慢频正弦叠加的解析积分，
-    // 角速度正负交替观感随机、永远平滑无跳变——铁律角度积分，不用向量 OU）
-    function t2DrawHubM(c, t, W, H, tAbs) {
-      const cyc = t % 7;
-      const n = cyc < 3.5 ? 2 : 3;
-      const sub = (cyc % 3.5) / 3.5;
-      const charge = cl01(sub / 0.34);
-      const coverM = cl01((sub - 0.9) / 0.1);   // 半周期尾灰覆盖 → 重绕无跳变
-      const firing = sub > 0.34 && sub < 0.44;
-      const cx = W / 2, cy = 56;
-      // 杆组角度（tAbs 单调 → cos 项永远连续）：角速度 ≈ 0.22sin(0.13τ)+0.10sin(0.071τ+1.7)，正负交替
-      const angleL = -(0.22 / 0.13) * Math.cos(tAbs * 0.13) - (0.10 / 0.071) * Math.cos(tAbs * 0.071 + 1.7);
-      const angleU = -0.6 * angleL;             // 上下组：较慢（×0.6）、恒反向
-      // 1）上下两根原型同款薄杆（图层最低：rect 半宽 2.6 同原型横杠、从芯缘 9 到环内缘 22）
-      c.save();
-      c.translate(cx, cy); c.scale(1.5, 1.5); c.rotate(angleU);
-      c.fillStyle = '#454b58'; c.strokeStyle = '#22262e'; c.lineWidth = 1.2;
-      c.beginPath();
-      c.rect(-2.6, -22, 5.2, 13);
-      c.rect(-2.6, 9, 5.2, 13);
-      c.fill(); c.stroke();
-      c.restore();
-      // 2）左右两根厚杆（「现在的连接杆」宽 -30%：半宽 2.8；随充能从灰渐变红，齐射瞬间/满充时臂端红条点亮）
-      c.save();
-      c.translate(cx, cy); c.scale(1.5, 1.5); c.rotate(angleL);
-      const armCol = mixCol('#454b58', '#c2403a', charge);
-      for (const s of [-1, 1]) {
-        c.save(); c.scale(s, 1);
-        c.fillStyle = armCol; c.strokeStyle = '#22262e'; c.lineWidth = 1.2;
-        c.beginPath(); c.rect(7, -2.8, 15, 5.6); c.fill(); c.stroke();
-        // 舱缝线（两条纵向缝）
-        c.beginPath();
-        c.moveTo(11, -2.8); c.lineTo(11, 2.8);
-        c.moveTo(16, -2.8); c.lineTo(16, 2.8);
-        c.stroke();
-        if (firing || charge >= 1) { c.fillStyle = '#ff5b45'; c.fillRect(19.5, -2.8, 2.5, 5.6); }
-        c.restore();
-      }
-      c.restore();
-      // 3）外环 + 核心（盖住杆内端）
-      t2HarbCore(c, cx, cy, { bars: false, scale: 1.5, charge: coverM >= 1 ? 0 : charge, chargeCol: '#ff2b2b', cover: coverM });
-      // 4）芯三叉分发纹（固定三向装饰：90° / 210° / 330°；画在芯表面）
-      c.save();
-      c.translate(cx, cy); c.scale(1.5, 1.5);
-      c.strokeStyle = '#8a93a6'; c.lineWidth = 1.4;
-      for (const a of [Math.PI / 2, Math.PI / 2 + TAU / 3, Math.PI / 2 + 2 * TAU / 3]) {
-        c.beginPath();
-        c.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
-        c.lineTo(Math.cos(a) * 16, Math.sin(a) * 16);
-        c.stroke();
-      }
-      c.restore();
-      // 5）外环三炮座（正圆轨道等距 120° 缓慢公转，充能时炮口亮红）
-      c.save();
-      c.translate(cx, cy);
-      const rot = t * 0.35;
-      for (let i = 0; i < 3; i++) {
-        const a = rot + i * TAU / 3;
-        c.save();
-        c.translate(Math.cos(a) * 44, Math.sin(a) * 44);
-        c.rotate(a + Math.PI / 2);
-        c.fillStyle = '#565e70'; c.strokeStyle = '#22262e'; c.lineWidth = 1.1;
-        c.beginPath(); c.rect(-3.2, -6, 6.4, 12); c.fill(); c.stroke();
-        c.strokeStyle = charge >= 1 ? '#ff5b45' : '#8a93a6'; c.lineWidth = 2;
-        c.beginPath(); c.moveTo(0, 6); c.lineTo(0, 11); c.stroke();
-        c.restore();
-      }
-      c.restore();
-      t2VolleyDemo(c, t, W, H, n, cl01((sub - 0.4) / 0.5));
-      t2Tag(c, '本轮齐召 ' + n + ' 枚（两/三枚各 50%）· 不瞄准', 6, H - 8, '#ffb0a0');
-    }
-
-    // ════ 二、先导炮火先兆者（判定生成 → 立刻玩家位置导弹预警 → 浮现瞄准 3s 期满才落位；不阻止波次刷新）════
-    // 样式定稿（2026-10-14 二轮七边形 + 三轮修订改六边形圆角，一角竖直朝下），芯圆 + 横杠保留；
-    // 入场节奏类幽暮突击艇（浮现渐显 → 平滑减速落位），预警期满才入场、不出现预警后立马入场
-    infoBody.appendChild(t2Head('二、先导炮火先兆者（预警先行 3s · 浮现瞄准 · 期满才落位 · 不阻止波次刷新）【样式定稿：六边形】'));
-    t2Grid([
-      { title: '先导 · 定稿六边形样式', sub: '外圈正六边形一角朝下（边角圆滑）· 虚影浮现瞄准 3s → 平滑减速落位转红充能', period: 9, draw: t2DrawVgD },
-    ]);
-    infoBody.appendChild(t2TextCard('先导定稿说明', '造型：原型外圈圆形改为<b>正六边形环带（一角竖直朝下、边角圆滑）</b>，中央芯圆与左右横杠保留。'
-      + '入场节奏类幽暮突击艇：判定生成即玩家位置立导弹预警线（现有样式），机体在上方以半透明青调虚影浮现并瞄准（渐显 + 呼吸闪烁），<b>3s 预警期满后才平滑减速落位</b>（先加速后减速，到位即实体化转红充能）——不会预警后立马入场。'
-      + '不阻止波次刷新（预警期仅占位判定）。', '#e0a05a'));
-
-    // 先导 D：定稿七边形样式 · 幽暮式入场（0~3 浮现瞄准 → 3~4.1 平滑落位 + 实体化 → 红充能 → 灰覆盖）
-    function t2DrawVgD(c, t, W, H) {
-      const P = 9, cyc = t % P;
-      const cx = W / 2;
-      const px = W / 2 + Math.sin(t * 0.9) * W * 0.22, py = H - 22;
-      t2Player(c, px, py);
-      const shape = g => t2PolyPath(g, { n: 6, R: 24, Rin: 19, Rc: 9, round: 0.22 });   // 三轮定稿：正六边形 + 边角圆滑
-      // 幽暮式缓降落位：期满后 y 自 44 平滑减速落至 58（smoothstep：起停速度均为 0，位置严格连续）
-      const dropT = cl01((cyc - 3) / 1.1);
-      const ease = dropT * dropT * (3 - 2 * dropT);
-      const cy = 44 + 14 * ease;
-      if (cyc < 3) {
-        // 浮现瞄准期：渐显（幽暮 fadeIn ≈0.8s）+ 七边形虚影呼吸 + 玩家位置预警线（现有样式）
-        const fade = cl01(cyc / 0.8);
-        t2HarbCore(c, cx, 44, { shapePath: shape, scale: 1.5, fill: 'rgba(110,231,255,0.16)', stroke: 'rgba(110,231,255,0.9)', dash: [5, 4], alpha: fade * (0.55 + 0.2 * Math.sin(t * 6)) });
-        c.save();
-        c.translate(cx, 44); c.scale(1.5, 1.5);
-        c.fillStyle = 'rgba(190,242,255,' + (fade * (0.5 + 0.5 * Math.sin(t * 9))).toFixed(2) + ')';
-        c.beginPath(); c.arc(0, 0, 9, 0, TAU); c.fill();
-        c.restore();
-        t2WarnV(c, px, H, t, cyc / 3);
-        t2Tag(c, '浮现瞄准 · 预警 3s', 6, 14, '#9fe8ff');
-      } else {
-        // 实体化白闪（3~3.4）+ 落位 + 红充能（3.4~4.6）→ 灰覆盖（4.6~5.2）→ 灰静止
-        const mat = cl01((cyc - 3) / 0.4);
-        if (mat < 1) {
-          c.save();
-          c.globalAlpha = 1 - mat;
-          c.strokeStyle = '#dff4ff'; c.lineWidth = 3; c.shadowColor = '#dff4ff'; c.shadowBlur = 14;
-          c.beginPath(); c.arc(cx, cy, 22 + mat * 46, 0, TAU); c.stroke();
-          c.restore();
-        }
-        const charge = cl01((cyc - 3.4) / 1.2);
-        const cover = cl01((cyc - 4.6) / 0.6);
-        t2HarbCore(c, cx, cy, { shapePath: shape, scale: 1.5, charge, chargeCol: '#ff2b2b', cover, coverCol: '#3a3f4a', alpha: 0.55 + 0.45 * dropT });
-        t2Tag(c, '预警期满 · 落位充能', 6, 14, '#ffb0a0');
-      }
-      t2Tag(c, '期满才入场 · 不阻止波次刷新', W - 5, H - 8, '#9fb4d8', 'right');
-    }
-    // ════ 三、极夜炮火先兆者（横向导弹 · 50% 锁定 / 50% 不锁定偏移玩家 ±30% 屏高 · 冷色系）════
-    // 样式定稿（2026-10-14 用户拍板）：外框正方形（一角竖直朝下）+ 小正方形芯 + 四向连接杆
-    // （大/小左顶点互连，以此类推共四根；三轮定稿连杆宽 -40%）；充能色改冰蓝；机体微微旋转；
-    // 导弹与预警线沿用现有样式与效果（横向导弹左/右侧随机飞入）
-    infoBody.appendChild(t2Head('三、极夜炮火先兆者（横向导弹 · 50% 锁定 · 不锁定偏移玩家 ±30% 屏高）【样式定稿：菱形框芯】'));
-    t2Grid([
-      { title: '极夜 · 定稿菱形样式', sub: '外框正方形一角朝下 + 小方芯 + 上下细连杆 + 冰蓝充能 · 静止', period: 6, draw: t2DrawPnD },
-    ]);
-    infoBody.appendChild(t2TextCard('极夜定稿说明', '造型：<b>外框为正方形（一角竖直朝下、边角圆滑）</b>、核心为小正方形（同姿态、同圆滑），<b>上下顶点之间各一根连接杆（共两根、宽度较初稿 -40%）</b>；'
-      + '<b>常态色 = 炮火先兆者同色略偏蓝紫</b>（灰紫填色 + 深色描边），<b>充能时才显冰蓝</b>（自芯扩展呼吸）；杆外端不伸入框带（六轮修正出界）。'
-      + '导弹与预警线沿用现有样式与效果：导弹为现役弹体横置横向飞行（<b>可能从左侧或右侧飞入</b>），预警线仍为红橙闪动样式（方向随弹道横置、含警告图标）。'
-      + '机制：召唤的导弹 50% 锁定玩家（沿玩家行）、50% 不锁定（在玩家 ±30% 屏高处生成、不出界）。', '#e0a05a'));
-
-    // 极夜演示：锁定 / 不锁定两发横向导弹 + 玩家（3s 一个往复）
-    function t2PolarDemo(c, t, W, H) {
-      const py = H - 24;
-      const px = W / 2 + Math.sin(t * 0.9) * W * 0.2;
-      const p = (t % 3) / 3;
-      if (p < 0.25) {
-        // 入场前 0.75s 水平预警线（两条）
-        const wp = p / 0.25;
-        t2WarnH(c, py, 0, W, t, wp);
-        t2WarnH(c, py - 0.3 * H, 0, W, t, wp);
-      } else {
-        const fp = (p - 0.25) / 0.75;
-        // 飞入方向按周期交替：偶数周期锁定弹从左飞入、奇数周期从右（横向导弹可能从任一侧射入）
-        const dir = (Math.floor(t / 3) % 2) ? -1 : 1;
-        // 锁定：沿玩家行横穿（尖头朝飞行方向，红）
-        const mx1 = dir > 0 ? -20 + fp * (W + 40) : W + 20 - fp * (W + 40);
-        t2Missile(c, mx1, py, 7, dir > 0 ? 0 : Math.PI, '#ff4d2b');
-        // 不锁定：玩家上方 30% 屏高处平行飞过（反向，蓝灰）
-        const my2 = Math.max(14, Math.min(H - 14, py - 0.3 * H));
-        const mx2 = dir > 0 ? W + 20 - fp * (W + 40) : -20 + fp * (W + 40);
-        t2Missile(c, mx2, my2, 7, dir > 0 ? Math.PI : 0, '#7fb8d8');
-        t2Tag(c, '不锁定 · 玩家 -30% 屏高', 6, my2 + 16, '#9fc8e8');
-      }
-      t2Player(c, px, py);
-      t2Tag(c, '50% 锁定 / 50% 不锁定', W - 5, H - 8, '#9fb4d8', 'right');
-    }
-    // 极夜 D：定稿菱形样式（n=4 正方形一角朝下：外框环带 + 小方芯 + 上下两杆[-40% 宽]；
-    // 六轮定稿：杆外端缩到框内缘 19（不再伸入框带——圆角框角部内凹曾使杆端露出描边线）；
-    // 常态色 = 先兆者同色略偏蓝紫（填 #42445c / 描边 #282a42），充能时才显冰蓝；框与芯边角圆滑）
-    function t2DrawPnD(c, t, W, H) {
-      const cx = W / 2, cy = 54;
-      const charge = 0.55 + 0.45 * Math.sin(t * 1.4);
-      t2HarbCore(c, cx, cy, {
-        shapePath: g => t2PolyPath(g, { n: 4, R: 24, Rin: 19, core: 'poly', Rc: 9, bars: 'v', barY: 1.56, round: 0.22, barOut: 19 }),
-        scale: 1.5, fill: '#42445c', stroke: '#282a42',
-        charge, chargeCol: '#6fd8ff', lw: 1.6,
-      });
-      t2PolarDemo(c, t, W, H);
-    }
-
-    // ── 怎么用本页 ──
-    infoAppendNote('<b>怎么用本页</b>：三变种样式已按你的定稿更新（中枢 = A+B 合并 / 先导 = 正七边形 + 幽暮式入场 / 极夜 = 菱形框芯 + 冰蓝充能），'
-      + '确认卡内弹道/入场示意是否符合预期后，我据此实装到 01-config-enemies（变种参数）/ 04-spawn（生成）/ 06-enemy（召唤逻辑）'
-      + '/ 09b-draw-enemies（专属外观）+ 图鉴条目；并一并实装「现有炮火先兆者召唤导弹仅 30% 不锁定」（原型基线改动）。');
+    infoBody.appendChild(t2TextCard('构件清单',
+      '<b>中央长锥</b>（白色顶针→银锥内嵌暗紫长晶→三层白V甲→核心环）／'
+      + '<b>每侧晶刃</b>从肩部向上向外展开：内侧近竖直 → 外侧近水平，下层短刃仅微下垂。', '#ff8ad8'));
   }
+
+  function t2Head(t) {
+    const h = document.createElement('h3');
+    h.className = 'info-achv-tier-head';
+    h.style.color = '#ff8ad8';
+    h.textContent = t;
+    return h;
+  }
+  function t2TextCard(t, d, c) {
+    const e = document.createElement('div');
+    e.className = 'info-wave-card';
+    const h = document.createElement('h4');
+    h.style.color = c;
+    h.textContent = t;
+    const p = document.createElement('p');
+    p.innerHTML = d;
+    e.append(h, p);
+    return e;
+  }
+  function t2DemoGrid(demos) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 14px';
+    demos.forEach(d => row.appendChild(t2Demo(d)));
+    infoBody.appendChild(row);
+  }
+  function t2Demo(opt) {
+    const { title, sub, draw, w: W, h: H } = opt;
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cvs = document.createElement('canvas');
+    cvs.width = W * dpr; cvs.height = H * dpr;
+    cvs.style.cssText = 'width:' + W + 'px;height:' + H + 'px;border-radius:8px;background:#070a14;border:1px solid rgba(255,120,230,0.18)';
+    const c = cvs.getContext('2d');
+    c.scale(dpr, dpr);
+    let last = performance.now();
+    function frame(now) {
+      if (!cvs.isConnected) return;
+      let dt = (now - last) / 1000; last = now;
+      if (dt > 0.1) dt = 0.1;
+      const t = now / 1000;
+      c.clearRect(0, 0, W, H);
+      t2Field(c, W, H);
+      draw(c, t, dt, W, H);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'text-align:center;font-size:11px;color:#9fb4d8;max-width:' + W + 'px';
+    lbl.innerHTML = '<b style="color:#f0c0ec">' + title + '</b><br>' + sub;
+    card.append(cvs, lbl);
+    return card;
+  }
+  function t2Field(c, W, H) {
+    c.strokeStyle = 'rgba(90,130,255,0.05)';
+    c.lineWidth = 1;
+    for (let x = 26; x < W; x += 26) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+    for (let y = 26; y < H; y += 26) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+    c.fillStyle = 'rgba(150,175,235,0.16)';
+    for (let i = 0; i < 14; i++) c.fillRect((i * 67 + 11) % W, (i * 113 + 7) % H, 1, 1);
+  }
+
+  const D2R = Math.PI / 180;
+  function t2lg(c, a, b, stops) {
+    const g = c.createLinearGradient(a[0], a[1], b[0], b[1]);
+    stops.forEach(s => g.addColorStop(s[0], s[1]));
+    return g;
+  }
+
+  // ── 晶刃形状 ──
+  // 晶刃本体：宽基、中段最宽、端部斜凿（非针尖）
+  // 参数 L=长（到凿尖），w=最大半宽，c0..c3=凿刻控制点
+  function crystalPath(c, L, w) {
+    c.beginPath();
+    c.moveTo(1.5, -w * 0.72);
+    // 上缘：基部快速鼓出 → 中段宽 → 收窄到凿口
+    c.bezierCurveTo(L * 0.12, -w * 1.12, L * 0.34, -w * 1.04, L * 0.62, -w * 0.58);
+    c.lineTo(L * 0.78, -w * 0.46);
+    // 钝凿头：端部保留约 30% 半幅宽，短斜刻收圆（非针尖）
+    c.lineTo(L * 0.90, -w * 0.30);
+    c.lineTo(L * 0.98, -w * 0.22);
+    c.lineTo(L, -w * 0.14);
+    c.lineTo(L * 0.98, w * 0.06);
+    c.lineTo(L * 0.90, w * 0.26);
+    c.lineTo(L * 0.82, w * 0.34);
+    c.lineTo(L * 0.66, w * 0.52);
+    c.bezierCurveTo(L * 0.36, w * 1.08, L * 0.12, w * 0.96, 1.5, w * 0.72);
+    c.closePath();
+  }
+  function paintCrystal(c, L, w, glow) {
+    c.save();
+    if (glow) { c.shadowColor = 'rgba(255,80,230,0.7)'; c.shadowBlur = glow; }
+    crystalPath(c, L, w);
+    c.fillStyle = t2lg(c, [0, 0], [L, 0], [
+      [0, '#5e0a8c'], [0.26, '#a01ec4'], [0.55, '#e040f0'],
+      [0.82, '#ff88e8'], [1, '#ffd0f4'],
+    ]);
+    c.fill();
+    c.restore();
+    // 上棱面（亮粉）
+    c.beginPath();
+    c.moveTo(L * 0.14, -w * 0.55);
+    c.bezierCurveTo(L * 0.34, -w * 0.84, L * 0.56, -w * 0.62, L * 0.76, -w * 0.38);
+    c.lineTo(L * 0.44, -w * 0.04);
+    c.lineTo(L * 0.18, w * 0.12);
+    c.closePath();
+    c.fillStyle = 'rgba(255,200,255,0.38)';
+    c.fill();
+    // 下棱面（暗紫）
+    c.beginPath();
+    c.moveTo(L * 0.18, w * 0.32);
+    c.bezierCurveTo(L * 0.40, w * 0.80, L * 0.62, w * 0.56, L * 0.80, w * 0.26);
+    c.lineTo(L * 0.48, w * 0.08);
+    c.closePath();
+    c.fillStyle = 'rgba(80,6,130,0.30)';
+    c.fill();
+    // 凿口亮面
+    c.beginPath();
+    c.moveTo(L * 0.92, -w * 0.16);
+    c.lineTo(L, -w * 0.04);
+    c.lineTo(L * 0.96, w * 0.14);
+    c.lineTo(L * 0.88, w * 0.06);
+    c.closePath();
+    c.fillStyle = 'rgba(255,246,255,0.9)';
+    c.fill();
+    // 亮上缘
+    c.save();
+    c.strokeStyle = 'rgba(255,240,252,0.75)'; c.lineWidth = 0.7;
+    c.beginPath();
+    c.moveTo(1.5, -w * 0.72);
+    c.bezierCurveTo(L * 0.12, -w * 1.12, L * 0.34, -w * 1.04, L * 0.62, -w * 0.58);
+    c.stroke();
+    c.restore();
+    crystalPath(c, L, w);
+    c.strokeStyle = 'rgba(255,200,246,0.55)'; c.lineWidth = 0.7; c.stroke();
+  }
+
+  // ── 白针形状 ──
+  // 银针：直窄、端部斜凿微圆（非针尖）
+  function needlePath(c, L, w) {
+    c.beginPath();
+    c.moveTo(1, -w * 0.75);
+    c.bezierCurveTo(L * 0.20, -w * 1.0, L * 0.60, -w * 0.78, L * 0.84, -w * 0.40);
+    // 钝凿头（非针尖）：端部保留约半幅 35% 宽度
+    c.lineTo(L * 0.93, -w * 0.34);
+    c.lineTo(L, -w * 0.28);
+    c.lineTo(L, w * 0.20);
+    c.lineTo(L * 0.93, w * 0.30);
+    c.bezierCurveTo(L * 0.62, w * 0.70, L * 0.22, w * 0.80, 1, w * 0.75);
+    c.closePath();
+  }
+  function paintNeedle(c, L, w) {
+    needlePath(c, L, w);
+    c.fillStyle = t2lg(c, [0, 0], [L, 0], [
+      [0, '#8a889c'], [0.24, '#c6c4da'], [0.5, '#eeeeec'],
+      [0.76, '#d2d0e4'], [1, '#908ea4'],
+    ]);
+    c.fill();
+    // 高脊
+    c.save();
+    c.strokeStyle = 'rgba(255,255,255,0.65)'; c.lineWidth = 0.8;
+    c.beginPath();
+    c.moveTo(L * 0.08, -w * 0.22);
+    c.bezierCurveTo(L * 0.38, -w * 0.42, L * 0.74, -w * 0.24, L * 0.92, -w * 0.06);
+    c.stroke();
+    c.restore();
+    // 板线（黑色折线，参考特征）
+    c.strokeStyle = 'rgba(42,38,60,0.7)'; c.lineWidth = 0.7;
+    c.beginPath();
+    c.moveTo(L * 0.28, -w * 0.5);
+    c.lineTo(L * 0.33, 0);
+    c.lineTo(L * 0.29, w * 0.42);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(L * 0.62, -w * 0.45);
+    c.lineTo(L * 0.67, 0);
+    c.lineTo(L * 0.63, w * 0.38);
+    c.stroke();
+    needlePath(c, L, w);
+    c.strokeStyle = 'rgba(72,70,96,0.8)'; c.lineWidth = 0.7; c.stroke();
+  }
+
+  // ── 整机数据 ──
+  // 每侧刃：piv 枢轴（本地），a 角度（canvas 口径 -90=上），L 长，w 半宽，type
+  // 角度全部修正为朝上为主
+  function sideBlades() {
+    return [
+      // 内侧白针（基本竖直，贴机身，不超过机头）
+      { piv: [3, 4], a: -84, L: 66, w: 5, type: 'needle' },
+      // 内侧紫晶（近竖直，微倾）
+      { piv: [5, 5], a: -78, L: 76, w: 8, type: 'crystal' },
+      // 第二白针（小角度倾斜）
+      { piv: [7, 7], a: -68, L: 88, w: 5, type: 'needle' },
+      // 中央紫晶（倾斜加大，但仍明显朝上）
+      { piv: [8, 9], a: -58, L: 98, w: 10, type: 'crystal' },
+      // 外侧白针（倾斜更大）
+      { piv: [9, 11], a: -48, L: 104, w: 5, type: 'needle' },
+      // 最外侧紫晶（最大倾斜 ≈38°，仍远未到水平）
+      { piv: [8, 13], a: -38, L: 108, w: 9, type: 'crystal' },
+    ];
+  }
+
+  function drawBlade(c, b) {
+    c.save();
+    c.translate(b.piv[0], b.piv[1]);
+    c.rotate(b.a * D2R);
+    if (b.type === 'crystal') paintCrystal(c, b.L, b.w, 0);
+    else paintNeedle(c, b.L, b.w);
+    c.restore();
+  }
+
+  // ── 中央机身 ──
+  function drawFuselage(c) {
+    // 主梁
+    const P = [
+      [0, -130], [2.6, -112], [5, -92], [7, -68], [8.4, -44], [9, -20],
+      [8.6, 4], [7.4, 24], [5.4, 38], [2.6, 50], [0, 56],
+      [-2.6, 50], [-5.4, 38], [-7.4, 24], [-8.6, 4], [-9, -20], [-8.4, -44],
+      [-7, -68], [-5, -92], [-2.6, -112],
+    ];
+    c.beginPath();
+    c.moveTo(P[0][0], P[0][1]);
+    P.slice(1).forEach(p => c.lineTo(p[0], p[1]));
+    c.closePath();
+    c.fillStyle = t2lg(c, [-9, 0], [9, 0], [
+      [0, '#8a889e'], [0.3, '#d4d2e4'], [0.47, '#f0eef6'],
+      [0.53, '#f0eef6'], [0.7, '#cccadc'], [1, '#88869c'],
+    ]);
+    c.fill();
+    c.strokeStyle = 'rgba(72,70,94,0.8)'; c.lineWidth = 0.7; c.stroke();
+
+    // 暗紫长晶（上半内嵌）
+    c.save();
+    c.beginPath();
+    c.moveTo(0, -118);
+    c.bezierCurveTo(4.8, -102, 5.6, -82, 0, -58);
+    c.bezierCurveTo(-5.6, -82, -4.8, -102, 0, -118);
+    c.closePath();
+    c.fillStyle = t2lg(c, [-5, 0], [5, 0], [
+      [0, '#440c72'], [0.5, '#7830a0'], [1, '#a84cd8'],
+    ]);
+    c.fill();
+    c.strokeStyle = 'rgba(24,4,46,0.9)'; c.lineWidth = 0.7; c.stroke();
+    c.strokeStyle = 'rgba(232,178,252,0.5)'; c.lineWidth = 0.6;
+    c.beginPath();
+    c.moveTo(0, -110);
+    c.quadraticCurveTo(1.8, -86, 0, -64);
+    c.stroke();
+    c.restore();
+
+    // 紫缝
+    c.beginPath();
+    c.moveTo(-1.8, -48); c.lineTo(1.8, -48);
+    c.lineTo(1.8, -30); c.lineTo(-1.8, -30);
+    c.closePath();
+    c.fillStyle = '#8a40b8';
+    c.fill();
+
+    // 三层 V 甲
+    for (const [yy, ww] of [[-30, 9], [-20, 8], [-10, 6.8]]) {
+      c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(-ww, yy + 4); c.lineTo(0, yy); c.lineTo(ww, yy + 4);
+      c.stroke();
+    }
+    // 中脊
+    c.strokeStyle = 'rgba(86,84,108,0.5)'; c.lineWidth = 0.6;
+    c.beginPath(); c.moveTo(0, -50); c.lineTo(0, 52); c.stroke();
+  }
+
+  // 顶部白色小针
+  function drawTopSpike(c) {
+    c.beginPath();
+    c.moveTo(0, -148); c.lineTo(3, -138); c.lineTo(1.8, -128);
+    c.lineTo(-1.8, -128); c.lineTo(-3, -138);
+    c.closePath();
+    c.fillStyle = t2lg(c, [0, -148], [0, -126], [[0, '#fff'], [1, '#c4c2d8']]);
+    c.fill();
+  }
+
+  // 核心环
+  function drawCore(c, t) {
+    c.save();
+    const halo = c.createRadialGradient(0, 0, 2, 0, 0, 18);
+    halo.addColorStop(0, 'rgba(255,244,190,0.5)');
+    halo.addColorStop(1, 'rgba(255,240,170,0)');
+    c.fillStyle = halo;
+    c.beginPath(); c.arc(0, 0, 18, 0, Math.PI * 2); c.fill();
+
+    c.beginPath(); c.arc(0, 0, 10, 0, Math.PI * 2);
+    c.fillStyle = '#e6e4f0';
+    c.fill();
+    c.beginPath(); c.arc(0, 0, 6.8, 0, Math.PI * 2);
+    const g = c.createRadialGradient(-1, -1, 1, 0, 0, 7);
+    g.addColorStop(0, '#8858b8'); g.addColorStop(0.6, '#482468'); g.addColorStop(1, '#22103c');
+    c.fillStyle = g; c.fill();
+
+    c.beginPath(); c.arc(0, 0, 2.2, 0, Math.PI * 2);
+    c.fillStyle = '#fff';
+    c.shadowColor = '#fff'; c.shadowBlur = 4 + 2 * Math.sin(t * 2.4);
+    c.fill();
+    c.restore();
+  }
+
+  // 白翼根（核心两侧箭羽）
+  function drawRoots(c, sx) {
+    c.save(); c.scale(sx, 1);
+    c.beginPath();
+    c.moveTo(4, 6); c.lineTo(26, 0); c.lineTo(31, 7);
+    c.lineTo(10, 18); c.lineTo(4, 14);
+    c.closePath();
+    c.fillStyle = t2lg(c, [4, 0], [31, 0], [[0, '#fff'], [1, '#c0c4d6']]);
+    c.fill();
+    c.beginPath();
+    c.moveTo(4, 17); c.lineTo(19, 13); c.lineTo(21, 18); c.lineTo(6, 23);
+    c.closePath();
+    c.fillStyle = '#e8eaf2';
+    c.fill();
+    c.restore();
+  }
+
+  // 引擎舱 + 尾刺
+  function drawTail(c, sx) {
+    if (sx === 1) {
+      // 中央暗紫尾刺
+      c.beginPath();
+      c.moveTo(-2.4, 30); c.lineTo(2.4, 30);
+      c.lineTo(2, 66); c.lineTo(0, 74); c.lineTo(-2, 66);
+      c.closePath();
+      c.fillStyle = '#7030a0';
+      c.fill();
+    }
+    c.save(); c.scale(sx, 1);
+    // 白引擎舱
+    c.beginPath();
+    c.moveTo(14, 26); c.lineTo(29, 30); c.lineTo(27, 46); c.lineTo(16, 42);
+    c.closePath();
+    c.fillStyle = '#f0f0f8';
+    c.fill();
+    c.beginPath(); c.arc(21, 47, 2.8, 0, Math.PI * 2);
+    c.fillStyle = '#1a2030'; c.fill();
+    c.restore();
+  }
+
+  // 蓝焰
+  function drawFlames(c, t) {
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    for (const sx of [-1, 1]) {
+      const x = 21 * sx;
+      const L = 32 + 4 * Math.sin(t * 12 + sx * 2) + 3 * Math.sin(t * 26 + sx);
+      for (const [w, LL, col] of [
+        [6, L + 7, 'rgba(60,150,255,0.28)'],
+        [3.8, L, 'rgba(120,205,255,0.7)'],
+        [1.8, L * 0.7, 'rgba(255,255,255,0.95)'],
+      ]) {
+        c.beginPath();
+        c.moveTo(x - w, 48);
+        c.quadraticCurveTo(x - w * 0.6, 48 + LL * 0.55, x, 48 + LL);
+        c.quadraticCurveTo(x + w * 0.6, 48 + LL * 0.55, x + w, 48);
+        c.closePath();
+        c.fillStyle = col;
+        c.fill();
+      }
+    }
+    c.restore();
+  }
+
+  // ── 整机装配 ──
+  function drawShip(c, t) {
+    const blades = sideBlades();
+    // 先画后层刃（外侧 → 内侧）
+    for (const sx of [-1, 1]) {
+      c.save(); c.scale(sx, 1);
+      drawTail(c, sx);
+      // 刃从后往前画：后列在数组前部，逆序绘制
+      blades.map((b, i) => i).reverse().forEach(i => drawBlade(c, blades[i]));
+      c.restore();
+    }
+    drawFlames(c, t);
+    drawFuselage(c);
+    drawTopSpike(c);
+    drawRoots(c, -1); drawRoots(c, 1);
+    drawCore(c, t);
+  }
+
+  function t2DrawRegular(c, t, dt, W, H) {
+    c.save();
+    c.translate(W / 2 + Math.sin(t * 1.2) * 2, H * 0.52 + Math.sin(t * 1.6) * 3);
+    c.scale(0.92, 0.92);
+    drawShip(c, t);
+    c.restore();
+  }
+
 
   function openInfoModal() {
     infoModal.classList.remove('hidden');
