@@ -1,0 +1,20 @@
+README.md
+  h_345b78e95cbc59 3,195-205
+index.html
+  h_345b78e95cbc59 136
+js/13-encyclopedia.js
+  h_345b78e95cbc59 2236,2256,2340-2517
+package.json
+  h_345b78e95cbc59 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acc2359341fd1768402293273558338f9b5b810a",
+  "prompts": {},
+  "humans": {
+    "h_345b78e95cbc59": {
+      "author": "aegis.wang <aegis.wang@ly.com>"
+    }
+  }
+}
