@@ -1,11 +1,11 @@
 // 09b-draw-enemies.js：敌机形体 / 弹幕标记 / 法术方块 / 战争幽灵斩击绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(35 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(39 名) 13-encyclopedia(1 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, player, popianMissiles, slashFx, spellCubes, state, wgSlashes } from './02-core.js';
-  import { ANVIL, BAOLING, BAOLING_G, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, POPIAN, PULSE_MATRIX, SPONSOR, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BAOLING, BAOLING_G, COCOON_DREAM, DOUZHI, DUSK, ENEMY_TYPES, FASHI_ARRAY, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, POPIAN, PULSE_MATRIX, SPONSOR, STASIS_UNREAL, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, YU4 } from './01-config-enemies.js';
 
 
   // 斩击刀刃形状（局部坐标：长轴沿 y）——顶部收为一个尖角(apex)、向下展宽至底部，
@@ -464,7 +464,7 @@
     // ---- 冰蓝寒霜光圈：登场 1s 后渐显（0.8s 渐入），呼吸 + 双向流转霜环 + 环布雪晶 ----
     const ap = clamp((e.auraT - HANSHUANG.auraDelay) / HANSHUANG.auraFadeIn, 0, 1);   // 渐显进度
     if (ap > 0) {
-      const ar = HANSHUANG.auraR / ENEMY_TYPES.hanshuang.drawScale;   // 世界半径还原到局部坐标
+      const ar = (e.hsAuraR != null ? e.hsAuraR : HANSHUANG.auraR) / ENEMY_TYPES.hanshuang.drawScale;   // 世界半径还原到局部坐标（e.hsAuraR=词条 2:bad:4 扩张后半径）
       ctx.save();
       ctx.globalAlpha *= ap * (0.78 + 0.22 * Math.sin(state.time * 2.2));
       // 主体光环：外缘亮、内部渐透明的径向渐变（冰圈质感）
@@ -1930,6 +1930,260 @@
     ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
+  // 愧悔魂灵圣杯（4D，2026-11-10 实装；2026-11-11 用户反馈三轮重画）：
+  // 「①要有立体感 ②删底足、最底下快速收口 ③分层质感：上土黄、下更暗 ④双刺与水平线夹角 20° 朝下」：
+  //   立体感 = 左上主光假设：每段主体竖向渐变（上亮下暗）+ 右侧暗面 + 段顶高光缝；杯口带厚度暗墙 + 受光高光弧；
+  //   收口 = 删除底足与下垂碎片，杯身四段自上而下收窄后快速收口至近尖（段宽 42→33→21→12→4）；
+  //   分层色 = 上段土黄最亮（#a08755 系），中/下/收口逐段变暗至 #1d1912；
+  //   双刺 = 均与水平线夹角约 20° 朝下（tan20°≈0.364：左 dx14/dy5.1、右 dx13/dy4.7），左长右短、左低右高不对称；
+  //   后层翼板 = 左右各一片暗色碎片（尖端外挑，左高右低不对称），构成顶部最宽轮廓；
+  //   源泉 = 杯口石沿包围琥珀液体（沿口 > 液体），液面冒泡 + 沿口上方循环闪点（时间驱动、确定性）。
+  // 周身 150px 淡金光环（伤害转移范围可视化，呼吸起伏 ±2%；结算见 06-enemy grailRedirect / GUILT_GRAIL.auraR）
+  function drawGuiltGrailBody(e) {
+    const t = state.time + (e.wobble || 0);
+    // 0) 淡金光环（先画，垫在杯身之下；测试1 形象评审大画幅 mock 带 pvNoAura 时省略——
+    //    150px 光环在评审倍率下会裁出画布且整画蒙淡金，杯体评审需干净画幅；游戏内 mock 不带此字段不受影响）
+    if (!e.pvNoAura) {
+      const auraR = GUILT_GRAIL.auraR * (1 + Math.sin(t * 1.6) * 0.02);
+      ctx.save();
+      const ag = ctx.createRadialGradient(0, 0, e.w * 0.4, 0, 0, auraR);
+      ag.addColorStop(0, 'rgba(255,214,140,0.13)');
+      ag.addColorStop(0.75, 'rgba(255,214,140,0.06)');
+      ag.addColorStop(1, 'rgba(255,214,140,0)');
+      ctx.fillStyle = ag;
+      ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,214,140,0.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.strokeStyle = 'rgba(18,20,24,0.75)'; ctx.lineWidth = 1.2;   // 碎片描边（全程共用）
+    // 1) 后层翼板：左右各一片暗色碎片（自杯口后方向外下展开、尖端外挑——左高右低，构成顶部最宽轮廓）
+    ctx.fillStyle = '#5c4d34';
+    ctx.beginPath();   // 左后翼板（更靠上、外挑更远）
+    ctx.moveTo(-19, -24);
+    ctx.quadraticCurveTo(-31, -19, -28, -7);
+    ctx.lineTo(-13, -3);
+    ctx.lineTo(-15, -20);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#453a26';
+    ctx.beginPath();   // 右后翼板（更靠下、更短）
+    ctx.moveTo(18, -20);
+    ctx.quadraticCurveTo(28, -14, 24, -2);
+    ctx.lineTo(11, 2);
+    ctx.lineTo(14, -16);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 2) 杯身主体：四段自上而下收窄 + 快速收口（2026-11-11 三轮：删底足与下垂碎片，最底下快速收口至近尖；
+    //    分层质感：上土黄最亮、向下逐段变暗；立体感：每段竖向渐变（上亮下暗）+ 右侧暗面（左上主光假设））
+    let g = ctx.createLinearGradient(0, -22, 0, -6);
+    g.addColorStop(0, '#a08755'); g.addColorStop(1, '#7c6842');
+    ctx.fillStyle = g;
+    ctx.beginPath();   // 上段：宽口肩板（土黄最亮；底缘齿状缺口）
+    ctx.moveTo(-21, -22);
+    ctx.lineTo(20, -23);
+    ctx.lineTo(16, -6);
+    ctx.lineTo(3, -8);      // 缺口下沉
+    ctx.lineTo(-2, -4);     // 齿状凸
+    ctx.lineTo(-13, -7);
+    ctx.lineTo(-18, -5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(30,24,14,0.32)';   // 上段右侧暗面（立体感）
+    ctx.beginPath();
+    ctx.moveTo(9, -22); ctx.lineTo(20, -23); ctx.lineTo(16, -6); ctx.lineTo(8, -7);
+    ctx.closePath(); ctx.fill();
+    g = ctx.createLinearGradient(0, -6, 0, 10);
+    g.addColorStop(0, '#7a6743'); g.addColorStop(1, '#55462f');
+    ctx.fillStyle = g;
+    ctx.beginPath();   // 中段：向左微歪的腰板（右缘外挑一尖——保留不规则凸起）
+    ctx.moveTo(-16, -6);
+    ctx.lineTo(15, -6);
+    ctx.lineTo(23, 3);
+    ctx.lineTo(9, 12);
+    ctx.lineTo(-8, 11);
+    ctx.lineTo(-13, 3);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(26,20,12,0.4)';    // 中段右侧暗面
+    ctx.beginPath();
+    ctx.moveTo(8, -6); ctx.lineTo(15, -6); ctx.lineTo(23, 3); ctx.lineTo(10, 11);
+    ctx.closePath(); ctx.fill();
+    g = ctx.createLinearGradient(0, 8, 0, 21);
+    g.addColorStop(0, '#514430'); g.addColorStop(1, '#372e20');
+    ctx.fillStyle = g;
+    ctx.beginPath();   // 下段：收窄板
+    ctx.moveTo(-11, 10);
+    ctx.lineTo(10, 11);
+    ctx.lineTo(6, 22);
+    ctx.lineTo(-6, 21);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    g = ctx.createLinearGradient(0, 20, 0, 32);
+    g.addColorStop(0, '#332b1d'); g.addColorStop(1, '#1d1912');
+    ctx.fillStyle = g;
+    ctx.beginPath();   // 快速收口：近尖闭合（2026-11-11 用户指令「到最底下快速收口」）
+    ctx.moveTo(-6, 20);
+    ctx.lineTo(6, 21);
+    ctx.lineTo(2, 31);
+    ctx.lineTo(-2, 31);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 段顶高光缝（左上受光：左亮暗双线——立体感）
+    ctx.strokeStyle = 'rgba(224,198,144,0.3)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-19, -20); ctx.lineTo(17, -21); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-14, -4); ctx.lineTo(12, -4); ctx.stroke();
+    ctx.strokeStyle = 'rgba(20,17,10,0.55)';
+    ctx.beginPath(); ctx.moveTo(-16, -6); ctx.lineTo(15, -6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-11, 10); ctx.lineTo(10, 11); ctx.stroke();
+    // 2b) 碎凸与褶皱（2026-11-11 四/五轮用户反馈：杯体不规则形状和褶皱再多一些）——
+    //     碎凸 = 各段边缘小碎片 chip（贴边外凸、打破轮廓平滑，左右上下均有分布）；褶皱 = 暗缝 + 亮缝双色调（含短斜裂纹，错位不对称）
+    ctx.fillStyle = '#4a3f2a';
+    ctx.strokeStyle = 'rgba(18,20,24,0.7)'; ctx.lineWidth = 1;
+    ctx.beginPath();   // 碎凸 1：上段左缘 chip（向左外凸）
+    ctx.moveTo(-19, -14); ctx.lineTo(-24, -11); ctx.lineTo(-18, -9);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 2：顶部左肩 chip（向上外凸）
+    ctx.moveTo(-14, -23); ctx.lineTo(-11, -27); ctx.lineTo(-7, -23.5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 3：中段左缘 chip
+    ctx.moveTo(-14, 3); ctx.lineTo(-19, 7); ctx.lineTo(-13, 9);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 4：下段右缘 chip
+    ctx.moveTo(8, 14); ctx.lineTo(12, 18); ctx.lineTo(7, 19);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 5：上段右缘 chip（向右外凸）
+    ctx.moveTo(14, -18); ctx.lineTo(19, -15); ctx.lineTo(13, -13);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 6：顶部右肩 chip（向上外凸，比左肩矮小——不对称）
+    ctx.moveTo(4, -24); ctx.lineTo(7, -27.5); ctx.lineTo(10, -23.5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 7：中段右缘 chip
+    ctx.moveTo(12, 0); ctx.lineTo(17, 3); ctx.lineTo(11, 5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 8：下段左缘 chip
+    ctx.moveTo(-10, 13); ctx.lineTo(-14, 17); ctx.lineTo(-9, 18);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 碎凸 9：收口段左缘 chip（近尖小碎片）
+    ctx.moveTo(-5, 23); ctx.lineTo(-8, 25.5); ctx.lineTo(-4, 26.5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 褶皱暗缝（顺石板层理横缝 + 斜缝 + 短裂纹，布满各段）
+    ctx.strokeStyle = 'rgba(26,20,12,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-8, -16); ctx.lineTo(-2, -13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, -17); ctx.lineTo(11, -14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(-3, -7); ctx.stroke();     // 短斜裂纹
+    ctx.beginPath(); ctx.moveTo(-14, -9); ctx.lineTo(-9, -8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9, -10); ctx.lineTo(13, -7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, -9); ctx.lineTo(4, -5); ctx.stroke();        // 上段短斜裂纹
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(0, 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(4, 6); ctx.lineTo(9, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-11, 5); ctx.lineTo(-7, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(11, 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-2, -1); ctx.stroke();       // 中上段交叉细裂纹
+    ctx.beginPath(); ctx.moveTo(-3, 15); ctx.lineTo(2, 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 17); ctx.lineTo(-4, 18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-1, 24); ctx.lineTo(1, 26); ctx.stroke();       // 收口段短缝
+    ctx.beginPath(); ctx.moveTo(3, 22); ctx.lineTo(5, 24); ctx.stroke();        // 收口段右短缝
+    // 褶皱亮缝（受光面细高光，与暗缝错位）
+    ctx.strokeStyle = 'rgba(224,198,144,0.25)';
+    ctx.beginPath(); ctx.moveTo(-7, -15); ctx.lineTo(-1, -12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, -16); ctx.lineTo(12, -13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-5, 1); ctx.lineTo(1, 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, 7); ctx.lineTo(10, 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-13, -8); ctx.lineTo(-8, -7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10, -9); ctx.lineTo(14, -6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-10, 6); ctx.lineTo(-6, 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(12, 3); ctx.stroke();
+    // 3) 双刺：均与水平线夹角约 20° 朝下（2026-11-11 用户指令；tan20°≈0.364——左 dx14/dy5.1、右 dx13/dy4.7），
+    //    长短/高低保持不对称（左长右短、左低右高）
+    ctx.fillStyle = '#6b593c';
+    ctx.strokeStyle = 'rgba(18,20,24,0.75)'; ctx.lineWidth = 1.2;
+    ctx.beginPath();   // 左刺：中段左缘向左下 20°（外挑约 14px）
+    ctx.moveTo(-15, -1);
+    ctx.lineTo(-29, 4.1);
+    ctx.lineTo(-14, 6);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();   // 右刺：上段右缘向右下 20°（外挑约 12px——更短、位置更高）
+    ctx.moveTo(13, -12);
+    ctx.lineTo(26, -7.3);
+    ctx.lineTo(12, -8);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 4) 杯口石沿（大于液体、将液体包围；土黄分层 + 厚度暗墙 + 左上受光高光——立体感）
+    //    2026-11-11 六轮用户反馈：杯口不能是正圆——外沿改不规则多边形（顶点表钉死半径系数与高低起伏，
+    //    逐帧稳定禁随机）：凸块抬升杯壁、凹点形成缺口；内壁液体上方加垂坠折叠褶片
+    ctx.fillStyle = '#4a3f2a';
+    ctx.strokeStyle = 'rgba(18,20,24,0.8)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, -24.2, 23.5, 8.5, -0.04, 0, Math.PI); ctx.fill();                 // 沿口下侧厚度暗墙
+    // 不规则沿圈顶点表：[角度比例0~1, 半径系数(0.88 缺口~1.12 凸块), y 起伏]——手工钉死保证逐帧稳定；
+    // 2026-11-11 七轮用户指令：正上方凸起合为一个——0.76 单一主峰（0.70/0.82 为同峰双肩、0.57/0.95 压低成坡）
+    const rimPts = [
+      [0.00, 1.00, -1.5], [0.07, 1.06, -2.5], [0.13, 0.90, 0.5], [0.19, 1.08, -3],
+      [0.25, 0.92, 0],   [0.31, 1.04, -2],  [0.38, 1.12, -3.5], [0.44, 0.90, -0.5],
+      [0.50, 1.02, -2],  [0.57, 0.94, 0],   [0.63, 0.88, 0.5],  [0.70, 1.00, -1.5],
+      [0.76, 1.10, -3.5], [0.82, 1.06, -3], [0.89, 0.90, 0.5],  [0.95, 1.00, -1],
+    ];
+    const rimPath = (pts, rScale, dyScale, aShift) => {
+      ctx.beginPath();
+      pts.forEach((p, i) => {
+        const a = p[0] * Math.PI * 2 + aShift - 0.04;
+        const x = Math.cos(a) * 23.5 * p[1] * rScale;
+        const y = -26 + Math.sin(a) * 8.5 * p[1] * rScale + p[2] * dyScale;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+    };
+    ctx.fillStyle = '#8f7a50';
+    rimPath(rimPts, 1, 1, 0); ctx.fill(); ctx.stroke();                                               // 外沿不规则石圈（土黄）
+    // 左上受光高光：沿外沿圈左上弧段（角度比例 0.52~0.92，左→顶）描亮线
+    ctx.strokeStyle = 'rgba(228,203,150,0.55)'; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    let hlStarted = false;
+    rimPts.forEach((p) => {
+      if (p[0] < 0.52 || p[0] > 0.92) return;
+      const a = p[0] * Math.PI * 2 - 0.04;
+      const x = Math.cos(a) * 23.5 * p[1] * 0.9;
+      const y = -26 + Math.sin(a) * 8.5 * p[1] * 0.9 + p[2] * 0.9;
+      hlStarted ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), hlStarted = true);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#241f16';
+    rimPath(rimPts, 0.78, 0.6, 0.25); ctx.fill();                                                     // 内壁暗环（不规则，缺口与外沿错位）
+    // 液体上方内壁垂坠折叠褶片（暗片为主、左缘受光细边；下缘伸入液面后方——后画的液体覆盖衔接处）
+    ctx.fillStyle = 'rgba(52,43,30,0.95)';
+    ctx.strokeStyle = 'rgba(20,16,10,0.7)'; ctx.lineWidth = 0.8;
+    const fold = (x1, y1, x2, y2, x3, y3) => {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    };
+    fold(-11, -31.5, -12.8, -29.0, -9.4, -29.6);    // 左后褶片
+    fold(-4, -32.3, -5.9, -29.3, -2.3, -29.8);      // 左中褶片（最宽）
+    fold(3.2, -32.5, 1.8, -29.5, 5.2, -29.9);       // 右中褶片
+    fold(10.2, -31.8, 8.9, -29.2, 12.2, -29.9);     // 右后褶片
+    ctx.strokeStyle = 'rgba(224,198,144,0.3)';      // 褶片左缘受光细边
+    ctx.beginPath(); ctx.moveTo(-11, -31.5); ctx.lineTo(-12.8, -29.0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4, -32.3); ctx.lineTo(-5.9, -29.3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(3.2, -32.5); ctx.lineTo(1.8, -29.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10.2, -31.8); ctx.lineTo(8.9, -29.2); ctx.stroke();
+    ctx.save();
+    ctx.shadowColor = '#e8a54b'; ctx.shadowBlur = 10;
+    const lg = ctx.createLinearGradient(0, -32, 0, -22);
+    lg.addColorStop(0, '#ffd884'); lg.addColorStop(1, '#c97a22');
+    ctx.fillStyle = lg;
+    ctx.beginPath(); ctx.ellipse(1, -26, 15, 5.2, -0.04, 0, Math.PI * 2); ctx.fill();                 // 液体（小于杯口）
+    ctx.restore();
+    // 5) 冒泡粒子感：液面内 3 颗时间驱动上升气泡 + 沿口上方 2 个循环闪点
+    const seed = (e.wobble || 0) * 7.3;
+    for (let k = 0; k < 3; k++) {
+      const ph = (t * 0.9 + seed + k * 0.37) % 1;   // 0→1 一个气泡生命周期
+      const by = -25 + 2 - ph * 7;
+      const bx = 1 + Math.sin((t + k * 2.1) * 3.1 + seed) * 5;
+      ctx.globalAlpha = (1 - ph) * 0.85;
+      ctx.fillStyle = '#ffe9b0';
+      ctx.beginPath(); ctx.arc(bx, by, 1.4 + (1 - ph) * 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    for (let k = 0; k < 2; k++) {
+      const ph = (t * 1.4 + k * 0.5) % 1;
+      ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.7;
+      ctx.fillStyle = '#fff3cf';
+      ctx.beginPath(); ctx.arc(Math.sin(t * 2.2 + k * 3) * 7, -34 - ph * 6, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
   function drawWarMatrixBody(e) {
     const fw = 136, fh = 100, hw = 62, hh = 36;   // 门框/本体几何（与 13-encyclopedia 测试4 演示同参数源；碰撞盒 124×72）
     const t = state.time + (e.wobble || 0);
@@ -3019,6 +3273,148 @@
     ctx.stroke();
   }
 
+  // 静滞虚幻炸弹：亮金黑圆柱弹（虚幻青蓝圆柱弹同构换色；2026-11-11 二轮定稿：金调提亮到金属感）——
+  // 筒身亮金 → 金褐 → 深黑金渐变（亮端色阶随时间缓慢流动）；筒身无纬环，通体晶体块面斜切纹路
+  //（上半亮白金块面 + 下半暗金块面收暗一档，仍明显可读）；上端圆面为直线边晶体切面（近白 / 亮金 / 金 / 深金轮换 + 亮白切棱描边）；
+  // 顶缘零星不规则尖状凸起（小三角，切面同色系）；几何（圆柱轮廓 / 明暗）与 paintUnrealBomb 同构
+  function paintStasisUnrealBomb(cx, cy, r, pulse = 0.5) {
+    const w = r * 2, h = r * 3.5;
+    const ryT = r * 0.42, ryB = ryT;
+    const totalH = h + ryT + ryB;
+    const yTop = cy - totalH / 2;
+    const x0 = cx - w / 2;
+    const y0 = yTop + ryT;
+    const yB = y0 + h;
+    const bodyPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + w, y0);
+      ctx.lineTo(x0 + w, yB);
+      ctx.ellipse(cx, yB, w / 2, ryB, 0, 0, Math.PI, false);
+      ctx.closePath();
+    };
+    // 筒身：亮金（上）→ 金褐 → 深黑金（下）（2026-11-11 二轮调色：亮端提亮到金属感亮金）；亮端色阶随时间缓慢流动
+    const flow = 0.5 + Math.sin(state.time * 1.4) * 0.5;
+    const g = ctx.createLinearGradient(cx, y0, cx, yB);
+    g.addColorStop(0, `rgba(${244 + Math.round(flow * 11)}, ${210 + Math.round(flow * 22)}, ${100 + Math.round(flow * 30)}, 1)`);   // 亮金亮端（#f4d264 ~ #ffe896 间流动，金属感）
+    g.addColorStop(0.4, '#c8952a');
+    g.addColorStop(0.72, '#5a400e');
+    g.addColorStop(1, '#140d03');
+    bodyPath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.save();
+    bodyPath();
+    ctx.clip();
+    // 圆柱面横向明暗：两侧压暗、中轴提亮（暖金高光）
+    const cyl = ctx.createLinearGradient(x0, 0, x0 + w, 0);
+    cyl.addColorStop(0, 'rgba(10, 7, 2, 0.55)');
+    cyl.addColorStop(0.3, 'rgba(10, 7, 2, 0)');
+    cyl.addColorStop(0.5, 'rgba(255, 244, 200, 0.34)');
+    cyl.addColorStop(0.7, 'rgba(10, 7, 2, 0)');
+    cyl.addColorStop(1, 'rgba(10, 7, 2, 0.55)');
+    ctx.fillStyle = cyl;
+    ctx.fillRect(x0, y0, w, h + ryB);
+    // 晶体石块纹路（2026-11-11 二轮定稿：去掉两道纬环白道，改晶体块面明显纹路；三轮：下半筒身补齐暗金块面）——
+    // 斜切多边形块面：亮白金描边 + 半透明白填充，读作切割晶体反光（下半段随渐变变暗，描边/填充收暗一档仍明显）
+    const facetStroke = 'rgba(255, 244, 205, 0.85)';
+    const facetFill = 'rgba(255, 243, 200, 0.22)';
+    const facetStrokeD = 'rgba(150, 122, 62, 0.38)';    // 下半段描边（暗褐金极低亮度，贴合变黑的筒身）
+    const facetFillD = 'rgba(66, 52, 22, 0.25)';        // 下半段填充：暗色切面（压暗而非提亮，读作黑色弹体上的切痕）
+    const facet = (pts, dark = false) => {
+      ctx.beginPath();
+      ctx.moveTo(x0 + pts[0][0] * w, y0 + pts[0][1] * h);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(x0 + pts[i][0] * w, y0 + pts[i][1] * h);
+      ctx.closePath();
+      ctx.fillStyle = dark ? facetFillD : facetFill; ctx.fill();
+      ctx.strokeStyle = dark ? facetStrokeD : facetStroke; ctx.lineWidth = dark ? 1 : 1.3; ctx.stroke();
+    };
+    facet([[0.04, 0.06], [0.46, 0.02], [0.36, 0.26], [0.10, 0.30]]);        // 左上块面
+    facet([[0.46, 0.02], [0.94, 0.08], [0.82, 0.30], [0.36, 0.26]]);        // 右上块面
+    facet([[0.36, 0.26], [0.82, 0.30], [0.60, 0.44], [0.28, 0.40]]);        // 中部衔接块面
+    facet([[0.02, 0.44], [0.40, 0.62], [0.10, 0.78]], true);                // 下左宽块面（贴左缘）
+    facet([[0.60, 0.44], [0.97, 0.50], [0.88, 0.74], [0.56, 0.70]], true);  // 下右宽块面（贴右缘）
+    facet([[0.34, 0.62], [0.60, 0.66], [0.48, 0.94]], true);                // 下尖块面（收底晶体尖端）
+    // 底部收形暗带
+    const bb = ctx.createLinearGradient(0, yB - h * 0.22, 0, yB + ryB);
+    bb.addColorStop(0, 'rgba(8, 5, 1, 0)');
+    bb.addColorStop(1, 'rgba(8, 5, 1, 0.4)');
+    ctx.fillStyle = bb;
+    ctx.fillRect(x0, yB - h * 0.22, w, h * 0.22 + ryB);
+    ctx.restore();
+    // ---- 上端圆面：晶体石块切割面（2026-11-11 二轮定稿）——直线边多边形切面 + 亮白描边（明显纹路），
+    // 切面色近白 / 亮金 / 金 / 深金轮换，白占首位补足上半部白色感 ----
+    // 底色：深金圆面（切面缝隙透出的底）
+    ctx.fillStyle = '#3a2a0a';
+    ctx.beginPath();
+    ctx.ellipse(cx, y0, w / 2, ryT, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, y0, w / 2 - 0.4, ryT - 0.4, 0, 0, Math.PI * 2);
+    ctx.clip();
+    // 确定性伪随机（同一颗弹稳定形状——所有静滞弹同款分割，视觉统一）
+    const rnd = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+    const segCols = ['#fdf3d0', '#f6d97e', '#e2a832', '#5a3f0e'];   // 近白 / 亮金 / 金 / 深金（白占首位）
+    const NS = 7;   // 放射切面数（直线边三角形切面，晶体切割感）
+    const ex = [], ey = [];   // 圆周切点（角度与半径均抖动）
+    for (let k = 0; k < NS; k++) {
+      const a = k / NS * Math.PI * 2 + (rnd(k) - 0.5) * 0.4;
+      const rr1 = 0.72 + rnd(k + 10) * 0.27;
+      ex.push(cx + Math.cos(a) * (w / 2 - 1) * rr1);
+      ey.push(y0 + Math.sin(a) * (ryT - 1) * rr1);
+    }
+    for (let k = 0; k < NS; k++) {
+      const k2 = (k + 1) % NS;
+      const mid = 0.30 + rnd(k + 20) * 0.30;   // 内顶点距心比例（0.30~0.60，错落切面）
+      const mx = cx + (ex[k] - cx) * mid + (rnd(k + 30) - 0.5) * w * 0.10;
+      const my = y0 + (ey[k] - y0) * mid + (rnd(k + 40) - 0.5) * ryT * 0.5;
+      ctx.fillStyle = segCols[k % 4];
+      ctx.globalAlpha = 0.92;
+      ctx.beginPath();
+      ctx.moveTo(ex[k], ey[k]);
+      ctx.lineTo(ex[k2], ey[k2]);
+      ctx.lineTo(mx, my);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255, 248, 220, 0.8)';   // 亮白切棱（明显纹路）
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+    }
+    ctx.restore();
+    // 顶面缓流光泽（暗金亮带随时间横扫，读作「渐变流动」）
+    const sheen = ctx.createLinearGradient(x0, y0 - ryT, x0 + w, y0 + ryT);
+    const sh = 0.5 + Math.sin(state.time * 1.9) * 0.5;
+    sheen.addColorStop(Math.max(0, sh - 0.25), 'rgba(0,0,0,0)');
+    sheen.addColorStop(sh, 'rgba(244, 226, 168, 0.30)');
+    sheen.addColorStop(Math.min(1, sh + 0.25), 'rgba(0,0,0,0)');
+    ctx.fillStyle = sheen;
+    ctx.beginPath(); ctx.ellipse(cx, y0, w / 2, ryT, 0, 0, Math.PI * 2); ctx.fill();
+    // ---- 顶缘零星尖状凸起：2 个小三角从上缘伸出（碎片同色系）----
+    for (let k = 0; k < 2; k++) {
+      const px = cx + (rnd(30 + k) - 0.5) * w * 0.8;               // 凸起横向位置
+      const ph = r * (0.35 + rnd(40 + k) * 0.3);                   // 凸起高度
+      const pw = r * (0.16 + rnd(50 + k) * 0.12);                  // 凸起底宽
+      ctx.fillStyle = segCols[k === 0 ? 0 : 2];
+      ctx.beginPath();
+      ctx.moveTo(px - pw, y0 - ryT * 0.72);
+      ctx.lineTo(px + (rnd(60 + k) - 0.5) * pw, y0 - ryT * 0.72 - ph);   // 尖端横向抖动（不规则）
+      ctx.lineTo(px + pw, y0 - ryT * 0.72);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 轮廓：同虚幻统一暗色低对比（偏黑褐）
+    ctx.strokeStyle = 'rgba(10, 7, 2, 0.65)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, y0, w / 2, ryT, 0, Math.PI, Math.PI * 2, false);
+    ctx.lineTo(x0 + w, yB);
+    ctx.ellipse(cx, yB, w / 2, ryB, 0, 0, Math.PI, false);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
   // 暴鸰：白灰色磨角方形自爆无人机（较威龙小 20%）——灰黑渐变横杠连接四角风扇（淡黄桨心、外环灰白渐变越靠边越白），
   // 中央灰黑渐变（较御4 更黑），前方搭载黑色圆炸弹（红道 + 白骷髅）
   function drawBaolingBody(e) {
@@ -3035,6 +3431,183 @@
   function drawUnrealBody(e) {
     // 炸弹挂点较暴鸰略微下移 1.5（2026-09-29 用户反馈，仅挂机展示；飞行中的圆柱弹以自身中心绘制不受影响）
     drawBaolingBodyCore(e, 1, (x, y, rr, p) => paintUnrealBomb(x, y + 1.5, rr, p), 'flake');
+  }
+
+  // 静滞虚幻（2026-11-11 二轮定稿形象）：同虚幻机体（模型类似暴鸰）——
+  // 四风扇桨心亮金↔深金渐变流动（fanStyle 'stasisGold'）、机身标识为白色厚边框菱形（正方形旋转 45°，
+  // 一角竖直朝上，内部透机体色，偶发暗金流光，centerIcon 'square'）、前方搭载亮金黑静滞炸弹（paintStasisUnrealBomb：
+  // 顶面晶体切面 + 尖状凸起）；风扇与本体随机短暂出现黑白灰噪音干扰竖线（drawBaolingBodyCore stasisGold 分支内绘制）
+  function drawStasisUnrealBody(e) {
+    drawBaolingBodyCore(e, 1, (x, y, rr, p) => paintStasisUnrealBomb(x, y + 1.5, rr, p), 'square', 'stasisGold');
+  }
+
+  // 破茧之梦（3E，2026-11-11 用户定稿实装，五次形象修正）：梦幻般绚丽的强大蛾形俯视机体——
+  // 白绒本体（前端椭圆 + 后拖长尾**一体成形无接缝**，无纹路）+ 前端两道竖条黑缝眼（小而锐利，
+  // 强力敌人压迫感）+ 头前两根粉紫短直触须 + 每侧**一整片长翼中间被隔开**成前后两段（翼根相连、
+  // 向外露出透明缝：前段朝机头方向前弯、后段尾端圆钝无尖角拖向后方；翼根淡粉淡紫 → 外端天蓝渐变 +
+  // 翼根数条淡紫小横条纹，色号取自参考图）；周身淡紫蓝柔光衬「梦幻绚丽」压迫感。翅膀高频拍动
+  //（sin(t×22) 频率 22；七次定稿：幅度 ±20% 且随实际速度比例缓变——移动时大幅扇动、刹停静息）。
+  // 移动时机头朝正前方
+  //（无下倾，见 06-enemy faceTarget），固定最大角速度转向。**攻击挤压动画**（五次定稿）：
+  // 刹停期整体沿体轴渐进压缩（1→0.86 随减速）→ 发射期过冲拉伸到 1.1 → 收势回弹常态 1.0
+  //（纯视觉缩放绕本体中心、位置不受影响；各阶段衔接数值连续——brake 末 0.866 / fire 初 0.86、
+  // fire 末恰为 1.0；配合出弹点改头前触须中心，见 06-enemy muzzleLen）。自带 save/restore 不外泄
+  // 样式、结尾 beginPath 清空路径（调用方通用描边不误染）；翅膀拍动用 e.rt（战斗期冻结时钟快照）
+  // 回退 state.time——结算页停更后翅膀定格（2026-10-14 用户定稿口径）
+  function drawCocoonDreamBody(e) {
+    const t = e.rt != null ? e.rt : state.time;
+    // 翅膀拍动（2026-11-11 七次定稿）：移动时扇动且幅度较大（±20%）——幅度随实际速度比例缓变
+    //（速度经移动侧低通连续，拍动幅度随之平滑无跳变；刹停/静置攻击时速度归零 → 拍动平滑收敛到
+    // 0 翅膀静息展开；图鉴预览 mock 无速度 → 静息）。频率仍 22（高频）
+    const flapAmp = 0.20 * Math.min(1, Math.hypot(e.vx || 0, e.vy || 0) / (COCOON_DREAM.speed * (e.speedMul || 1)));
+    const flap = Math.sin(t * 22 + (e.wobble || 0) * 0.7) * flapAmp;
+    // 平滑三角翼面：三顶点 + 圆角半径（r 为数值 = 三角同半径；数组 = 逐顶点半径 [根, 外, 尾]——
+    // 五次定稿后翼尾端用大半径圆钝化去尖角；角部经二次曲线软化——「平滑后的三角形」，棱角保留）
+    function wingTri(pts, r) {
+      const rad = Array.isArray(r) ? r : [r, r, r];
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const p = pts[i], n = pts[(i + 1) % 3], q = pts[(i + 2) % 3];
+        const rv = rad[(i + 1) % 3];
+        const dn = { x: n.x - p.x, y: n.y - p.y }, dq = { x: q.x - n.x, y: q.y - n.y };
+        const ln = Math.hypot(dn.x, dn.y), lq = Math.hypot(dq.x, dq.y);
+        const rn = Math.min(rv, ln * 0.45), rq = Math.min(rv, lq * 0.45);
+        const a = { x: p.x + dn.x / ln * (ln - rn), y: p.y + dn.y / ln * (ln - rn) };
+        const b = { x: n.x + dn.x / ln * rn, y: n.y + dn.y / ln * rn };
+        const c = { x: n.x + dq.x / lq * rq, y: n.y + dq.y / lq * rq };
+        if (i === 0) ctx.moveTo(a.x, a.y); else ctx.lineTo(a.x, a.y);
+        ctx.quadraticCurveTo(b.x, b.y, c.x, c.y);
+      }
+      ctx.closePath();
+    }
+    ctx.save();
+    // 机头朝向（实机）：局部 +y = 机头，faceAng 0 = 朝下（同 fashiA1/warGhost 口径）；
+    // 图鉴预览 mock 实体未设 faceAng → 固定头朝下
+    if (e.faceAng != null) ctx.rotate(e.faceAng);
+    // 攻击挤压动画（五次定稿）：整体沿体轴缩放 sy——刹停压缩 / 发射过冲拉伸 / 收势回弹，
+    // 各阶段衔接处数值连续（无瞬跳）；图鉴预览 mock 无 cdAtk → 恒 1
+    let sy = 1;
+    if (e.cdAtk === 'brake') {
+      const spd = COCOON_DREAM.speed * (e.speedMul || 1);
+      sy = 1 - 0.14 * (1 - Math.min(1, Math.hypot(e.vx, e.vy) / spd));   // 压缩随减速渐进（满速 1.0 → 停稳 ≈0.86）
+    } else if (e.cdAtk === 'fire') {
+      const tA = e.cdAtkT;
+      const burstEnd = COCOON_DREAM.firePause + (COCOON_DREAM.burstCount - 1) * COCOON_DREAM.burstGap;   // 第 5 发出膛时刻 0.61s
+      if (!e.cdFired) {
+        const p = Math.min(1, tA / COCOON_DREAM.firePause);
+        sy = 0.86 + 0.24 * (1 - (1 - p) * (1 - p));   // 蓄力回弹并过冲到 1.1（easeOut）
+      } else if (e.cdBurst) {
+        sy = 1.1;   // 五连弹发射期保持过冲拉伸
+      } else {
+        const p = Math.min(1, Math.max(0, (tA - burstEnd) / (COCOON_DREAM.fireLinger - (COCOON_DREAM.burstCount - 1) * COCOON_DREAM.burstGap)));
+        sy = 1.1 - 0.1 * p;   // 收势回弹到常态 1.0（fireLinger 0.6 → 回弹窗 0.24s）
+      }
+    }
+    ctx.scale(1, sy);
+    // ---- 周身柔光（梦幻绚丽衬底：淡紫蓝径向光晕，远淡于圣杯光环不参与判定）----
+    const aura = ctx.createRadialGradient(0, 0, 4, 0, 0, 36);
+    aura.addColorStop(0, 'rgba(168, 138, 224, 0.22)');
+    aura.addColorStop(1, 'rgba(168, 138, 224, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.arc(0, 0, 36, 0, Math.PI * 2); ctx.fill();
+    // ---- 每侧一整片长翼、中间被隔开成前后两段（2026-11-11 三次定稿）：翼根在本体侧连成一体、
+    // 向外逐渐分开露出透明缝——前段朝机头方向（+y）前弯、后段带长尾尖拖向本体后方；
+    // 翼根淡粉淡紫 → 外端天蓝渐变（色号取自参考图）----
+    for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.scale(s * (1 + flap), 1);   // 水平缩放高频拍动（左右对称，幅度小不影响碰撞观感）
+      // 后段（下层）：翼根 → 外端 → 尾端圆钝拖向本体后方（2026-11-11 五次定稿：尾端大半径圆钝化
+      // 去尖角；四次定稿前缘贴近前段——间隙收窄至基本相连）
+      const wgH = ctx.createLinearGradient(4, 3, 26, 1);
+      wgH.addColorStop(0, '#ddc6e8');        // 翼根：淡粉淡紫（参考图根部色）
+      wgH.addColorStop(0.5, '#b8d4f0');      // 中段过渡
+      wgH.addColorStop(1, '#7fb8e8');        // 外端：天蓝
+      ctx.fillStyle = wgH;
+      ctx.strokeStyle = 'rgba(96, 148, 200, 0.9)';
+      ctx.lineWidth = 1.1;
+      wingTri([{ x: 4, y: 3 }, { x: 26, y: 1 }, { x: 13, y: -26 }], [4, 6, 13]);   // 逐顶点半径 [根, 外, 尾]——尾端 13 圆钝
+      ctx.fill();
+      ctx.stroke();
+      // 前段（上层，主段）：外半段朝机头方向前弯（2026-11-11 三次定稿修正——不再向后掠）
+      const wgF = ctx.createLinearGradient(4, 4, 30, 7);
+      wgF.addColorStop(0, '#e6d4ee');        // 翼根：淡粉淡紫
+      wgF.addColorStop(0.45, '#c8dcf4');     // 中段淡冰蓝
+      wgF.addColorStop(1, '#8ec8ee');        // 外端：天蓝
+      ctx.fillStyle = wgF;
+      ctx.strokeStyle = 'rgba(104, 160, 214, 0.95)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(4, 5);                                // 翼根前缘（与后段同根相连）
+      ctx.quadraticCurveTo(2, 3, 10, 0);               // 根部上缘（四次定稿下压——与前段间隙收窄）
+      ctx.quadraticCurveTo(20, -1, 30, 6);             // 前缘外段朝前弯（弯向 +y 机头方向）
+      ctx.quadraticCurveTo(25, 13, 12, 14);            // 外缘 → 后缘
+      ctx.quadraticCurveTo(7, 11, 4, 5);               // 翼根后缘收口
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // 翼根淡紫色条状图案（2026-11-11 四次定稿：横置短条纹、不倾斜，长度为原斜纹 30%）
+      ctx.strokeStyle = 'rgba(206, 162, 230, 0.75)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) {
+        const y0 = 3.5 + i * 3;
+        ctx.beginPath();
+        ctx.moveTo(8.5, y0);
+        ctx.lineTo(11.9, y0);
+        ctx.stroke();
+      }
+      // 前段外缘深蓝饰带（参考图翼缘深蓝边——沿前弯外缘描一道）
+      ctx.strokeStyle = 'rgba(90, 140, 205, 0.55)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(30, 6);
+      ctx.quadraticCurveTo(25, 13, 12, 14);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // ---- 本体：前端椭圆 + 后拖长尾一体成形（2026-11-11 三次定稿：单一轮廓一次描边——本体与
+    // 尾巴之间无边框接缝；白绒。四次定稿：尾巴缩短 35%（尖 -23 → -15）、修正右缘过渡控制点
+    // (5,-1) → (9,-1)——原值与左缘 (-9,-1) 不对称导致左右鼓出弧线不一致）----
+    ctx.fillStyle = '#f5f3ee';
+    ctx.strokeStyle = '#5a5a66';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(0, -15);                            // 尾尖（缩短 35%）
+    ctx.quadraticCurveTo(-5.5, -9, -4.8, -3);      // 尾左缘（收窄）
+    ctx.quadraticCurveTo(-9, -1, -9.2, 5);         // 左侧鼓出（椭圆左缘）
+    ctx.quadraticCurveTo(-8.5, 13.5, 0, 15);       // 底缘
+    ctx.quadraticCurveTo(8.5, 13.5, 9.2, 5);       // 右侧鼓出
+    ctx.quadraticCurveTo(9, -1, 4.8, -3);          // 尾右缘过渡（控制点对称修复）
+    ctx.quadraticCurveTo(5.5, -9, 0, -15);         // 回尾尖
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(90, 90, 102, 0.4)';   // 绒毛短弧（轮廓外圈绒感，非纹路；四次定稿：角度范围对称化 -0.95π~+0.95π）
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI * 0.95 + (i / 8) * Math.PI * 1.9;
+      const cx = Math.cos(a) * 8.8, cy = 5 + Math.sin(a) * 10.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.2, a - 0.7, a + 0.7);
+      ctx.stroke();
+    }
+    // ---- 眼（前端两道竖条黑缝——强力敌人压迫感；三次定稿缩小，四次定稿上侧向外偏 10° 倾斜，
+    // 五次定稿略微上移 11.5 → 10.5）----
+    ctx.fillStyle = '#0a0a12';
+    for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.translate(s * 3, 10.5);
+      ctx.rotate(s * 10 * Math.PI / 180);   // 上端朝外侧偏 10°（左眼 -10° / 右眼 +10°）
+      ctx.beginPath(); ctx.ellipse(0, 0, 0.9, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    // ---- 触须（头前两根短直须：粉紫；四次定稿长度减半）----
+    ctx.strokeStyle = '#d98cc0';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-2.5, 15.5); ctx.lineTo(-4.5, 19); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2.5, 15.5); ctx.lineTo(4.5, 19); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();   // 清空路径：调用方通用填充/描边不误染（同浮海飘航者惯例）
   }
 
   // 暴鸰系机体绘制核心（drawBaolingBody / drawBaolingGBody / drawUnrealBody 共用）：scale 为本体缩放，bombPainter 为挂载炸弹画法；
@@ -3080,6 +3653,15 @@
           fg.addColorStop(0.34, '#23e3e3'); // 取色定稿：#23F3F3 同系
           fg.addColorStop(0.62, '#7fa9b5'); // 中段灰青
           fg.addColorStop(1, '#e6f9fb');    // 外环青白
+        } else if (fanStyle === 'stasisGold') {
+          // 静滞虚幻：亮金↔深金渐变流动（2026-11-11 二轮调色：金色整体提亮到金属感亮金，去掉土块色）——
+          // 桨心近白亮芯，中段亮金→深金过渡，过渡带位置随时间缓慢往复（流动感）；外环近白金
+          const m = 0.5 + Math.sin(state.time * 1.7 + (sx * 1.3 + sy * 2.1)) * 0.5;   // 四风扇相位错开
+          fg.addColorStop(0, '#fff4c8');                       // 近白亮芯（金属高光）
+          fg.addColorStop(0.30 + m * 0.12, '#f4cb50');         // 亮金
+          fg.addColorStop(0.44 + m * 0.16, '#6e4a0c');         // 深金（暗部压深保持金属对比，随 m 流动）
+          fg.addColorStop(0.66, '#c08a1e');                    // 金回光
+          fg.addColorStop(1, '#fff9e2');                       // 外环近白金
         } else if (fanStyle === 'redYellow') {
           // 红黄渐变仅在内部桨心（≤约 60% 半径）；外缘白环恢复原版——外圈不改动
           fg.addColorStop(0, '#ffe98a');    // 亮黄桨心（内黄）
@@ -3139,14 +3721,199 @@
     ctx.lineTo(S - 4, -S + 1);
     ctx.stroke();
 
-    // ---- 中心偏上的机身标识：暴鸰系骷髅（自爆警示，较炸弹上的更大）/ 虚幻雪花（冰霜涂装）----
+    // ---- 中心偏上的机身标识：暴鸰系骷髅（自爆警示，较炸弹上的更大）/ 虚幻雪花（冰霜涂装）/ 静滞虚幻菱形（白色厚边框 + 偶发暗金流光）----
     if (centerIcon === 'flake') paintSnowflake(0, -4, 4.4);
+    else if (centerIcon === 'square') {
+      // 菱形标识（静滞虚幻，2026-11-11 二轮定稿）：正方形旋转 45°——一角竖直朝上；仅较厚白色边框描边、
+      // 内部不填色（透出机体底色）；边框上偶有金属感暗金光芒沿框流动（亮带循环扫过 + 明暗呼吸）
+      const R = 4.8, cy0 = -4;                       // 菱形半对角（竖直顶点到心）
+      const sweep = (state.time * 0.4) % 1;          // 亮带沿边框循环扫过（2.5s 一圈）
+      const gA = Math.max(0, Math.sin(state.time * 2.3)) * 0.85;   // 光带明暗呼吸（偶尔出现感）
+      const sg = ctx.createLinearGradient(-R, cy0 - R, R, cy0 + R);
+      const st = (o, c) => sg.addColorStop(Math.min(1, Math.max(0, o)), c);
+      st(0, '#ffffff'); st(sweep - 0.10, '#ffffff');
+      st(sweep, `rgba(242, 201, 76, ${gA.toFixed(3)})`);   // 暗金流光带
+      st(sweep + 0.10, '#ffffff'); st(1, '#ffffff');
+      ctx.beginPath();
+      ctx.moveTo(0, cy0 - R); ctx.lineTo(R, cy0); ctx.lineTo(0, cy0 + R); ctx.lineTo(-R, cy0);
+      ctx.closePath();
+      ctx.strokeStyle = sg;
+      ctx.lineWidth = 2.2;                            // 较厚边框
+      ctx.stroke();                                   // 内部不填充——机体底色透出
+    }
     else paintSkull(0, -4, 3.4, fanStyle === 'redYellow');   // G 涂装：骷髅加暗红边框
+
+    // ---- 噪音干扰竖线（静滞虚幻专属，2026-11-11 二轮定稿）：随机出现、只出现一小会即消失（非固定常驻），
+    // 高度不超过核心高度的一半；每次出现换随机位置/长度/黑白灰颜色 ----
+    if (fanStyle === 'stasisGold') {
+      const nrnd = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const ncol = (g) => g < 0.33 ? 'rgba(235, 238, 244, 0.5)' : g < 0.66 ? 'rgba(140, 146, 156, 0.5)' : 'rgba(18, 20, 24, 0.65)';
+      // 本体：3 个独立竖线槽——各槽按随机周期短暂出现（约占周期 20%，≈0.2~0.5s）随即消失
+      for (let k = 0; k < 3; k++) {
+        const per = 1.0 + nrnd(k * 3 + 1) * 1.6;                       // 出现周期（s，各槽错开）
+        const ph = (state.time / per + nrnd(k * 3 + 2)) % 1;
+        if (ph > 0.20) continue;                                        // 仅周期前 20% 可见，其余时间消失
+        const sd = k * 7 + Math.floor(state.time / per + nrnd(k * 3 + 2)) * 13;   // 每次出现独立随机种子
+        const L = S * (0.5 + nrnd(sd + 3) * 0.5);                       // 线长 0.5S~S（≤核心全高 2S 的一半）
+        const yc = -S + L / 2 + nrnd(sd + 4) * (2 * S - L);
+        const lx = -S + nrnd(sd + 5) * S * 2;
+        ctx.save();
+        bodyPath(); ctx.clip();
+        ctx.strokeStyle = ncol(nrnd(sd + 6));
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(lx, yc - L / 2); ctx.lineTo(lx, yc + L / 2); ctx.stroke();
+        ctx.restore();
+      }
+      // 风扇：每风扇 1 槽，同款短暂出现逻辑；线长 ≤ FR（风扇直径的一半以下）
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          const fb = sx * 7 + sy * 13 + 5;
+          const per = 0.8 + nrnd(fb + 1) * 1.4;
+          const ph = (state.time / per + nrnd(fb + 2)) % 1;
+          if (ph > 0.20) continue;
+          const sd = fb + Math.floor(state.time / per + nrnd(fb + 2)) * 13;
+          const L = FR * (0.5 + nrnd(sd + 3) * 0.5);
+          const yc = sy * FY - FR + L / 2 + nrnd(sd + 4) * (2 * FR - L);
+          const lx = sx * FX - FR + nrnd(sd + 5) * FR * 2;
+          ctx.save();
+          ctx.beginPath(); ctx.arc(sx * FX, sy * FY, FR - 0.6, 0, TAU); ctx.clip();
+          ctx.strokeStyle = ncol(nrnd(sd + 6));
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(lx, yc - L / 2); ctx.lineTo(lx, yc + L / 2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
 
     // ---- 前方搭载的炸弹头（黑色圆形：红道 + 白骷髅）----
     // 投掷后本体不再绘制炸弹 —— 炸弹已分离为 blBombs 独立实体，绘制在暴鸰图层之上
     if (!e.blThrown) bombPainter(0, 17, 7, pulse);
     ctx.restore();
+  }
+
+  // 坍缩构造体（2D，2026-11-11 用户定稿形象）：圆左右两侧延伸出黑色细杆——中间的圆周身被浓烈黑色特效和黑雾环绕，
+  // 中心是一个小黑色圆形、从小黑圆展开类似四芒星一定平滑后的形状的白色，白色边缘微微发红（参考图取意绘制）。
+  // 局部小坐标绘制（×drawScale 1.4 → 碰撞盒 46×40 世界像素，同法术大师A1）；本体无朝向（对称体不随移动旋转）。
+  // 图层自底向上：黑雾 → 双侧细杆 → 黑体圆 → 白色四芒星 → 中心小黑圆；
+  // 黑雾/白星均带 sin 呼吸脉动（绘制纯函数无状态，无 t=0 跳变问题）
+  function drawCollapseConstructBody(e) {
+    const TAU = Math.PI * 2;
+    const wob = e.wobble || 0;
+    const breath = 0.5 + Math.sin(state.time * 2.2 + wob) * 0.5;   // 黑雾呼吸 0~1（≈2.9s 周期）
+
+    // ---- 图层最底：黑雾（浓烈黑色特效环绕）——三团错位黑雾 + 环状浓黑，alpha/半径随呼吸脉动 ----
+    // 暗紫灰调（#191626 系）保证深色太空背景上仍可辨轮廓；外圈再叠一圈淡灰薄雾增强体积
+    ctx.save();
+    const mistR = 17 + breath * 3;   // 主雾半径 17~20
+    for (const [ox, oy, mr, a] of [
+      [0, 0, mistR, 0.92],           // 中心主雾团
+      [-6, 3, mistR * 0.66, 0.75],   // 左下副雾团
+      [6, -4, mistR * 0.6, 0.7],     // 右上副雾团（错位营造翻涌感）
+    ]) {
+      const mg = ctx.createRadialGradient(ox, oy, 0, ox, oy, mr);
+      mg.addColorStop(0, `rgba(20, 18, 32, ${a})`);          // 核心：浓黑紫
+      mg.addColorStop(0.55, `rgba(24, 22, 38, ${a * 0.55})`);
+      mg.addColorStop(1, 'rgba(26, 24, 40, 0)');
+      ctx.fillStyle = mg;
+      ctx.beginPath();
+      ctx.arc(ox, oy, mr, 0, TAU);
+      ctx.fill();
+    }
+    // 淡灰薄雾外壳（体积感）：细环渐变
+    const shell = ctx.createRadialGradient(0, 0, mistR * 0.9, 0, 0, mistR * 1.35);
+    shell.addColorStop(0, 'rgba(150, 152, 170, 0)');
+    shell.addColorStop(0.5, `rgba(150, 152, 170, ${(0.10 + breath * 0.06).toFixed(3)})`);
+    shell.addColorStop(1, 'rgba(150, 152, 170, 0)');
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.arc(0, 0, mistR * 1.35, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    // ---- 双侧黑色细杆：自圆两侧水平延伸（近体端深灰、远端纯黑渐变；端头圆帽收细）----
+    // 杆随呼吸轻微俯仰（±2° sin 摆动，纯绘制动效不影响判定）
+    ctx.save();
+    ctx.rotate(Math.sin(state.time * 1.5 + wob) * 2 * Math.PI / 180);
+    for (const s of [-1, 1]) {
+      const rodG = ctx.createLinearGradient(s * 8, 0, s * 30, 0);
+      rodG.addColorStop(0, '#3a3a48');   // 近体端：深灰（衔接黑雾）
+      rodG.addColorStop(0.5, '#191922');
+      rodG.addColorStop(1, '#0b0b10');   // 远端：纯黑
+      ctx.strokeStyle = rodG;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(s * 6, 0);
+      ctx.lineTo(s * 30, 0);
+      ctx.stroke();
+      // 杆端头小球（构造体节点）：深黑圆点 + 微灰描边
+      ctx.fillStyle = '#101018';
+      ctx.beginPath();
+      ctx.arc(s * 30, 0, 2.6, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(190, 192, 205, 0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    ctx.restore();
+
+    // ---- 黑体圆：浓黑核心体（雾中之圆），边缘一圈微灰描边勾出轮廓 ----
+    ctx.fillStyle = '#0d0d16';
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(168, 170, 185, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // ---- 白色四芒星（平滑四芒）：自中心展开，白色主体、边缘微泛红（红辉光 + 淡红描边）----
+    // 外接半径 ≈11、内凹控制半径 ≈0.36R（二次贝塞尔平滑内弯——「四芒星一定平滑后的形状」）；
+    // 轻微呼吸缩放（0.95~1.05 sin）+ 缓慢自旋（体感活着；0.25 rad/s 缓转）
+    ctx.save();
+    ctx.rotate(state.time * 0.25 + wob);
+    const starR = 11 * (0.95 + Math.sin(state.time * 2.6 + wob) * 0.05);
+    const inner = starR * 0.36;
+    ctx.shadowColor = 'rgba(255, 108, 86, 0.9)';   // 边缘微泛红：红橙辉光
+    ctx.shadowBlur = 6 + breath * 4;
+    const starPath = () => {
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = -Math.PI / 2 + k * Math.PI / 2;          // 四尖：上右下左（起点朝上）
+        const tipX = Math.cos(a) * starR, tipY = Math.sin(a) * starR;
+        const midA = a + Math.PI / 4;                       // 尖间中点（内凹控制方向）
+        const cx0 = Math.cos(midA) * inner, cy0 = Math.sin(midA) * inner;
+        if (k === 0) ctx.moveTo(tipX, tipY);
+        else ctx.quadraticCurveTo(
+          Math.cos(a - Math.PI / 4) * inner, Math.sin(a - Math.PI / 4) * inner, tipX, tipY);
+        if (k === 3) {   // 末尖回起点（经左上内凹点闭合）
+          ctx.quadraticCurveTo(cx0, cy0, Math.cos(-Math.PI / 2) * starR, Math.sin(-Math.PI / 2) * starR);
+        }
+      }
+      ctx.closePath();
+    };
+    const starFill = ctx.createRadialGradient(0, 0, 1, 0, 0, starR);
+    starFill.addColorStop(0, '#ffffff');              // 中心纯白
+    starFill.addColorStop(0.6, '#f2f4fd');            // 主体白
+    starFill.addColorStop(1, '#ffd2c4');              // 尖端边缘微红
+    starPath();
+    ctx.fillStyle = starFill;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    starPath();
+    ctx.strokeStyle = 'rgba(255, 130, 110, 0.55)';    // 微红描边收边
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.restore();
+
+    // ---- 中心小黑圆：白色四芒星中心的黑色圆核（参考图核心暗点）----
+    ctx.fillStyle = '#07070c';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 160, 140, 0.5)';     // 黑核外缘一圈淡红细环（红光内渗观感）
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
   }
 
   // 暴鸰红色预警圈（爆炸半径）：红色脉动填充 + 外环 + 内缩瞄准虚环（intensity 0~1 越高越急迫）
@@ -3193,25 +3960,49 @@
     ctx.restore();
   }
 
-  // 暴鸰 / 暴鸰·G / 虚幻 炸弹与预警区：停车锁定阶段（预警挂机身）+ 已投出的炸弹（低速下坠 / 极速冲刺）
-  // （暴鸰·G：预警圈半径 ×1.3、炸弹为胶囊形；虚幻：预警圈深蓝色、炸弹为青蓝渐变圆柱弹）
+  // 静滞虚幻暗金预警圈（爆炸半径）：暗金脉动填充 + 外环 + 内缩瞄准虚环（intensity 0~1 越高越急迫）
+  // 同构于 drawUnrealWarn 的深蓝系，配色换为暗金静滞系（R = STASIS_UNREAL.blastR 73）
+  function drawStasisUnrealWarn(tx, ty, intensity, R = STASIS_UNREAL.blastR) {
+    const TAU = Math.PI * 2;
+    const p = 0.5 + Math.sin(state.time * 10) * 0.5;   // 快速脉动
+    ctx.save();
+    ctx.globalAlpha = 0.55 + intensity * 0.45;
+    ctx.fillStyle = `rgba(180, 130, 30, ${(0.10 + intensity * 0.12 + p * 0.05).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(tx, ty, R, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(217, 169, 75, ${(0.65 + p * 0.35).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(tx, ty, R, 0, TAU); ctx.stroke();
+    const ir = R * (0.85 - intensity * 0.55);   // 内缩瞄准环
+    ctx.strokeStyle = 'rgba(232, 217, 168, 0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -state.time * 30;
+    ctx.beginPath(); ctx.arc(tx, ty, ir, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  // 暴鸰 / 暴鸰·G / 虚幻 / 静滞虚幻 炸弹与预警区：停车锁定阶段（预警挂机身）+ 已投出的炸弹（低速下坠 / 极速冲刺）
+  // （暴鸰·G：预警圈半径 ×1.3、炸弹为胶囊形；虚幻：预警圈深蓝色、炸弹为青蓝渐变圆柱弹；
+  //   静滞虚幻：预警圈暗金色、炸弹为暗金黑圆柱弹——顶面分割碎片与尖状凸起）
   function drawBaolingBombs() {
     for (const e of enemies) {
-      if ((e.type !== 'baoling' && e.type !== 'baolingG' && e.type !== 'unreal') || e.blPhase !== 1 || !e.blWarn) continue;
-      const R = e.type === 'baolingG' ? BAOLING_G.blastR : e.type === 'unreal' ? UNREAL.blastR : BAOLING.blastR;
+      if ((e.type !== 'baoling' && e.type !== 'baolingG' && e.type !== 'unreal' && e.type !== 'stasisUnreal') || e.blPhase !== 1 || !e.blWarn) continue;
+      const R = e.blWarn.r || (e.type === 'baolingG' ? BAOLING_G.blastR : e.type === 'unreal' ? UNREAL.blastR : e.type === 'stasisUnreal' ? STASIS_UNREAL.blastR : BAOLING.blastR);   // 锁定时写入的词条化半径（见 06-enemy blBlastR）
       if (e.type === 'unreal') drawUnrealWarn(e.blWarn.tx, e.blWarn.ty, e.blWarn.t / BAOLING.warnTime * 0.35, R);
+      else if (e.type === 'stasisUnreal') drawStasisUnrealWarn(e.blWarn.tx, e.blWarn.ty, e.blWarn.t / BAOLING.warnTime * 0.35, R);
       else drawBaolingWarn(e.blWarn.tx, e.blWarn.ty, e.blWarn.t / BAOLING.warnTime * 0.35, R);
     }
     for (const b of blBombs) {
       const intensity = b.phase === 'drop'
         ? 0.35 + Math.min(1, b.t / (b.dropDur || BAOLING.dropTime)) * 0.3
         : 0.65 + Math.min(1, (b.spd - BAOLING.dropSpeed) / 900) * 0.35;
-      if (b.u) drawUnrealWarn(b.tx, b.ty, intensity, UNREAL.blastR);
-      else drawBaolingWarn(b.tx, b.ty, intensity, b.g ? BAOLING_G.blastR : BAOLING.blastR);
+      if (b.u) drawUnrealWarn(b.tx, b.ty, intensity, b.r || UNREAL.blastR);
+      else if (b.su) drawStasisUnrealWarn(b.tx, b.ty, intensity, b.r || STASIS_UNREAL.blastR);
+      else drawBaolingWarn(b.tx, b.ty, intensity, b.r || (b.g ? BAOLING_G.blastR : BAOLING.blastR));
       ctx.save();
       ctx.translate(b.x, b.y);
-      if (b.u) {
-        // 虚幻圆柱弹：弹体头部（底缘收形暗带端，即最靠下的一端）朝向锁定目标（2026-10-04 用户反馈纠正：
+      if (b.u || b.su) {
+        // 虚幻 / 静滞虚幻圆柱弹：弹体头部（底缘收形暗带端，即最靠下的一端）朝向锁定目标（2026-10-04 用户反馈纠正：
         // 是底端而非冰青顶面朝前）——下坠段保持竖直（rot 0，底端本来朝下），进入冲刺段后 0.25s smoothstep
         // 平滑转向；仅视觉旋转，不改变运动轨迹。目标角规范到 (−π, π]，保证转最短路径
         let tgt = Math.atan2(b.uy, b.ux) - Math.PI / 2;
@@ -3221,6 +4012,7 @@
         ctx.rotate(tgt * krot);
       }
       if (b.u) paintUnrealBomb(0, 0, 7, 1);
+      else if (b.su) paintStasisUnrealBomb(0, 0, 7, 1);
       else if (b.g) paintBaolingGBomb(0, 0, 7, 1);
       else paintBaolingBomb(0, 0, 7, 1);
       ctx.restore();
@@ -4491,7 +5283,7 @@
     for (const c of spellCubes) {
       const g = c.glow;                            // 黯淡程度（1 → glowFloor）
       const gg = c.big ? Math.min(1, g * FASHI_ARRAY.glowMul) : g;   // 法术阵列大正方体：红光更明显
-      const s = (c.big ? FASHI_ARRAY.cubeHalf : FASHI_MATRIX.cubeHalf) * c.scale;   // 半边长（随生长缩放）
+      const s = (c.big ? FASHI_ARRAY.cubeHalf : FASHI_MATRIX.cubeHalf) * c.scale * (c.rMul || 1);   // 半边长（随生长缩放；rMul=词条 1:bad:6 矩阵大弹尺寸乘数，见 06-enemy）
       const sx = c.ux >= 0 ? 1 : -1;               // 挤出侧 = 水平运动方向（左发射见左面 / 右发射见右面）
       // 本体按发射方向旋转：局部 +y（底边法向）对准速度方向 u → 最前面的那条边（底边）垂直于发射方向
       const alpha = Math.atan2(-c.ux, c.uy);
@@ -4565,7 +5357,7 @@
   }
 
   // 法术矩阵正方体命中战机特效：白热爆闪（突出白光）+ 白热主环 + 红光内环层次，随 t 扩散渐隐
-  //   （撞上守愿者被阻挡不放此特效，仅粒子，避免与命中战机混淆）
+  //   （撞上群星守愿被阻挡不放此特效，仅粒子，避免与命中战机混淆）
   function drawCubeHitFx() {
     for (const f of cubeHitFx) {
       const p = 1 - f.t / f.max;                 // 0→1 进度
@@ -5327,11 +6119,12 @@
     bladePath, drawSlashFx, drawHarbingerBody, drawHarbingerLeadBody, drawHarbingerHubBody, drawHarbingerPolarBody, drawHanshuangBody,
     drawAnvilBody, drawPopianBody, drawPopianUBody, drawVoyagerBody, drawFashiMatrixBody,
     drawFashiArrayBody, drawPulseMatrixBody, drawPmOrphanWave, drawJiaoxiangBody, drawFashiA1Body,
-    drawWarMatrixBody,
+    drawWarMatrixBody, drawGuiltGrailBody,
     drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody,
-    paintSkull, paintSnowflake, paintBaolingBomb, paintUnrealBomb,
-    drawBaolingBody, drawBaolingGBody, drawUnrealBody, drawBaolingWarn,
-    drawUnrealWarn, drawBaolingBombs, drawPopianWarn, drawPopianFx,
+    paintSkull, paintSnowflake, paintBaolingBomb, paintUnrealBomb, paintStasisUnrealBomb,
+    drawBaolingBody, drawBaolingGBody, drawUnrealBody, drawStasisUnrealBody, drawCocoonDreamBody, drawBaolingWarn,
+    drawCollapseConstructBody,
+    drawUnrealWarn, drawStasisUnrealWarn, drawBaolingBombs, drawPopianWarn, drawPopianFx,
     drawSpellCubes, drawCubeHitFx, paintDouzhiMark, paintDouzhiBox,
     paintMarkA, paintMarkB, paintMarkC, paintMarkD,
     paintMarkE, paintBoxMark1, paintBoxMark2, paintBoxMark3,

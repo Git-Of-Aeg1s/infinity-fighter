@@ -111,7 +111,7 @@ node tools/smoke.js --scene=a,b  # 只跑指定场景；--list 列出全部场�
 | 改动文件 | 建议场景 |
 |---|---|
 | 05-boss / 11-draw-boss | darkhand |
-| 07-player / 08-entities | core-flow / pilots / sub-weapons / gacha |
+| 07-player / 08-entities | core-flow / pilots / sub-weapons / gacha / qunxing-gate |
 | 04-spawn / 06-enemy | poem / popian-u / war-ghost / pulse-matrix / elites / hover-bob / swarm |
 | 12-ui / 13-encyclopedia | encyclopedia / wave-test / help-pad |
 | 02-core / 01x 配置域 / 14-main | **全量** |

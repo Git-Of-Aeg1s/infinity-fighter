@@ -25,7 +25,7 @@
 
 
   // 绘制僚机（机体 + 星焰尾；暴走时星焰增强 + 机体辉光脉动 + 翼尖微光）
-  //   群星允诺（volley）：蓝紫星焰；守愿者（fan）：冷蓝星焰 + 前方连体白盾
+  //   时空允诺（volley）：蓝紫星焰；群星守愿（fan）：冷蓝星焰 + 前方连体白盾
   function drawWingmen() {
     if (!player.alive) return;
     const wkBerserk = player.weapon === 5;
@@ -33,9 +33,9 @@
     for (const w of wingmen) {
       ctx.save();
       ctx.translate(w.x, w.y);
-      if (isBulwark) ctx.scale(BULWARK.scale, BULWARK.scale);   // 守愿者整体（尾焰/机体/盾板/辉光/脉冲环）统一尺寸系数
-      else if (currentWingman.scale != null && currentWingman.scale !== 1) ctx.scale(currentWingman.scale, currentWingman.scale);   // 群星允诺整体尺寸系数（尾焰/机体/辉光/暴走机翼统一 ×1.045，纯视觉）
-      // 星焰尾：三角焰体，多频正弦叠加飘动模拟星焰；暴走时更长更亮（群星允诺暴走 12 / 守愿者过载焰最盛；壁垒常态焰 +60%）
+      if (isBulwark) ctx.scale(BULWARK.scale, BULWARK.scale);   // 群星守愿整体（尾焰/机体/盾板/辉光/脉冲环）统一尺寸系数
+      else if (currentWingman.scale != null && currentWingman.scale !== 1) ctx.scale(currentWingman.scale, currentWingman.scale);   // 时空允诺整体尺寸系数（尾焰/机体/辉光/暴走机翼统一 ×1.045，纯视觉）
+      // 星焰尾：三角焰体，多频正弦叠加飘动模拟星焰；暴走时更长更亮（时空允诺暴走 12 / 群星守愿过载焰最盛；壁垒常态焰 +60%）
       const fl = (wkBerserk ? (isBulwark ? 17 : 12) : isBulwark ? 9.6 : 6) + Math.sin(w.flameT * 26) * 2.2 + Math.sin(w.flameT * 41) * 1.1;
       // 壁垒：焰体上移至与机体底尖重叠（尾焰图层最低，重叠段被机体覆盖、读作相连）并略微增长
       const flameY0 = isBulwark ? 5 : 8;
@@ -90,7 +90,7 @@
         ctx.fill();
       }
       if (!isBulwark && wkBerserk) {
-        // 群星允诺暴走内芯：焰体中央淡金内焰（取暴走弹中段同款 barMid #ffd9a0），读作星核过载金芯
+        // 时空允诺暴走内芯：焰体中央淡金内焰（取暴走弹中段同款 barMid #ffd9a0），读作星核过载金芯
         ctx.fillStyle = 'rgba(255, 217, 160, 0.95)';
         ctx.beginPath();
         ctx.moveTo(flameX - 2, flameY0);
@@ -166,7 +166,7 @@
     }
   }
 
-  // 注：守愿者白盾已与机体一体化，统一在 paintWingmanBulwark 内绘制（盾板外缘那道薄白亮边即护盾）
+  // 注：群星守愿白盾已与机体一体化，统一在 paintWingmanBulwark 内绘制（盾板外缘那道薄白亮边即护盾）
 
 
 
@@ -341,7 +341,7 @@
     g.fill();
   }
 
-  // 守愿者僚机造型 —— 方案A：重甲堡垒型（坦克反应装甲风格）
+  // 群星守愿僚机造型 —— 方案A：重甲堡垒型（坦克反应装甲风格）
   //   正面是一块沿弧线排列的厚重钢板装甲（读作铁壁而非能量盾），可见铆钉、装甲缝、加强筋
   //   盾板外缘半径 = BULWARK.radius = 挡弹折线半径（视觉与碰撞一致）
   //   side：-1=左 / +1=右；flash(0~1)：命中时金属亮闪；berserk：暴走过热
@@ -1902,6 +1902,80 @@
       ctx.save();
       ctx.translate(z.x, z.y);
       ctx.globalAlpha = base * (0.78 + 0.22 * Math.sin(state.time * 2.2 + z.seed));
+      // ---- 静滞区域（静滞虚幻，2026-11-11 用户定稿形象）：暗金波动光环 + 浓厚黑雾翻涌（中心最浓）+
+      // 暗金光芒从中随机透出（光斑错相闪现）+ 外侧暗金虚线波环（双向流转）——渐入渐出与微呼吸沿用寒冷区域骨架
+      if (z.stasis) {
+        // 主体光环：中心黑雾最浓 → 中段暗金透光带 → 外缘亮暗金环（径向渐变，缓存复用）
+        const halo = cachedLoadoutGrad(`sz-halo-${ar}`, () => {
+          const g0 = ctx.createRadialGradient(0, 0, ar * 0.22, 0, 0, ar);
+          g0.addColorStop(0, 'rgba(16, 12, 3, 0.60)');        // 中心黑雾（非常浓厚）
+          g0.addColorStop(0.48, 'rgba(26, 19, 5, 0.42)');
+          g0.addColorStop(0.78, 'rgba(122, 90, 22, 0.26)');   // 暗金透光带
+          g0.addColorStop(0.96, 'rgba(217, 169, 75, 0.34)');  // 外缘亮暗金环
+          g0.addColorStop(1, 'rgba(217, 169, 75, 0)');
+          return g0;
+        });
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(0, 0, ar, 0, TAU); ctx.fill();
+        // 黑雾翻涌：10 个深黑雾团自中心沿随机方位外扩（错相循环，同寒冷区域雾团骨架换深色）
+        const mist = cachedLoadoutGrad('sz-mist', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(10, 8, 3, 0.55)');
+          g0.addColorStop(1, 'rgba(10, 8, 3, 0)');
+          return g0;
+        });
+        for (let k = 0; k < 10; k++) {
+          const cyc = (state.time * 0.16 + k * 0.37 + z.seed) % 1;
+          const ma = k * TAU / 10 + k * 2.3 + z.seed + Math.sin(state.time * 0.5 + k * 1.9) * 0.32;
+          const mr = ar * (0.06 + 0.58 * cyc);
+          const mrad = ar * (0.10 + 0.24 * cyc);
+          const mistA = Math.sin(cyc * Math.PI) * 0.5;   // 中段最浓（黑雾比寒霜白雾更重）
+          ctx.save();
+          ctx.translate(Math.cos(ma) * mr, Math.sin(ma) * mr);
+          ctx.scale(mrad, mrad);
+          const mga0 = ctx.globalAlpha;
+          ctx.globalAlpha = mga0 * (mistA / 0.55);
+          ctx.fillStyle = mist;
+          ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+        // 暗金光芒随机透出：7 个光斑确定性伪随机分布，正弦闪现（lighter 叠加，从黑雾中透出的亮芒）
+        const glow = cachedLoadoutGrad('sz-glow', () => {
+          const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g0.addColorStop(0, 'rgba(238, 205, 120, 0.55)');
+          g0.addColorStop(0.55, 'rgba(217, 169, 75, 0.22)');
+          g0.addColorStop(1, 'rgba(217, 169, 75, 0)');
+          return g0;
+        });
+        ctx.globalCompositeOperation = 'lighter';
+        for (let k = 0; k < 7; k++) {
+          const ga = prand(k * 5 + 2 + z.seed * 11) * TAU;
+          const gr = ar * (0.12 + prand(k * 5 + 3 + z.seed * 11) * 0.62);
+          const gph = prand(k * 5 + 4 + z.seed * 11) * TAU;   // 闪现相位（各光斑错相）
+          const gA = Math.max(0, Math.sin(state.time * 1.3 + gph));
+          const grad = ar * (0.10 + prand(k * 5 + 5 + z.seed * 11) * 0.14);
+          ctx.save();
+          ctx.translate(Math.cos(ga) * gr, Math.sin(ga) * gr);
+          ctx.scale(grad, grad);
+          ctx.globalAlpha = gA * 0.8;
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        // 外侧暗金虚线波环：双向流转的波纹感（外环正向、内环反向）
+        ctx.strokeStyle = 'rgba(217, 169, 75, 0.55)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([18, 12]);
+        ctx.lineDashOffset = state.time * 11;
+        ctx.beginPath(); ctx.arc(0, 0, ar * 0.86, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = 'rgba(160, 120, 40, 0.45)';
+        ctx.lineDashOffset = -state.time * 14;
+        ctx.beginPath(); ctx.arc(0, 0, ar * 0.58, 0, TAU); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+        continue;
+      }
       // 主体光环：外缘亮、内部渐透明的径向渐变（冰圈质感，同寒霜）
       // （2026-10-12 性能：ar=UNREAL.frostR 全区域恒定 → 几何/配色固定，cachedLoadoutGrad 缓存复用，逐帧零渐变重建）
       const halo = cachedLoadoutGrad(`fz-halo-${ar}`, () => {
@@ -2097,7 +2171,8 @@
   function drawMissileWarns() {
     for (const w of missileWarns) {
       const flash = Math.sin(state.time * 18) >= 0;
-      const col = flash ? '#ff2b2b' : '#ff9a2b';
+      // 词条（诗篇级 3:good:1）导弹反弹：持有词条时所有敌方导弹预警线变蓝（w.affixBlue 由 06-enemy 生成时写入）
+      const col = w.affixBlue ? (flash ? '#4f9dff' : '#7fc0ff') : (flash ? '#ff2b2b' : '#ff9a2b');
       const prog = clamp(w.t / w.dur, 0, 1);
       ctx.save();
       ctx.globalAlpha = 0.55;

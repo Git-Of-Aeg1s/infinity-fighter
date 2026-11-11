@@ -1,20 +1,21 @@
 // 12-ui：HUD 更新 / 流程控制（resetGame / 暂停 / 结算）/ 选机与僚机卡片
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(13 名)
+  // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(14 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx}  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx, tianxiuDebugSpam, tianxiuDebugSpamT, dagouDebugRapid, dagouMissT}（后 4 个 = 调试菜单开关条目，原 14-main 分支平移——2026-11-09）  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, berserkDuration, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
+  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
+  import { affixBerserkDurView, affixHas, affixModalOpen, affixOwnedEntries, openWenjiukeOpening, queueAffixSelection, resetAffixRunState, wenjiukeDebuffEntries, wenjiukeOpeningOpen } from './03b-affix.js';
   import { DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
   import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpBar, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
-  import { achvEvaluateDefeat, renderResultAchievements, resetAchievements } from './02-achievements.js';
+  import { achvEvaluateDefeat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { resetSpawnWaveState } from './04-spawn.js';
-  import { currentBombCap, delayedShots, initWingmen } from './07-player.js';
+  import { currentBombCap, debugForceGacha, debugSetWeapon, debugToggleInvuln, delayedShots, initWingmen } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
   import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
   import { encyReturnAvailable, openEncyclopedia } from './13-encyclopedia.js';
@@ -118,11 +119,11 @@
     // HUD 当前难度标签：战斗中显示（图鉴挑战 / BOSS 测试不显示，避免与积分器同隐不同现造成混乱）
     if (currentDifficulty.name !== _hudDiffName) { diffLabel.textContent = '难度 · ' + currentDifficulty.name; _hudDiffName = currentDifficulty.name; }
     diffLabel.classList.toggle('hidden', state.mode !== 'playing' || !!state.challenge || !!state.testBoss);
-    const berserkOn = player.weapon === 5 && player.berserk > 0;
+    const berserkOn = player.weapon === 5 && player.berserk > 0 && !affixHas('sp0');   // 词条（特殊对 sp0）永久暴走：右下角不再显示读条
     const shieldOn = player.shield > 0;
     // 暴走读条（右下角）：有颜色区域按剩余比例逐渐变短
     berserkBar.classList.toggle('active', berserkOn);
-    const berserkW = berserkOn ? (player.berserk / berserkDuration() * 100) + '%' : '0%';   // 分母走统一入口（东坤蝰 4.8s——否则量表溢出）
+    const berserkW = berserkOn ? (player.berserk / affixBerserkDurView() * 100) + '%' : '0%';   // 分母走统一入口（东坤蝰 4.8s——否则量表溢出；词条 2:good:0 加成经 03b-affix，View 版不计数）
     if (berserkW !== _hudBerserkW) { berserkFill.style.width = berserkW; _hudBerserkW = berserkW; }
     // 护盾读条（右下角）
     shieldBar.classList.toggle('active', shieldOn);
@@ -218,11 +219,14 @@
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
+    state.affixTartCd = 0; state.affixFreezeHits = 0; state.affixFreezeDmg = 0;   // 词条域：大蛋挞冷却 / 冰封计数重开归零
+    player.affixBzSpecial = false; player.affixBzBase = 0; player.affixBzKits = 0;   // 词条（0:good:5）无敌暴走快照重开清零
     // 奖励道具效果状态归位（道具槽已取消——击坠立即生效；07-player applyRewardItem 置位 / updateRewardFx 推进）
     state.laodaT = 0; state.laodaMul = 1;
     state.magnetBonus = 0;
     state.swordStormT = 0; state.swordStormAcc = 0;
     state.frostField = null;
+    state.blackhole = null;   // 群星之扉黑洞区域随重开清空（跨局残留会冻结在旧位置持续吞弹/烧敌）
     state.bombCapAdd = 0; state.bengbagGot = false;
     state.jiukeT = 0; state.jiukeDodgePct = 0;
     state.itemPickFx.length = 0;
@@ -234,10 +238,12 @@
     state.gachaStones = 0; state.gachaReady = false;
     state.gachaStonesTotal = 0;   // 原石收集总数（结算读数）重开归零（2026-10-13）
     state.gachaHaltT = 0;   // 抽卡停火窗口重开清零（演出中断防护）
+    resetAffixRunState();   // 词条系统跨局重置（03b-affix：已选词条/选择界面/计数器/倒计时全清）
     levelFlow.prevLevel = 1;    // 上一帧关卡（用于检测升级以触发斗志昂扬出现）
     levelFlow.douzhiSkipOnce = false;   // 击败 BOSS 的跳变升级豁免标记（重开清空）
     state.paused = false;
     pauseHomeBtn.classList.add('hidden');
+    pauseDebugBtn.classList.add('hidden');
     pauseRetryBtn.classList.add('hidden');
     pauseBackBtn.classList.add('hidden');
     retrialBtn.classList.add('hidden');
@@ -288,7 +294,7 @@
     player.lingluoMaxDebt = 0;   // 迪奥：生命上限债务清零（player.maxHp 已在下方按装甲复原）
     // 大无垠之王：BOSS 战累积增伤清零（读数淡变状态同步复位——立刻隐藏）
     state.kingDmg = 0; state.kingTaken = 0;
-    state.wenjiukeVuln = 1;   // 温酒客：受伤提升回到开局 +100%（每击败一个 BOSS -25 个百分点，见 06-enemy 击败结算）
+    // 温酒客：DEBUFF/占用表/保底阶梯经 resetAffixRunState 统一重置（03b-affix，2026-11-11 效果重做后无 state 域残留）
     kingBonusAlpha = 0; kingBonusLastT = null;
     kingBonus.classList.add('hidden'); kingBonus.style.opacity = '0';
     // 埃逸：自爆相关状态归零
@@ -302,6 +308,7 @@
     xinRings.length = 0;          // 副武器·辛国栋之怒：灼烧火环随重开清空
     state.dagouChains.length = 0;   // 叮咚鸡连射链待发射队列随重开清空
     state.daodanChains.length = 0;   // 捣蛋来袭连射链待发射队列随重开清空
+    state.rainLaunchQ.length = 0; state.rainVolleySeq = 0;   // 时流之雨：待发射雨弹队列与轮次 id 随重开清零
     player.crystalShield = 0;     // 七日澜心水晶护盾清除
     player.bulwarkUsed = false;   // 最终壁垒：新的一条命，免死机会重置
     player.bulwarkFxT = 0;        // 最终壁垒：免死菱形环绕演出计时归零
@@ -443,6 +450,12 @@
     // 直接落位到演示站位（否则刷新页面时僚机会从底部出战位快速上移追赶，见 07-player initWingmen）
     initWingmen();
     syncInfoEntryBtn();
+    // 温酒客开局 DEBUFF 确认模态（2026-11-11 用户定稿效果重做）：仅真正开局（autoStart）且主槽温酒客时弹出——
+    // 模态期间 state.paused 冻结主循环，点击「确认出发」后 closeWenjiukeOpening 恢复。
+    // BOSS 试炼 / 图鉴挑战同样生效（温酒客效果重做无难度豁免口径）
+    if (autoStart && currentPilotMain.id === 'wenjiuke') {
+      openWenjiukeOpening(true);
+    }
   }
 
   // 数值与机制图鉴入口按钮（ⓘ）：仅主菜单页可见时显示（战斗 / 暂停 / 结算均隐藏）
@@ -461,6 +474,8 @@
     overlayDesc.innerHTML = html;
     startBtn.textContent = btnText;
     overlayCard.classList.toggle('special-run', !!specialBadge);   // 特殊装备角标：仅结算页显示（第 4 参，暂停页缺省 → 清除）
+    pauseDebugBtn.classList.add('hidden');   // 调试菜单入口仅暂停页显示（togglePause paused 分支随后恢复；结算页保持隐藏）
+    closeDebugMenu();   // 结算弹窗打开时调试菜单强制收起（防游戏中开着面板时战斗结束叠置；暂停页打开被 togglePause 守卫阻断，此处无副作用）
     overlay.classList.remove('hidden');
   }
 
@@ -636,9 +651,13 @@
     // 怪物图鉴 / 数值与机制图鉴弹窗：列表结构在 13-encyclopedia 动态构建，不做卡片级导航——
     // B 关闭防软锁（padBackAction），方向导航让位给鼠标
     if (!encyclopedia.classList.contains('hidden') || !infoModal.classList.contains('hidden')) return [];
+    // 调试菜单面板：收集面板内可用按钮（disabled 滤除——暂停中动作条目不可聚焦），置于暂停页收集之前
+    if (debugMenuOpen()) {
+      return [...debugOverlay.querySelectorAll('button')].filter(b => !b.disabled);
+    }
     if (!overlay.classList.contains('hidden')) {
-      // 暂停 / 失败 / 胜利结算：只收集当前可见按钮（数组顺序 = 卡片内视觉自上而下）
-      return [retrialBtn, startBtn, gameoverHomeBtn, pauseRetryBtn, pauseBackBtn, pauseHomeBtn]
+      // 暂停 / 失败 / 胜利结算：只收集当前可见按钮（数组顺序 = 卡片内视觉自上而下；调试菜单入口在末位）
+      return [retrialBtn, startBtn, gameoverHomeBtn, pauseRetryBtn, pauseBackBtn, pauseHomeBtn, pauseDebugBtn]
         .filter(b => !b.classList.contains('hidden'));
     }
     if (!menuScreen.classList.contains('hidden')) {
@@ -669,6 +688,7 @@
   function padBackAction() {
     if (!encyclopedia.classList.contains('hidden')) { encyClose.click(); return true; }
     if (!infoModal.classList.contains('hidden')) { infoClose.click(); return true; }
+    if (debugMenuOpen()) { closeDebugMenu(); return true; }   // 调试菜单 B = 关闭面板（回到暂停页 / 战斗）
     if (!overlay.classList.contains('hidden')) {
       if (state.paused) togglePause();   // 暂停页 B = 继续游戏
       return true;
@@ -747,14 +767,14 @@
     // ---------- 选僚机页面 ----------
   // 僚机缩略图绘制（选僚机卡片与主菜单装备框共用）：调用前 c 已按 DPR 缩放、画布 56×60 逻辑尺寸
   function paintWingmanThumb(c, wm) {
-    c.translate(31, 30);   // 两僚机舱体中心统一对齐 (31,30)——群星允诺舱体在本地原点，直落该点；
-    c.scale(-1, 1);   // 左右反转预览图                       // 守愿者舱体在本地 (side*3,-3)，由分支内 translate 修正。
+    c.translate(31, 30);   // 两僚机舱体中心统一对齐 (31,30)——时空允诺舱体在本地原点，直落该点；
+    c.scale(-1, 1);   // 左右反转预览图                       // 群星守愿舱体在本地 (side*3,-3)，由分支内 translate 修正。
     // 整体较画布中心右移 3px：尾翼/盾弧镜像后甩向左侧，视觉重心偏左，微调回正
     // 暴走星焰尾（静态帧）：白紫亮焰 + 淡金内芯，较常规更长更亮（与游戏内 wkBerserk 焰一致）
     const isBulwark = wm.weapon && wm.weapon.kind === 'fan';
     if (isBulwark) {
-      c.scale(0.82 * BULWARK.scale, 0.82 * BULWARK.scale);   // 缩小以容纳前方装甲板（×守愿者整体尺寸系数）
-      c.translate(-3, 3);   // 机体中心修正：舱体本地 (side*3,-3) 经本位移 + 镜像 + 缩放后恰落画布中心（与群星允诺舱体同心）
+      c.scale(0.82 * BULWARK.scale, 0.82 * BULWARK.scale);   // 缩小以容纳前方装甲板（×群星守愿整体尺寸系数）
+      c.translate(-3, 3);   // 机体中心修正：舱体本地 (side*3,-3) 经本位移 + 镜像 + 缩放后恰落画布中心（与时空允诺舱体同心）
       // 冷蓝暴走尾焰（静态帧）
       const fg = c.createLinearGradient(0, 8, 0, 8 + 15 + 5);
       fg.addColorStop(0, 'rgba(234, 248, 255, 0.95)');
@@ -769,7 +789,7 @@
       c.fill();
       paintWingmanBulwark(c, 1, true, 0.35, true);   // 重甲堡垒机体（暴走过热状态，静态帧；still 冻结相位保证预览确定性）
     } else {
-      if (wm.scale != null && wm.scale !== 1) c.scale(wm.scale, wm.scale);   // 群星允诺整体尺寸系数（与游戏内 drawWingmen 同源 ×1.045）
+      if (wm.scale != null && wm.scale !== 1) c.scale(wm.scale, wm.scale);   // 时空允诺整体尺寸系数（与游戏内 drawWingmen 同源 ×1.045）
       const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
       fg.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
       fg.addColorStop(0.5, 'rgba(168, 138, 255, 0.65)');
@@ -908,7 +928,165 @@
     }
   }
 
+  // ---------- 调试菜单（2026-11-09 用户定稿：作弊/调试功能收编） ----------
+  // 呼出：暂停页「调试菜单」按钮 / 战斗中按 0（14-main）。原 7/8/9/0 直按作弊键全部收进本面板：
+  // 无敌开关（原 0）/ 风暴连发开关（原 8）/ 导弹雨连发开关（原 9）/ 召唤萧杨技能（原 7）/
+  // 立刻选择词条（新增，queueAffixSelection(0)）/ 攻击等级 1~5 档位（debugSetWeapon，与 1~5 键共用）。
+  // 口径：开关与档位 playing 态随时可用（含暂停中，原键位本就不受 !paused 门控）；动作条目
+  //（召唤萧杨 / 立刻选择词条）暂停中置灰不可点。成就钩子（achvNoteCheat 系）在原函数/本处照常触发，
+  // 与原直按口径完全一致——菜单作弊同样计入作弊互斥。
+  // DOM（#debugOverlay）在 index.html 位于暂停遮罩之后，同层级后绘覆盖其上；showOverlay（结算/暂停）
+  // 打开时强制收起，防结算页与面板叠置。
+  const debugOverlay = document.getElementById('debugOverlay');
+  const dbgInvulnBtn = document.getElementById('dbgInvulnBtn');
+  const dbgStormBtn = document.getElementById('dbgStormBtn');
+  const dbgDagouBtn = document.getElementById('dbgDagouBtn');
+  const dbgGachaBtn = document.getElementById('dbgGachaBtn');
+  const dbgAffixBtn = document.getElementById('dbgAffixBtn');
+  const dbgLvDown = document.getElementById('dbgLvDown');
+  const dbgLvUp = document.getElementById('dbgLvUp');
+  const dbgLvLabel = document.getElementById('dbgLvLabel');
+  const debugCloseBtn = document.getElementById('debugCloseBtn');
+  const pauseDebugBtn = document.getElementById('pauseDebugBtn');
+  const pauseAffixList = document.getElementById('pauseAffixList');
+  // 代码级兜底隐藏（与 index.html 静态 class="... hidden" 双保险）：元素初始态以代码为准，
+  // 无头 smoke 桩的 classList 不继承 HTML 静态类，漏掉这两行会使 debugMenuOpen() 恒真、
+  // 手柄焦点导航被劫持到调试面板（2026-11-09 smoke gamepad 场景 7 错全灭根因）
+  debugOverlay.classList.add('hidden');
+  pauseDebugBtn.classList.add('hidden');
+  pauseAffixList.classList.add('hidden');
+
+  // ---------- 暂停页「当前词条」（2026-11-10 用户需求） ----------
+  // togglePause paused 分支调用：affixOwnedEntries 快照 → 紧凑列表（icon + 名字，正/负沿用图鉴配色）。
+  // 完整文案放 title 悬停可读（暂停页空间有限）；特殊对展开对名 + 正/负两行。重开 resetAffixRunState
+  // 清空 affixIds → 重开后暂停自动为空列表隐藏
+  function renderPauseAffixes() {
+    pauseAffixList.innerHTML = '';
+    const entries = affixOwnedEntries();
+    const debuffs = wenjiukeDebuffEntries();   // 温酒客开局 DEBUFF（未失效部分，2026-11-11 效果重做）
+    if (!entries.length && !debuffs.length) { pauseAffixList.classList.add('hidden'); return; }
+    pauseAffixList.classList.remove('hidden');
+    if (debuffs.length) {
+      const dh = document.createElement('div');
+      dh.className = 'pa-head';
+      dh.textContent = '温酒客 DEBUFF（' + debuffs.length + '）';
+      pauseAffixList.appendChild(dh);
+      for (const d of debuffs) {
+        const row = document.createElement('div');
+        row.className = 'pa-row pa-bad';
+        row.title = d.text;
+        row.textContent = (d.icon ? d.icon + ' ' : '') + d.name + ' · ' + d.grade;
+        pauseAffixList.appendChild(row);
+      }
+    }
+    if (!entries.length) return;
+    const head = document.createElement('div');
+    head.className = 'pa-head';
+    head.textContent = '当前词条（' + entries.length + '）';
+    pauseAffixList.appendChild(head);
+    for (const e of entries) {
+      if (e.kind === 'special') {
+        const wrap = document.createElement('div');
+        wrap.className = 'pa-special';
+        const name = document.createElement('div');
+        name.className = 'pa-name';
+        name.textContent = e.name + '（绑定对）';
+        wrap.appendChild(name);
+        for (const [label, item, cls] of [['正面：', e.good, 'pa-good'], ['负面：', e.bad, 'pa-bad']]) {
+          const line = document.createElement('div');
+          line.className = 'pa-line ' + cls;
+          line.title = item.text;
+          line.textContent = label + (item.icon ? item.icon + ' ' : '') + item.text;
+          wrap.appendChild(line);
+        }
+        pauseAffixList.appendChild(wrap);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.className = 'pa-row ' + (e.side === 'good' ? 'pa-good' : 'pa-bad');
+      row.title = e.text;
+      row.textContent = (e.icon ? e.icon + ' ' : '') + e.name + ' · ' + e.grade;
+      pauseAffixList.appendChild(row);
+    }
+  }
+
+
+  function debugMenuOpen() { return !debugOverlay.classList.contains('hidden'); }
+
+  // 按钮文案/置灰态同步当前 state（每次开面板与每次点击后刷新）；开关条目 ON 态加 debug-on 高亮类
+  function refreshDebugMenu() {
+    const actionsDisabled = state.paused || state.mode !== 'playing';
+    dbgInvulnBtn.textContent = '无敌：' + (state.cheatInvuln ? '开' : '关');
+    dbgStormBtn.textContent = '风暴连发：' + (state.tianxiuDebugSpam ? '开' : '关');
+    dbgDagouBtn.textContent = '导弹雨连发：' + (state.dagouDebugRapid ? '开' : '关');
+    dbgInvulnBtn.classList.toggle('debug-on', !!state.cheatInvuln);
+    dbgStormBtn.classList.toggle('debug-on', !!state.tianxiuDebugSpam);
+    dbgDagouBtn.classList.toggle('debug-on', !!state.dagouDebugRapid);
+    dbgGachaBtn.disabled = actionsDisabled;
+    dbgAffixBtn.disabled = actionsDisabled;
+    dbgLvLabel.textContent = '攻击等级 Lv' + player.weapon;
+    dbgLvDown.disabled = player.weapon <= 1;
+    dbgLvUp.disabled = player.weapon >= 5;
+  }
+
+  function closeDebugMenu() {
+    debugOverlay.classList.add('hidden');
+  }
+
+  function toggleDebugMenu() {
+    if (debugMenuOpen()) { closeDebugMenu(); return; }
+    // 守卫：仅 playing 态（含暂停中）；词条选择界面期间不开（防模态叠置）；swarm 测试页不开
+    //（与原作弊键让位口径一致——该页数字键全部让给道具直发，0 键 = 瓶中精灵）
+    if (state.mode !== 'playing' || affixModalOpen()) return;
+    if (state.challenge && state.challenge.kind === 'swarm') return;
+    refreshDebugMenu();
+    debugOverlay.classList.remove('hidden');
+  }
+
+  dbgInvulnBtn.addEventListener('click', () => {
+    const godOn = debugToggleInvuln();   // 07-player：开启回满血 + 伤害归零；开启记 achvNoteCheat
+    if (godOn) achvNoteInvulnCheatOn();   // 成就：不死之躯（原 14-main 0 键口径平移）
+    refreshDebugMenu();
+  });
+  // 风暴连发（原 14-main 8 键分支平移）：开启瞬间清零首发倒计时立即发射第一个；记作弊 + 解锁万道风流
+  dbgStormBtn.addEventListener('click', () => {
+    state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
+    state.tianxiuDebugSpamT = 0;
+    if (state.tianxiuDebugSpam) achvNoteTianxiuCheatOn();
+    refreshDebugMenu();
+  });
+  // 导弹雨连发（原 14-main 9 键分支平移）：开启瞬间压缩当前倒计时——否则最长要等 22s 才见下一波；
+  // 记作弊 + 解锁捣蛋来袭
+  dbgDagouBtn.addEventListener('click', () => {
+    state.dagouDebugRapid = !state.dagouDebugRapid;
+    if (state.dagouDebugRapid) {
+      state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
+      achvNoteDagouCheatOn();
+    }
+    refreshDebugMenu();
+  });
+  // 召唤萧杨（原 14-main 7 键平移）：debugForceGacha 内部自带 playing/paused/登场演出守卫，暂停中置灰
+  dbgGachaBtn.addEventListener('click', () => {
+    debugForceGacha();
+  });
+  // 立刻选择词条（新增）：与正常选择同一链路（chooseOption 结算、诗篇双对/特殊绑定对抽选规则照常生效）。
+  // 传 0.01s 而非 0——queueAffixSelection 仅设 affixFlow.pendingT，tickAffixPending 只在 >0 时倒计时，
+  // 传 0 会让模态永不弹出（2026-11-10 浏览器实测抓出）；下一帧即开，体感「立刻」。先关本面板防模态叠置
+  dbgAffixBtn.addEventListener('click', () => {
+    if (dbgAffixBtn.disabled) return;
+    closeDebugMenu();
+    queueAffixSelection(0.01);
+  });
+  // 攻击等级档位：步进 1~5（debugSetWeapon 内部记 achvNoteCheat；Lv5 附带暴走与澄月判定，见 07-player）
+  dbgLvDown.addEventListener('click', () => { if (player.weapon > 1) { debugSetWeapon(player.weapon - 1); refreshDebugMenu(); } });
+  dbgLvUp.addEventListener('click', () => { if (player.weapon < 5) { debugSetWeapon(player.weapon + 1); refreshDebugMenu(); } });
+  debugCloseBtn.addEventListener('click', closeDebugMenu);
+  pauseDebugBtn.addEventListener('click', toggleDebugMenu);
+
   function togglePause() {
+    if (affixModalOpen()) return;   // 词条选择界面开启期间禁用暂停/恢复（避免选择中误触 P / Start 解除冻结）
+    if (wenjiukeOpeningOpen()) return;   // 温酒客开局确认模态同口径禁用（确认前冻结主循环，P/Start 不应穿透）
+    if (debugMenuOpen()) return;   // 调试菜单开启期间同口径禁用（面板覆盖暂停页，P/Start 先关面板再操作——防暂停态切换后面板动作条目置灰态失真）
     state.paused = !state.paused;
     if (state.paused) {
       bossTestRow.style.display = 'none';
@@ -918,6 +1096,8 @@
       showOverlay('已暂停', '按 <kbd>P</kbd> 继续游戏', '继续游戏');
       retrialBtn.classList.add('hidden');   // 暂停菜单不显示胜利页专属按钮
       pauseHomeBtn.classList.remove('hidden');
+      pauseDebugBtn.classList.remove('hidden');   // 调试菜单入口（仅暂停页；恢复/结算随下方隐藏）
+      renderPauseAffixes();   // 当前局已获词条（无词条时容器隐藏）
       // 挑战模式（含 BOSS 试炼/测试）：额外显示“重新挑战”；有图鉴来源时再显示“返回上一步”
       if (state.challenge || state.testBoss) {
         pauseRetryBtn.classList.remove('hidden');
@@ -930,6 +1110,7 @@
     } else {
       overlay.classList.add('hidden');
       pauseHomeBtn.classList.add('hidden');
+      pauseDebugBtn.classList.add('hidden');
       pauseRetryBtn.classList.add('hidden');
       pauseBackBtn.classList.add('hidden');
       retrialBtn.classList.add('hidden');
@@ -1090,6 +1271,6 @@
 
   export {
     updateHUD, resetGame, syncInfoEntryBtn, showOverlay, buildDiffCards, buildArmorCards,
-    buildSubWeaponCards, buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, endGame,
+    buildSubWeaponCards, buildWingmanCards, buildPlaneCards, buildPilotCards, initMenuPanels, togglePause, toggleDebugMenu, endGame,
     padMenuTick,
   };

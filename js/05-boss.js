@@ -1,7 +1,7 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(6 名) 11-draw-boss(5 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(7 名) 11-draw-boss(5 名) 14-main(3 名)
   // 依赖计数：01-config(21) 02-core(15) 04-spawn(3) 07-player(3) 08-entities(1) 02-achievements(1)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
@@ -16,6 +16,7 @@
   import { bulwarkActive, clipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
+  import { affixBossHpMul, affixHas } from './03b-affix.js';
 
   // BOSS 技能释放间隔难度倍率（2026-10-10 用户定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
   // 真我走 realme.mods.bossFireIntervalMul；诗篇 wip 走 isPoem 硬分支、实装时迁移 poem.mods，见《诗篇难度修正.md》#44）
@@ -26,6 +27,13 @@
 
 
   // ---------- BOSS：旧日之歌 ----------
+  // 词条（虚象级 0:bad:5）BOSS虚化：BOSS 登场时 20% 概率获得 2s 虚化护盾 / 20% 概率获得 5s 虚化护盾。
+  // 计时在登场演出结束（combatReady）后才开始倒数（见 updateBoss）；我方伤害各结算处按 bossPhantom(e) 判定穿透不结算
+  function affixBossPhantom() {
+    if (!affixHas('0:bad:5')) return 0;
+    const r = Math.random();
+    return r < 0.2 ? 2 : r < 0.4 ? 5 : 0;
+  }
   function spawnBoss(id) {
     // 进入 BOSS 战：火力不足 Lv3 时补到 Lv3；并重置受击掉火力的累计计数（正常 / 挑战模式通用）
     if (player.weapon < 3) player.weapon = 3;
@@ -36,7 +44,7 @@
     if (B.id === 'storm') {
       // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）；携带天秀 ×2——其余我方伤害削减机制已取消
       //（2026-10-02 用户定稿：非风暴伤害对暴风之眼不再有任何减少，血量翻倍作平衡代偿）
-      const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1);
+      const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1) * affixBossHpMul();   // 词条（下一个/所有 BOSS 增强乘区，见 03b-affix）
       enemies.push({
         type: 'boss', bossId: 'storm', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: STORM.hoverY,
@@ -49,13 +57,15 @@
         moveT: 0, t: 0, rot: 0,   // rot：风暴自转角（逆时针）
         skill: null, skillCd: bossSkillIv(0.2),   // 进战斗后 0.2s 即释放首个技能（必为技能6）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
+        bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       });
       shake(6, 0.6);
       return;
     }
     // 风暴编织者：暴风之眼消散后电闪雷鸣中现身（入场：轰然消散 → 雷暴轰鸣 → 现身 → 战斗）
     if (B.id === 'storm2') {
-      const hp = resolveBossHp(STORM2);
+      // 词条（长歌级 4:good:3）词条禁用：所有 S 类敌人血量 -95%（风暴编织者 = 5S；四精英/1S 见 04-spawn）
+      const hp = resolveBossHp(STORM2) * affixBossHpMul() * (affixHas('4:good:3') ? 0.05 : 1);
       enemies.push({
         type: 'boss', bossId: 'storm2', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: STORM2.hoverY,
@@ -73,6 +83,7 @@
         bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
         skill: null, skillCd: bossSkillIv(1.0),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我/诗篇经 bossSkillIv 全局倍率）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
+        bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       });
       shake(6, 0.6);
       return;
@@ -80,7 +91,7 @@
     // 黑暗之手：四段式登场演出（2026-10-01 替换旧黑洞入场，见 updateBossDarkhand）；
     // lurk 期间潜伏不可见（警报背后），警报结束才现身
     if (B.id === 'darkhand') {
-      const hp = resolveBossHp(DARKHAND);   // 分难度血量表（hpByDiff）
+      const hp = resolveBossHp(DARKHAND) * affixBossHpMul();   // 分难度血量表（hpByDiff）+ 词条增强乘区
       enemies.push({
         type: 'boss', bossId: 'darkhand', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: DARKHAND.hoverY,
@@ -104,7 +115,8 @@
         skill: null, skillCd: darkhandSkillCd(),
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
         dhSlashN: 0,                 // 血条登场爪痕已触发震屏次数（时序对齐 drawSongBar slashT，2026-10-03）
-        dhRepeatCd: 1,               // 本次技能结束后的间隔倍率（连续随机到同技能 ×0.2，同其他 BOSS 规则）
+        dhRepeatCd: 1,               // 本次技能结束后的间隔倍率（连续随机到同技能 ×0.3，同其他 BOSS 规则；2026-11-10 用户定稿 0.2→0.3）
+        bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       });
       shake(6, 0.6);
       return;
@@ -133,7 +145,7 @@
         label: pd.label,
       });
     }
-    const hp = resolveBossHp(BOSS);   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）
+    const hp = resolveBossHp(BOSS) * affixBossHpMul();   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）+ 词条增强乘区
     enemies.push({
       type: 'boss', bossId: B.id, name: B.name, lv: B.lv,
       x: CANVAS_W / 2, y: BOSS.hoverY,
@@ -151,6 +163,7 @@
       bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
       skill: null, skillCd: bossSkillIv(1.4),   // 入场期占位（进入 combat 时重置为 1.0s × 难度倍率，见组装完成分支）
       lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarbL: false, summonHarbR: false,
+      bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       parts,
       unfoldT: 0,   // 兼容图鉴预览
     });
@@ -368,10 +381,10 @@
       // 加权随机（全局机制：未释放过的技能权重更高）
       id = weightedPick(pool, e.skillWeights);
     }
-    // 全局规则：连续随机到同一技能 → 技能间冷却 -80%
+    // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2）
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv(repeat ? STORM.skillCd * 0.2 : STORM.skillCd);
+    e.skillCd = bossSkillIv(repeat ? STORM.skillCd * 0.3 : STORM.skillCd);
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速/风流速度 ×1.4
     // 全局机制结算：记录本次使用，其他从未释放过的技能权重 ×1.5
@@ -821,14 +834,17 @@
   }
 
   function pushBossBullet(x, y, ang, speed, opts = {}) {
+    // 词条（特殊对 sp1）弹速迟缓：所有敌方子弹弹速 -50%（初速/横向加速度/沿程加速度/加速上限同步折半，
+    // 保持弹道形状不变仅整体放慢；生成时一次性缩放，不逐帧修改既有弹——平滑无突变）
+    const bs = affixHas('sp1') ? 0.5 : 1;
     eBullets.push({
       x, y,
       // vxMul（2026-10-04 黑暗之手技能1）：生成时一次性水平分量缩放（虚象/具象 0.7），不影响后续移动
-      vx: (opts.vx != null ? opts.vx : Math.cos(ang) * speed) * (opts.vxMul || 1),
-      vy: opts.vy != null ? opts.vy : Math.sin(ang) * speed,
-      ax: opts.ax || 0,          // 横向加速度（技能5 的 1/4 双曲线弹道）
-      accel: opts.accel || 0,    // 沿飞行方向加速度（初速低逐渐加速的风条等）
-      maxSpeed: opts.maxSpeed || 0,
+      vx: (opts.vx != null ? opts.vx * bs : Math.cos(ang) * speed * bs) * (opts.vxMul || 1),
+      vy: opts.vy != null ? opts.vy * bs : Math.sin(ang) * speed * bs,
+      ax: (opts.ax || 0) * bs,          // 横向加速度（技能5 的 1/4 双曲线弹道）
+      accel: (opts.accel || 0) * bs,    // 沿飞行方向加速度（初速低逐渐加速的风条等）
+      maxSpeed: (opts.maxSpeed || 0) * bs,
       // 旋转弹（真我·旧日之歌技能1）：速度方向按 angVel 逐帧旋转，水平以上/以下角速度乘 spinUp/spinDown；
       // life 为寿命上限（旋转弹可能长期滞留场上）
       angVel: opts.angVel || 0,
@@ -909,6 +925,19 @@
     }
   }
 
+  // 词条（具象级 1:good:3，2026-11-09 实装）：所有 BOSS 血量首次到达 40% 时必定掉落一个结晶护盾
+  //（每台 BOSS 一次——e.affixCrystalMark 只置位一次；结晶护盾时长 -0.5s 在拾取侧 affixCrystalShieldDur 统一生效；
+  // 调用点同 updateLovelyShieldMark（06-enemy boss 通用分支），未持有词条时内部直接跳过）
+  function updateAffixCrystalMark(e) {
+    if (state.challenge) return;
+    if (!affixHas('1:good:3')) return;
+    if (e.affixCrystalMark) return;
+    if (Math.max(0, e.hp) / e.maxHp <= 0.4) {
+      e.affixCrystalMark = true;
+      spawnPowerup(e.x, e.y, 'crystalShield', 13);
+    }
+  }
+
   // ---------- BOSS3：风暴编织者（雷电飞舰） ----------
   // 技能池（乱序，释放间隔 = 暴风之眼的 75%）：
   //   技能1 电弧球蓄力激光：停止移动，中心电弧球明显预警蓄力 1.0s → 向下强力电弧激光（固定 60 伤害）
@@ -921,7 +950,7 @@
   //   技能5 雷霆打击：周身雷电环演出，下方 30% 区域随机 5 处依次雷击（40 伤害，雷电积聚预警 1.2s，
   //         区域半径 = 焦香螺旋桨火环 JIAOXIANG.auraR；击中中心外扩一圈 14~20 枚雷电子弹）
   //   技能6 重现光束：四喷口沿臂方向直射光束出屏 → 光束于机体上方左右两点重现，每边每轮 2 条、恒定 3 轮
-  //         （同边两束夹角 ≥15°，轮次间隔 1.5s；真我技能2 连携时仅 1 轮、时间轴 1.5s）；重现光束弹速 ×0.6；撞守愿者白盾被一次性咬合吃掉（盾移开不恢复；
+  //         （同边两束夹角 ≥15°，轮次间隔 1.5s；真我技能2 连携时仅 1 轮、时间轴 1.5s）；重现光束弹速 ×0.6；撞群星守愿白盾被一次性咬合吃掉（盾移开不恢复；
   //         2026-10-14 用户定稿：仅实际触及盾弧才截断、可从双盾内缘间隙穿过——原双盾连体桥隐形判定已删，见 updateS6Beams）；
   //         技能本体 4.6s 收束，飞行光束存于 e.s6Beams 独立存活（不拖长技能间隔）
   //
@@ -1090,10 +1119,10 @@
     // 虚象：BOSS 不会连续释放两次同种技能——上一技能直接移出候选（repeat 恒 false）
     if (diffMods().bossNoRepeat) pool = pool.filter(x => x !== e.lastSkill);
     const id = weightedPick(pool, e.skillWeights);
-    // 全局规则：连续随机到同一技能 → 技能间冷却 -80%
+    // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2）
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv(repeat ? STORM2.skillCd * 0.2 : STORM2.skillCd);   // 真我/诗篇经 bossSkillIv 全局倍率（原真我专属 ×1.4 已取消）
+    e.skillCd = bossSkillIv(repeat ? STORM2.skillCd * 0.3 : STORM2.skillCd);   // 真我/诗篇经 bossSkillIv 全局倍率（原真我专属 ×1.4 已取消）
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速 ×1.4
     e.skillUseCount[id] = (e.skillUseCount[id] || 0) + 1;
@@ -1316,15 +1345,16 @@
   function spawnStorm2Ring(cx, cy, rr, hold, sm = 1, decelMul = 1, boost = 1, tag = null, cntMul = 1, nMin = 14, nMax = 20) {
     const n = Math.max(4, Math.round((nMin + Math.floor(Math.random() * (nMax - nMin + 1))) * cntMul));   // nMin~nMax 枚（真我技能6 瞬发经 cntMul 减半）
     const mult = Math.random() < 0.5 ? rand(0.6, 0.8) : rand(1.2, 1.4);   // 本圈速度档（同圈一致）
-    const v0 = STORM2.s4Spd * sm * mult * boost;
-    const decelTo = STORM2.ringCruise * boost;
+    const v0 = STORM2.s4Spd * sm * mult * boost * (affixHas('sp1') ? 0.5 : 1);   // 词条（特殊对 sp1）弹速迟缓：爆开初速 ×0.5
+    const decelTo = STORM2.ringCruise * boost * (affixHas('sp1') ? 0.5 : 1);   // 减速下限同步折半（保持减速曲线形状）
+    const ringDecel = STORM2.ringDecel * decelMul * (affixHas('sp1') ? 0.5 : 1);   // 减速率同步折半
     for (let k = 0; k < n; k++) {
       const ba = (k / n) * Math.PI * 2 + Math.random() * 0.25;
       const base = {
         x: cx + Math.cos(ba) * rr, y: cy + Math.sin(ba) * rr,
         r: STORM2.ringR, dmg: storm2Dmg('s4Dmg'), color: '#9fd8ff',
         trail: true, trailCol: '159, 216, 255', trailLife: 0.16,   // 短拖尾（白蓝，0.16s）
-        decelTo, decelRate: STORM2.ringDecel * decelMul, ringTag: tag,
+        decelTo, decelRate: ringDecel, ringTag: tag,
       };
       if (hold > 0) {
         eBullets.push({ ...base, vx: 0, vy: 0, holdT: hold, burstAng: ba, v0 });
@@ -1401,7 +1431,7 @@
         }
       } else {
         // 激光竖直带：固定 60 伤害（× bossDmgMul，虚象 -40%）——不再复用导弹规则
-        // 四类·免疫射弹：守愿者白盾对其无任何影响——不截断、不吸收、无伤害损失（注册表见 01-config BULWARK 注释）
+        // 四类·免疫射弹：群星守愿白盾对其无任何影响——不截断、不吸收、无伤害损失（注册表见 01-config BULWARK 注释）
         const life = s.t - STORM2.s1Charge;
         const beamLen = CANVAS_H - ball.y + 30;
         const py = player.y + PLAYER_CFG.hitOffsetY;
@@ -1425,7 +1455,7 @@
       }
       for (const b of s.beams) {
         b.t += dt;
-        // 四类·免疫射弹：守愿者白盾对其无任何影响——不截断、不吸收、无伤害损失（注册表见 01-config BULWARK 注释）
+        // 四类·免疫射弹：群星守愿白盾对其无任何影响——不截断、不吸收、无伤害损失（注册表见 01-config BULWARK 注释）
         const fullLen = CANVAS_H - b.y + 30;
         if (!b.hit && b.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0 &&
             strikeVis(b.t / b.dur, 0.10) >= 0.35) {
@@ -1526,7 +1556,7 @@
   }
 
   // 技能6 光束推进与命中判定（独立于技能状态：技能 4.6s 收束后，飞行中的重现光束继续存活，
-  //   直至飞完 / 被守愿者白盾吃完；臂向光束为原地闪现演出）
+  //   直至飞完 / 被群星守愿白盾吃完；臂向光束为原地闪现演出）
   function updateS6Beams(e, dt) {
       for (let i = e.s6Beams.length - 1; i >= 0; i--) {
         const b = e.s6Beams[i];
@@ -1539,7 +1569,7 @@
         if (b.fly) { b.x += Math.cos(b.ang) * spd * dt; b.y += Math.sin(b.ang) * spd * dt; }
         if (b.t >= b.dur) { e.s6Beams.splice(i, 1); continue; }
         const ux0 = Math.cos(b.ang), uy0 = Math.sin(b.ang);
-        // 守愿者白盾截断（逐帧动态咬合 + 定型）：盾在光束轴线上即截断于盾位（盾面迸火花）；
+        // 群星守愿白盾截断（逐帧动态咬合 + 定型）：盾在光束轴线上即截断于盾位（盾面迸火花）；
         //   盾移开后光束**定型**——长度冻结为最近被咬合的可见长度，此后不再增长
         //   （臂向光束成为定长残段；重现光束以定长飞完剩余行程）；
         //   重现光束尾端持续推进——盾仍挡在轴线上时，尾端越过盾面即整条被"吃完"（移除）；
@@ -1570,7 +1600,7 @@
             }
             b.blocked = false;
           }
-        } else if (b.blocked) {   // 盾源消失（守愿者阵亡 / 卸下）：同样定型
+        } else if (b.blocked) {   // 盾源消失（群星守愿阵亡 / 卸下）：同样定型
           b.blocked = false;
           b.frozen = true;
           b.len = b.lastEff != null ? Math.min(b.len, b.lastEff) : b.len;
@@ -1886,9 +1916,9 @@
     const id = forced != null ? forced : weightedPick(pool, e.skillWeights);
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.dhRepeatCd = repeat ? 0.2 : 1;
+    e.dhRepeatCd = repeat ? 0.3 : 1;
     // 连中同技能：本次弹速 ×1.4（2026-10-12 用户定稿，消费见 runDarkhandSkill 各技能 ×sm）——
-    // 四管炮幕(0)/爪翼毁灭蛋挞(3)不吃弹速加成（2026-10-16 用户定稿；连中间隔 ×0.2 节奏不变）
+    // 四管炮幕(0)/爪翼毁灭蛋挞(3)不吃弹速加成（2026-10-16 用户定稿；连中间隔 ×0.3 节奏随全局规则 2026-11-10 用户定稿同步）
     const spMul = (repeat && id !== 0 && id !== 3) ? 1.4 : 1.0;
     e.lastSkill = id;
     if (id === 4) e.dhS5Lock = isPoem() ? 1 : 2;
@@ -1901,12 +1931,12 @@
       gi: 0, st: 'warn', pt: 0, tarts: [], blades: null, round: 0, mark: null, eyes: null, bombs: null };   // spMul：连中弹速乘区（全技能出弹 ×sm）；gi/st/pt：技能4 爪翼毁灭蛋挞预警状态；tarts：已发射的超长蛋挞；blades：技能5 回旋镖；round：技能6 散射轮次；mark：技能9 双标记；eyes：技能8 旋眼；bombs：技能7 轰炸落点（余字段被其他技能复用/无害）
   }
 
-  // 黑暗之手技能间隔（2026-10-01 用户定稿；有连携比例 2026-10-10 用户定稿 120%→150%）：
-  // 无连携精英在场 = 旧日之歌（BOSS.skillCd 2.0s）的 40%（≈0.8s）；有连携精英在场（dhGuardActive）= 旧日之歌的 150%（≈3.0s）；
+  // 黑暗之手技能间隔（2026-10-01 用户定稿；有连携比例 2026-10-10 用户定稿 120%→150%、2026-11-10 用户定稿 150%→160%）：
+  // 无连携精英在场 = 旧日之歌（BOSS.skillCd 2.0s）的 40%（≈0.8s）；有连携精英在场（dhGuardActive）= 旧日之歌的 160%（≈3.2s）；
   // 均再经 bossSkillIv 难度倍率。
-  // repeatMul：连续随机到同技能时 ×0.2（同其他 BOSS 全局规则，2026-10-03）
+  // repeatMul：连续随机到同技能时 ×0.3（同其他 BOSS 全局规则，2026-10-03 建规则、2026-11-10 用户定稿 0.2→0.3）
   function darkhandSkillCd(repeatMul = 1) {
-    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.5 : 0.4)) * repeatMul;
+    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.6 : 0.4)) * repeatMul;
   }
 
   function runDarkhandSkill(e, dt) {
@@ -2201,7 +2231,7 @@
           }
           b.trail.push({ x: b.x, y: b.y });
           if (b.trail.length > 12) b.trail.shift();
-          // 量子护盾气泡消解（同夏勇：守愿者白盾不阻挡，白盾气泡可消解）
+          // 量子护盾气泡消解（同夏勇：群星守愿白盾不阻挡，白盾气泡可消解）
           if (player.alive && player.shield > 0 &&
               Math.hypot(b.x - player.x, b.y - player.y) < 36 + xc.bladeR) {
             spawnParticles(b.x, b.y, '#6fe3ff', 10, 200); b.done = true; continue;
@@ -2521,6 +2551,14 @@
   let bossBulletOwner = null;
 
   function updateBoss(e, dt) {
+    // 词条（虚象级 0:bad:5）BOSS虚化：虚化护盾倒计时——登场演出结束（combatReady）后才开始倒数；
+    // 期间散出淡蓝虚化微光粒子作为视觉提示（穿透判定见 bossPhantom，02-core）
+    if ((e.bossPhT || 0) > 0) {
+      if (e.combatReady) {
+        e.bossPhT -= dt;
+        if (Math.random() < 0.5) spawnParticles(e.x + rand(-e.w * 0.4, e.w * 0.4), e.y + rand(-e.h * 0.4, e.h * 0.4), '#9adcff', 1, 50);
+      }
+    }
     const prevOwner = bossBulletOwner;
     bossBulletOwner = e;
     try { updateBossBody(e, dt); }
@@ -2738,7 +2776,7 @@
   // 六个部件位射出暗黑子弹（登场部件球弹幕同源；技能5/6 与真我登场变体共用）
   // targets：与 e.parts 等长的目标数组——点目标 {x,y}（按指向取射向）或角度目标 {ang}（直接指定射向）；
   //   t.bounce 为 true 时子弹碰左右壁反弹（次数上限 dark.bounceMax）
-  // 三类·特殊射弹（swRef）：可被守愿者白盾按入射角反弹一次，反弹后失去墙壁反弹能力（见 08-entities swRef 分支）
+  // 三类·特殊射弹（swRef）：可被群星守愿白盾按入射角反弹一次，反弹后失去墙壁反弹能力（见 08-entities swRef 分支）
   function fireDarkSix(e, targets) {
     const D = SONG_SHIP.dark;
     e.parts.forEach((pt, k) => {
@@ -2894,10 +2932,10 @@
         id = weightedPick(pool, e.skillWeights);
       }
     }
-    // 全局规则：连续随机到同一技能 → 技能间冷却 -80%，且本次技能弹速 +60%
+    // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2），且本次技能弹速 +60%
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;   // 连续释放同技能的次数（上限 2）
-    e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.2 : BOSS.skillCd);
+    e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.3 : BOSS.skillCd);
     // 血量 <50%：技能释放间隔额外降低 50%
     if (e.hp / e.maxHp < 0.5) e.skillCd *= 0.5;
     e.lastSkill = id;
@@ -3155,5 +3193,6 @@
     spawnBoss, spawnStormGhost, updateBossStorm, stormSkill5Pts, stormSkill5Mul, pushWaveMarks, startStormSkill,
     runStormSkill, strikeVis, knockbackPlayer, updateZoneMarks, stormWavePoint, stormWaveBand,
     pushBossBullet, updateBoss, startBossSkill, runBossSkill, updateBossLootMarks, updateLovelyShieldMark,
+    updateAffixCrystalMark,
     updateBossStorm2, startStorm2Skill, runStorm2Skill, storm2Nozzle, storm2BallPos, spawnStorm2Ring, pickStorm2Aims, S2_STRIKE_R,
   };

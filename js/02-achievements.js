@@ -1,6 +1,6 @@
 // 02-achievements：成就系统（注册表 ACHIEVEMENTS 见 01-config；本局进度 / 解锁判定 / 结算徽章展示 / 数值图鉴「成就」页）
 
-  // 被依赖：05-boss(1 名) 06-enemy(11 名) 07-player(22 名) 08-entities(6 名) 12-ui(3 名) 13-encyclopedia(1 名) 14-main(6 名)
+  // 被依赖：05-boss(1 名) 06-enemy(11 名) 07-player(22 名) 08-entities(6 名) 12-ui(6 名) 13-encyclopedia(1 名) 14-main(2 名)
 //
 // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
 // 依赖：01x 配置域（ACHIEVEMENTS 注册表 + 装备注册表）、02-core（state / bossFlow / resultAchieve / infoBody）
@@ -39,7 +39,7 @@
     bossStartAt: 0,      // 当前 BOSS 战分段开始时刻（state.time，登场警报起算；持久战计时）
     bossDurMax: 0,       // 本局最长单段 BOSS 战时长（s；持久战 ≥120，暴风之眼与风暴编织者各算一段）
     currentBoss: null,   // 当前在场的 BOSS id（spawnBoss 登记；齐宣王「最终BOSS战」判定）
-    wingmanBlocked: 0,   // 守愿者白盾挡弹计数（守愿加护 >100）
+    wingmanBlocked: 0,   // 群星守愿白盾挡弹计数（守愿加护 >100）
     zidianHits: 0,       // 紫电侧翼艇亡语弹命中次数（饿啊 ≥3）
     douzhiKills: 0,      // 斗志昂扬击杀数（斗志非常昂扬 ≥2）
     killsTotal: 0,       // 敌机击坠总数（非 BOSS；狂暴开杀 ≥200）
@@ -314,7 +314,7 @@
     unlockAchievement('buSiZhiQu');
   }
 
-  // 守愿者白盾挡下一发直射弹（08-entities 普通弹吸收分支；守愿加护 >100）
+  // 群星守愿白盾挡下一发直射弹（08-entities 普通弹吸收分支；守愿加护 >100）
   function achvWingmanBlock() {
     if (!achvGateOk()) return;
     achv.wingmanBlocked++;
@@ -440,18 +440,18 @@
     if (!achvGateOk()) return;
     if (achv.bossDurMax >= 120) unlockAchievement('bossMarathon');
     const noBulwark = currentWingman.id !== 'bulwark';
-    // 守望者：无伤、不作弊，且装备守愿者通关
+    // 守望者：无伤、不作弊，且装备群星守愿通关
     if (!achv.damageTaken && !achv.cheatUsed && currentWingman.id === 'bulwark') unlockAchievement('watchkeeper');
-    // 如梦似幻：无守愿者、不开作弊、无伤通关真我难度
+    // 如梦似幻：无群星守愿、不开作弊、无伤通关真我难度
     if (!achv.damageTaken && noBulwark && !achv.cheatUsed && isRealme()) unlockAchievement('rumengsihuan');
-    // 无垠战机：无守愿者、不开作弊、无伤通关诗篇难度
-    if (!achv.damageTaken && noBulwark && !achv.cheatUsed && isPoem()) unlockAchievement('infinityFighter');
+    // 无垠战机：不开作弊、无伤通关诗篇难度（2026-11-11 用户定稿：移除「无群星守愿」条件——装备僚机自由）
+    if (!achv.damageTaken && !achv.cheatUsed && isPoem()) unlockAchievement('infinityFighter');
     const pilotClean = (p) => p.empty || p.whiteboard;
     // 白板驾驶员通关：胡笛客（卑鄙笛客）；温酒客已实装受伤提升效果、萧杨已实装原石效果，均不再白板（九克之王仍按驾驶员通关判定）
     if (hasPilot('wenjiuke')) unlockAchievement('wenjiukeWin');
     if (hasPilot('hudike')) unlockAchievement('hudikeWin');
     if (hasPilot('niudan')) unlockAchievement('niudanWin');
-    // 「无垠」：无护甲效果（noEffect 护甲）、无驾驶员效果（白板/空槽）、无守愿者、不使用爆弹、不作弊、诗篇难度无伤通关
+    // 「无垠」：无护甲效果（noEffect 护甲）、无驾驶员效果（白板/空槽）、无群星守愿、不使用爆弹、不作弊、诗篇难度无伤通关
     if (ACHIEVEMENT_INFINITY_ENABLED && isPoem() && !achv.damageTaken && !achv.cheatUsed && !achv.bombUsedEver &&
         noBulwark && currentArmor.noEffect && pilotClean(currentPilotMain) && pilotClean(currentPilotSub)) {
       unlockAchievement('infinity');

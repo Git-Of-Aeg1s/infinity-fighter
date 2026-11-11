@@ -1,10 +1,10 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(27 名) 08-entities(10 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(29 名) 13-encyclopedia(13 名) 14-main(7 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 03b-affix(7 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(10 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(28 名) 13-encyclopedia(13 名) 14-main(5 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
-  import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, swordSvg } from './01-config-core.js';
+  import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, rainDropSvg, swordSvg } from './01-config-core.js';
 
 
 
@@ -116,11 +116,11 @@
       maxHpAdd: 40, brief: '夏勇皮糙肉厚战机血量提升',
       shieldDur: 6,   // 死亡复活赠送的量子护盾时长（s）：与通用量子护盾一致（2026-10-12 用户定稿，取代原「复活即暴走」）
       desc: '血量提高 40<br>（100 → 140）<br>死亡复活时获得量子护盾（6s）' },
-    watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
+    watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（见 starsSeriesCount；套装暴走清弹效果为守望独有）
       clearChance: { 1: 0.05, 2: 0.08, 3: 0.15, 4: 0.50 },
       clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
       brief: '击毁敌机时概率消除弹幕',
-      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件：<br>群星之杀 / 群星守望 / 群星允诺）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
+      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件——<br>群星之杀 / 群星守望 / 群星守愿 /<br>群星之扉 均计入；效果为守望独有）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
     qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
       halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
       brief: '受伤时概率使该次伤害减半',
@@ -156,11 +156,19 @@
       brief: '标准制式护甲<br>无效果',
       desc: '标准护甲。<br>没有任何效果。' },
 
-    // ── 占位护甲（2026-10-17 用户指定名称占位）：尚未实装——护甲选择页仅展示（灰阶降透明，12-ui 点击不选中），
-    //    图鉴「护甲」页跳过。仅占位键，无效果键（current 永不指向占位条目，armorMaxHp 等消费点零风险）；
-    //    special: true = 特殊装备（与天使璃同约定——图鉴页特殊角色，实装后使用期间无法获得挑战成就）；
-    //    实装时按实际机制补全效果键并删除 placeholder
-    qunxingGate: { id: 'qunxingGate', name: '群星之扉', glyph: '◇', color: '#8a97a8', special: true, placeholder: true, brief: '未实装', desc: '未实装。' },
+    // ── 群星之扉（2026-10-17 名称占位批次 → 2026-11-11 用户定稿实装）：特殊装备（special 同天使璃约定——
+    //    图鉴页特殊角色，使用期间无法获得挑战成就）；群星系列装备（starsSeries 计入 starsSeriesCount——
+    //    供本甲免伤概率/黑洞尺寸加成与群星守望三件套计数）。黑洞运行时对象 state.blackhole（02-core 归域，
+    //    单槽覆盖语义：免伤成功即刷新）——触发/推进/伤害 tick 07-player、吞弹 08-entities、
+    //    减速 04-spawn enemyBlackholeMoveMul、绘制 10-draw-world drawPlayerBlackhole
+    qunxingGate: { id: 'qunxingGate', name: '群星之扉', glyph: '◇', color: '#8a97a8', special: true, starsSeries: true,
+      dodgeChanceBase: 0.55, dodgeChancePer: 0.05,   // 免伤概率 = 55% + 5%/件群星系列（count 含自身——单独装备即 60%）
+      bhDurBase: 0.5, bhDurPer: 0.1,   // 黑洞持续 = 0.5s + 0.1s/件
+      bhRBase: 100, bhRPer: 10,        // 黑洞半径 = 100px + 10px/件
+      bhTick: 0.1, bhDmgPct: 0.10, bhDmgCap: 400,   // 黑洞每 0.1s 对圈内敌人造成 10% 最大生命伤害（封顶 400；BOSS 生效）
+      bhSlow: 0.5,                     // 圈内非 BOSS 敌机移速 ×0.5（BOSS 不受减速——2026-11-11 用户定稿）
+      brief: '受击时概率免伤并召唤吞噬子弹的黑洞',
+      desc: '受击时 55% 概率免伤<br>每携带一件群星系列装备 +5%<br>（自身即一件——单独装备时 60%）<hr>免伤时召唤跟随自身的黑洞区域<br>持续 0.5s+0.1s/件 · 半径 100px+10px/件<br>持续吞噬区域内一切敌方子弹<br>（含激光——仅吞噬被覆盖的部分）<br>每 0.1s 对区域内敌人造成 10% 最大生命<br>伤害（封顶 400），并使其移速 −50%<br>（BOSS 受到伤害但不被减速）' },
   };
   let currentArmor = ARMORS.tongpi;   // 默认装甲：铜皮夏勇（2026-10-10 用户定稿，原群星守望）
   // 装甲写入入口：与 setPlane/setWingman/setDifficulty 同约定——顶层 let 的写操作必须经由 setter
@@ -168,9 +176,10 @@
   // 装甲效果读取（键缺省安全回退；战斗逻辑经这些函数取值，不直接读 currentArmor 字段）
   function armorMaxHp() { return PLAYER_CFG.maxHp + (currentArmor.maxHpAdd || 0); }
 
-  // 群星系列套装计数（2026-10-10 用户定稿）：当前装备中带 starsSeries 标记的件数——
-  // 现役三件 = 机体群星之杀 / 装甲群星守望 / 僚机群星允诺；计数 ≥3（即全套齐备）时
-  // 群星守望获得「暴走击坠清弹」额外效果（触发点见 06-enemy killEnemy）
+  // 群星系列套装计数（2026-10-10 用户定稿；2026-11-11 成员调整）：当前装备中带 starsSeries 标记的件数——
+  // 现役四件 = 机体群星之杀 / 装甲群星守望 + 群星之扉（特殊）/ 僚机群星守愿（原守愿者——2026-11-11 更名加入，
+  // 群星允诺更名「时空允诺」同日退出）；计数 ≥3（即套装齐备）时
+  // 群星守望获得「暴走击坠清弹」额外效果（守望独有，触发点见 06-enemy killEnemy）
   function starsSeriesCount() {
     return [currentPlane, currentArmor, currentPilotMain, currentPilotSub, currentWingman, currentSubWeapon]
       .filter(x => x && x.starsSeries).length;
@@ -250,14 +259,14 @@
       desc: '不携带僚机，独自出击。',
     },
     stars: {
-      id: 'stars', name: '群星允诺',
+      id: 'stars', name: '时空允诺',
       default: true,   // 默认僚机（图鉴「僚机」页据此标注「（默认）」；默认项经 currentWingman 初始化——2026-10-10 用户定稿）
-      starsSeries: true,   // 群星系列装备（三件套之一，见 starsSeriesCount）
+      // 原群星系列装备（starsSeries）——2026-11-11 用户定稿更名「时空允诺」退出群星系列（群星守愿接替僚机位）
       desc: '多发散射，火力覆盖',
       barTail: '#ffbf47', barMid: '#ffd9a0', barHead: '#8a6bff',   // 尾橙黄 → 头蓝紫
       flame: '#9b7bff',
-      scale: 1.045,   // 整体尺寸系数：尾焰/机体/辉光/暴走机翼统一 ×1.045（同 BULWARK.scale 体系；群星允诺无盾无碰撞，纯视觉；2026-10-11 用户定稿 +10% 后同日回调 -5%）
-      // dmgMulByLevel：群星允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
+      scale: 1.045,   // 整体尺寸系数：尾焰/机体/辉光/暴走机翼统一 ×1.045（同 BULWARK.scale 体系；时空允诺无盾无碰撞，纯视觉；2026-10-11 用户定稿 +10% 后同日回调 -5%）
+      // dmgMulByLevel：时空允诺每级每发伤害倍率。Lv5 暴走额外 ×2（公式内置），此处 lvMul 控制基础伤害。
       //   双僚机合计 DPS（图鉴口径）= Lv1 200 / Lv2 230 / Lv3 260 / Lv4 300 / Lv5 1000
       //  （2026-10-10 用户定稿：射击间隔 +80% 由 WINGMAN_LEVELS.interval ×1.8 承担，单发伤害按新 DPS 重配；
       //   Lv5 图鉴 1000 = 配置层 666.7 ×暴走全局射速 1.5）
@@ -266,7 +275,8 @@
       weapon: { kind: 'volley' },  // 对称双 volley 模型（走 WINGMAN_LEVELS + dmgMulByLevel）
     },
     bulwark: {
-      id: 'bulwark', name: '守愿者',
+      id: 'bulwark', name: '群星守愿',
+      starsSeries: true,   // 群星系列装备（2026-11-11 用户定稿更名「群星守愿」加入群星系列——原守愿者，见 starsSeriesCount）
       desc: '坚盾护体，侧向打击',
       barTail: '#3b7de8', barMid: '#6dc4f8', barHead: '#b0e8ff',   // 尾中蓝 → 头浅天蓝（天蓝占比更大）
       flame: '#8fd8ff',
@@ -302,11 +312,11 @@
     //    图鉴「战机/僚机」DPS 表跳过。仅 id/name/glyph/color/desc 占位键，无 weapon 键（current 永不指向占位条目，
     //    开火消费点零风险）；选择页卡片缩略图不画机体、统一显示占位菱形字形 ◇（12-ui 占位分支）。
     //    实装时按实际机制补全 weapon/站位等键并删除 placeholder；条目顺序 = 选择页展示顺序
-    xixianEye: { id: 'xixianEye', name: '希先之瞳', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    jiyeQianxing: { id: 'jiyeQianxing', name: '极夜千星', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },   // 2026-11-11 用户更名（原希先之瞳），后续实装开发设计
     cheyue: { id: 'cheyue', name: '彻月', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
     jinxiao: { id: 'jinxiao', name: '今宵', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
   };
-  let currentWingman = WINGMEN_CFG.stars;   // 当前僚机配置（默认群星允诺，2026-10-10 用户定稿，原守愿者；写操作经 setWingman）
+  let currentWingman = WINGMEN_CFG.stars;   // 当前僚机配置（默认时空允诺——2026-11-11 更名，原群星允诺；2026-10-10 设为默认，再前默认为守愿者即现群星守愿；写操作经 setWingman）
 
   // 僚机通用参数（伤害/射速均可调；总体占主机 30~40%）
   const WINGMAN = {
@@ -402,8 +412,54 @@
     //    图鉴「副武器」页与对比表格跳过（无 fire 键：subWeaponDps 读 fire.levels 会 TypeError，必须跳过）。
     //    current 永不指向占位条目（07-player currentSubWeapon.fire 消费点零风险）；
     //    实装时按实际机制补全 fire 配置与图标并删除 placeholder；条目顺序 = 选择页展示顺序
-    zhuixingSpear: { id: 'zhuixingSpear', name: '坠星长枪', glyph: '◇', color: '#8a97a8', placeholder: true, brief: '未实装', desc: '未实装。' },
-    shiliuRain: { id: 'shiliuRain', name: '时流之雨', glyph: '◇', color: '#8a97a8', placeholder: true, brief: '未实装', desc: '未实装。' },
+    zhuixingSpear: {
+      id: 'zhuixingSpear', name: '坠星长枪', glyph: '✦', color: '#e8f1ff',
+      brief: '发射贯穿长枪<br>驻留连续穿刺',
+      desc: '从机体两翼各射出一支<b>白色长枪</b>垂直向上直射<br>（弹速较快，枪身带白芒拖尾，<b>无限穿透</b>）<br>对首个命中的敌人造成一次<b>首击伤害</b><br>长枪处在敌人位置时移速大减（驻留）<br>并每 <b>0.2s</b> 结算一次穿刺伤害，脱离敌人后恢复速度<br>（路径上每个命中的敌人独立结算首击与穿刺<br>——穿透怪群时逐个减速爬行）<br>敌机体型越大驻留时间越长——<b>大体积特攻</b><br>快速下坠的敌机驻留时间缩短、近乎只吃首击<br>暴走（Lv5）：四支长枪出射点横向均布<br>（仍垂直直射不倾斜），外侧两支稍慢错峰发射<br>首击与穿刺伤害提升、弹速 +50%（驻留速度不变）',
+      fire: {
+        kind: 'zhuixing',
+        speed: 600,        // 常态弹速（px/s，垂直向上直射；暴走 ×BERSERK.subSpdMul = 900）
+        dwellSpeed: 75,    // 驻留速度：长枪处在敌人碰撞盒内时的低速（脱离恢复 speed；不随暴走弹速提升——否则驻留时间缩短特攻缩水）
+        tick: 0.2,         // 驻留穿刺结算间隔（s；首击后 0.2s 起第一次 tick）
+        len: 46, r: 4,     // 枪身长 / 判定半宽（长条弹口径，绘制见 10-draw-world paintZhuixingLance）
+        portOff: 22,       // 两翼出射点横向偏移（±22）
+        berserkOffs: [-10, 10],            // 暴走内侧两支出射点横向偏移（立即发射；垂直直射不倾斜——2026-11-11 用户定稿）
+        berserkOffsOuter: [-30, 30],       // 暴走外侧两支出射点（延迟 berserkDelay 错峰发射——state.lanceDelayQ 待发队列）
+        berserkDelay: 0.2,                 // 暴走外侧两支错峰发射延迟（s）
+        levels: {   // 首击/穿刺伤害全级恒定，DPS 曲线由间隔承担（同捣蛋来袭「伤害恒定间隔承担」口径）；
+                    // DPS 图鉴口径 = 对高 90px 大型敌机（悬停、全部命中）——驻留 tick 数 n = floor(90/75/0.2) = 6，
+                    // 单枪总伤 = 首击 + 6×穿刺；窄体 / 快速下坠目标实际命中枪数与 tick 更少
+          1: { count: 2, interval: 3.0, dmg: 125, tickDmg: 15 },   // 口径 DPS 143（小怪 n=2 ≈103）
+          2: { count: 2, interval: 2.7, dmg: 125, tickDmg: 15 },   // 口径 DPS 159
+          3: { count: 2, interval: 2.4, dmg: 125, tickDmg: 15 },   // 口径 DPS 179
+          4: { count: 2, interval: 2.0, dmg: 125, tickDmg: 15 },   // 口径 DPS 215
+          5: { count: 4, interval: 1.6, dmg: 136, tickDmg: 20 },   // 暴走专属形态：4 枪全中口径 DPS 640（图鉴顶档，与飞剑/火环齐平）；interval 1.6 为绝对值——不吃 subRateMul（07-player updateSubWeapon 排除）；弹速 ×subSpdMul、驻留速度不变
+        },
+      },
+    },
+    shiliuRain: {
+      id: 'shiliuRain', name: '时流之雨', glyph: '☂', iconSvg: rainDropSvg(), color: '#dceeff',   // iconSvg = 雨滴矢量（2026-11-11 按用户射弹形象转绘：半圆头朝上 + 尾端收尖 + 双侧水蒸气雾点，待用户审定）；glyph ☂ 保留作字形回退（占位 ◇ 随实装作废）
+      brief: '发射弯曲雨弹<br>吸收道具与水晶',
+      desc: '机体左右两个发射口各射出 <b>4</b> 条雨弹（共 8 条）<br>最靠两侧的先发出，随后依次向内（左右两两同序）<br>各弹自带朝本侧的初始横向速度（4 条自外向内依次减小）<br>横向速度逐帧指数衰减归零——弹道由斜升渐弯为竖直<br>弹体为普通长条弹 <b>×2.5</b> 长的透明雨滴<br>（白色半圆头 + 周身水蒸气雾气）<br>射弹<b>触碰道具</b>：玩家直接获得该道具效果——<br>·升级 / 暴走 / 量子护盾 / 结晶护盾改为在剩余时长上<b>增加对应时长</b>（突破常规重置式上限）<br>·回血道具<b>超出生命上限的部分转为等额屏障</b>（非永久，随伤害消耗、持续 10s）<br>射弹周身 <b>40px</b> 范围吸收水晶（等同拾取结算）<br>命中敌人：其<b>下一次攻击间隔 +0.3s</b><br>（每一轮射弹对同一敌人仅触发一次，对 BOSS 同样生效）<br>伤害较低——约为无界飞剑的半数（见下方对比表格）',
+      fire: {
+        kind: 'shiliuRain',
+        // 弹速 600（同极夜流光基准速）；弹长 65 = 普通长条弹（僚机 barLen 26）×2.5；判定半宽 4.5
+        speed: 600, len: 65, r: 4.5,
+        portOff: 16,                      // 发射口相对机体横向偏移（±16，同极夜流光出膛点）
+        latSpeeds: [220, 150, 90, 40],    // 每侧 4 条自外→内的初始横向速度（依次减小；方向朝各自一侧）
+        latDecay: 3,                      // 横向速度指数衰减率（vx ×e^(−3t)：≈1s 衰减到 5%、1.5s ≈1%——连续函数无档位跳变，速度曲线铁律）
+        rankGap: 0.09,                    // 相邻发射序间隔（s）：最外侧两条先发，依次到最内侧（一轮共 3×rankGap ≈ 0.27s 发完）
+        absorbR: 40,                      // 水晶吸收半径（px，小范围）
+        atkDelay: 0.3,                    // 命中敌人使下一次攻击间隔延长量（s；每轮射弹对同一敌人限一次）
+        levels: {   // 单发伤害 = DPS × 间隔 ÷ 8 条（DPS 图鉴口径 = 无界飞剑半数：50 / 60 / 75 / 90 / 320）
+          1: { count: 8, interval: 4, dmg: 25 },
+          2: { count: 8, interval: 3.6, dmg: 27 },
+          3: { count: 8, interval: 3.3, dmg: 30.94 },
+          4: { count: 8, interval: 3, dmg: 33.75 },
+          5: { count: 8, interval: 2, dmg: 53.33 },   // 暴走全局：射速+50%（实际 1.333s）→ 图鉴 DPS 320
+        },
+      },
+    },
   };
   let currentSubWeapon = SUB_WEAPONS.daodan;   // 当前副武器配置（默认捣蛋来袭，用户 2026-10-02 指定；写操作经 setSubWeapon，同 currentArmor/currentWingman 约定）
   function setSubWeapon(w) { currentSubWeapon = w; }
@@ -489,11 +545,11 @@
     },
     wenjiuke: {
       id: 'wenjiuke', name: '温酒客', glyph: '☻', color: '#c9a0ff', slot: 'main',   // ☻ 醉笑圆脸（原「醉」文字占位）
-      // 受伤提升效果（2026-09 由白板改为实战效果）：damagePlayer 统一乘区（1 + state.wenjiukeVuln）；
-      // 每击败一个 BOSS 加成 -25 个百分点（06-enemy BOSS 击败结算处扣减），最低归零
-      vulnDecay: 0.25,
+      // 效果重做（2026-11-11 用户定稿，原受伤+100%递减体系废弃）：开局立刻获得 5 个随机负面 DEBUFF
+      //（复用负面词条池，结算经 03b-affix affixHas 收口）；开局确认模态展示后出发；
+      // 每击坠一轮 BOSS（暴风之眼 + 风暴编织者合计一轮）失效一个——全失效后继续失效词条负面（06-enemy 击败结算触发）
       brief: '神秘效果',   // 选机卡片保持神秘文案；数值与机制图鉴（renderInfoPilots 用 desc）写明实际效果
-      desc: '温酒客深藏不露。受到的所有伤害增加 100%<br>每击败一个 BOSS，该效果减少 25 个百分点<br>（+100% → +75% → +50% → +25% → +0%）<br>正常流程共三位 BOSS，最多减至 +25%',
+      desc: '温酒客深藏不露。开局立刻获得 5 个随机负面效果<br>开局会展示这五个效果，确认后出发<br>每击坠一轮 BOSS（暴风之眼与风暴编织者合计一轮）<br>依次使得第一个未失效的负面效果失效<br>全部失效后，继续使其他负面词条依次失效',
     },
     hudike: {
       id: 'hudike', name: '胡笛客', glyph: 'ω', color: '#8a9bb0', slot: 'main', whiteboard: true,   // ω 与哈基米大王同字形（成对彩蛋），经 glyphTransform 倒转 180° 区分方向（独立字形 ɯ 弃用）
@@ -708,7 +764,7 @@
     dbgRiseSpdMul: 1.8,   // 按 8 连发模式期间发射的风暴：向上移速 ×1.8
   };
 
-  // 守愿者白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
+  // 群星守愿白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
   //   arcFrom/arcTo 为相对“竖直向上”朝外侧扫过的角度（度）；segments 为折线逼近段数（供扫掠相交/裁切）
   //   scale 为整体尺寸系数：绘制（机体/盾板/尾焰/辉光）与挡弹折线半径统一乘算，保证视觉与判定一致
   const BULWARK = {
@@ -717,7 +773,7 @@
     color: '#eaf6ff', glow: '#bfe4ff',
   };
 
-  // ---------- 守愿者白盾 × 射弹交互属性注册表（四类；新增射弹在此登记并按类实现）----------
+  // ---------- 群星守愿白盾 × 射弹交互属性注册表（四类；新增射弹在此登记并按类实现）----------
   //   一类·截断（默认行为，无标注字段）：长条激光类射弹——被白盾截断 / 磨短 / 吸收。
   //     盾判定与其他射弹同一套白盾几何（无收窄；技能3 按弹体半径 / 技能6 按光束半宽 + 半盾厚）
   //     现役：法术大师A1/A2 激光（laser 弹，08-entities laser 分支）、风暴编织者技能3 "<"光束（beamTrail 分支）、

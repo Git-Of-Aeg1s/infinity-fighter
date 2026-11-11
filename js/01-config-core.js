@@ -1,7 +1,7 @@
 // 01-config-core：画布 / 演示屏坐标 / 星空 / 全部图片素材、加载器与贴图处理（配置域群叶子）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-loadout(6 名) 01-config-enemies(1 名) 01-config-difficulty(1 名) 02-core(3 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09a-draw-loadout(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
+  // 被依赖：01-config-loadout(7 名) 01-config-enemies(1 名) 01-config-difficulty(2 名) 02-core(3 名) 03b-affix(2 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09a-draw-loadout(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
 
@@ -226,6 +226,17 @@
       + '</svg>';
   }
 
+  function rainDropSvg() {   // 时流之雨「雨滴」：按射弹造型转绘矢量（半圆头朝上 + 尾端收尖 + 双侧水蒸气雾点），尺寸/对齐与其他副武器矢量口径一致（2026-11-11 按用户射弹形象定稿转绘，待用户审定）
+    return '<svg viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">'
+      + '<g fill="currentColor">'
+      + '<circle cx="-10" cy="-9" r="2.2" opacity=".45"/>'
+      + '<circle cx="10.5" cy="-3" r="1.7" opacity=".35"/>'
+      + '<path d="M0,17 C-1.8,10.5 -8.6,3.4 -8.6,-4.4 A8.6,8.6 0 1,1 8.6,-4.4 C8.6,3.4 1.8,10.5 0,17 Z"/>'
+      + '</g>'
+      + '<path d="M-3.4,-4.4 A3.4,3.4 0 0,1 0,-7.8" stroke="#ffffff" stroke-width="1.1" opacity=".55" fill="none" stroke-linecap="round"/>'
+      + '</svg>';
+  }
+
   // ---------- 驾驶员系统 ----------
   // 主界面选择、整场战斗生效的驾驶员（战斗修正 + 装备连携）。注册表键序 = 主菜单卡片展示顺序。
   // brief = 主菜单卡片简短文案；desc = 数值与机制图鉴「驾驶员」页的详细机制文案。
@@ -297,5 +308,5 @@
     xiayongImg, xiayongLoader, xinguodongImg, xinguodongLoader,
     bakeGreenTart, tartImg, tartStripImg, tartUltraImg,
     subGradSeq, flameRingSvg, dogMissileSvg, polarStarSvg,
-    swordSvg, higanbanaSvg, meiGlyphSvg, STAR_COUNT,
+    swordSvg, rainDropSvg, higanbanaSvg, meiGlyphSvg, STAR_COUNT,
   };

@@ -54,7 +54,7 @@
     missileDeath: { name: '打的准不如接得准', tier: 'silver', icon: '🚀', desc: '被导弹击坠。' },
     burnDeath: { name: '烫烫烫', tier: 'silver', icon: '🔥', desc: '被焦香螺旋桨烧坠。' },
     vortexPreDeath: { name: '哦呦', tier: 'silver', icon: '🌪', desc: '被暴风之眼发射的风旋在就位前击中。' },
-    bulwark100: { name: '守愿加护', tier: 'silver', icon: '🛡', desc: '守愿者抵挡超过100发子弹。' },
+    bulwark100: { name: '守愿加护', tier: 'silver', icon: '🛡', desc: '群星守愿抵挡超过100发子弹。' },
     faceSong: { name: '昔字如烟', tier: 'silver', icon: '🎵', desc: '击坠旧日之歌。' },
     dagouHarbinger: { name: '叮咚', tier: 'silver', icon: '🔔', desc: '通过叮咚鸡召唤的导弹击坠至少一个炮火先兆者。' },
     keliBombBoss: { name: '轰轰火花', tier: 'silver', icon: '💥', desc: '使用可莉的绷绷炸弹击坠任意BOSS。' },
@@ -104,18 +104,18 @@
     stormPerfect: { name: '风暴航船', tier: 'purple', icon: '⛵', challenge: true, desc: '非诗篇难度下，无伤击坠暴风之眼。' },
     storm2Perfect: { name: '赫拉之神', tier: 'purple', icon: '👁', challenge: true, desc: '非诗篇难度下，无伤击坠风暴编织者。' },
     aiyiFinalBoss: { name: '！？爆爆？！', tier: 'purple', icon: '🎆', desc: '埃逸终极殉爆击毁最终BOSS。' },
-    watchkeeper: { name: '守望者', tier: 'purple', icon: '⚜', challenge: true, desc: '使用守愿者无伤通关。' },
-    rumengsihuan: { name: '如梦似幻', tier: 'purple', icon: '☁', challenge: true, desc: '无守愿者的情况下无伤通关真我难度。' },
+    watchkeeper: { name: '守望者', tier: 'purple', icon: '⚜', challenge: true, desc: '使用群星守愿无伤通关。' },
+    rumengsihuan: { name: '如梦似幻', tier: 'purple', icon: '☁', challenge: true, desc: '无群星守愿的情况下无伤通关真我难度。' },
     bulwarkLastBlow: { name: '最后一搏', tier: 'purple', icon: '⛨', desc: '装备最终壁垒时，在任意BOSS血量低于10%时，自身触发不死效果且最终击败该BOSS。' },
     dagouChain3: { name: '欧欧欧', tier: 'purple', icon: '🐕', desc: '叮咚鸡召唤的导弹两次连射3轮。' },
     kingMad80: { name: '彻底疯狂', tier: 'purple', icon: '👑', desc: '大无垠之王的增伤累计至80%。' },
     // ── 彩（长歌，最高稀有度）──
-    infinityFighter: { name: '无垠战机', tier: 'rainbow', icon: '✈', challenge: true, desc: '无守愿者的情况下以诗篇难度无伤通关。' },
+    infinityFighter: { name: '无垠战机', tier: 'rainbow', icon: '✈', challenge: true, desc: '以诗篇难度无伤通关。' },
     dagouChain4: { name: '！？欧欧？！', tier: 'rainbow', icon: '🐾', desc: '叮咚鸡召唤的导弹连射4轮。' },
     goldLegend: { name: '金色传说', tier: 'rainbow', icon: '🌟', desc: '召集16颗原石并抽出金色传说。' },
     infinity: {
       name: '「无垠」', tier: 'rainbow', icon: '♾', finalOnly: true, holders: [], challenge: true,
-      desc: '您的技术已登峰造极。无护甲效果、无驾驶员效果、无守愿者、不使用高能爆弹的情况下以诗篇难度无伤通关。',
+      desc: '您的技术已登峰造极。无护甲效果、无驾驶员效果、无群星守愿、不使用高能爆弹的情况下以诗篇难度无伤通关。',
     },
   };
 

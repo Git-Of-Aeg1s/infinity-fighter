@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>大无垠战机 · Big Infinity Fighter</title>
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=20261110b" />
   <!-- 曾尝试 modulepreload 并行预取 14 个 ES modules（v0.3.7）：实测刷新后 JS 就绪时间几乎不变
        （本机 http 瀑布式加载仅 ~90ms），反而把 1.5MB JS 的编译+顶层执行集中到同一帧，
        造成刷新后 ~69ms 长任务 + 主菜单零点几秒可感掉帧。已回滚，勿再加。 -->
@@ -133,7 +133,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.4.6</span>
+          <span class="menu-version">v0.5.0</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
         <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；
@@ -337,7 +337,31 @@
           <button id="pauseRetryBtn" class="hidden">重新挑战</button>
           <button id="pauseBackBtn" class="hidden">返回上一步</button>
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
+          <!-- 调试菜单入口（仅暂停页显示，随 pauseHomeBtn 同步显隐）：作弊/调试功能收编入口，0 键亦可直接呼出 -->
+          <button id="pauseDebugBtn" class="hidden">调试菜单</button>
+          <!-- 当前局已获词条（2026-11-10 用户需求）：togglePause paused 分支经 affixOwnedEntries 渲染；
+               无词条（未击败任何 BOSS）时隐藏容器 -->
+          <div id="pauseAffixList" class="hidden"></div>
           <div class="boss-test-row" id="bossTestRow"></div>
+        </div>
+      </div>
+      <!-- 调试菜单面板（2026-11-09 用户定稿收编作弊功能）：0 键 / 暂停页「调试菜单」按钮呼出。
+           DOM 置于暂停遮罩之后 → 同层级后绘覆盖其上；开关条目即时反映 state，动作条目暂停中置灰 -->
+      <div class="overlay hidden" id="debugOverlay">
+        <div class="overlay-card debug-card">
+          <h2>调试菜单</h2>
+          <p id="debugDesc" class="debug-desc">按 <kbd>0</kbd> 或点击关闭按钮退出</p>
+          <button id="dbgInvulnBtn">无敌：关</button>
+          <button id="dbgStormBtn">风暴连发：关</button>
+          <button id="dbgDagouBtn">导弹雨连发：关</button>
+          <button id="dbgGachaBtn">召唤萧杨技能</button>
+          <button id="dbgAffixBtn">立刻选择词条</button>
+          <div class="debug-level-row">
+            <button id="dbgLvDown">◄</button>
+            <span id="dbgLvLabel">攻击等级 Lv1</span>
+            <button id="dbgLvUp">►</button>
+          </div>
+          <button id="debugCloseBtn">关闭（0）</button>
         </div>
       </div>
       <!-- 怪物图鉴 -->
@@ -397,6 +421,7 @@
   <script type="module" src="./js/02-achievements.js"></script>
   <script type="module" src="./js/02-core.js"></script>
   <script type="module" src="./js/03-audio.js"></script>
+  <script type="module" src="./js/03b-affix.js"></script>
   <script type="module" src="./js/04-spawn.js"></script>
   <script type="module" src="./js/05-boss.js"></script>
   <script type="module" src="./js/06-enemy.js"></script>

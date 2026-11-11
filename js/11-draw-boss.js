@@ -2042,7 +2042,7 @@
       for (const b of s.beams) {
         const vis = b.t < 0.10 ? b.t / 0.10 : 1 - (b.t - 0.10) / b.dur;
         const fullLen = CANVAS_H - b.y + 30;
-        const len = b.clipD != null ? Math.min(fullLen, b.clipD) : fullLen;   // 守愿者白盾截断
+        const len = b.clipD != null ? Math.min(fullLen, b.clipD) : fullLen;   // 群星守愿白盾截断
         drawS2Beam(b.x, b.y, Math.PI / 2, len, STORM2.s2R, clamp(vis, 0, 1));
       }
       // 真我：连携的技能6 汇聚预兆（子状态随行，连携窗口 ×1.5；光束本体由 drawS6Beams 绘制）
@@ -2165,7 +2165,7 @@
   }
 
   // 技能6 光束绘制（臂向 / 重现光束；独立于技能状态——技能收束后飞行光束继续存活绘制）：
-  // 守愿者白盾咬合后光束永久钉在盾面（b.effLen 由逻辑层 updateS6Beams 每帧写入，盾移开也不恢复）；
+  // 群星守愿白盾咬合后光束永久钉在盾面（b.effLen 由逻辑层 updateS6Beams 每帧写入，盾移开也不恢复）；
   // 真我连携（carried）的臂向光束变淡（faint）
   function drawS6Beams(e) {
     for (const b of e.s6Beams) {

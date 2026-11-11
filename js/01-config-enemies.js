@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 战舰变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(40 名) 05-boss(5 名) 06-enemy(38 名) 07-player(3 名) 08-entities(5 名) 09b-draw-enemies(22 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(12 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(43 名) 05-boss(5 名) 06-enemy(42 名) 07-player(4 名) 08-entities(7 名) 09b-draw-enemies(25 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(12 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -11,12 +11,14 @@
   const ENEMY_CLASS = {
     side: 1, prolifera: 1, escort: 1, crystalCore: 1,
     striker: 2, fashiA1: 2, fashiMatrix: 2, popian: 2, douzhi: 2, voyager: 2,
+    collapseConstruct: 2,   // 坍缩构造体（2D，2026-11-11 实装）：2 类体格游走射击体
     gunship: 3, harbinger: 3, harbingerLead: 3, harbingerHub: 3, harbingerPolar: 3,
     hanshuang: 3, weilong: 3, yu4: 3, anvil: 3, baoling: 3, jiaoxiang: 3, fashiA2: 3,
     capital: 4, fashiArray: 4, warMatrix: 4,
+    guiltGrail: 4,   // 愧悔魂灵圣杯（4D，2026-11-10 实装）：4 类体格光环承伤体
     // 诗篇新敌占位（wip）：按其设计类别归入（黑暗之手四精英在 PILOTS.mei.elites 单独按 4 类计并 ×4）
     popianU: 2, sponsor: 2, sponsorDeluxe: 2,
-    baolingG: 3, pulseMatrix: 3, unreal: 3,
+    baolingG: 3, pulseMatrix: 3, unreal: 3, stasisUnreal: 3, cocoonDream: 3,
     warGhost: 4, puxuefeng: 4, hanxixian: 4, xiayong: 4, xinguodong: 4,
   };
 
@@ -251,7 +253,7 @@
     // 特殊2类：法术矩阵（白红菱形法师无人机）—— 竖菱形机体（高为宽 1.8 倍）+ 白红渐变核心 + 一圈很细的黑色菱形环 + 环外仍白红；
     // 慢速下降到悬停带（约常规 2 类入位速一半），停稳后朝玩家左右 ±15° 发射「发白光的正方体」（每条边发红光，走独立 spellCubes 弹道）；
     // 正方体限程（自身→玩家距离 70%~140% + 15% 屏高）：到射程后减速滑行，末段提前渐隐、速度归零时恰好消失；
-    // 撞上守愿者白盾直接穿过（二类·穿透射弹，注册表见 BULWARK 注释）：无法被截断，穿盾后命中伤害 -50%；
+    // 撞上群星守愿白盾直接穿过（二类·穿透射弹，注册表见 BULWARK 注释）：无法被截断，穿盾后命中伤害 -50%；
     // 受主战机（非僚机）伤害 -30%；场上存在 3 类「法术阵列」(fashiArray) 时偏移角增至 ±25°、正方体速度 +25%（见 FASHI_MATRIX）
     fashiMatrix: {
       w: 27, h: 48, hp: 80, score: 160, color: '#ff5566', drawScale: 1.02,   // 竖菱形碰撞盒 h≈1.8w；整体缩小 30%（原 38×68 / drawScale 1.45）
@@ -281,6 +283,15 @@
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 50,   // 碰撞 50（2026-10-17 用户定稿）
       fireInterval: [1e9, 1e9],   // 占位：不攻击——弹幕内容待技能设计批次（首攻/间隔参数已定，见 WAR_MATRIX）
     },
+    // 愧悔魂灵圣杯（诗篇级 4D，2026-11-10 实装）：不攻击的光环承伤体——顶部源泉冒泡的杯状遗物，
+    // 周身 150px 淡金光环将范围内敌人受到的伤害转移至自身（详见 GUILT_GRAIL 与 06-enemy grailRedirect）；
+    // 无任何攻击（fireInterval 天文数字占位不发射）；不入常规刷怪池（归属怪物种类及权重未定稿），
+    // 经图鉴挑战 spawnChallengeTargetOne 召唤（case 'guiltGrail'，挑战模式永驻场）；参数见 GUILT_GRAIL
+    guiltGrail: {
+      w: 96, h: 90, hp: 9000, score: 1, color: '#6f6a5c', drawScale: 1,   // 血量 9000 / 诗篇 27000（POEM_HP.guiltGrail 覆写）；分数 1；碰撞盒同杯体视觉轮廓 96×90（略小于战争矩阵 124×72 的体量）；主色取石板暗灰褐（杯身）+ 琥珀光（源泉，绘制见 drawGuiltGrailBody）
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 60,   // 碰撞 60（2026-11-10 用户定稿）
+      fireInterval: [1e9, 1e9],   // 占位：不攻击（特殊能力为被动光环，无开火逻辑）
+    },
     // 特殊敌机：暴风之眼技能2 召唤的大型龙卷（可击毁、缓慢下移直至脱离战场、随机 360° 射风弹）
     // 碰撞伤害原 42 已改持续掉血模型（06-enemy tornado 分支：每 0.1s 扣 4 血 / 诗篇 5，不触发无敌帧）——crashDmg 键已删
     tornado: {
@@ -306,6 +317,17 @@
       bulletSpeed: 90, bulletR: 4.5, bulletDmg: 16, crashDmg: 28,   // bulletSpeed=长条加速弹初速（→300 见 VOYAGER.bulletMax）；弹伤 16（诗篇 22，isPoem 硬分支）
       fireInterval: [1e9, 1e9],   // 攻击节奏在移动状态机内处理（A1/A2 同款刹停；fireTimer 直控，诗篇分档见 VOYAGER.ivPoem），不走通用开火
     },
+    collapseConstruct: {   // 坍缩构造体（2D，2026-11-11 用户定稿实装）：黑雾环绕圆体 + 双侧黑色细杆 + 白色四芒星微泛红核心（视觉见 09b drawCollapseConstructBody）；
+                           // 大小/碰撞盒同法术大师A1（46×40 / drawScale 1.4）；血 80（诗篇 360，POEM_HP 覆写）、分数/水晶 1/1；
+                           // 移动为双逻辑镜像重走路径（侧翼「[」/「]」首遍 → 水平镜像瞬移 → 底部镜像重走 / 顶部下-横-上首遍 → 底部瞬移 → 上-横-下重走），
+                           // 见 04-spawn spawnCollapseConstruct 与 06-enemy collapseConstruct 分支；
+                           // 攻击 A1 同款刹停射击（发射后再静止 0.15s，间隔/首攻分档见 COLLAPSE 常量），圆形红橙→暗蓝渐变拖尾弹（伤害 20，grad 'cb' 风味）；
+                           // 随场高线性承伤修正（最上 -50% / 中点 0 / 最下 +50%，见 01-config-difficulty constructAltHurtMul）
+                           // 暂不入常规刷怪池（归属怪物种类及权重待定，2026-11-11 用户定稿）；图鉴挑战模式经 spawnChallengeTargetOne 召唤
+      w: 46, h: 40, hp: 80, score: 1, color: '#e9edf5', drawScale: 1.4,   // 碰撞盒/绘制比例同法术大师A1；图鉴标签色取黑白配色的白（黑雾圆体 + 白星核心）
+      bulletSpeed: 320, bulletR: 6, bulletDmg: 20, crashDmg: 35,   // 弹速「较快」（320，快于普通 230 恒速弹）；弹伤 20（诗篇同值，用户未分档）
+      fireInterval: [1e9, 1e9],   // 攻击节奏在移动状态机内处理（A1 同款刹停；fireTimer 直控，分档见 COLLAPSE.iv/ivPoem），不走通用开火
+    },
     baolingG: {         // 暴鸰·G（3类）：暴鸰升级版——数值全部同暴鸰，仅 HP 800（移速/爆炸半径分叉见 BAOLING_G）
       w: 56, h: 60, hp: 800, score: 500, color: '#ffd8a8', drawScale: 1.2,
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
@@ -330,6 +352,20 @@
       w: 56, h: 60, hp: 600, score: 500, color: '#cfe4ff', drawScale: 1.2,
       bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,
       fireInterval: [1e9, 1e9],   // 不攻击：投弹流程由移动状态机驱动（同暴鸰）
+    },
+    stasisUnreal: {     // 静滞虚幻（3类，2026-11-11 用户定稿实装）：虚幻增强版——暗金黑配色的静滞投弹型（见 STASIS_UNREAL）；
+                        // 速度 = 虚幻 75%、血 700（诗篇 1800）、大小/碰撞/索敌半径同虚幻；分数 1 与水晶 1 均为待定占位
+                        //（暂不入常规刷怪池，后续统一设计）；投掷静滞炸弹：对玩家 32 伤害 + 静滞区域
+      w: 56, h: 60, hp: 700, score: 1, color: '#b8860b', drawScale: 1.2,   // 暗金主色（视觉见 09b drawStasisUnrealBody）；hp700 用户定稿
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 24,   // 弹速/碰撞同虚幻
+      fireInterval: [1e9, 1e9],   // 不攻击：投弹流程由移动状态机驱动（同暴鸰系）
+    },
+    cocoonDream: {      // 破茧之梦（3类，2026-11-11 用户定稿实装）：白绒蛾形侧翼游走射击体（见 COCOON_DREAM）；
+                        // 速度 = 法术大师A1 125%（200）、血 5000（诗篇 9000）、大小 ≈ 焦香螺旋桨；仅从侧翼入场；
+                        // 分数 1 / 水晶 1（用户定稿）；攻击时刹停（A1 同款），朝标记位置五连弹（逐发 ±5° 偏移，弹速同威龙 ≈418）
+      w: 66, h: 56, hp: 5000, score: 1, color: '#eef0f6', drawScale: 1.3,   // 白绒主色（视觉见 09b drawCocoonDreamBody）；碰撞盒与焦香 67×54 同级
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 20, crashDmg: 35,   // 弹伤 20 暂按威龙同款（用户仅定稿弹速同威龙，弹伤未单列——待用户确认）
+      fireInterval: [1e9, 1e9],   // 不走通用开火：攻击流程由移动状态机驱动（刹停，同浮海飘航者）
     },
     // 黑暗之手麾下四精英（4S 敌人，2026-09-30 实装；不再属衍生敌人——独立图鉴条目入诗篇级分页，
     // 挑战召唤走 04-spawn spawnEliteMinion）：技能由专属状态机驱动（参数见 ELITES，逻辑见 06-enemy）。
@@ -561,6 +597,40 @@
     flakeEveryMax: 0.7,      // 寒冷区域雪花特效间歇出现最长间隔（s）
   };
 
+  // 静滞虚幻参数（特殊3类静滞投弹机，2026-11-11 用户定稿实装）：虚幻增强版——机体/流程字段引用 BAOLING / UNREAL 原值
+  // 自动跟随，仅——移速为虚幻 75%（90/180）；炸弹对玩家伤害 32；爆炸落点 / 殉爆原地留下静滞区域：
+  //   半径同虚幻 100、持续 5.5~7.5s（= 虚幻 +2.5s）；区域内敌我移速 -70%（×0.3）；
+  //   双方子弹过境后永久弹速 -40%（×0.6）、伤害 -25%（×0.75）（非仅区域内生效，见 08-entities 标记结算）；
+  // 静滞区域 BOSS 移速减速减半同虚幻（×bossResist）；殉爆为满额 600+20%（非虚幻 70% 折算）；
+  // 侧翼入场投弹延时 2s / 诗篇 1.6s（blArmDelay，见 04-spawn 侧翼分支）；顶部武装延时同虚幻 0.8s
+  const STASIS_UNREAL = {
+    speedSlow: UNREAL.speedSlow * 0.75,      // 投弹前下降速度（90 = 120 × 0.75）
+    speedPost: UNREAL.speedPost * 0.75,      // 投弹后俯冲速度（180 = 240 × 0.75）
+    armDelay: UNREAL.armDelay,               // 顶部入场武装延时（0.8s，同虚幻）
+    blArmDelay: 2,                           // 侧翼入场武装延时（s；诗篇 1.6s 见 blArmDelayPoem）
+    blArmDelayPoem: 1.6,                     // 侧翼入场武装延时（诗篇）
+    triggerDist: UNREAL.triggerDist,         // 索敌半径（40% 屏高，同虚幻）
+    warnTime: UNREAL.warnTime,               // 预警区出现 → 炸弹脱离间隔（0.35s，同暴鸰系）
+    dropTimeMin: BAOLING.dropTimeMin, dropTimeMax: BAOLING.dropTimeMax,   // 低速下坠时长（0.6~0.8s，同暴鸰）
+    postThrowWait: BAOLING.postThrowWait,    // 投弹后停留时长（1.2s，同暴鸰）
+    dropSpeed: BAOLING.dropSpeed,            // 炸弹下坠初速（低速，同暴鸰）
+    strikeAccel: BAOLING.strikeAccel,        // 炸弹冲刺加速度（同暴鸰）
+    blastR: BAOLING.blastR,                  // 爆炸半径 = 预警圈半径（73，同暴鸰系）
+    deathBlastR: BAOLING.deathBlastR,        // 殉爆对周围敌方单位的波及半径（200，同暴鸰系——用户定稿「周围 200px」）
+    playerDmg: 32,                           // 静滞炸弹爆炸对玩家伤害（32，用户定稿）
+    enemyDmgBase: BAOLING.enemyDmgBase,      // 殉爆对敌人基础伤害（600 满额，非虚幻 70%）
+    enemyDmgRatio: BAOLING.enemyDmgRatio,    // + 目标最大生命 20%（满额）
+    enemyDmgCap: BAOLING.enemyDmgCap,        // 对敌人伤害上限（2000 满额）
+    crashDmg: UNREAL.crashDmg,               // 碰撞伤害（24，同虚幻——结算走 ENEMY_TYPES.stasisUnreal.crashDmg）
+    frostR: UNREAL.frostR,                   // 静滞区域半径（100，同虚幻遗留区域）
+    frostDurMin: UNREAL.frostDurMin + 2.5,   // 静滞区域最短持续（5.5s = 虚幻 3 + 2.5）
+    frostDurMax: UNREAL.frostDurMax + 2.5,   // 静滞区域最长持续（7.5s = 虚幻 5 + 2.5）
+    frostMoveSlow: 0.3,                      // 区域内敌我移速倍率（-70% → ×0.3；玩家/敌机通用）
+    bossResist: UNREAL.bossResist,           // BOSS 受静滞移速减速效果倍率（0.5 减半，沿寒冷区域先例）
+    bulletSpeedMul: 0.6,                     // 双方子弹过境后永久弹速倍率（-40% → ×0.6）
+    bulletDmgMul: 0.75,                      // 双方子弹过境后永久伤害倍率（-25% → ×0.75）
+  };
+
   // 焦香螺旋桨参数（特殊3类火焰灼烧无人机）：登场后绕大圈巡航，火焰光环持续灼烧我方战机
   const JIAOXIANG = {
     speed: 120,            // 巡航速度
@@ -745,6 +815,78 @@
     poemDmg: 22,          // 子弹伤害 · 诗篇（2026-10-16 用户定稿）
   };
 
+  // 破茧之梦参数（特殊3类白绒蛾形游走射击体，2026-11-11 用户定稿实装）：仅从侧翼入场，七段路径
+  //（屏高 20%~40% 出现 → 横移 70%~90% 屏宽 → 下移 50% 屏高 → 朝出生侧 60% 屏宽 → 上移 45% 屏高 →
+  // 朝出生侧另一边 65% 屏宽 → 再下移 50% 屏高 → 朝出生侧横移离场）；恒速 200 = FASHI_A1.speed × 125%，
+  // 水平/竖直分通道低通逼近（acc 10/s ≈0.23s 到 90%，段间转角圆滑无瞬跳——速度曲线铁律：切段只改
+  // 期望速度方向，速度本身经低通连续过渡）；攻击为 A1 同款刹停状态机（结构同浮海飘航者 vAtk）：
+  // 刹停瞬间标记玩家瞬时位置（baseAng 锁定）→ 停稳静置 firePause → 五连弹逐发 ±5° 随机偏移
+  //（弹速同威龙 ≈418）→ fireLinger 收势 → 恢复移动；生成见 04-spawn spawnCocoonDream，
+  // 移动/开火分支见 06-enemy cocoonDream 分支，绘制（俯视白绒蛾体）见 09b drawCocoonDreamBody
+  const COCOON_DREAM = {
+    speed: FASHI_A1.speed * 1.25,  // 巡航速度（200 = 160 × 125%，用户定稿「速度：法术大师A1的125%」）
+    acc: 10,               // 水平/竖直通道速度逼近率（1/s，指数低通；同浮海飘航者——90% 逼近 ≈0.23s）
+    faceTurn: 3.2,         // 机头最大转向角速度（rad/s；同破片/浮海飘航者口径）
+    firstDelay: 2,         // 首次攻击间隔（s，用户定稿；登场即计）
+    iv: 1.6,               // 攻击间隔（s，用户定稿；自发射瞬间起算）
+    ivPoem: 1.4,           // 攻击间隔 · 诗篇（s，用户定稿）
+    firePause: 0.25,       // 停稳后到发射的静置时长（s，A1 同款）
+    fireLinger: 0.6,       // 发射后静止收势时长（s；五连弹全程 0.61s 需完整落入 fire 态 + 攻击挤压动画回弹窗口——2026-11-11 五次定稿）
+    muzzleLen: 22,         // 出弹点距本体中心距离（px；头前触须中心局部 y≈17 × drawScale 1.3 ≈ 22，沿 faceAng 机头方向——五次定稿「子弹从头部前面的触角中心射出」）
+    burstCount: 5,         // 五连弹（用户定稿）
+    burstGap: 0.09,        // 连发间隔（s，同威龙）
+    burstJitter: 5 * Math.PI / 180,   // 逐发偏移角上限（rad；±5° 共 10° 范围——用户定稿）
+    bulletSpeed: 230 * WEILONG.bulletSpeedMul,   // 弹速同威龙（230 × 1.8172 ≈ 418，用户定稿「弹道速度：同威龙子弹弹速」）
+    spanMin: 0.70,         // 首段横移距离下界（×屏宽）
+    spanMax: 0.90,         // 首段横移距离上界（×屏宽）
+    down1: 0.50,           // 第二段下移距离（×屏高）
+    backSpan: 0.60,        // 第三段朝出生侧移动距离（×屏宽）
+    upSpan: 0.45,          // 第四段上移距离（×屏高；原文「朝上横移45%屏高」量纲为屏高，按竖直上移实现）
+    sideSpan: 0.65,        // 第五段朝出生侧另一边移动距离（×屏宽）
+    down2: 0.50,           // 第六段再次下移距离（×屏高）
+    flankYPctMin: 0.20,    // 侧翼入场高度带下界（×屏高）
+    flankYPctMax: 0.40,    // 侧翼入场高度带上界
+  };
+
+  // 坍缩构造体参数（2D，2026-11-11 用户定稿实装）：黑雾圆体 + 双侧黑色细杆 + 白色四芒星微泛红核心；
+  // 移动为双逻辑镜像重走路径（05/50 随机，04-spawn 抽取落地）：
+  //   逻辑1 侧翼（浮海飘航者「[」/「]」同款骨架）：屏高 20%~40% 登场 → 朝另一侧横移 70%~90% 屏宽 →
+  //         下移 50% 屏高 → 朝出生侧横移 → 走完**瞬移**到当前位置水平镜像位（x' = W−x，y 不变——此时已在底部带）→
+  //         朝场内横移 → 上移 50% 屏高 → 反向横移离场（第二遍 = 第一遍的竖直镜像，段距沿用同次掷值）；
+  //   逻辑2 顶部：屏宽 10%~30% / 70%~90% 带登场 → 下移 60%~90% 屏高 → 朝另一侧横移 60% 屏宽 →
+  //         上移 60%~90% 屏高（首遍走完）→ **瞬移**到与当前位置水平位置相同的底部（y = H−50，x 不变）→
+  //         上移 60%~90% 屏高 → 朝出生侧横移 60% 屏宽 → 下移出屏离场；
+  // 瞬移 = 用户定稿设计特性（「立刻瞬移」「不消失、保持当前状态」）：位置直接跳变、速度向量不清零
+  //（下一段期望速度经通道低通自然过渡，加速度连续、无速度档位跳变——速度曲线铁律内合法瞬移）；
+  // 攻击 A1 同款刹停射击：攻击计时仅巡航中递减（未入场 gate 同 voyager），到点刹停停稳 → 停稳立即发射
+  //（firePause 0，同浮海飘航者）→ 静止 fireLinger 0.15s（用户定稿「发射后的再次静止时长改为 0.15s」）→ 恢复移动；
+  // 射击间隔 = 浮海飘航者基准区间 ×60%（诗篇改 ×45%，用户定稿），自发射瞬间起算（刹停演出嵌在两次发射之间）；
+  // 圆形红橙→暗蓝渐变拖尾弹（grad 'cb' 风味 + streak 拖尾，见 10-draw-world gradCB / drawOneEBullet）伤害 20；
+  // 随场高线性承伤修正：constructAltHurtMul（01-config-difficulty）——最上 -50% / 屏高中点 0 / 最下 +50%；
+  // 大小/碰撞盒同法术大师A1（ENEMY_TYPES.collapseConstruct）；生成见 04-spawn spawnCollapseConstruct，
+  // 移动/开火分支见 06-enemy collapseConstruct 分支，绘制见 09b drawCollapseConstructBody / 10-draw-world 分发
+  const COLLAPSE = {
+    cruise: 255,          // 巡航速度（px/s；「非常快」——快于法术大师A1 160 / 浮海飘航者 75，2026-11-11 实装定值）
+    acc: 10,              // 水平/竖直通道速度逼近率（1/s，指数低通）——同浮海飘航者，90% 逼近 ≈0.23s，转角平滑圆滑
+    first: 1,             // 登场后首次攻击延迟（s；用户定稿「首次攻击间隔：1s」，诗篇同值——用户未分档）
+    iv: [0.96, 1.44],     // 射击间隔（s，随机区间）= VOYAGER.iv [1.6,2.4] × 60%（用户定稿「浮海飘航者的60%」）
+    ivPoem: [0.72, 1.08], // 射击间隔 · 诗篇（s）= VOYAGER.iv × 45%（用户定稿「诗篇难度下改为45%」）
+    firePause: 0,         // 停稳后到发射的静置时长（s；停稳立即发射，同浮海飘航者 2026-10-17 口径）
+    fireLinger: 0.15,     // 发射后静止收势时长（s；用户定稿「发射后的再次静止时长改为 0.15s」——浮海飘航者 0.05）
+    entryYPctMin: 0.20,   // 逻辑1 侧翼入场高度带下界（×屏高；用户定稿「自屏高20~40%屏高出现」）
+    entryYPctMax: 0.40,   // 逻辑1 侧翼入场高度带上界
+    spanMin: 0.70,        // 横移段距离下界（×屏宽；用户定稿「横移 70%~90% 屏宽」——首遍/第二遍共用同一掷值）
+    spanMax: 0.90,        // 横移段距离上界（×屏宽）
+    downPct: 0.50,        // 竖移段距离（×屏高；逻辑1 用户定稿「下移50%屏高」——第二遍镜像为上移同值）
+    topXPctA: [0.10, 0.30],   // 逻辑2 顶部登场横带一（×屏宽；用户定稿「屏宽10%~30%」）
+    topXPctB: [0.70, 0.90],   // 逻辑2 顶部登场横带二（×屏宽；用户定稿「70%~90%区域」）
+    topDownMin: 0.60,     // 逻辑2 首段下移距离下界（×屏高；用户定稿「下移60%~90%屏高」）
+    topDownMax: 0.90,     // 逻辑2 首段下移距离上界（×屏高）
+    strafePct: 0.60,      // 逻辑2 横移距离（×屏宽；用户定稿「移动60%屏宽」——朝另一侧 / 第二遍朝出生侧同值）
+    upMin: 0.60,          // 逻辑2 上移距离下界（×屏高；用户定稿第二遍「上移60%~90%屏高」——首遍上移对称同带独立掷）
+    upMax: 0.90,          // 逻辑2 上移距离上界（×屏高）
+  };
+
   // 战争幽灵参数（特殊4类，诗篇新敌实装 2026-09-29）：白色风波预警 → 极速入场冲撞（50 伤害+强击退）→
   // 抵达演出 → 驻留中场技能循环（首个从{2,3}随机、之后固定 1→2→3）→ 驻留 30s 后直线预警加速斩出离场；
   // 驻留期间光环：场上破片/破片U型/铁砧移速与加速度 ×2（+100%，2026-09-29 由 ×3 下调）；破片无视攻击距离
@@ -771,10 +913,10 @@
     wobRamp: 2.0,          // 摆动幅度缓入时长（s）
     wobFreqX: 0.9, wobFreqY: 1.2,   // 摆动角频率（rad/s，小幅低速）
     // —— 技能循环 ——
-    // 间隔改版（2026-10-12 用户定稿）：基准 1.6s（真我/诗篇 1.3s）；每释放一次技能间隔 -0.1s、下限 0.3s；
+    // 间隔改版（2026-10-12 用户定稿；2026-11-10 基准回调 1.3s / 真我诗篇 1.1s）：每释放一次技能间隔 -0.1s、下限 0.3s；
     // 战争幽灵不吃驻留增压（停留敌人攻击间隔减半修正不生效，06-enemy wgGapT 直减 dt）
-    skillGap: 1.6,         // 技能间隔基准（s，虚象/具象）
-    skillGapRealme: 1.3,   // 技能间隔 · 真我/诗篇（s）
+    skillGap: 1.3,         // 技能间隔基准（s，虚象/具象。2026-11-10 用户定稿 1.6→1.3）
+    skillGapRealme: 1.1,   // 技能间隔 · 真我/诗篇（s。2026-11-10 用户定稿 1.3→1.1）
     fanRange: 160,         // （已废弃：技能1 改两刃斩击后扇形判定删除，保留占位防外部引用；2026-10-02）
     fanWarn: 1.2,          // 技能1（两刃斩击）预警时长（s）：双刃自翼侧展开+扇面预警，随后复用抵达演出同款扫转动画（2026-10-02 用户定稿 +0.4s 0.8→1.2）
     fanDmg: 40,            // 技能1（两刃斩击）扫斩伤害（扫斩扇面覆盖窗口内对玩家一次性结算；2026-10-02 用户定稿登场两侧斩击动作命名为「两刃斩击」并入技能循环）
@@ -1097,6 +1239,8 @@
     fireInterval: [2.76, 3.84],   // 大正四面体攻击间隔（由 [2.3, 3.2] 增大 20%）
     summonFirst: 2.5,    // 首次召唤法术矩阵延迟（s，就位后计；原 4s 提前）
     summonInterval: 5,   // 后续召唤法术矩阵周期（s，红光闪动 + 周围生成）
+    summonCut: 0.5,      // 每召唤一个法术矩阵后召唤间隔永久减少量（s，2026-11-10 用户定稿；仅本台在场的剩余生命周期内生效——「永久」指对该台而言）
+    summonCutMax: 2,     // 召唤间隔累计减少上限（s，至多 5→3s）
     summonDistMin: 50,   // 召唤生成距离下限（px）
     summonDistMax: 120,  // 召唤生成距离上限（px）
     summonFlashDur: 0.3, // 召唤时周身红光闪动时长（s）
@@ -1141,23 +1285,42 @@
     hold: 30,            // 停留时长（s，赤红主力舰同款 30s；挑战模式永驻），到点向下加速离场
     exitSpeed: 250,      // 离场向下加速目标速度（赤红主力舰离场速度同款）
     firstDelay: 1.8,     // 就位后首次攻击延迟（s，赤红主力舰 spawnCapital fireTimer 同款）
-    skillIv: [1.5, 2.4], // 技能间隔（s）＝赤红突击艇 fireInterval [1.1,2.0] + 0.4（2026-10-18 用户定稿；技能释放完毕重置，初始技能随机后按 S1→S5 循环）
+    skillIv: [2.4, 2.8], // 技能间隔（s）＝赤红主力舰 fireInterval [2.4,2.8] 同款（2026-11-10 用户定稿；原赤红突击艇 [1.1,2.0]+0.4 口径作废。技能释放完毕重置，初始技能随机后按 S1→S5 循环）
     s1AimTopPct: 0.25,   // S1 瞄准点：玩家上方 0~25% 屏高随机（四枚卫星瞄准位置一致、射程一致）
     s1Shift: 26,         // S1 底部卫星水平外移量（px）；顶部卫星竖直下移至底排高度（y 与底部卫星一致）
     s1Total: 0.9,        // S1 姿态过程总时长（s）：0~0.3 缓入移位 → 0.3s 移位完成瞬间齐射 → 0.6~0.9 缓出回位
     s2SlowMul: 0.2,      // S2 施法期移速倍率（「移速迅速降低至20%」）
     s2Warn: 0.4,         // S2 核心周围收缩红圈持续时长（s，2026-10-18 用户回调「收缩速度翻倍、预警 0.4s」原 1.0），
                          // 收缩完毕瞬间朝下直射
-    s2SplitStepMin: 0.18,// S2 大正方体分裂步长下限（屏高比例；单发射击时固定同一值）
-    s2SplitStepMax: 0.30,// S2 大正方体分裂步长上限（屏高比例）
+    s2SplitStepMin: 0.15,// S2 大正方体分裂步长下限（屏高比例；单发射击时固定同一值。2026-11-10 用户定稿 0.18→0.15）
+    s2SplitStepMax: 0.27,// S2 大正方体分裂步长上限（屏高比例。2026-11-10 用户定稿 0.30→0.27）
     s2SideAccel: 1.0,    // S2 分裂侧弹加速时长（s）：初速 0 线性加速到最大速度（法术阵列大正四面体速度）
     s3TopOff: 5,         // S3 上排两卫星朝下齐射的外偏角（度）
     s3BotOffMin: 20,     // S3 下排两卫星外偏角下限（度，逐枚随机）
     s3BotOffMax: 40,     // S3 下排两卫星外偏角上限（度）
     s4SplitN: 4,         // S4 核心大正四面体（法术阵列同款）分裂枚数（虚象/具象/真我）
     s4SplitNPoem: 5,     // S4 分裂枚数 · 诗篇
-    s5FanDeg: 150,       // S5 齐射角范围 · 虚象/具象：下方 150° 内随机（四枚同一角度）
-    s5FanDegHigh: 100,   // S5 齐射角范围 · 真我/诗篇：下方 100° 内随机（2026-10-18 用户回调分档改版）
+    s5FanDeg: 70,        // S5 齐射角范围 · 虚象/具象：下方 70° 内随机（四枚同一角度。2026-11-10 用户定稿 150→70）
+    s5FanDegHigh: 60,    // S5 齐射角范围 · 真我/诗篇：下方 60° 内随机（2026-11-10 用户定稿 100→60）
+  };
+
+  // 愧悔魂灵圣杯参数（诗篇级 4D，2026-11-10 实装）：不攻击的光环承伤体——4 类同款入场初速下降
+  // （capital 档 280/诗篇 300，1s 线性衰减）→ 停留位（水平随机、屏高 20%~25%，2026-11-10 用户定稿）
+  // 慢速带内漫游（战争矩阵同款目标点漫游骨架、速度更低）→ 30s（赤红主力舰同款）后向下加速离场
+  // （挑战模式永驻场）。特殊能力为被动光环（转移结算见 06-enemy grailRedirect / 07-player 爆弹与
+  // 抽卡秒杀点 / 08-entities 子弹转移点；绘制见 09b drawGuiltGrailBody）
+  const GUILT_GRAIL = {
+    hoverTopPct: 0.20,   // 停留/活动带上界 = 屏高 × 0.20
+    hoverBotPct: 0.25,   // 停留/活动带下界 = 屏高 × 0.25
+    wanderSpd: 20,       // 漫游速度（「速度：慢」——较战争矩阵 26 再低一档）
+    turnRate: 3.6,       // 速度平滑转向率（同战争矩阵，低通无方向瞬跳）
+    retargetMin: 1.5,    // 漫游目标点重抽最短时长（s，同战争矩阵）
+    retargetMax: 2.6,    // 漫游目标点重抽最长时长（s，同战争矩阵）
+    hold: 30,            // 停留时长（s，赤红主力舰同款 30s；挑战模式永驻），到点向下加速离场
+    exitSpeed: 250,      // 离场向下加速目标速度（4 类同款）
+    auraR: 150,          // 淡金光环半径（px，2026-11-10 用户定稿「周身150px」）：范围内敌人受伤转移至圣杯
+    directBulletMul: 1.25,   // 圣杯本体直接受到子弹攻击的伤害 ×1.25（转移的伤害与非子弹伤害不算）
+    transferSplashMul: 0.8,  // 转移的非强力范围伤害（群星之杀斩击 / 捣蛋来袭爆炸）×0.8（减少 20%）
   };
 
   // 2类（突击艇）前锋停留线：位于 3/4 类悬停高度（y≈110~170）的前方（更靠下），凸显其前锋定位
@@ -1311,10 +1474,10 @@
     ENEMY_CLASS, ENEMY_GRADES, enemyGrade, ENEMY_TYPES,
     WIP_PLACEHOLDER_TYPES, HARBINGER, HARBINGER_LEAD, HARBINGER_HUB, HARBINGER_POLAR, WEILONG, HANSHUANG,
     YU4, ANVIL, BAOLING, BAOLING_G,
-    UNREAL, JIAOXIANG, DOUZHI, SPONSOR,
-    FASHI_A1, FASHI_A2, POPIAN, POPIAN_U, VOYAGER,
+    UNREAL, STASIS_UNREAL, COCOON_DREAM, JIAOXIANG, DOUZHI, SPONSOR,
+    FASHI_A1, FASHI_A2, POPIAN, POPIAN_U, VOYAGER, COLLAPSE,
     WAR_GHOST, ELITES, ZHANGZHANG, FASHI_MATRIX,
-    PULSE_MATRIX, FASHI_ARRAY, WAR_MATRIX, STRIKER_HOLD_Y, STRIKER_FORTRESS,
+    PULSE_MATRIX, FASHI_ARRAY, WAR_MATRIX, GUILT_GRAIL, STRIKER_HOLD_Y, STRIKER_FORTRESS,
     SHIP_ENTRY, STRIKER_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
     SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR,

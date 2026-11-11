@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(40 名) 07-player(50 名) 08-entities(21 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(6 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(41 名) 07-player(51 名) 08-entities(22 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -107,8 +107,8 @@
   //  跨域读写需在《并行任务认领.md》声明。分区如下——声明顺序为历史累加，不与本分区一一对应）：
   //   · 流程与全局：mode / paused / time / score / lives / victoryOverlay / demo
   //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatInvuln
-  //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* / wenjiukeVuln /
-  //     dagou* / daodanChains / meiCounter / ddj* / gachaStones / gachaReady
+  //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* /
+  //     dagou* / daodanChains / rain* / lanceDelayQ / lanceVolleySeq / meiCounter / ddj* / gachaStones / gachaReady
   //   · 奖励道具效果：laoda* / magnetBonus / swordStorm* / frostField / bombCapAdd / bengbagGot / jiuke* / itemPickFx / honghongT
   //   · 技能演出与特效：gachaFx / xinFuryRings / aiyiWaves / aiyiWaveSeq
   //   · 秒杀与亡语门控：aiyiSelfDestruct / sweepKill / aiyiFinalDeath / selfDestructVictory
@@ -159,12 +159,15 @@
     kingTaken: 0,          // 大无垠之王：BOSS 战累积的受到伤害提升（上限 PILOTS.king.takenCap；多阶段切换 ×phaseKeep）
     hajimiDodgeBonus: 0,   // 哈基米大王：暴走期闪避概率累积加成（失败 +5%，成功清零；暴走结束不清零、跨次保留）
     hajimiTailT: 0,        // 哈基米大王：暴走结束后的闪避存续倒计时（s；暴走结束置 4s）
-    wenjiukeVuln: 1,       // 温酒客：受到伤害提升的当前幅度（开局 1 = +100%；每击败一个 BOSS -0.25，最低 0；仅 hasPilot('wenjiuke') 时生效）
     dagouMissT: 0,         // 叮咚鸡：下一波导弹雨倒计时（s；resetGame 取 10~22s 随机初值）
     dagouDebugRapid: false,   // 叮咚鸡：导弹雨连发模式（战斗中按 9 切换，间隔 0.2~1s；离开游戏后默认关闭，见 12-ui resetGame）
     dagouWarnFadeT: 0,     // 叮咚鸡：导弹雨发射后预警蓝光的快速渐隐剩余（s；见 PILOTS.dagou.warnFade / 10-draw-world drawDagouWarn）
     dagouChains: [],       // 叮咚鸡：待发射的连射链波（{t, lv}；t = 距发射剩余秒数，lv = 连射层级——伤害 ×chainDmgMul^lv；每波发射后按 chainChance 追加，resetGame 清空）
     daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与叮咚鸡连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
+    rainLaunchQ: [],       // 时流之雨（副武器）：待发射雨弹队列（{t, side, lat, volley, dmg}；一轮 8 条按 rankGap 依次入队——07-player 推进发射，发射瞬间取机体实时位置；resetGame/重生清空）
+    rainVolleySeq: 0,      // 时流之雨：射弹轮次 id（fireSubWeapon 每轮 +1；敌人 rainVid 记录去重「每轮每敌一次」攻击延迟判定，08-entities 写敌人侧）
+    lanceDelayQ: [],       // 坠星长枪（副武器）：暴走外侧两支长枪的错峰待发队列（{t, ox, dmg, tickDmg, spd, volley}；t = 距发射剩余秒数，ox = 出射点横向偏移——07-player 推进发射，发射瞬间取机体实时位置；resetGame/重生清空）
+    lanceVolleySeq: 0,     // 坠星长枪：射弹轮次 id（fireSubWeapon 每轮 +1，弹体与待发队列项携带——smoke 场景按轮次隔离多轮并存的长枪）
     meiCounter: 0,         // 依：击杀计数（上限 PILOTS.mei.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
     ddjGauge: 0,           // 大狗：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
     ddjLayers: 0,          // 大狗：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
@@ -178,6 +181,7 @@
     swordStormT: 0,        // 不再陵落：飞剑风暴剩余时长（s；0 = 无效）
     swordStormAcc: 0,      // 不再陵落：轮发射累加器（0.12s/轮 × 每轮 4 发，07-player 推进）
     frostField: null,      // 寒霜发生器：{ x, y, r:160, t, launched, vy }（未发射时随机体；到期朝上 80px/s 离场；07-player updateFrostField 推进，06-enemy/08-entities 读减速）
+    blackhole: null,       // 群星之扉黑洞区域：{ t, growT, dur, r, tickT }（单槽覆盖语义；中心持续跟随玩家——判定半径 rEff=r×min(1,t/growT) 与视觉同源；07-player 触发/推进/伤害 tick，04-spawn enemyBlackholeMoveMul 减速、08-entities 吞弹、10-draw-world 绘制读；归域：装备效果域，主要读写 07-player）
     bombCapAdd: 0,         // 绷绷背包：爆弹携带上限加成（+1；一整局；拾取 08-entities / HUD 12-ui 共同读取）
     bengbagGot: false,     // 绷绷背包：本局已获得标记（一局限一次，06-enemy grantRewardItem 过滤——效果直接生效，见 applyRewardItem）
     jiukeT: 0,             // 酒客之影：透明化 + 闪避窗口剩余时长（s；0 = 未激活；30s 内 100% 闪避起步、每成功闪避一次 -20%，07-player damagePlayer 判定）
@@ -200,6 +204,9 @@
                            // 召唤张华&张策——实体待实装仅占位；resetGame 归位）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
+    affixTartCd: 0,        // 词条（诗篇级 3:good:3）大蛋挞召唤冷却剩余秒数（killEnemy 掷中置 15；06-enemy updateEnemies 递减；resetGame 清零）
+    affixFreezeHits: 0,    // 词条（诗篇级 3:good:2）冰封：累计命中敌人次数（08-entities/07-player 伤害结算处 affixFreezeNote 累加；满 20 触发冻结并清零）
+    affixFreezeDmg: 0,     // 词条（诗篇级 3:good:2）冰封：累计造成敌人伤害（同上累加；满 2500 触发冻结并清零）
     cheatInvuln: false,   // 作弊无敌（0 键切换，见 07-player debugToggleInvuln）：开启瞬间回满全部血量 + 伤害归零（受击结算照常——命中消耗/受击反馈/受击无敌帧/掉级计数不跳过）；再按关闭减伤（不扣血）——06-enemy 三处绕过路径（暴风之眼本体/大型龙卷持续接触、焦香灼烧）与 testDamagePlayer 整体跳过
     victoryOverlay: false, // 胜利结算页激活中（原 12-ui 顶层变量 victoryOverlayActive 并入）
     demo: false,       // 主菜单攻击演示进行中（07-player updateDemo 驱动：僚机开火门控放宽到演示态）
@@ -255,6 +262,9 @@
     berserkBanner: 0,  // “暴走”字样展示剩余时间（抵达 Lv5 时）
     wingSpread: 0,     // 机翼展开动画进度（0=收起, 1=完全展开）
     berserk: 0,        // 暴走（Lv5）剩余持续时间，归零回落 Lv4
+    affixBzSpecial: false, // 词条（虚象级 0:good:5）无敌暴走：特殊暴走进行中标记（07-player 写；结束/死亡/复活重置）
+    affixBzBase: 0,        // 词条（0:good:5）：特殊暴走启动瞬间快照的原火力等级
+    affixBzKits: 0,        // 词条（0:good:5）：特殊暴走期间拾取的升级套件等级累积（pickupKit 计数，结束回落并入）
     shield: 0,         // 量子护盾剩余时间
     shieldMax: 0,      // 本次护盾的总时长（读条分母：通用与澄月均 6s，见 12-ui）
     crystalShield: 0,  // 七日澜心水晶护盾剩余时间（环绕水晶屏障：免伤 + 消解敌弹，消失清除 250px 内敌弹）
@@ -593,6 +603,12 @@
     return enemies.some(e => e.type === 'boss' && !e.combatReady);
   }
 
+  // BOSS 虚化护盾判定（词条 0:bad:5）：bossPhT > 0 时该 BOSS 视为虚化——我方伤害各结算处穿透不结算；
+  // 与 bossEntranceActive（全局登场窗口）区分：虚化是单机体的临时护盾，仅伤害/索敌门使用
+  function bossPhantom(e) {
+    return !!e && e.type === 'boss' && (e.bossPhT || 0) > 0;
+  }
+
   // 警报 / BOSS 登场动画期间的时间步长：冷却 / 倒计时类计数器（迪奥 Q 冷却 / 血债回收 / 天枢计时 /
   // 哈基米尾存续 / 马兴犬成就计时等）仅按 50% 速率推进——登场演出不再全额消耗技能冷却；
   // 充能类计数表不经过本函数（依 / 天秀 / 大无垠之王：警报与登场动画期间完全冻结，调用点自行门控；
@@ -644,7 +660,7 @@
   // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失 / 量子护盾到期 / 炼金璃淡粉冲击波共用）。
   // 巨大蛋挞（b.tart）可被扩散波消散（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）——
   // 置 tartHitT 走镰刀同款「颤动→碎裂迸粒→渐隐」管线（状态机见 08-entities），起始补水蓝火花；仅首次触发计数。
-  // 群星守望两通道（clearNearestEnemyBullet / clearEnemyBulletsByOwner）与守愿者白盾对蛋挞仍豁免（10-08 口径收窄后保留）。
+  // 群星守望两通道（clearNearestEnemyBullet / clearEnemyBulletsByOwner）与群星守愿白盾对蛋挞仍豁免（10-08 口径收窄后保留）。
   // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）可被消除（2026-10-08 定稿）：任一身体节点进入半径即整条消散。
   // 返回实际清除数（成就：清除空气 / 云心）
   function clearEnemyBulletsNear(x, y, radius) {
@@ -857,7 +873,7 @@
     zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, meiScythes, ddjMissiles,
     slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
-    drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, entranceDt, hasteMul, weightedPick, spawnParticles,
+    drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, bossPhantom, entranceDt, hasteMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul, bombDropGate,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,

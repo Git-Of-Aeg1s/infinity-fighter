@@ -429,6 +429,20 @@
   ];
   const WAVE_TIER_NAMES = ['虚象级', '具象级', '真我级', '诗篇级'];
 
+  // 词条（长歌级 4:bad:3 嬴乾「高危频发」，2026-11-11 用户定稿实装）波次 tier 权重修正（纯计算——配置域
+  // 禁止 import 03b-affix，是否启用由消费侧经 opts 传入触发）：
+  //   主战（isMain）：虚象 tier 权重 ×0.5（减量加给真我）/ 具象 ×0.5（减量加给诗篇）/ 诗篇 tier +5；
+  //   侧翼：仅诗篇 tier +5（×0.5 转移为「主战波次」专属口径，侧翼不适用）
+  function waveAffixTierW(tw, isMain) {
+    const r = tw.slice();
+    if (isMain) {
+      const d0 = r[0] * 0.5; r[0] -= d0; r[2] += d0;
+      const d1 = r[1] * 0.5; r[1] -= d1; r[3] += d1;
+    }
+    r[3] += 5;
+    return r;
+  }
+
   // 单 tier 可刷卡池：过滤（prob/定位/4类）+ 权重（严格表或定位兜底）+ 恢复期衰减 + 同定位乘数
   function dwBuildTierPool(tier, col, hasW, opts, now) {
     const pool = [];
@@ -464,7 +478,7 @@
     // 等级先行（2026-10-12 用户定稿）：4 主战等级按阶段权重抽 tier，tier 内无可刷卡（全 0/被过滤）则该 tier 不参与抽取；
     // 非诗篇不限定位（无 1前1后配对要求——侧翼随池，冲刺期 noSide 排除）；诗篇主波 mainOnly 限主战卡
     const stage = Math.min(col, WAVE_TIER_STAGE_W.length - 1);   // 非诗篇 Lv31+ 沿用 Lv21~30 行
-    const tierW = WAVE_TIER_STAGE_W[stage];
+    const tierW = opts.tierWAffix ? waveAffixTierW(WAVE_TIER_STAGE_W[stage], true) : WAVE_TIER_STAGE_W[stage];   // 词条（4:bad:3）主战 tier 权重修正（opts 由消费侧传入）
     const tierPool = [];
     let tierTotal = 0;
     for (let ti = 0; ti < WAVE_TIER_NAMES.length; ti++) {
@@ -538,10 +552,13 @@
   }
 
   // ①侧翼波次额外生成抽取：返回波次卡或 null（本波不触发 / 所选 tier 侧翼池为空）
-  function pickPoemFlankCard(lv) {
+  // opts.flankAffix = 词条（长歌级 4:bad:3 嬴乾）启用：本波触发概率 +10%（不超过 100%）+ 侧翼 tier 诗篇权重 +5
+  function pickPoemFlankCard(lv, opts) {
     const s = poemStageIdx(lv);
-    if (Math.random() >= POEM_FLANK_EXTRA.chance[s]) return null;
-    const tw = POEM_FLANK_EXTRA.tierW[s];
+    const fa = opts && opts.flankAffix;
+    const ch = Math.min(1, POEM_FLANK_EXTRA.chance[s] + (fa ? 0.1 : 0));
+    if (Math.random() >= ch) return null;
+    const tw = fa ? waveAffixTierW(POEM_FLANK_EXTRA.tierW[s], false) : POEM_FLANK_EXTRA.tierW[s];
     // Lv5 及之前不生成「诗篇级」侧翼波（2026-10-13 用户定稿——与主抽取 tier 排除同口径，Lv6 起恢复按表权重）
     const tierSkip = (i) => lv <= 5 && POEM_TIERS[i] === '诗篇级';
     let total = 0;
@@ -558,10 +575,10 @@
     return pickWaveCardByRole(tier, ['侧翼'], s);
   }
 
-  // ②额外波次抽取：返回波次卡或 null
-  function pickPoemExtraCard(lv) {
+  // ②额外波次抽取：返回波次卡或 null（noChance = true 时跳过本波触发概率直抽特殊池——词条 4:bad:3 追加通道专用）
+  function pickPoemExtraCard(lv, noChance) {
     const s = poemStageIdx(lv);
-    if (Math.random() >= POEM_EXTRA_CHANCE[s]) return null;
+    if (!noChance && Math.random() >= POEM_EXTRA_CHANCE[s]) return null;
     return pickWaveCardByRole(null, ['特殊'], s);
   }
 

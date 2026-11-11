@@ -1,22 +1,23 @@
 // 08-entities：子弹 / 道具 / 水晶 / 粒子更新 + 全屏特效状态（state.flash / 冲击波）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(4 名) 10-draw-world(3 名) 12-ui(3 名) 14-main(9 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(4 名) 10-draw-world(3 名) 12-ui(3 名) 14-main(10 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
-  import { FASHI_MATRIX, HANSHUANG, JIAOXIANG, ELITES, enemyGrade } from './01-config-enemies.js';
+  import { FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, JIAOXIANG, ELITES, STASIS_UNREAL, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
-  import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
+  import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, constructAltHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, CRYSTAL_ABSORB_DELAY, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
-  import { bossEntranceActive, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { bossEntranceActive, bossPhantom, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
-  import { killEnemy } from './06-enemy.js';
+  import { killEnemy, grailRedirect, applyRainAttackDelay } from './06-enemy.js';
   import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain } from './07-player.js';
-  import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
+  import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, rainApplyBerserk, rainApplyKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
   import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNoteLanxinShieldStart, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
+  import { affixCrystalExtend, affixCrystalShieldDur, affixFreezeNote, affixHas, affixMainGunDamageMul, affixResetShieldExt } from './03b-affix.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -28,6 +29,12 @@
     mul *= kingDmgBonusMul();
     // 副武器·极夜流光：对 4类敌人（主力舰 / 法术阵列）增伤（capVuln 取自弹体 b.capVuln，注册表 1.5）
     if (capVuln && (e.type === 'capital' || e.type === 'fashiArray')) mul *= capVuln;
+    // 词条（诗篇级 3:good:0）侧翼破防：所有自侧翼出现的敌人受到的伤害提高 150%（×2.5）。
+    // 主武器/僚机/空间斩击链均生效（高能爆弹为真实伤害不经此处——同本函数其他词条口径）
+    if (affixHas('3:good:0') && e.affixSideEntry) mul *= 2.5;
+    // 词条（诗篇级 3:good:2）冰封：冻结期间敌人失去虚化护盾和所有减伤——提前返回，仅保留玩家侧
+    // 增伤乘区（怒意 / 4类易伤 / 侧翼破防），其余敌人侧减伤与部位判定全部跳过（口径待定稿）
+    if ((e.frozenT || 0) > 0) return mul;
     // 御4防御光环：光环内敌人受到的非真实伤害 -30%（高能爆弹为真实伤害，在 useBomb 直接结算、不经过此处）
     mul *= yu4AuraMul(e);
     if (e.type === 'tornado') {
@@ -60,6 +67,8 @@
     if (e.type === 'striker' && e.variant === 'fortress' && e.fortBorn != null) {
       const fortAge = Math.max(0, state.time - e.fortBorn);
       mul *= fortAge < 10 ? 1 + 0.1 * Math.floor(fortAge) : 2 + 0.2 * Math.floor(fortAge - 10);
+      // 词条（虚象级 0:bad:0）：坚垒护卫艇受到的所有伤害降低 25%
+      if (affixHas('0:bad:0')) mul *= 0.75;
     }
     // 黑暗之手：本段击坠增伤优先于护卫减伤（2026-10-08 用户定稿）——当前血量窗口的精英被击坠（e.dhAmp，
     // 登记见 02-core dhOnLinkedEliteKilled）→ 减伤撤销、受到的普通伤害 +100%（至本段结束/下一窗口召唤止）；
@@ -74,6 +83,13 @@
         mul *= 1 - (xinHanOnly ? DARKHAND.summon.guardDRXinHan : DARKHAND.summon.guardDR);
       }
     }
+    // 词条（具象级 1:bad:7）法师横移：法术大师A1/A2 在横移期间受到的所有伤害降低 60%
+    //（主武器/僚机弹幕/空间斩击共用链均生效；高能爆弹为真实伤害不经此处）
+    if ((e.type === 'fashiA1' && e.fa1State === 'strafe') || (e.type === 'fashiA2' && e.fa2State === 'strafe')) {
+      if (affixHas('1:bad:7')) mul *= 0.4;
+    }
+    // 词条（具象级 1:bad:10）：所有炮火先兆者及其变体受到的伤害降低 10%（预警时长 -0.5s 在 06-enemy 生成侧生效）
+    if (e.type === 'harbinger' || e.type === 'harbingerLead' || e.type === 'harbingerHub' || e.type === 'harbingerPolar') mul *= 0.9;
     // 铜皮夏勇·牛角减伤（被动常驻，2026-10-03 用户定稿）：命中点落在两翼折角（牛角）头部时 ×0.5——
     // 主炮/僚机弹幕传弹体坐标判定；空间斩击等大范围伤害不传命中点、不判部位（见 01-config xiayongHornDmgMul）
     mul *= xiayongHornDmgMul(e, hitX, hitY);
@@ -81,6 +97,33 @@
   }
 
   // ---------- 子弹 ----------
+  // 坠星长枪对单敌伤害结算（首击 / 驻留穿刺共用一条链）：修正口径 = 通用碰撞区我方子弹的公共子集
+  //（无穿透弱化 / 主炮小怪特化 / 风暴诗篇乘区 / llSword——长枪弹体不携带这些标记）。
+  // 返回 false = 长枪本次应销毁：青时次数盾耗层挡弹（「穿透类弹同样被挡」）/ 打进愧悔魂灵圣杯
+  // 转移圈（「穿透弹打转移目标不触发穿透、一律销毁」同口径）
+  function lanceSettle(b, e, base) {
+    if (e._deathSettled || e.hp <= 0) return true;   // 已击杀 / 结算中敌人跳过（inner 为快照——同帧早序击杀的敌人不再结算，防 indexOf -1 误删）
+    if ((e.chargeShield || 0) > 0) {   // 青时战舰召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）
+      e.chargeShield--;
+      spawnParticles(b.x, b.y, '#ffffff', 6, 150);
+      return false;
+    }
+    let dmg = base * enemyDamageMul(e, false) * rewardOutMul();
+    const gt = grailRedirect(e, 'bullet');
+    if (gt) {
+      gt.g.hp -= dmg * pxpfChargeHurtMul(gt.g) * constructAltHurtMul(gt.g);   // 易伤按承接方圣杯判定
+      spawnParticles(b.x, b.y, '#ffe9b0', 4, 120);
+      if (gt.g.hp <= 0) killEnemy(enemies.indexOf(gt.g));
+      return false;
+    }
+    if (e.type === 'guiltGrail') dmg *= GUILT_GRAIL.directBulletMul;   // 圣杯本体直击 ×1.25（2026-11-10 用户定稿）
+    if (e.barrier > 0) { const abs = Math.min(e.barrier, dmg); e.barrier -= abs; dmg -= abs; }   // 屏障优先吸收
+    e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e) * constructAltHurtMul(e));   // 朴学峰冲刺易伤等走通用通道
+    affixFreezeNote(e, dmg);   // 词条（诗篇级 3:good:2）冰封：命中与伤害计数
+    if (e.hp <= 0) killEnemy(enemies.indexOf(e));
+    return true;
+  }
+
   function updateBullets(dt) {
   // 玩家屏障（青时战舰支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
   // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿）；
@@ -110,6 +153,66 @@
     const hm = hasteMul();
     for (let i = pBullets.length - 1; i >= 0; i--) {
       const b = pBullets[i];
+      // 副武器·时流之雨：横向初速逐帧指数衰减归零（vx ×e^(−latDecay·dt)，连续函数无档位跳变——速度曲线铁律；
+      // ≈1s 衰减到 5%），弹道由斜升渐弯为竖直上行（绘制朝向取弹速方向，弯曲弹道的视觉呈现）；
+      // 触碰吸收：道具（弹体接触）与水晶（弹体周身 absorbR 小范围）由玩家直接结算
+      if (b.rain) {
+        b.vx *= Math.exp(-b.latDecay * dt);
+        rainAbsorbAround(b);
+      }
+      // 静滞区域（静滞虚幻）：我方子弹中心过境（受该区生效的静滞区）→ 永久标记（一次性）：弹速 ×0.6（-40%）、
+      // 伤害 ×0.75（-25%，直接乘 b.dmg——命中结算点无需另乘），此后不再恢复——
+      // 用户定稿「经过静滞区域的双方子弹弹速此后均减少40%且伤害降低25%」；穿透弹 dmg 重算（pierceBase）会覆盖减伤（边缘情况，接受）
+      if (!b.stasisHit) {
+        for (const z of frostZones) {
+          if (z.stasis && z.affectsPlayer && Math.hypot(b.x - z.x, b.y - z.y) <= z.r) {
+            b.stasisHit = true;
+            b.vx *= STASIS_UNREAL.bulletSpeedMul; b.vy *= STASIS_UNREAL.bulletSpeedMul;
+            b.dmg *= STASIS_UNREAL.bulletDmgMul;
+            if (b.lanceSpd != null) { b.lanceSpd *= STASIS_UNREAL.bulletSpeedMul; b.dwellSpd *= STASIS_UNREAL.bulletSpeedMul; }   // 坠星长枪：巡航/驻留速度快照同步减成（否则 lance 块置值会覆盖弹速减成）
+            break;
+          }
+        }
+      }
+      // 副武器·坠星长枪：垂直直射 + 驻留穿刺（2026-11-11 用户定稿）——
+      // · 中心进入任一敌人碰撞盒 → 弹速降至驻留速度，脱离恢复巡航速（直接置值：进/出盒是离散事件、
+      //   位置逐帧积分严格连续无瞬跳；静滞区域减速已在上方通用块作用，此处按现值归一续走）；
+      // · 首击：首次进入某敌人碰撞盒结算一次首击伤害（hits Set 防同敌重复——含抖动重复进入）；
+      // · 穿刺：盒内期间每 tickIv（0.2s）对当时盒内所有敌人结算一次穿刺伤害（首击后 tickIv 起算；
+      //   脱离盒期间计时冻结，防穿出再穿入瞬间白得 tick）；
+      // · 无限穿透：不进下方通用碰撞区（无命中销毁/穿透计数）——首击与穿刺经 lanceSettle 专属结算；
+      // · 敌机下坠会缩短驻留时长（相对速度叠加）——快降杂兵近乎只吃首击、悬停大机体吃满 tick（特攻语义）
+      if (b.lance) {
+        const inner = [];
+        for (const e of enemies) {
+          if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;
+          if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;   // 登场虚化同通用口径
+          if (Math.abs(b.x - e.x) < e.w / 2 && Math.abs(b.y - e.y) < e.h / 2) inner.push(e);
+        }
+        b.vy = -(inner.length ? b.dwellSpd : b.lanceSpd);   // 盒内驻留低速 / 盒外巡航速（快照已含静滞减成）
+        b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
+        if (b.y < -10 || b.x < -20 || b.x > CANVAS_W + 20) { pBullets.splice(i, 1); continue; }
+        if (inner.length) {
+          if (!b.hits) b.hits = new Set();
+          let destroyed = false;
+          for (const e of inner) {   // 首击：每敌一次
+            if (b.hits.has(e)) continue;
+            b.hits.add(e);
+            if (!lanceSettle(b, e, b.dmg)) { destroyed = true; break; }
+          }
+          if (!destroyed) {   // 穿刺计时（盒内递减；首击销毁则跳过）
+            b.tickT -= dt;
+            if (b.tickT <= 0) {
+              b.tickT += b.tickIv;
+              for (const e of inner) {
+                if (!lanceSettle(b, e, b.tickDmg)) { destroyed = true; break; }
+              }
+            }
+          }
+          if (destroyed) { pBullets.splice(i, 1); continue; }
+        }
+        continue;   // 长枪走专属移动与结算，不进通用碰撞区
+      }
       b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
       // 沿飞行方向加速至上限（友方大风暴风弹：暴风之眼技能6 同款风条弹道；其他我方弹无此字段不受影响）
       if (b.accel) {
@@ -123,8 +226,8 @@
       if (b.homing) {
         let tgt = null, bestD = Infinity;
         for (const e of enemies) {
-          if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
-          if (e.type === 'boss' && bossEntranceActive()) continue;
+        if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
+        if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;
           const dx = e.x - b.x, dy = e.y - b.y, d = dx * dx + dy * dy;
           if (d < bestD) { bestD = d; tgt = e; }
         }
@@ -171,11 +274,11 @@
         if (b.lastHit === e) continue;   // 穿透弹防同机重复结算（不再陵落飞剑：刚穿过的机体下一帧仍重叠）
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (e.dying) continue;   // 渐隐消逝中的暴风之眼：死亡演出期间不再受击
-        if (e.type === 'boss' && bossEntranceActive()) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算
+        if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算；词条（0:bad:5）虚化护盾同规则
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
           // 青时战舰召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）；
-          // 群星允诺暴走弹（僚机 b.wing + b.glow，守愿者 oval 弹除外）无视次数盾直接伤害
+          // 时空允诺暴走弹（僚机 b.wing + b.glow，群星守愿 oval 弹除外）无视次数盾直接伤害
           if ((e.chargeShield || 0) > 0 && !(b.wing && b.glow && !b.oval)) {
             e.chargeShield--;
             spawnParticles(b.x, b.y, '#ffffff', 6, 150);
@@ -191,17 +294,35 @@
           let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
             * (b.mainShot && e.type !== 'boss' && enemyGrade(e.type) !== '4S' ? CHAOS_SMALL_DMG_MUL : 1)
             * (b.princeStorm && isPoem() && e.type !== 'boss' ? PRINCE_STORM.poemNonBossMul : 1)   // 天秀风弹：诗篇对非 BOSS 敌人 ×3（2026-10-17 用户定稿；按实际命中目标判定，BOSS 不乘）
+            * (b.mainGun ? affixMainGunDamageMul() : 1)   // 词条保底正面（2026-11-11 用户定稿）：仅战机本体主炮弹乘算，僚机/副武器/转化导弹不乘
             * rewardOutMul();
           if (b.llSword && e.type === 'boss') dmg *= 0.8;
+          // 愧悔魂灵圣杯（2026-11-10 实装）：150px 淡金光环——范围内敌人受到的子弹伤害转移至圣杯本体
+          //（不修正，mul 1；转移结算为独立支线：光环目标不受伤，屏障/夏勇盾/冰封计数/原粒子全部跳过，
+          // 命中粒子改淡金色表现圣杯承接）。圣杯本体被子弹直击 ×1.25（「转移的伤害不算」——仅本体直击乘算）。
+          // 穿透弹打转移目标不触发穿透、一律销毁（简化口径，与次数盾挡弹同待遇）
+          const gt = grailRedirect(e, 'bullet');
+          if (gt) {
+            gt.g.hp -= dmg * pxpfChargeHurtMul(gt.g) * constructAltHurtMul(gt.g);   // 易伤按承接方圣杯判定
+            spawnParticles(b.x, b.y, '#ffe9b0', 4, 120);
+            pBullets.splice(i, 1);
+            if (gt.g.hp <= 0) killEnemy(enemies.indexOf(gt.g));
+            break;
+          }
+          if (e.type === 'guiltGrail') dmg *= GUILT_GRAIL.directBulletMul;   // 圣杯本体直击 ×1.25（2026-11-10 用户定稿）
           if (e.barrier > 0) {
             const abs = Math.min(e.barrier, dmg);
             e.barrier -= abs; dmg -= abs;   // 屏障优先吸收（dmg 需可变：吸收后余量继续扣血）
           }
           // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
           // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
-          e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e));   // 朴学峰冲刺易伤 ×2（守愿者对大型龙卷双判定已删除——2026-10-11 用户定稿）
+          e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e) * constructAltHurtMul(e));   // 朴学峰冲刺易伤 ×2（群星守愿对大型龙卷双判定已删除——2026-10-11 用户定稿）
+          affixFreezeNote(e, dmg);   // 词条（诗篇级 3:good:2）冰封：主武器/僚机/副武器弹命中与伤害计数
+          // 时流之雨：下一次攻击间隔 +0.3s（每轮射弹对同一敌人仅一次——e.rainVid 记录轮次 id 去重，
+          // BOSS 同样生效走 skillCd；应用全攻击计时通道见 06-enemy applyRainAttackDelay）
+          if (b.rain && e.rainVid !== b.volley) { e.rainVid = b.volley; applyRainAttackDelay(e); }
           spawnParticles(b.x, b.y, '#ffffff', 4, 120);
-          // 守愿者弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
+          // 群星守愿弹：卫护飞船（escort）无限穿透——不销毁、不消耗次数；其余 1类（side / prolifera）穿透一次（每发限一次）
           // mainPierce 结算（副武器激光弹 / 无界飞剑·暴走概率穿透 / 不再陵落螺旋飞剑）：对非 BOSS / 4类（主力舰・法术阵列）敌人穿透，
           // 不再陵落飞剑（mainPierce 2 + pierceStep 线性衰减）：每次穿透伤害 -20% 基准（100% → 80% → 60%，
           // 2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；衰减按 pierceBase 重算进 b.dmg，并记 lastHit 防同机重复结算）；
@@ -335,11 +456,12 @@
           if (sp > 0.001) { const ns = s.baseSpeed * f; b.vx = b.vx / sp * ns; b.vy = b.vy / sp * ns; }
           if (s.stopT <= s.decay * (1 - (s.frac || 0))) {
             const base = Math.random() * Math.PI * 2;   // 随机基准方向，各子弹间隔 360/N
+            const bs = affixHas('sp1') ? 0.5 : 1;   // 词条（特殊对 sp1）弹速迟缓：分裂子弹弹速 ×0.5（同 pushEBullet/pushBossBullet 口径）
             for (let k = 0; k < s.count; k++) {
               const ang = base + k * (Math.PI * 2 / s.count);
               eBullets.push({
                 x: b.x, y: b.y,
-                vx: Math.cos(ang) * s.speed, vy: Math.sin(ang) * s.speed,
+                vx: Math.cos(ang) * s.speed * bs, vy: Math.sin(ang) * s.speed * bs,
                 ax: 0, accel: 0, maxSpeed: 0,
                 r: s.r, len: s.len || 0, dmg: b.dmg, color: s.color, split: null, traveled: 0,
                 grad: !!s.grad,   // 径向渐变圆弹（白核→主色→暗橙红边，见 10-draw-world）
@@ -370,6 +492,19 @@
         b.holdT -= dt;
         if (b.holdT <= 0) { b.vx = Math.cos(b.burstAng) * b.v0; b.vy = Math.sin(b.burstAng) * b.v0; }
       } else if (!b.shieldBlocked) {
+        // 静滞区域（静滞虚幻，对敌生效的）：敌方子弹中心过境 → 永久标记（一次性）：弹速 ×0.6（-40%）、
+        // 伤害 ×0.75（-25%，直接乘 b.dmg——命中结算点无需另乘），此后不再恢复（用户定稿「双方子弹」同款）；
+        // 区域内的临时减速照常叠加（下方 fmZone，同寒冷区域先例）
+        if (!b.stasisHit) {
+          for (const z of frostZones) {
+            if (z.stasis && z.affectsEnemies && Math.hypot(b.x - z.x, b.y - z.y) <= z.r) {
+              b.stasisHit = true;
+              b.vx *= STASIS_UNREAL.bulletSpeedMul; b.vy *= STASIS_UNREAL.bulletSpeedMul;
+              b.dmg *= STASIS_UNREAL.bulletDmgMul;
+              break;
+            }
+          }
+        }
         // 奖励道具·寒霜发生器：弹道位于我方力场（160px）内时位移流速 ×0.7（弹速 -30%，2026-10-10 用户定稿由 -60% 下调；
         // 力场内敌机射速/移速仍维持 -60%，见 02-core enemyFieldFireMul / 04-spawn enemyFrostZoneMoveMul 同口径分支）
         const ffd = state.frostField;
@@ -466,7 +601,7 @@
         if (hit) eBullets.splice(i, 1);
         continue;
       }
-      // 守愿者白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效；
+      // 群星守愿白盾拦截（位于玩家量子护盾之前：盾在主机前侧，直射弹先碰白盾）；仅非导弹直射弹生效；
       // 蛋挞弹（b.tart：巨大蛋挞 tartSpin）豁免——白盾对其无任何影响（不截断不吸收，2026-10-04 二次定稿恢复原设定）
       if (bulwarkActive() && !b.tart) {
         if (b.laser) {
@@ -581,9 +716,52 @@
           }
         }
       }
+      // 群星之扉黑洞吞噬（state.blackhole，中心持续跟随玩家；2026-11-11 用户定稿）：圈内一切 eBullets
+      // 整颗吞——普通弹 / 长条弹 / 折线光束 / 巨大蛋挞（b.tart）/ 词条大蛋挞（b.affixTart）；
+      // 激光（b.laser）按覆盖段处理：「光束仅能吞噬覆盖的部分，其他部分还在」——尾段覆盖→尾端前移、
+      // 头段覆盖→截短 len、中段覆盖→拆两段（本颗留靠尾段、克隆承接靠头段，倒序遍历下新弹下帧起参与）、
+      // 整段覆盖→整颗吞。判定半径 rEff 与视觉同源（出现 0.15s 半径缓入）；不计数守望清弹成就；
+      // 铁砧导弹 / 暴鸰炸弹 / 寒冷静滞区域 / 脉冲矩阵震荡波不经 eBullets，不在吞噬范围（与守望清弹同口径）
+      const bhSw = state.blackhole;
+      if (bhSw && player.alive) {
+        const rEff = bhSw.r * Math.min(1, bhSw.t / bhSw.growT);
+        if (b.laser) {
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const ux = b.vx / sp, uy = b.vy / sp;
+          const fx = b.x - player.x, fy = b.y - player.y;
+          const A = fx * ux + fy * uy;                       // 线段参数化 |tail + t·u − C|² = rEff²：t² + 2At + B = 0
+          const Bq = fx * fx + fy * fy - rEff * rEff;
+          const D = A * A - Bq;
+          if (D >= 0) {
+            const sq = Math.sqrt(D);
+            const t0 = -A - sq, t1 = -A + sq;                // 两交点参数（t0 ≤ t1）
+            if (t1 >= 0 && t0 <= b.len) {
+              if (t0 <= 0 && t1 >= b.len) {                  // 整段覆盖 → 整颗吞
+                spawnParticles(b.x + ux * b.len * 0.5, b.y + uy * b.len * 0.5, '#8a97a8', 6, 150);
+                eBullets.splice(i, 1); continue;
+              } else if (t0 <= 0) {                          // 尾段覆盖 → 尾端前移到 t1（保留靠头段）
+                spawnParticles(b.x + ux * t1 * 0.5, b.y + uy * t1 * 0.5, '#8a97a8', 4, 130);
+                b.x += ux * t1; b.y += uy * t1; b.len -= t1;
+              } else if (t1 >= b.len) {                      // 头段覆盖 → 截短到 t0（保留靠尾段）
+                spawnParticles(b.x + ux * (t0 + b.len) * 0.5, b.y + uy * (t0 + b.len) * 0.5, '#8a97a8', 4, 130);
+                b.len = t0;
+              } else {                                       // 中段覆盖 → 拆两段：本颗保留靠尾段 [0,t0]，克隆承接靠头段 [t1,len]
+                const seg = Object.assign({}, b, { x: b.x + ux * t1, y: b.y + uy * t1, len: b.len - t1 });
+                spawnParticles(b.x + ux * t0, b.y + uy * t0, '#8a97a8', 3, 110);
+                spawnParticles(b.x + ux * t1, b.y + uy * t1, '#8a97a8', 3, 110);
+                b.len = t0;
+                eBullets.push(seg);
+              }
+            }
+          }
+        } else if (Math.hypot(b.x - player.x, b.y - player.y) < rEff) {
+          spawnParticles(b.x, b.y, '#8a97a8', 5, 130);
+          eBullets.splice(i, 1); continue;
+        }
+      }
       // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
       // 七日澜心水晶护盾：同样消解气泡内敌弹（粉色迸散）——成就「云心」按结晶护盾期间的消解数计数
-      if (!b.laser && player.alive &&
+      if (!b.laser && !b.affixTart && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r &&
           (player.shield > 0 || player.crystalShield > 0)) {
         // 巨大蛋挞（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）：量子/结晶护盾碰触可消散——
@@ -603,14 +781,15 @@
         continue;
       }
       // 命中判定：长条弹按胶囊体（判定点到弹体线段的最近距离）计算，普通弹按圆计算
+      // 词条（诗篇级 3:good:3）大蛋挞：友好体（affixTart）不与玩家判定（不伤不吃盾消解）
       let hitPlayer = false;
-      if (player.alive && player.invuln <= 0) {
+      if (player.alive && player.invuln <= 0 && !b.affixTart) {
         if (b.laser) {
           // 激光尾端锢定：胶囊体从 (b.x, b.y) 到 (b.x + ux*b.len, b.y + uy*b.len)
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const ux = b.vx / sp, uy = b.vy / sp;
           const py = player.y + PLAYER_CFG.hitOffsetY;
-          // 守愿者白盾截断：命中判定仅到 clipLen（盾前段），越盾部分不伤人
+          // 群星守愿白盾截断：命中判定仅到 clipLen（盾前段），越盾部分不伤人
           const effLen = b.clipLen != null ? Math.min(b.len, b.clipLen) : b.len;
           const tproj = clamp((player.x - b.x) * ux + (py - b.y) * uy, 0, effLen);
           hitPlayer = Math.hypot(player.x - (b.x + ux * tproj), py - (b.y + uy * tproj)) < PLAYER_CFG.hitRadius + b.r;
@@ -671,12 +850,20 @@
     if (kind === 'shield' && hasPilot('gongzhou')) {
       kind2 = 'hp';
       healPct = PILOTS.gongzhou.shieldHealPct;
+    } else if (kind === 'shield' && affixHas('1:good:0')) {
+      // 词条（具象级 1:good:0）：所有量子护盾道具变为血量增加道具（回复 25% 血量，不受掉落限制——
+      // 生成层即替换，叠盾掉率惩罚自然失效，口径同龚粥上方；回复量在 applyPowerupPickup 'hp' 分支统一改 25%）
+      kind2 = 'hp';
+      healPct = 0.25;
     }
     powerups.push({ x, y, kind: kind2, r, vy: rand(72, 99), vx: rand(-46, 46), healPct });   // 1.8x 原速(40~55)
   }
 
-  // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）
-  function applyPowerupPickup(p) {
+  // 道具拾取结算（本体碰撞与强制吸收近距离直吸共用）；
+  // viaRain = 时流之雨射弹触碰吸收（08-entities rainAbsorbAround 调用）：升级 / 暴走 / 量子护盾 / 结晶护盾
+  // 改「在剩余时长上直接增加」（突破常规重置式上限——2026-11-11 用户定稿）、回血超出上限部分转等额屏障；
+  // 其余道具（磁力菇等即时生效类）走常规分支（加算/重置语义无差别），小艺拾取回血 / 「忘了」计数照常
+  function applyPowerupPickup(p, viaRain) {
     achvNotePickup();   // 成就：UPUPUP——道具拾取计数（水晶不走本路径不计）
     // 小艺：拾取任意道具（水晶不走本路径）恢复生命——任意血量均回 5%，低于 40 改为 10%
     //（2026-10-12 用户定稿：取消原「血量低于 60 才回 5%、≥60 不回」门槛；阈值为血量点数、回复量按最大生命百分比）
@@ -695,11 +882,27 @@
       //   小艺拾取回血（上方）为独立机制不受影响
       //   龚粥：量子护盾道具在生成层替换为回血道具（spawnPowerup），道具对象带 healPct 0.20（覆盖常规 40%）；
       //   小艺+洄连携（2026-10-17 用户定稿）：回血道具额外回复 5% 生命上限——叠加在龚粥 20% 上即 25%（常规 40% 即 45%）
-      let healPct = p.healPct ?? HP_KIT_HEAL_PCT;
+      let healPct = p.healPct ?? (affixHas('1:good:0') ? 0.25 : HP_KIT_HEAL_PCT);   // 词条（具象级 1:good:0）：血量道具回复量改 25%
       if (hasPilot('xiaoyi') && currentArmor.id === 'hui') healPct += 0.05;
       const heal = Math.round((player.maxHp || PLAYER_CFG.maxHp) * healPct);
-      player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
-      spawnParticles(p.x, p.y, '#66e39a', 12, 160);
+      if (viaRain) {
+        // 时流之雨射弹吸收回血道具：回复照常（小艺/洄加成同分支生效），超出生命上限的部分转为等额屏障
+        // （非永久——青时战舰支援弹同款临时屏障通道：barrier/barrierMax 同步增长、持续 10s，随伤害
+        // 消耗 / 末 1s 衰减 / 到期消散；用户 2026-11-11 定稿）
+        const maxHp = player.maxHp || PLAYER_CFG.maxHp;
+        const healed = Math.min(heal, Math.max(0, maxHp - player.hp));
+        player.hp += healed;
+        const overflow = heal - healed;
+        if (overflow > 0) {
+          player.barrier += overflow;
+          player.barrierMax += overflow;
+          player.barrierT = 10;
+        }
+        spawnParticles(p.x, p.y, overflow > 0 ? '#cfe8ff' : '#66e39a', 12, 160);
+      } else {
+        player.hp = clamp(player.hp + heal, 0, player.maxHp || PLAYER_CFG.maxHp);   // 上限 = 当前装甲最大 HP
+        spawnParticles(p.x, p.y, '#66e39a', 12, 160);
+      }
     } else if (p.kind === 'bomb') {
       state.bombs = Math.min(state.bombs + 1, currentBombCap());   // 真我上限 2（mods.bombCap）+ 绷绷背包 +1（bombCapAdd）
       spawnParticles(p.x, p.y, '#ffb545', 12, 160);
@@ -707,8 +910,15 @@
       // 量子护盾：6 秒无敌，敌弹碰盾即消解，解除时清屏
       // 许凯狗冲刺期间不读条：仅吸收（无得分），护盾效果跳过
       if (state.pilotDashT <= 0) {
-        player.shield = SHIELD_DURATION;
-        player.shieldMax = SHIELD_DURATION;   // 读条分母同步
+        if (viaRain) {
+          // 时流之雨射弹吸收量子护盾：在剩余时长上直接增加（突破 6s 重置式上限——2026-11-11 用户定稿）；
+          // 读条分母同步抬升（12-ui 读条 = shield/shieldMax，超出部分仍满格显示）
+          player.shield += SHIELD_DURATION;
+          player.shieldMax = Math.max(player.shieldMax || 0, player.shield);
+        } else {
+          player.shield = SHIELD_DURATION;
+          player.shieldMax = SHIELD_DURATION;   // 读条分母同步
+        }
         spawnParticles(p.x, p.y, '#6fe3ff', 18, 200);
       }
     } else if (p.kind === 'crystalShield') {
@@ -716,16 +926,56 @@
       // 七日澜心结晶护盾同款——环绕 6s（ARMOR_SKILLS.lanxin.dur，与量子护盾同时长），消失时清弹
       // 许凯狗冲刺期间不读条：仅吸收，护盾效果跳过（与量子护盾同口径）
       if (state.pilotDashT <= 0) {
-        player.crystalShield = Math.max(player.crystalShield || 0, crystalShieldDur());   // 结晶护盾时长（炼金璃 5.2s / 基准 4s，01-config 单一入口）
-        if (currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——登记开启时是否 BOSS 战
+        const hadShield = (player.crystalShield || 0) > 0;
+        if (viaRain) {
+          player.crystalShield += affixCrystalShieldDur();   // 时流之雨：在剩余时长上直接增加（突破常规封顶——2026-11-11 用户定稿）
+        } else {
+          player.crystalShield = Math.max(player.crystalShield || 0, affixCrystalShieldDur());   // 结晶护盾时长（炼金璃 5.2s / 基准 4s；词条 1:good:3 -0.5s，03b-affix 统一入口）
+        }
+        affixResetShieldExt();   // 词条（1:good:6）：重获结晶护盾时清零「拾取水晶延长」累计
+        if ((!viaRain || !hadShield) && currentArmor.id === 'lanxin') achvNoteLanxinShieldStart(bossFlow.stage === 'fight');   // 成就：云心——常规拾取照常登记（原口径）；viaRain 加算续时不重复登记、不重置消弹计数
         spawnParticles(p.x, p.y, '#FFC0CB', 18, 200);
       }
     } else if (p.kind === 'berserk') {
       // 许凯狗冲刺期间不读条：仅吸收得分（+100），不进入暴走
       if (state.pilotDashT > 0) state.score += Math.round(100 * diffMods().scoreMul);
+      else if (viaRain) rainApplyBerserk();   // 时流之雨：等级升满 + 时长加算（突破重置式上限）
       else pickupBerserk();
     } else {
-      pickupKit();
+      if (viaRain) rainApplyKit();   // 时流之雨：升级套件加算变体（已暴走时在剩余时长上增加）
+      else pickupKit();
+    }
+    // 词条（具象级 1:good:2）：拾取任意道具时 10% 概率在顶部生成一个同类道具（文案「额外生成的爆弹不受掉落限制」
+    // 指生成无需消耗掉落概率——固定 10% 触发即满足；爆弹拾取侧 currentBombCap 自然封顶）
+    if (affixHas('1:good:2') && Math.random() < 0.1) {
+      spawnPowerup(rand(60, CANVAS_W - 60), 36, p.kind, 12);
+    }
+  }
+
+  // 时流之雨触碰吸收（08-entities updateBullets rain 分支逐帧调用）：
+  //   道具 = 弹体接触（dist < 弹判定半径 + 道具半径）——applyPowerupPickup(p, viaRain) 玩家直接结算；
+  //   水晶 = 弹体周身 absorbR（40px）小范围吸收——等同玩家拾取结算（得分/量表/成就/词条与 updateCrystals
+  //   直吸分支同款；受 0.1s 出生吸收延迟门控，absorbDelay 强制吸收通道不适用——射弹为空间接触判定）
+  function rainAbsorbAround(b) {
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const p = powerups[i];
+      if (Math.hypot(p.x - b.x, p.y - b.y) < b.r + p.r) {
+        applyPowerupPickup(p, true);
+        powerups.splice(i, 1);
+      }
+    }
+    for (let i = crystals.length - 1; i >= 0; i--) {
+      const c = crystals[i];
+      if ((c.age || 0) < CRYSTAL_ABSORB_DELAY) continue;   // 水晶掉出 0.1s 后才能被吸收（全部吸收途径统一门控）
+      if (Math.hypot(c.x - b.x, c.y - b.y) < b.absorbR) {
+        state.score += Math.round(c.val * diffMods().scoreMul);
+        state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);   // 天秀忧郁王子：水晶得分不计入白色量表
+        armorSkillGain(c.val, c.firstBoss);   // 七日澜心：按水晶得分等比填充技能量表
+        if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石：成就计数 + 萧杨收集计数
+        affixCrystalExtend();   // 词条（具象级 1:good:6）：拾取水晶延长结晶护盾
+        spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
+        crystals.splice(i, 1);
+      }
     }
   }
 
@@ -793,6 +1043,7 @@
         state.score += Math.round(c.val * diffMods().scoreMul);
         state.princeCrystalGain += Math.round(c.val * diffMods().scoreMul);
         if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
+        affixCrystalExtend();   // 词条（具象级 1:good:6）：拾取水晶延长结晶护盾（+0.1s/颗，总延长至多 2s）
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
         continue;
@@ -822,6 +1073,7 @@
             // （firstBoss：首轮 BOSS 掉落水晶，量表收益额外加成；护盾期间量表停计，见 armorSkillGain）
             armorSkillGain(c.val, c.firstBoss);
             if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
+            affixCrystalExtend();   // 词条（具象级 1:good:6）：拾取水晶延长结晶护盾（+0.1s/颗，总延长至多 2s）
             spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
             crystals.splice(i, 1);
             continue;
@@ -843,6 +1095,7 @@
         // 七日澜心：按水晶【得分】等比填充技能量表（同上，后续新增水晶类型自动计入）
         armorSkillGain(c.val, c.firstBoss);
         if (c.tier === 'giant') { achvNoteGiantCrystal(); noteGachaStone(); }   // 原石（巨型水晶）：成就计数 + 当局收集计数/16 颗里程碑
+        affixCrystalExtend();   // 词条（具象级 1:good:6）：拾取水晶延长结晶护盾（+0.1s/颗，总延长至多 2s）
         spawnParticles(c.x, c.y, '#9be7ff', 5, 120);
         crystals.splice(i, 1);
       }

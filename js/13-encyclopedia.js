@@ -18,6 +18,7 @@
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';
   import { renderInfoAchievements } from './02-achievements.js';
+  import { AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_UNIMPLEMENTED } from './03b-affix.js';   // 词条（BOSS 后三选一）数据单一来源：03b-affix 运行时持有文案与实装状态，本页单向导入仅作图鉴展示（03b 不反向 import 本页，防循环）
 
 
 
@@ -30,7 +31,7 @@
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'fashiMatrix', 'popian', 'popianU', 'voyager', 'fashiA1', 'douzhi', 'sponsor', 'sponsorDeluxe', 'collapseConstruct', 'beyondWing_red', 'beyondWing_blue', 'beyondWing_violet', 'beyondWing_cyan', 'beyondWing_pink'] },   // 赤红/烈橙/幽蓝/紫晶/霜白（紫晶之下）/坚垒(黄)/幽暮(黑) + 矩阵/破片/破片U/浮海飘航者/A1/斗志/赞助/豪华 + 2D 坍缩构造体 / 2C 超越艇五变体（2026-10-19 占位，按登记规则暂置本页最下方）
     { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal', 'harbingerLead', 'harbingerHub', 'harbingerPolar', 'stasisUnreal', 'cocoonDream', 'lanxinShip_blue', 'lanxinShip_white', 'lanxinShip_black', 'lanxinShip_violet', 'lanxinShip_pink'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻 + 先兆者家族三变种（3B/3C/3D，2026-10-16 按登记规则暂置本页最下方）+ 3D 静滞虚幻 / 3E 破茧之梦 / 3C 澜心舰五变体（2026-10-19 占位，同上）
     // 诗篇级：张华&张策 = wip 白方块占位，其余全部实装（专属外观预览）；四精英顺序 = 朴→夏→韩→辛
-    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-10-19 占位，按登记规则暂置本页最下方）
+    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-11-10 实装转正，仍置本页末位）
 
     // 长歌级：黑暗之手紧跟旧日之歌下方（2026-10-01 用户定稿排序）；5D/5E 占位（2026-10-19）置本页最下方
     { name: '长歌级', entries: ['boss', 'boss_darkhand', 'boss_storm', 'boss_storm2', 'returnStar', 'starsVoice'] },
@@ -203,12 +204,12 @@
     fashiArray: {
       name: '法术阵列', type: 'fashiArray', color: '#c22b3d', hp: 3500, score: 1200,   // 分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
       pvZoom: 1.45,   // 详情预览放大：三菱形+底座的视觉尺寸紧凑，按碰撞盒适配会显得偏小
-      desc: '能朝玩家附近发射旋转的大正四面体射弹，飞行随机行程（射程的 30%~60%）后分裂为 3 枚正方体射弹（三枚夹角互为 120°、其中一枚沿原瞄准方向）。<br>就位后每5s在身侧召唤一个法术矩阵，首次召唤缩短为2.5s。<br>死亡时召唤一个法术矩阵。<br>在场时增强所有法术矩阵：偏移角增至 ±25°、正方体速度 +10%<br>到达停留点后会随机漂移。',
+      desc: '能朝玩家附近发射旋转的大正四面体射弹，飞行随机行程（射程的 30%~60%）后分裂为 3 枚正方体射弹（三枚夹角互为 120°、其中一枚沿原瞄准方向）。<br>就位后每5s在身侧召唤一个法术矩阵，首次召唤缩短为2.5s；每召唤一个法术矩阵，后续召唤间隔就永久减少0.5s（至多减少2s，即最短3s）。<br>死亡时召唤一个法术矩阵。<br>在场时增强所有法术矩阵：偏移角增至 ±25°、正方体速度 +10%<br>到达停留点后会随机漂移。',
     },
 
     warMatrix: {
       name: '战争矩阵', type: 'warMatrix', color: '#7a3b2e', hp: 4000, score: 1200,   // 血量 4000（2026-10-17 用户定稿，原 4500 作废）、诗篇 8000（POEM_HP.warMatrix）；分数 1200 同法术阵列（总表待同步）
-      desc: '登场的横置巨型法术矩阵，本体轮廓 1:1.8 同法术矩阵比例。<br>登场时在停留位（屏高 18%~28% 随机）原地播放演出：红色门框与菱形落点框同时描画（0.75s）→ 闪亮 → 本体浮现并触发菱形冲击波，期间虚化不受伤害、炮弹穿过、与机体互穿。<br>随后胡乱移动（同法术矩阵、速度降低），30s 后向下加速离场。<br>碰撞伤害 50；分数与水晶掉落同法术阵列。<br>技能（初始随机后循环，间隔 1.5~2.4s）：①顶部卫星下移至底排、底部卫星外移，四卫星朝核心正上方随机一点（玩家上方 0~25% 屏高）同射程齐射 ②移速降至 20%，核心红圈收缩 0.4s 后朝下直射红色大正方体（三轴翻滚，法术阵列旧版大正方体样式），其每移动 18%~30% 屏高向左右横裂出无射程限制的小正方体（初速 0、1s 加速到全速）③四卫星朝下扇形齐射（上排偏 5°、下排偏 20°~40°）④核心发射大号正四面体（法术阵列同款），分裂行程同法术阵列，裂为 4/诗篇 5 枚均匀角度小正方体 ⑤四卫星同角度齐射（虚象/具象为下方 150° 内随机、真我/诗篇为下方 100° 内随机）。',
+      desc: '登场的横置巨型法术矩阵，本体轮廓 1:1.8 同法术矩阵比例。<br>登场时在停留位（屏高 18%~28% 随机）原地播放演出：红色门框与菱形落点框同时描画（0.75s）→ 闪亮 → 本体浮现并触发菱形冲击波，期间虚化不受伤害、炮弹穿过、与机体互穿。<br>随后胡乱移动（同法术矩阵、速度降低），30s 后向下加速离场。<br>碰撞伤害 50；分数与水晶掉落同法术阵列。<br>技能（初始随机后循环，间隔 2.4~2.8s，赤红主力舰同款）：①顶部卫星下移至底排、底部卫星外移，四卫星朝同一点同射程齐射（水平为玩家瞬间位置、竖直为玩家上方 0~25% 屏高随机）②移速降至 20%，核心红圈收缩 0.4s 后朝下直射红色大正方体（三轴翻滚，法术阵列旧版大正方体样式），其每移动 15%~27% 屏高向左右横裂出无射程限制的小正方体（初速 0、1s 加速到全速）③四卫星朝下扇形齐射（上排偏 5°、下排偏 20°~40°）④核心发射大号正四面体（法术阵列同款），分裂行程同法术阵列，裂为 4/诗篇 5 枚均匀角度小正方体 ⑤四卫星同角度齐射（虚象/具象为下方 70° 内随机、真我/诗篇为下方 60° 内随机）。',
     },
 
     capital_crimson: {
@@ -312,7 +313,7 @@ boss_storm: {
       name: '卫护飞船', type: 'escort', color: '#6a5ce0', hp: 1, score: 20,
       pvZoom: 0.6,   // 小体型衍生体：预览/缩略图按接近实机大小展示（默认 1.7 上限会放大到失真）
       parent: 'prolifera', derived: true,
-      desc: '增生侧翼艇阵亡时分裂出的衍生体（每艘分裂 <b>0~3</b> 个）：深蓝紫小三角（与水晶的浅蓝明显区分）。<b>无攻击</b>，沿母舰原航向漂移；碰撞 <b>10</b>、造成的无敌时间仅为常规的 <b>40%</b>（0.48s）。<b>不掉落任何水晶与道具</b>（守愿者弹对其无限穿透）。不计入场面压力。',
+      desc: '增生侧翼艇阵亡时分裂出的衍生体（每艘分裂 <b>0~3</b> 个）：深蓝紫小三角（与水晶的浅蓝明显区分）。<b>无攻击</b>，沿母舰原航向漂移；碰撞 <b>10</b>、造成的无敌时间仅为常规的 <b>40%</b>（0.48s）。<b>不掉落任何水晶与道具</b>（群星守愿弹对其无限穿透）。不计入场面压力。',
     },
     tornado: {
       name: '大型龙卷', type: 'tornado', color: '#eaf6ff', hp: 3600, score: 0,
@@ -354,7 +355,7 @@ boss_storm: {
     warGhost: {
       name: '战争幽灵', type: 'warGhost', color: '#ffd24a', hp: 4200, score: 1400,   // 分数 1400（2026-10-13 用户定稿 1300→1400，总表待同步）
       lore: '“战争幽灵”曾是一支传奇雇佣舰队，在他们建立起血腥名号之后，雇佣兵和赏金猎人开始把那些强大、残酷、身经百战的战舰同样称作此名。其实力强大，且精于操纵多种空援无人战舰。',
-      desc: '登场前屏幕外出现预警，一段时间后自身高速冲刺入场，对路径上的我方战机造成高伤害和强力击退。初始技能随机为②或③，技能循环如下：<br>①两刃斩击：正前方两侧各 150° 扇面预警，预警结束原地扫斩。<br>②双斩流：双斩线跟随玩家 0.4s 后锁定（锁定后机体停止转向）0.65s，随后两刃同出、共用锁定方向平行直射（1456px/s，35 伤害 / 道、每道命中一次）；<br>③环形弹幕：连续三波径向齐射。每波取随机基准方向及与之互成 120° 的三个方向，每方向齐射 3 发扇形加速大型子弹。<br>在场时，场上所有破片、破片U型、铁砧移速与加速度翻倍。<br>血量首次降至 50% 时于自身左右身侧略微后方召唤一架铁砧与一架破片U型。<br>驻留 30s 后瞄准玩家所在直线释放 1s 预警，随后高速斩出、冲刺离场。<br>技能释放间隔为 1.6s，真我/诗篇改为 1.3s；每释放一次技能，技能间隔就减少 0.1s，技能间隔不低于 0.3s；不会拥有驻留增压修正。',
+      desc: '登场前屏幕外出现预警，一段时间后自身高速冲刺入场，对路径上的我方战机造成高伤害和强力击退。初始技能随机为②或③，技能循环如下：<br>①两刃斩击：正前方两侧各 150° 扇面预警，预警结束原地扫斩。<br>②双斩流：双斩线跟随玩家 0.4s 后锁定（锁定后机体停止转向）0.65s，随后两刃同出、共用锁定方向平行直射（1456px/s，35 伤害 / 道、每道命中一次）；<br>③环形弹幕：连续三波径向齐射。每波取随机基准方向及与之互成 120° 的三个方向，每方向齐射 3 发扇形加速大型子弹。<br>在场时，场上所有破片、破片U型、铁砧移速与加速度翻倍。<br>血量首次降至 50% 时于自身左右身侧略微后方召唤一架铁砧与一架破片U型。<br>驻留 30s 后瞄准玩家所在直线释放 1s 预警，随后高速斩出、冲刺离场。<br>技能释放间隔为 1.3s，真我/诗篇改为 1.1s；每释放一次技能，技能间隔就减少 0.1s，技能间隔不低于 0.3s；不会拥有驻留增压修正。',
     },
     boss_darkhand: {
       name: '黑暗之手', type: 'boss', bossId: 'darkhand', color: '#c22030', hp: 48000, score: 4000,   // 具象血量 48000（2026-10-03 用户定稿调整；2026-10-12 用户定稿虚象 40000→36000、诗篇 90000→80000；2026-10-14 用户定稿真我 70000→64000——36000/48000/64000/80000，总表待同步；四难度表见 01-config DARKHAND.hpByDiff）；主题色黑红化（2026-10-03，原紫 #b04ad4）；分数 4000（2026-10-10 按怪物属性总表同步，原 0）
@@ -399,24 +400,22 @@ boss_storm: {
     // ---------- 2026-10-19 占位批次（16 条，用户定稿登记）：wip 白方块占位，名称与（颜色）后缀、「归星」书名号均按用户原文；
     // 等级代号见 01-config ENEMY_GRADES（图鉴名称行右侧角标自动拼出「2D 坍缩构造体」等），实装时逐个换专属外观/数值/机制 ----------
     collapseConstruct: {
-      name: '坍缩构造体', type: 'collapseConstruct', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '坍缩构造体', type: 'collapseConstruct', color: '#e9edf5', hp: 80, score: 1,   // 诗篇 360（POEM_HP 覆写）；2026-11-11 实装转正（原 2026-10-19 占位条目作废）；分数/水晶 1/1（用户定稿）；标签色取黑白配色的白
+      desc: '被浓烈黑雾环绕的圆状构造体，左右两侧延伸出黑色细杆，中心为白色四芒星形态的核心（边缘微微泛红）。<br><b>移动方式极为特殊</b>——按两种逻辑之一行动（登场时随机），且都会在首次路径走完后<b>立刻瞬移</b>到对称位置、从镜像侧重新走一遍再离场：<br>①从侧翼屏高 <b>20%~40%</b> 登场，走「[」或「]」形路径：朝另一侧横移 <b>70%~90% 屏宽</b> → 竖直下移 <b>50% 屏高</b> → 朝出生侧横移；走完后瞬移到当前位置的<b>水平镜像位</b>（保持当前状态），然后朝场内横移 → <b>上移 50% 屏高</b> → 反向横移离场（这一次从底部开始）；<br>②从顶部屏宽 <b>10%~30%</b> 或 <b>70%~90%</b> 区域登场，竖直下移 <b>60%~90% 屏高</b> → 朝出生的另一侧横移 <b>60% 屏宽</b> → 上移；走完后瞬移到与当前位置水平位置相同的<b>底部</b>，然后上移 <b>60%~90% 屏高</b> → 朝出生侧横移 <b>60% 屏宽</b> → 下移离场。<br><b>攻击时刹停</b>（同法术大师 A1）：攻击计时到点即刹停停稳、停稳后立即朝玩家发射一枚<b>红橙色与暗蓝色渐变的圆形子弹</b>（带拖尾），造成 <b>20 伤害</b>，随后再静止 <b>0.15s</b> 收势后恢复移动；<b>射击间隔为浮海飘航者的 60%</b>（诗篇难度改为 45%），登场后首次攻击 <b>1s</b>。<br><b>随所处屏幕高度获得伤害修正</b>（线性变化）：处于<b>最上方</b>时受到的伤害 <b>-50%</b>、屏幕<b>中间</b>无修正、<b>最下方</b>时受到的伤害 <b>+50%</b>。<br>能从侧翼入场。速度非常快（<b>255</b>）。大小同法术大师 A1，碰撞伤害 <b>35</b>。击坠掉落 <b>1</b> 颗水晶。血量 <b>80</b>（诗篇 <b>360</b>）。',   // 机制描述按实装口径（lore 未提供故不写——图鉴文案纪律）
     },
     stasisUnreal: {
-      name: '静滞虚幻', type: 'stasisUnreal', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '静滞虚幻', type: 'stasisUnreal', color: '#d9a94b', hp: 700, score: 1,   // 诗篇 1800（POEM_HP 覆写）；2026-11-11 实装转正（原 2026-10-19 占位条目作废）；分数 1 / 水晶 1 均为待定占位（用户定稿，后续统一设计）
+      desc: '能够投掷一次自身携带的静滞炸弹，对玩家造成 32 伤害并留下静滞区域：区域内我方战机与敌人移动速度 -70%，经过静滞区域的双方子弹弹速此后均减少 40% 且伤害降低 25%。索敌半径与遗留区域同虚幻，静滞区域持续 5.5~7.5s（比虚幻长 2.5s）。<br>玩家进入索敌半径后，停止移动、在玩家位置浮现暗金色预警区，随后炸弹脱离，经 0.6~0.8s 低速下坠再极速加速冲向预警区中心爆炸。<br>预警区形成前被击毁则原地殉爆，对周围 200px 内所有敌方单位造成 600 + 20% 最大生命伤害（封顶 2000，可连锁殉爆），并留下一片只对敌人和敌方子弹生效的静滞区域；预警区一旦形成，炸弹即视为脱离，击坠虚幻也无法终止，炸弹仍将抵达目标位置并爆炸。<br>能从顶部和侧翼入场，从侧翼入场时，需要经过 2s（诗篇 1.6s）才能投弹。',   // 机制描述按实装口径（lore 未提供故不写——图鉴文案纪律）
     },
     cocoonDream: {
-      name: '破茧之梦', type: 'cocoonDream', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '破茧之梦', type: 'cocoonDream', color: '#eef0f6', hp: 5000, score: 1,   // 诗篇 9000（POEM_HP.cocoonDream 覆写）；2026-11-11 实装转正（原 2026-10-19 占位条目作废）；击坠分数 1 / 掉落水晶 1（用户定稿）
+      desc: '仅从侧翼入场的高血量蛾形敌人：自屏高 20%~40% 处出现后横移 70%~90% 屏宽，再下移 50% 屏高，折返朝出生侧移动 60% 屏宽，随后上移 45% 屏高，再朝出生侧另一边移动 65% 屏宽并再次下移 50% 屏高，最后朝出生侧移动直至离场。移动速度为法术大师A1 的 125%，攻击时刹停：标记玩家瞬时位置，朝该位置发射五连子弹（弹速与威龙子弹相同），子弹带有向左或向右最多 5° 的随机偏移角（共 10° 范围）。攻击间隔 1.6s（诗篇 1.4s），碰撞伤害 35，击坠掉落 1 颗水晶。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     guiltGrail: {
-      name: '愧悔魂灵圣杯', type: 'guiltGrail', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '愧悔魂灵圣杯', type: 'guiltGrail', color: '#6f6a5c', hp: 9000, score: 1,   // 诗篇 27000（POEM_HP.guiltGrail 覆写）；2026-11-10 实装转正（原 2026-10-19 占位条目作废）
+      pvZoom: 0.4,   // 预览缩小：150px 光环（直径 300+）远大于 96 碰撞盒，不缩则光环在预览离屏（max(w,h)×1.9）中被裁切。
+                     // 测试1 形象评审大画幅不沿用本条目 mock——renderInfoBullets 内派生对象覆盖 pvZoom/pvNoAura/pvDrawScale（杯身适配放大 + 省光环 + 高分辨率）
+      desc: '不攻击的光环承伤体：周身 150px 淡金光环将范围内所有敌人受到的伤害转移至自身。无法转移爆弹、萧杨抽卡等特殊的强大全屏伤害，且自身受到爆弹、抽卡伤害时立刻被击坠。本体直接受到子弹攻击（转移的伤害不算，群星之杀这类非子弹伤害不算）时此伤害增加 25%；受到转移的非强力范围伤害（如群星之杀斩击、捣蛋来袭爆炸伤害；辛国栋之怒这类持续伤害不转移）时减少 20%。停留于屏高 20%~25% 缓慢游走，不攻击，碰撞伤害 60，击坠掉落 1 颗水晶。',   // 机制描述按实装口径（desc 不受 lore 纪律约束；lore 未提供故不写）
     },
     returnStar: {
       name: '「归星」', type: 'returnStar', color: '#8a93a6', hp: 0, score: 0,
@@ -992,6 +991,7 @@ boss_storm: {
               // 绘制门控（09b 浮海尾鳍 / 10 精英尾焰消费）：小图缩略图 true = 旧静帧（尾鳍对称、无精英尾焰）；
               // 大图 live 渲染 false = 常态动效照常播放（2026-10-17 回调：动效仅大图，小图不注入任何动效字段）
               encyPreview: !live,
+              pvNoAura: spec.pvNoAura || null,   // 圣杯测试1 形象评审：大画幅省光环（drawGuiltGrailBody 门控消费）
               // ── 常态动效 mock（仅 live 大图展开；小图保持改动前的静帧 mock，一个动效字段都不带）──
               ...(live ? {
                 wobble: 0,
@@ -1038,7 +1038,7 @@ boss_storm: {
   // 单画布 rAF 循环：showEncyDetail 启动 / closeEncyclopedia 或画布随详情面板重建离场时自停。
   // isConnected 仅在真实 DOM 上为 boolean——smoke 无头画布桩返回桩值（非 boolean）→ 只同步渲染首帧、不入循环，
   // 保证 smoke 不因逐帧预览渲染而拖慢/超时。
-  let pvAnimRaf = 0, pvAnimEntry = null, pvAnimCvs = null;
+  let pvAnimRaf = 0, pvAnimEntry = null, pvAnimCvs = null, pvAnimW = 220, pvAnimH = 140;
   function stopEncyPreviewLoop() {
     if (pvAnimRaf) cancelAnimationFrame(pvAnimRaf);
     pvAnimRaf = 0; pvAnimEntry = null; pvAnimCvs = null;
@@ -1047,13 +1047,16 @@ boss_storm: {
     pvAnimRaf = 0;
     if (!pvAnimEntry || !pvAnimCvs) return;
     if (!pvAnimCvs.isConnected) { stopEncyPreviewLoop(); return; }   // 详情面板已重建/移除
-    drawEncyPreview(pvAnimEntry, pvAnimCvs, 220, 140, false, true);
+    drawEncyPreview(pvAnimEntry, pvAnimCvs, pvAnimW, pvAnimH, false, true);
     pvAnimRaf = requestAnimationFrame(pvAnimFrame);
   }
-  function startEncyPreviewLoop(d, cvs) {
+  // w/h 可选尺寸（默认 220×140 条目详情同款）：测试1 形象评审页用更大画幅（圣杯光环直径 300+ 世界像素，
+  // 220×140 下仅勉强入图）。单槽循环：同一时刻只有一处 live 预览（详情页 / 测试1 页互斥，切页自停）
+  function startEncyPreviewLoop(d, cvs, w = 220, h = 140) {
     stopEncyPreviewLoop();
     if (!cvs) return;
-    drawEncyPreview(d, cvs, 220, 140, false, true);   // 首帧同步渲染（覆盖 smoke 无头路径的渲染验证）
+    pvAnimW = w; pvAnimH = h;
+    drawEncyPreview(d, cvs, w, h, false, true);   // 首帧同步渲染（覆盖 smoke 无头路径的渲染验证）
     if (typeof cvs.isConnected !== 'boolean' || !cvs.isConnected) return;   // 无头桩：不入循环
     pvAnimEntry = d; pvAnimCvs = cvs;
     pvAnimRaf = requestAnimationFrame(pvAnimFrame);
@@ -1987,12 +1990,12 @@ boss_storm: {
   // 僚机 DPS（左右两架合计）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
   function wingmanDps(level, wingman) {
     if (!wingman || wingman.empty) return 0;
-    // fan 模型（守愿者）：错序扇形，周期=interval、周期内发 count 发；DPS = count*dmg/interval
+    // fan 模型（群星守愿）：错序扇形，周期=interval、周期内发 count 发；DPS = count*dmg/interval
     if (wingman.weapon && wingman.weapon.kind === 'fan') {
       const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
       return cfg.count * cfg.dmg / cfg.interval * (level === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%（弹速 +50% 不影响 DPS）
     }
-    // volley 模型（群星允诺）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
+    // volley 模型（时空允诺）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
     const lv = WINGMAN_LEVELS[level] || WINGMAN_LEVELS[1];
     const perCycle = lv.volleys.reduce((a, b) => a + b, 0);
     const cycleTime = (lv.volleys.length - 1) * WINGMAN.volleyGap + lv.interval;
@@ -2023,14 +2026,14 @@ boss_storm: {
     };
     if (kind === 'plane') { c.scale(0.5, 0.5); paintShip(c, 0, plane || currentPlane, 0, true); }   // still：paintShip 内补画尾焰（原调用缺省 still=false：无尾焰，无垠战机还会吃到动态流光特效）
     else if (wingman && wingman.weapon && wingman.weapon.kind === 'fan') {
-      // 守愿者：冷蓝机体 + 前方白盾（缩小以容纳盾）；左右反转与选机卡一致
+      // 群星守愿：冷蓝机体 + 前方白盾（缩小以容纳盾）；左右反转与选机卡一致
       // 盾弧向外侧扫 110°（镜像后甩向一边），按盾+本体 bbox 平移回画布中心
       c.scale(-0.62 * BULWARK.scale, 0.62 * BULWARK.scale); c.translate(-13.6, 12.75);
       flame(3, 5, 16.6, 3, 'rgba(190, 225, 255, 0.9)', 'rgba(120, 185, 255, 0.5)', 'rgba(70, 140, 230, 0)');   // 壁垒常态焰：焰根对齐本体中线 x=+3
       paintWingmanBulwark(c, 1, false, 0.25, true);
     }
       else {
-        const sw = wingman.scale || 1;   // 群星允诺整体尺寸系数（与游戏内/选机卡同源 ×1.045）
+        const sw = wingman.scale || 1;   // 时空允诺整体尺寸系数（与游戏内/选机卡同源 ×1.045）
         c.scale(-0.95 * sw, 0.95 * sw);   // 左右反转，与选机卡一致
         flame(0, 8, 11, 3, 'rgba(190, 170, 255, 0.9)', 'rgba(140, 120, 255, 0.5)', 'rgba(110, 90, 230, 0)');   // 僚机常态紫焰
         paintWingman(c, 1, false, true);   // still 冻结相位（第 5 参 spreadT=暴走展开进度，常态 berserk=false 不绘制；历史调用误传第 5 参问题已随签名扩展消解）
@@ -2125,7 +2128,17 @@ boss_storm: {
   }
   // 副武器裸 DPS：常规弹 = 弹数 × 单发伤害 ÷ 间隔；捣蛋来袭 / 辛国栋之怒 = 表内标注 DPS（灼烧按持续触及单一敌人计）
   // 暴走（Lv5）全局修正：辛国栋之怒 = 灼烧伤害 +50%（subDmgMul）；其余 = 射速 +50%（subRateMul，弹速 +50% 不影响 DPS）——DPS 均为基准 ×1.5
+  // 坠星长枪专属口径（zhuixingDps）：对高 90px 大型敌机（悬停、全部命中）——驻留时长 = 90/75 = 1.2s、
+  // 穿刺数 n = floor(1.2/0.2) = 6，单枪总伤 = 首击 + 6×穿刺；窄体 / 快速下坠目标实际命中枪数与 tick 更少
+  //（interval 全档为配置绝对值——暴走 1.6 不吃 subRateMul/subDmgMul，伤害已在 Lv5 档配平口径 640）
+  const ZHUIXING_DPS_BOX_H = 90;   // 坠星长枪 DPS 口径敌机碰撞盒高（px）
+  function zhuixingDps(w, lv) {
+    const c = subWeaponLv(w, lv);
+    const nTick = Math.max(0, Math.floor(ZHUIXING_DPS_BOX_H / w.fire.dwellSpeed / w.fire.tick));
+    return c.count * (c.dmg + nTick * c.tickDmg) / c.interval;
+  }
   function subWeaponDps(w, lv) {
+    if (w.fire.kind === 'zhuixing') return zhuixingDps(w, lv);   // 坠星长枪：大体积特攻口径（全档绝对间隔，暴走不吃全局修正）
     const c = subWeaponLv(w, lv);
     const base = c.dps != null ? c.dps : (c.count || 1) * c.dmg / c.interval;
     if (lv === 5) return base * (w.fire.kind === 'xinring' ? BERSERK.subDmgMul : BERSERK.subRateMul);
@@ -2154,6 +2167,15 @@ boss_storm: {
     } else if (kind === 'xinring') {
       rows.push({ label: w.name + '·灼烧 DPS', fmt, vals: vals((c, lv) => String(lv === 5 ? Math.round(c.dps * BERSERK.subDmgMul) : c.dps)) });
       rows.push({ label: w.name + '·半径 / 间隔(s)', fmt, vals: vals(c => `${c.r} / ${c.interval}`) });   // 辛国栋之怒射速不变：间隔显示配置原值
+    } else if (kind === 'shiliuRain') {
+      rows.push({ label: w.name + '·单发伤害', fmt, vals: vals((c, lv) => String(c.dmg)) });
+      rows.push({ label: w.name + '·射弹数 / 间隔(s)', fmt, vals: vals((c, lv) => `${c.count} / ${fmtN(effIv(c, lv))}`) });
+      rows.push({ label: w.name + '·攻击延迟 / 水晶吸收半径', fmt, vals: INFO_FIRE_LEVELS.map(() => `${w.fire.atkDelay}s / ${w.fire.absorbR}px`) });
+    } else if (kind === 'zhuixing') {
+      rows.push({ label: w.name + '·首击伤害', fmt, vals: vals(c => String(c.dmg)) });
+      rows.push({ label: w.name + '·穿刺伤害(每0.2s)', fmt, vals: vals(c => String(c.tickDmg)) });
+      rows.push({ label: w.name + '·长枪数 / 间隔(s)', fmt, vals: vals(c => `${c.count} / ${fmtN(c.interval)}`) });   // interval 全档为配置绝对值（暴走 1.6 不吃 subRateMul，不用 effIv）
+      rows.push({ label: w.name + '·驻留 / 巡航弹速', fmt, vals: INFO_FIRE_LEVELS.map(() => `${w.fire.dwellSpeed} / ${w.fire.speed}`) });
     }
   }
 
@@ -2193,7 +2215,7 @@ boss_storm: {
     }
     infoBody.appendChild(buildDpsTable(headers, dpsRows));
     infoBody.appendChild(buildDpsTable(['副武器 / 参数', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5' : 'Lv' + lv)], paramRows));
-    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与叮咚鸡导弹完全同款（600 溅射 / 低区直击 200，表中 DPS 按爆炸伤害折算；每发发射后 10% 概率 0.3s 后连射一发，连射弹同样可继续连射、伤害一律为正常导弹的 60%（固定不递减））；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。暴走（Lv5）为限时 4s 形态，Lv5 列已含暴走全局修正：<b>捣蛋来袭 / 无界飞剑 / 极夜流光</b> = 射速 +50%、弹速 +50%（间隔行显示修正后有效值）；<b>辛国栋之怒</b> = 灼烧伤害 +50%（射速 / 弹速 / 半径不变，灼烧 DPS 行显示修正后值）。');
+    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与叮咚鸡导弹完全同款（600 溅射 / 低区直击 200，表中 DPS 按爆炸伤害折算；每发发射后 10% 概率 0.3s 后连射一发，连射弹同样可继续连射、伤害一律为正常导弹的 60%（固定不递减））；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。<b>时流之雨</b>左右发射口各 4 条、最靠两侧先发依次到内；初始横向速度朝各自一侧（自外向内依次减小）并指数衰减归零——弹道弯曲；射弹触碰道具玩家直接结算（升级 / 暴走 / 量子护盾 / 结晶护盾改为在剩余时长上增加对应时长，突破常规重置式上限；回血超出上限部分转等额非永久屏障），周身 40px 吸收水晶；命中敌人下一次攻击间隔 +0.3s（每轮射弹对同一敌人仅一次，BOSS 生效）。<b>坠星长枪</b>为垂直直射无限穿透弹：表中 DPS 为<b>大体积特攻口径</b>（对高 90px 悬停大型敌机、全部命中——首击 + 驻留期每 0.2s 一次穿刺；窄体 / 快速下坠目标实际命中枪数与穿刺数更少）；暴走 4 支出射点横向均布、外侧两支错峰 0.2s，间隔 1.6s 为暴走绝对值（不吃全局修正，伤害已配平）。暴走（Lv5）为限时 4s 形态，Lv5 列已含暴走全局修正：<b>捣蛋来袭 / 无界飞剑 / 极夜流光 / 时流之雨</b> = 射速 +50%、弹速 +50%（间隔行显示修正后有效值）；<b>辛国栋之怒</b> = 灼烧伤害 +50%（射速 / 弹速 / 半径不变，灼烧 DPS 行显示修正后值）；<b>坠星长枪</b>为专属形态（4 枪 + 伤害提升已直接配平在 Lv5 档，间隔行显示配置绝对值）。');
   }
 
   // ---------- 驾驶员：PILOTS 注册表驱动（desc 详细机制文案；与主菜单卡片简短文案 brief 区分） ----------
@@ -2337,190 +2359,94 @@ boss_storm: {
     infoAppendNote('道具由击坠赞助无人舰获得：常规赞助 90% 普通 / 10% 稀有，豪华赞助 100% 稀有；<b>获得瞬间立刻生效</b>。');
   }
 
-  // ---------- 词条：BOSS 后三选一设计稿（2026-11-05 用户口述定稿，仅收录文案、未代码实装；2026-11-06 合并追加改版） ----------
-  // 体系：每击败一个 BOSS 出现三个选项、每个选项一对词条，每对必定一好一坏、二者稀有度相同；必须选择且只能
-  // 选择一个选项，选择后在本局游戏此后生效。稀有度＝难度五档（虚象/具象/真我/诗篇/长歌）。
-  // 2026-11-06 改版（口径=合并追加，用户确认）：①诗篇难度每个选项内含两对词条（两对稀有度相同），选中即得两对；
-  // ②所有难度下每个选项可单独至多刷新一次；③各档词条池合并追加（11-05 旧条目全部保留）+ 三处定点操作：
-  //   · 「战机的火力等级不会再因为受击而减少」自具象级正面移至虚象级正面（「（改到虚象级）」为操作括注不入文案）；
-  //   · 诗篇级负面「炮火先兆者替换」词条替换为「75% 概率替换 + 变体攻击间隔-20%」组合版（同上）；
-  //   · 长歌级正面「升级道具」词条替换为「15~35s 掉落暴走道具」（同上）；
-  //   · 新增特殊类绑定词条（AFFIX_SPECIAL，见数组后注释）。
-  // 配套设计：删除驾驶员 东坤蝰 / 龚粥，其技能移入词条池（见页尾注）。
-  // 文案纪律：以下正负面条目为用户逐字口述定稿，照录不得改写措辞（同图鉴 desc/lore 纪律）。
-  const AFFIX_DESIGN = [
-    { grade: '虚象级', color: '#7fe8c9',
-      good: [
-        '每次升级波次等级时，均有1%概率触发一次抽卡。（萧杨技能）',
-        '战机血量增加25。',
-        '每次升级波次等级时，有10%概率从场地下方朝上射出5个辛国栋之怒Lv4的火环。这几个火环之间均匀分布，中间的首先出现。',
-        '战机单次受到的伤害不会再超过50。',
-        '战机的火力等级不会再因为受击而减少。',   // 2026-11-06 自具象级正面移入（原括注「（改到虚象级）」为操作指示不入文案）
-        '战机处于无敌时间时启动暴走状态。（处于护盾时不启动，另外这个特殊的暴走状态结束后仍回到原来的火力等级+这段时间拾取的升级套件等级，如果暴走时被击中，则延长1s暴走时长，可以突破上限）',
-        '战机受到伤害时，立刻对周围250px内所有敌人造成40倍等同伤害。（诗篇难度提高至80倍）',
-        '群星允诺的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择群星允诺时会出现这个词条）',
-        '混乱将至的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择混乱将至时会出现这个词条）',
-      ],
-      bad: [
-        '坚垒护卫艇受到的所有伤害降低25%。',
-        '幽暮突击艇改为连续攻击两次。',
-        '威龙的射弹改为有随机的10度偏移。',
-        '法术阵列和脉冲矩阵被击坠时，额外召唤一个法术矩阵。',
-        '每次波次等级升级时，均有5%召唤一个先导炮火先兆者。',
-        '所有BOSS登场时，有20%概率获得2s虚化护盾，有20%概率获得5s虚化护盾。',
-        '所有敌人的入场速度和入场速度的对应加速度均提高40%。',
-      ] },
-    { grade: '具象级', color: '#ffd166',
-      good: [
-        '所有量子护盾道具变为血量增加道具（不受掉落限制），但所有血量增加道具回复量改为25%血量。',
-        '所有增生侧翼艇不再召唤卫护飞船。',
-        '拾取任意道具时，均有10%概率在顶部生成一个同类道具。（额外生成的爆弹不受掉落限制）',
-        '所有BOSS血量降至40%时必定掉落一个结晶护盾，但结晶护盾的持续时长减少0.5s。',
-        '战机有20%概率闪避攻击。',
-        '战机每次击坠BOSS时获得3层伤害减免，每层减少20%受到的伤害，每次受到伤害时减少一层。',
-        '拾取水晶能够延长结晶护盾的持续时长，至多通过此种方式延长2s。（仅在有途径召唤结晶护盾时出现本词条）',
-      ],
-      bad: [
-        '橙旋侧翼艇的子弹环绕半径扩大至1.5~2.2倍。',
-        '赤月侧翼艇的逻辑改为登场后每1s发射一枚子弹，每次射击后射击间隔-0.1s，最多减少到0.2s。',
-        '紫电侧翼艇现在同时拥有黄芒侧翼艇的能力，即入场 1.2~2.8s 后追踪玩家方向射出一发子弹。',
-        '黄芒侧翼艇现在发射三发散弹，子弹间的夹角为随机20~30度。',
-        '下一个BOSS得到小幅增强。',
-        '赤红突击艇等1A级突击艇的首次攻击间隔减少50%。',
-        '矩阵类敌人（法术矩阵、法术阵列、战争矩阵，还有脉冲矩阵的扩散半径）的射弹尺寸增大20%。',
-        '法术大师A1、法术大师A2在横移期间受到的所有伤害降低60%，且横向移动速度增大50%（不会导致出界）。',
-        '御4和铁砧同时能释放双方的光环。',
-        '寒霜和焦香螺旋桨同时能释放双方的光环。',
-        '所有炮火先兆者及其变体受到的伤害降低10%；导弹的预警时长减少0.5s。',
-        '浮海飘航者、破片、破片U型登场时获得1.5s虚化护盾。',
-        '战机受到的所有伤害提高20%。',
-        '法术大师A2被击坠时召唤一个法术大师A1。（逻辑类似法术阵列召唤法术矩阵，旋转着出场）',
-        '愧悔魂灵圣杯的血量增加60%。',
-      ] },
-    { grade: '真我级', color: '#ff5a5a',
-      good: [
-        '暴走时长增加0.5s，每触发过一次暴走，这个时长就增加0.01s。',
-        '斗志昂扬无人机现在在每次升级波次等级时均有额外的4%生成概率，且BOSS的血量每减少10%也会触发一次这个判定；斗志昂扬期间击杀敌人时，会立刻清除其发射的场上的所有弹幕；但斗志昂扬期间敌人的攻击间隔减少40%。',
-        '副武器的射击间隔减少40%。',
-        '僚机的射击间隔减少30%。',
-        '战机的攻击间隔减少20%。',
-      ],
-      bad: [
-        '所有白影侧翼艇替换为增生侧翼艇。',
-        '下一个BOSS得到大幅增强。',
-        '所有红色敌人的攻击间隔减少30%（不含BOSS）。',
-        '所有黄色敌人登场时均获得200屏障（不含BOSS）。',
-        '虚幻的攻击范围和爆炸范围扩大30%，持续时长增加8s；虚幻和寒霜的减速区域范围扩大30%。',
-        '暴鸰和暴鸰·G的血量和攻击力（对敌我双方的攻击力均）翻倍。',
-        '所有赤红战舰等3A类战舰，释放技能后有10%概率使得下一次攻击间隔减少80%。（跟其他乘区为乘算关系，也即乘0.2）',
-        '所有赤红主力舰等4A类主力舰，释放技能完毕后均会立刻再释放一轮同种技能（技能间隔按照后面那一轮技能结束再开始算）。',
-        '战机血量上限减少35。',
-        '高能爆弹和绷绷炸弹的伤害降低80%。',
-        '高能爆弹和绷绷炸弹的携带上限减少1（不会低于1）。',
-        '所有赤红突击艇等2A级突击艇和护卫艇的停留位置下移随机20%~30%屏幕高度。',
-        '所有4S敌人的攻击间隔减少20%，且技能获得增强。',
-      ] },
-    { grade: '诗篇级', color: '#c084fc',
-      good: [
-        '所有自侧翼出现的敌人受到的伤害提高150%。',
-        '战机不再受到敌方导弹的伤害，且机身任意位置碰到敌方导弹时将之朝射来的相反方向反弹。反弹的导弹能够贯穿非4类和非BOSS敌人，穿透造成3000+5%最大生命值（不超过1500）伤害，且击中4类敌人或BOSS敌人时爆炸，对周围所有敌人造成3000+5%最大生命值（不超过1500）伤害。一个敌人能够同时受到爆炸伤害和贯穿伤害。爆炸范围同副武器捣蛋来袭的导弹。反弹时出现特殊音效和特效，且反弹后立刻进入无敌状态（持续时长同受击）。持有这个词条时，所有敌方导弹的预警线将会变为蓝色。',
-        '累计命中敌人20次或者累计造成2500伤害后，立刻使敌人冻结随机1.5~2s。（冻结：颜色变深蓝，立刻停止移动、攻击和技能，失去虚化护盾和所有减伤。焦香螺旋桨、御4等力场型敌人在被冻结后光环暂时消失且失去效果；焦香螺旋桨冻结复原后永久失去自身所有光环效果；寒霜和虚幻无法被冻结）',
-        '击坠1/2/3/4/5类敌人时，有0.5%/2%/5%/10%/100%概率朝上发射一个黑暗之手同款的旋转大蛋挞，大蛋挞能够消除自身碰到的敌方子弹，且对首次碰到的敌人造成3000点伤害，随后每0.1s对接触的敌人造成200点伤害。召唤大蛋挞有15s冷却时间。',
-      ],
-      bad: [
-        '所有紫色敌人被击坠时，朝下释放一颗子弹。（逻辑同紫电侧翼艇；紫色敌人包括卫护飞船，不包括任何长歌级敌人；紫电侧翼艇这种已经有一颗子弹亡语的不再有这个词条）',
-        '所有BOSS均得到小幅增强。',
-        '炮火先兆者、先导炮火先兆者生成时，均有75%概率随机替换为中枢炮火先兆者和极夜炮火先兆者。所有中枢炮火先兆者和极夜炮火先兆者的攻击间隔减少20%。',   // 2026-11-06 替换旧「随机替换」词条（原括注为操作指示不入文案）
-        '每次波次等级提升时均有5%概率召唤一个战争幽灵，且所有战争幽灵的技能释放间隔改为固定0.4s。',
-        '法术矩阵现在每次攻击时同时释放两个技能，但攻击间隔增大0.5s。',
-        '浮海飘航者、破片、破片U型生成时，均有75%概率替换为破茧之梦。所有破茧之梦的移动速度提升30%。',
-        '暴鸰、暴鸰·G、虚幻生成时，均有75%概率替换为静滞虚幻。所有静滞虚幻的移动速度提升30%。',
-      ] },
-    { grade: '长歌级', color: '#ff9d3c',
-      good: [
-        '场上每随机15~35s掉落一个暴走道具。',   // 2026-11-06 替换旧「升级道具 50% 变暴走」词条（原括注为操作指示不入文案）
-        '每次受到伤害后立刻触发结晶护盾。',
-        '击坠敌人时，40%概率立刻消除其残留在场上的所有弹幕。',
-        '禁用所有敌人的亡语效果，禁用所有虚象级、真我级、长歌级的负面词条，所有S类敌人（包括4S和5S等）的血量减少95%。拥有这个词条时，后续选择词条页面的对应不生效的负面词条会被划掉。',
-      ],
-      bad: [
-        '所有BOSS均得到大幅增强。',
-        '所有敌人因停留而降低攻击间隔的这个时间点提前3s。',
-        '战机受到的所有伤害提高70%。',
-        '高危波次的刷新概率大幅增加。',
-        '每次波次等级提升时均有8%概率召唤一个随机的强化4S敌人。',
-        '所有敌人被击坠时，向其朝向方向释放一颗子弹。（子弹逻辑同紫电侧翼艇的亡语）',
-        '所有BOSS敌人血量首次低于50%时，召唤一名随机的4S敌人协同作战。',
-      ] },
-  ];
+  // ---------- 词条：BOSS 后三选一（2026-11-09 实装，数据单一来源 = 03b-affix.js） ----------
+  // 文案（用户逐字定稿）、实装状态（AFFIX_UNIMPLEMENTED，* 标记依据）均已迁至 03b-affix.js 运行时模块持有；
+  // 本页自 03b 单向导入仅作图鉴展示（03b 不反向 import 本页，防循环依赖），历史定稿记录见 03b-affix.js 头注释。
 
-  // 特殊类绑定词条（2026-11-06 新增）：好/坏效果绑定成对出现（不参与好/坏独立抽取，整对绑定登场）；
-  // 即使诗篇难度（每选项两对词条）下，每个选项也仅会出现一对特殊词条
-  const AFFIX_SPECIAL = [
-    { good: '战机可以永久保持暴走状态（此时右下角不再显示读条）。', bad: '所有敌人的攻击间隔减少50%。' },
-    { good: '战机的移动速度提高50%。', bad: '所有敌方子弹的弹速降低50%。' },
-  ];
-
-  // 版式对齐道具页：每档 h3 档位标题（档位色随波次权重页先例 WAVE_WEIGHT_TIER_COLOR；长歌级无既有色暂取橙）
-  // 档内「正面 / 负面」两张卡片，条目逐条一行（用户口述原文照录）
+  // 版式（2026-11-09 用户二轮改版）：①分节改「档位·正面 / 档位·负面」（h3 两节，卡头不再单独标正负面）；
+  // ②词条卡标题 = 词条名（03b name 字段，当前全部为占位名，待用户逐条定稿）；③未实装词条名字前加 *（不参与抽取，仅展示文案）。
+  // 特殊类保持「绑定对」一卡两行（好/坏绑定出现，拆卡会失真）。
   function renderInfoAffix() {
     infoBody.innerHTML = '';
     const SIDE = { good: { label: '正面', color: '#4ade80' }, bad: { label: '负面', color: '#ff5a5a' } };
-    for (const g of AFFIX_DESIGN) {
-      const head = document.createElement('h3');
-      head.className = 'info-achv-tier-head';
-      head.textContent = g.grade;
-      head.style.color = g.color;
-      infoBody.appendChild(head);
+    AFFIX_DESIGN.forEach((g, gi) => {
       for (const key of ['good', 'bad']) {
         const s = SIDE[key];
-        const div = document.createElement('div');
-        div.className = 'info-wave-card';
-        const h = document.createElement('h4');
-        h.style.color = s.color;
-        h.textContent = s.label;
-        div.appendChild(h);
-        for (const t of g[key]) {
+        const head = document.createElement('h3');
+        head.className = 'info-achv-tier-head';
+        head.textContent = g.grade + '·' + s.label;   // 分节 = 档位·正面/负面（2026-11-09 二轮改版）
+        head.style.color = g.color;
+        infoBody.appendChild(head);
+        g[key].forEach((t, ti) => {
+          const div = document.createElement('div');
+          div.className = 'info-wave-card';
+          const h = document.createElement('h4');
+          h.style.color = s.color;
+          h.textContent = (AFFIX_UNIMPLEMENTED.has(gi + ':' + key + ':' + ti) ? '*' : '') + (t.icon ? t.icon + ' ' : '') + t.name;   // * 前缀 = 不参与抽取（未实装或已实装暂缓放出）；icon 为现成 emoji 占位（待定稿后可换自绘 SVG）
           const p = document.createElement('p');
-          p.style.margin = '4px 0';
           p.style.lineHeight = '1.7';
-          p.textContent = t;
-          div.appendChild(p);
-        }
-        infoBody.appendChild(div);
+          p.textContent = t.text;
+          div.append(h, p);
+          infoBody.appendChild(div);
+        });
       }
-    }
+    });
     // 特殊类绑定词条：每对一张卡片，正/负两行同卡展示（强调绑定出现）
     const spHead = document.createElement('h3');
     spHead.className = 'info-achv-tier-head';
     spHead.textContent = '特殊类（绑定对）';
     spHead.style.color = '#ffffff';
     infoBody.appendChild(spHead);
-    AFFIX_SPECIAL.forEach((sp, i) => {
+    AFFIX_SPECIAL.forEach((sp) => {
       const div = document.createElement('div');
       div.className = 'info-wave-card';
       const h = document.createElement('h4');
       h.style.color = '#ffffff';
-      h.textContent = '特殊对 ' + (i + 1);
+      h.textContent = sp.name;   // 特殊对已实装且参与抽取（2026-11-09；AFFIX_UNIMPLEMENTED 不含 sp 对）
       div.appendChild(h);
       for (const [k, v] of [['正面：', sp.good], ['负面：', sp.bad]]) {
         const p = document.createElement('p');
         p.style.margin = '4px 0';
         p.style.lineHeight = '1.7';
-        p.textContent = k + v;
+        p.textContent = k + (v.icon ? v.icon + ' ' : '') + v.text;   // 特殊对正负面不设独立名字（2026-11-10 用户定稿：仅对名 + 正/负面文案）
         div.appendChild(p);
       }
       infoBody.appendChild(div);
     });
-    infoAppendNote('词条系统（<b>设计稿，尚未代码实装</b>）：每击败一个 BOSS 后出现 <b>三个选项</b>，每选项一对词条、必定一好一坏且二者稀有度相同（稀有度＝虚象 / 具象 / 真我 / 诗篇 / 长歌 五档）；<b>必须选择且只能选择一个选项</b>，选择后本局游戏此后生效。<br><b>诗篇难度改版（2026-11-06）</b>：仍为三个选项，但每个选项内含<b>两对词条</b>（两对稀有度相同），选中即同时获得两对。<br><b>刷新机制（2026-11-06）</b>：所有难度下，均可单独对每个选项<b>至多刷新一次</b>。<br><b>特殊类词条（2026-11-06 新增）</b>：好 / 坏效果<b>绑定成对出现</b>；即使诗篇难度下，每个选项也仅会出现一对特殊词条。<br>配套设计：删除驾驶员 <b>东坤蝰</b>、<b>龚粥</b>，其技能移入词条池。');
+    infoAppendNote('词条系统（<b>已实装</b>——BOSS 击坠后触发；最终 BOSS 击坠不触发选择；名字前带 * 的词条<b>不参与抽取</b>（含未实装与已实装暂缓放出，见页尾注）；<b>词条名已全部定稿</b>（2026-11-10 驾驶席人名体系；特殊对正负面不设独立名字，仅显示对名 + 正/负面文案；图标＝现成 emoji 占位））：每击败一个 BOSS 后出现 <b>三个选项</b>，每选项一对词条、必定一好一坏且二者稀有度相同（稀有度＝虚象 / 具象 / 真我 / 诗篇 / 长歌 五档，档位出现权重 22/34/16/12/3、特殊对 3，词条内等权；击坠<b>第三轮的第二个 BOSS（风暴编织者）</b>与<b>第五轮 BOSS</b> 后的抽取中，虚象 / 具象权重归零——2026-11-11 定稿，5 轮轮次制接线后完整生效）；<b>必须选择且只能选择一个选项</b>，选择后本局游戏此后生效。<br><b>诗篇难度改版（2026-11-06）</b>：仍为三个选项，但每个选项内含<b>两对词条</b>（两对稀有度相同），选中即同时获得两对。<br><b>刷新机制（2026-11-06）</b>：所有难度下，均可单独对每个选项<b>至多刷新一次</b>。<br><b>特殊类词条（2026-11-06 新增）</b>：好 / 坏效果<b>绑定成对出现</b>；即使诗篇难度下，每个选项也仅会出现一对特殊词条（均已实装）。<br>配套设计：删除驾驶员 <b>东坤蝰</b>、<b>龚粥</b>，其技能移入词条池。<br>注：名字前带 * 的词条不参与抽取——含占位敌人阻塞的未实装词条，与<b>已实装但设计未定稿、暂缓放出</b>的词条；实装与放出进度均以 <b>js/03b-affix.js</b> 为准。');
   }
 
-  // ---------- 测试1：水晶核芯艇设计稿（已清空） ----------
+  // ---------- 测试1：愧悔魂灵圣杯 · 游戏内形象预览（2026-11-11 用户指令；前史：水晶核芯艇候选页已随定稿清空） ----------
   // 1S 水晶核芯艇已于 2026-10-15 按 C 版定稿实装（ENEMY_TYPES.crystalCore / 09b drawCrystalCoreBody /
   // BOSS 后特殊波次）；四版式外观候选页按用户指令清空（2026-10-17），t1* 小工具随页面一并移除。
   // 需要找回时看 git 历史（备份 %TEMP%-encyclopedia_backup_clear123_1017.js）。
   function renderInfoBullets() {
+    // 愧悔魂灵圣杯 · 游戏内形象预览（2026-11-11 用户指令）：复用条目详情预览管线（mock 实体 →
+    // 10-draw-world guiltGrail 分支 → 09b drawGuiltGrailBody），pvZoom 0.4 同条目卡（光环直径 300+ 世界像素全入图）。
+    // 静滞虚幻 · 游戏内形象预览（2026-11-11 用户指令「完成后也把其形象放入测试1页面」）：同管线
+    //（mock 实体 → 10-draw-world stasisUnreal 分支 → 09b drawStasisUnrealBody）。
+    // startEncyPreviewLoop 为单槽互斥（同一时刻仅一处 live）——最新评审对象占 live 槽（2026-11-11 八轮：
+    // 圣杯形象评审升 live 480×380 评审主角，坍缩构造体随之降静帧；此前坍缩构造体/静滞虚幻/圣杯先后轮替过 live 槽）。
+    // 沿用【测试/设计页签不放置说明文案】纪律（2026-10-11 用户定稿），页顶不加描述。
+    // 前史：水晶核芯艇候选页 2026-10-17 随 C 版定稿清空（见 git 历史）。
     infoBody.innerHTML = '';
+    const mkBox = () => {
+      const box = document.createElement('div');
+      box.style.cssText = 'display:flex;justify-content:center;align-items:center;padding:24px 0;';
+      const cvs = document.createElement('canvas');
+      box.appendChild(cvs);
+      infoBody.appendChild(box);
+      return cvs;
+    };
+    drawEncyPreview(ENCY_DATA.stasisUnreal, mkBox(), 300, 240, false, false);      // 静滞虚幻：静帧（评审完毕）
+    drawEncyPreview(ENCY_DATA.cocoonDream, mkBox(), 300, 240, false, false);       // 破茧之梦：静帧
+    drawEncyPreview(ENCY_DATA.collapseConstruct, mkBox(), 300, 240, false, false); // 坍缩构造体：静帧（live 槽按「让位最新评审对象」先例让给圣杯形象评审）
+    // 圣杯形象评审专用 mock（2026-11-11 八轮：条目卡 pvZoom 0.4 是光环全入图用，评审画幅沿用杯身仅 ~60px）：
+    // 派生对象覆盖三参——pvZoom 1.5（480×380 画幅杯身适配放大 ≈2.55 倍）、pvNoAura（省光环：大倍率下裁出画布且整画蒙淡金，
+    // drawGuiltGrailBody 门控）、pvDrawScale 2（离屏分辨率 ×2 防 blit 放大发糊，沿浮海飘航者 K 倍率先例）；
+    // 条目卡 / 详情页预览走 ENCY_DATA.guiltGrail 原对象，完全不受影响
+    const grailReview = { ...ENCY_DATA.guiltGrail, pvZoom: 1.5, pvNoAura: true, pvDrawScale: 2 };
+    startEncyPreviewLoop(grailReview, mkBox(), 480, 380);                          // 圣杯：live 大画幅评审主角（冒泡/闪点动效）
   }
 
 

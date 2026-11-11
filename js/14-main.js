@@ -3,31 +3,88 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：（暂无）
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{cheatInvuln, flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postClearT, postDelay, postWaveClear, stage, timer, victoryDelay, warnT}
+  //   state.{flash, hurt, maxinSpeedMul, mode, shakeTime, time, victoryOverlay}（cheatInvuln 写入已随 0 键无敌分支移入 12-ui 调试菜单——2026-11-09）  levelFlow.{capitalIdleT, douzhiSkipOnce, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{pending, postClearT, postDelay, postWaveClear, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { BERSERK, berserkDuration, hasPilot, PILOTS, PLAYER_CFG, currentPlane, specialGearActive } from './01-config-loadout.js';
+  import { BERSERK, hasPilot, PILOTS, PLAYER_CFG, specialGearActive } from './01-config-loadout.js';
   import { DOUZHI, FASHI_ARRAY } from './01-config-enemies.js';
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, spawnParticles, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossPhantom, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
-  import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWave, updateChallenge, updateDelayedSpawns, updateHarbLeadQueue, updatePoemRearCards } from './04-spawn.js';
+  import { AFFIX_DESIGN, affixHas, affixXinguodongRings, registerAffixBerserkDrop, registerWenjiukeRemoved, tickAffixBerserkDrop, tickAffixPending } from './03b-affix.js';
+  import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, queueHarbingerLead, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnEliteMinion, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWarGhost, spawnWave, updateChallenge, updateDelayedSpawns, updateHarbLeadQueue, updatePoemRearCards } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
-  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugForceGacha, debugToggleInvuln, noteDdjLevelUp, playerFireLocked, triggerArmorSkill, triggerPilotSkill, tryChengyueShield, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
-  import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
+  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugSetWeapon, noteDdjLevelUp, playerFireLocked, startGacha, triggerArmorSkill, triggerPilotSkill, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, spawnPowerup, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
-  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, togglePause, updateHUD } from './12-ui.js';
-  import { achvEvaluateVictory, achvNoteCheat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements } from './02-achievements.js';
+  import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, toggleDebugMenu, togglePause, updateHUD } from './12-ui.js';
+  import { achvEvaluateVictory, renderResultAchievements } from './02-achievements.js';
   import { buildT3SpawnPlan, closeEncyclopedia, initEncyDiffButtons, reopenEncySource, t3SpawnCardById } from './13-encyclopedia.js';
+
+  // 词条（长歌级 4:good:0）：暴走道具生成回调注册（03b-affix 不反向 import 08-entities，防循环依赖；
+  // 08-entities 在本文件之前完成求值——ES module 依赖先求值，此处绑定已就绪）
+  registerAffixBerserkDrop(() => spawnPowerup(rand(60, CANVAS_W - 60), 36, 'berserk', 13));
+
+  // 温酒客（2026-11-11 用户定稿效果重做）：DEBUFF 失效横幅回调注册——双生 BOSS 一轮击坠后失效一个
+  // DEBUFF 时游戏内横幅提示（03b-affix 不反向 import 08-entities / 10-draw-world，防循环依赖）。
+  // 横幅为轻量 DOM 元素（懒创建，顶部居中淡入淡出 2.6s；项目无通用横幅系统，暴走 banner 为 canvas 专用）
+  registerWenjiukeRemoved((id, source) => {
+    const label = source === '温酒客' ? wjkAffixBadLabel(id) : '负面词条';
+    showWjkBanner('温酒客 · ' + label + ' 已失效');
+  });
+  let wjkBannerEl = null, wjkBannerTimer = null;
+  function showWjkBanner(text) {
+    if (!wjkBannerEl) {
+      wjkBannerEl = document.createElement('div');
+      wjkBannerEl.id = 'wjkBanner';
+      Object.assign(wjkBannerEl.style, {
+        position: 'fixed', left: '50%', top: '72px', transform: 'translateX(-50%)',
+        zIndex: 850, padding: '8px 22px', borderRadius: '8px', pointerEvents: 'none',
+        background: 'rgba(30, 16, 44, 0.88)', border: '1px solid rgba(201, 160, 255, 0.55)',
+        color: '#e6d5ff', fontSize: '14px', letterSpacing: '2px',
+        opacity: '0', transition: 'opacity 0.35s ease',
+        boxShadow: '0 4px 18px rgba(0,0,0,0.45)', fontFamily: 'inherit',
+      });
+      document.body.appendChild(wjkBannerEl);
+    }
+    wjkBannerEl.textContent = text;
+    wjkBannerEl.style.opacity = '1';
+    clearTimeout(wjkBannerTimer);
+    wjkBannerTimer = setTimeout(() => { wjkBannerEl.style.opacity = '0'; }, 2600);
+  }
+  // 温酒客失效横幅的名字解析（AFFIX_DESIGN 自 03b-affix import）
+  function wjkAffixBadLabel(id) {
+    const p = id.split(':');
+    const t = AFFIX_DESIGN[Number(p[0])] && AFFIX_DESIGN[Number(p[0])].bad[Number(p[2])];
+    return t ? t.name : '负面效果';
+  }
+
+  // 词条（长歌级 4:bad:3 嬴乾「高危频发」，2026-11-11 用户定稿实装）额外波次追加：生成额外波次时，
+  // 有 5% 概率额外生成 5 个额外波次、未中再有 25% 概率额外生成 1 个（互斥判定、5% 大奖优先——2026-11-11
+  // 用户裁定，单次上限 +5）；追加通道不吃本波触发概率（pickPoemExtraCard(lv, true) 直抽特殊定位全池），
+  // 卡池抽空自然中断
+  function affixExtraWaveBurst(lv) {
+    if (!affixHas('4:bad:3')) return;
+    const burst = (n) => {
+      for (let i = 0; i < n; i++) {
+        const card = pickPoemExtraCard(lv, true);
+        if (!card) return;
+        const f = t3SpawnCardById(card.id);
+        if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
+      }
+    };
+    if (Math.random() < 0.05) burst(5);
+    else if (Math.random() < 0.25) burst(1);
+  }
 
 
   // ---------- 输入 ----------
-  // 作弊键（1~5 / 8 / 9 / 0 / 7）均免武装直用——原「按 0 武装」预留开关（WEAPON_CHEAT_REQUIRE_ARM +
-  // state.cheatArm + 音量键提亮标识）已于 2026-10-10 用户定稿整体删除；0 键现改为作弊无敌切换
-  //（见下方 0 键处理与 07-player debugToggleInvuln）。
+  // 作弊键布局（2026-11-09 用户定稿「调试菜单」收编）：数字键 1~5 = 武器等级直设（debugSetWeapon，
+  // 07-player）；0 = 调试菜单呼出/关闭（toggleDebugMenu，12-ui——无敌/风暴连发/导弹雨连发/召唤萧杨/
+  // 立刻选择词条/攻击等级全部收进菜单，原 7/8/9/0 直按分支删除）；= / Shift+= 测试页刷怪（非作弊）。
   // 持续刷怪测试（图鉴「数值与机制」页发起，challenge.kind==='swarm'）的数字键道具映射：
   // 按 REWARD_ITEMS 注册表顺序（1~5 普通 / 6 轰轰炸弹 / 8~0 稀有；手持斗志昂扬已移除——2026-10-01；
   // gacha 不在列——萧杨 16 颗原石专属技能）。直接生效（道具槽已取消，07-player applyRewardItem）
@@ -42,23 +99,6 @@
     '9': 'jiukeShadow',     // 酒客之影
     '0': 'bottleSpirit',    // 瓶中精灵
   };
-  // 直接设定武器等级（调试/作弊）：Lv5 视为暴走，需同时给予暴走倒计时，否则下一帧会回落 Lv4；
-  // 切到 Lv5 与自然暴走同样触发澄月判定（tryChengyueShield，BOSS 战限一次的门控照常生效）
-  function debugSetWeapon(n) {
-    if (!player.alive) return;
-    achvNoteCheat();   // 成就：武器等级直设属作弊（无垠 / 无垠战机排除）
-    if (n === 5) {
-      player.weapon = 5;
-      player.berserk = berserkDuration();   // 东坤蝰：+0.8s（统一入口，与自然暴走同口径）
-      player.berserkBanner = Math.max(player.berserkBanner || 0, 1.5);
-      spawnParticles(player.x, player.y, currentPlane.berserkColor || '#ffb545', 20, 240);
-      tryChengyueShield();
-    } else {
-      player.weapon = n;
-      player.berserk = 0;
-    }
-    player.cooldown = 0;
-  }
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
     keys[k] = true;
@@ -68,30 +108,18 @@
       e.preventDefault();
     }
     if (k === 'p' && state.mode === 'playing') togglePause();
+    // Esc 也可暂停/恢复（2026-11-10 用户需求，口径与 P 键完全一致：playing 态翻转，词条模态/调试菜单开启期间
+    // 由 togglePause 内部守卫拦截）
+    if (k === 'escape' && state.mode === 'playing') togglePause();
     // Space / 右Ctrl（e.code 区分左右，左 Ctrl 保留给浏览器快捷键）：高能爆弹
     // （右Ctrl 同为修饰键：按住时按 W 仍会触发浏览器关标签页且无法拦截——与马兴犬弃用 Ctrl 的原因相同，玩家自担）
     if ((k === ' ' || e.code === 'ControlRight') && state.mode === 'playing' && !state.paused) useBomb();
     if (k === 'f' && state.mode === 'playing' && !state.paused) triggerArmorSkill();   // 装甲技能（七日澜心：水晶护盾；量表满方可触发）
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（迪奥：强行暴走，冷却结束方可触发 / 大狗：计数表满层齐射 / 萧杨：原石抽卡充能满时释放——天秀忧郁王子已改量表充满自动释放，不走按键）
-    // 叮咚鸡导弹雨连发开关（作弊键，不要求装备叮咚鸡——任意驾驶员均可触发）：
-    // 战斗中按 9 切换 0.2~1s 间隔，再按恢复（未装备叮咚鸡时：开启即启用整套导弹雨系统并以连发间隔运行）。
-    // 开启瞬间立刻压缩当前倒计时——否则最长要等 22s 才能看到下一波，看起来像没反应
-    if (k === '9' && !swarmTest && state.mode === 'playing') {
-      state.dagouDebugRapid = !state.dagouDebugRapid;
-      if (state.dagouDebugRapid) {
-        state.dagouMissT = Math.min(state.dagouMissT, rand(0.2, 1));
-        achvNoteDagouCheatOn();   // 成就：作弊开关（记作弊 + 解锁捣蛋来袭）
-      }
-      console.log('[debug] 叮咚鸡 rapid 导弹雨: ' + (state.dagouDebugRapid ? 'ON（0.2~1s/波）' : 'OFF（10~22s/波）'));
-    }
-    // 天秀连发风暴开关（作弊键，不要求装备天秀忧郁王子——任意驾驶员均可触发）：
-    // 战斗中按 8 切换——每 0.4~1.4s 自动向前发射一个友方大风暴（无视量表），再按关闭
-    if (k === '8' && !swarmTest && state.mode === 'playing') {
-      state.tianxiuDebugSpam = !state.tianxiuDebugSpam;
-      state.tianxiuDebugSpamT = 0;   // 开启瞬间立即发射第一个
-      if (state.tianxiuDebugSpam) achvNoteTianxiuCheatOn();   // 成就：作弊开关（记作弊 + 解锁万道风流）
-      console.log('[debug] 天秀 rapid 风暴: ' + (state.tianxiuDebugSpam ? 'ON（0.4~1.4s/个）' : 'OFF'));
-    }
+    // 调试菜单（0 键，2026-11-09 用户定稿取代原 0 直切无敌 / 8 风暴 / 9 导弹雨 / 7 召唤萧杨四个直按
+    // 作弊键——全部收进 12-ui 调试菜单面板）：playing 态呼出/关闭（暂停中亦可呼出，面板覆盖暂停页）；
+    // swarm 测试页让位（数字键发道具口径不变）；忽略按住连发防疯狂开关
+    if (k === '0' && !swarmTest && state.mode === 'playing' && !e.repeat) toggleDebugMenu();
     // 马兴犬：Shift 加速 / CapsLock 减速（同键再按恢复原速）——不再使用 Ctrl（按住 Ctrl 时按 W 会触发浏览器关闭标签页，无法拦截）
     if (k === 'shift' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
       state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedFast ? 1 : PILOTS.maxingquan.speedFast;
@@ -99,27 +127,14 @@
     if (k === 'capslock' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
       state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedSlow ? 1 : PILOTS.maxingquan.speedSlow;
     }
-    // 作弊无敌（0 键，2026-10-10 用户定稿取代原「武装」预留机制）：开启瞬间回满全部血量 +
-    // 伤害归零（受击结算照常——命中消耗 / 受击闪白 / 受击无敌帧 / 掉级计数不跳过）；
-    // 再按关闭减伤（不扣血、不重复回血）。开关逻辑见 07-player debugToggleInvuln
-    //（开启记 achvNoteCheat——作弊互斥：本局仅作弊成就可解锁）。
     // "=" 立刻再召唤一个测试目标（非作弊，保持原样）
-    if (k === '0' && !swarmTest && state.mode === 'playing') {
-      const godOn = debugToggleInvuln();
-      if (godOn) achvNoteInvulnCheatOn();   // 成就：不死之躯（开启瞬间即得；记作弊 + 作弊互斥白名单放行）
-      console.log('[debug] 无敌模式: ' + (godOn ? 'ON（已回满血，伤害归零·受击反馈照常）' : 'OFF'));
-    }
     if (state.mode === 'playing' && !state.paused) {
       // 持续刷怪测试页：数字键直接获得对应道具（立即生效），常规作弊键全部让位
       if (swarmTest && SWARM_CHEAT_ITEMS[k] && !e.repeat) {
         applyRewardItem(SWARM_CHEAT_ITEMS[k]);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
       }
-      // 按 7：立刻释放一次萧杨「哦哦！抽卡！」——常规战斗与测试挑战页均可（2026-10-10 用户定稿删
-      // challenge 限定）；无视是否携带萧杨、无视充能（debugForceGacha，07-player，内部自带
-      // playing/paused/登场演出守卫；若恰带萧杨且已充能按正常口径消耗；记作弊防蹭成就）
-      if (k === '7' && !e.repeat) debugForceGacha();
       const lv = '12345'.indexOf(k);
-      if (lv >= 0 && !swarmTest) debugSetWeapon(lv + 1);
+      if (lv >= 0 && !swarmTest) debugSetWeapon(lv + 1);   // 武器等级直设（07-player，菜单与键位共用入口）
       // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
       // 事件（keydown ~30Hz 连发会疯狂重复清场+群召）
       if ((k === '=' || k === '+') && !e.repeat && state.challenge) {
@@ -303,8 +318,8 @@
           }
         }
         // 冲刺撞 BOSS：每 0.1s 一跳（逐 BOSS 独立计时），伤害 2000 + 4% BOSS 最大血量；
-        // 登场虚化期间（警报 / 入场动画，bossEntranceActive）BOSS 不可受击——跳过
-        const dashBoss = enemies.find(en => en.type === 'boss' && !en.dying && !en._deathSettled && !bossEntranceActive());
+        // 登场虚化期间（警报 / 入场动画，bossEntranceActive）与虚化护盾（词条 0:bad:5，bossPhantom）BOSS 不可受击——跳过
+        const dashBoss = enemies.find(en => en.type === 'boss' && !en.dying && !en._deathSettled && !bossEntranceActive() && !bossPhantom(en));
         if (dashBoss &&
             Math.abs(player.x - dashBoss.x) < (dashBoss.w + PLAYER_CFG.w) / 2 &&
             Math.abs(player.y - dashBoss.y) < (dashBoss.h + PLAYER_CFG.h) / 2) {
@@ -338,6 +353,20 @@
         if (levelFlow.douzhiSkipOnce) levelFlow.douzhiSkipOnce = false;
         // 大狗：每次关卡提升掷计数增量（含击败 BOSS 引发的跳变升级；挑战模式不计）
         if (!state.challenge && hasPilot('dingdongji')) noteDdjLevelUp();
+        // 词条挂点（升级时判定，窗口口径同下方额外波：非挑战、非 BOSS 战 / 结算窗口）
+        const affixLvWindow = !state.challenge && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
+          bossFlow.postDelay <= 0 && !bossFlow.postWaveClear;
+        if (affixLvWindow && affixHas('0:good:0') && Math.random() < 0.01) startGacha();   // 词条（虚象级 0:good:0）：1% 概率触发一次抽卡
+        if (affixLvWindow && affixHas('0:bad:4') && Math.random() < 0.05) queueHarbingerLead();   // 词条（虚象级 0:bad:4）：5% 概率召唤一个先导炮火先兆者（3s 预警队列，04-spawn）
+        if (affixLvWindow && affixHas('0:good:2') && Math.random() < 0.10) affixXinguodongRings();   // 词条（虚象级 0:good:2）：10% 概率从场地下方朝上射出 5 个辛国栋之怒 Lv4 火环（03b）
+        if (affixLvWindow && affixHas('2:good:1') && Math.random() < 0.04) spawnDouzhi('douzhi');   // 词条（真我级 2:good:1）：4% 概率额外生成一架斗志昂扬无人机（横穿）
+        if (affixLvWindow && affixHas('3:bad:3') && Math.random() < 0.05) enemies.push(spawnWarGhost(false));   // 词条（诗篇级 3:bad:3）：5% 概率召唤一个战争幽灵（驻留后自然离场，技能间隔固定 0.4s）
+        if (affixLvWindow && affixHas('4:bad:4') && Math.random() < 0.08) {   // 词条（长歌级 4:bad:4）：8% 概率召唤一个随机的强化 4S 敌人（affixEnh4S 标记：技能间隔 ×0.8，「技能获得增强」口径待定稿）
+          const enhTypes = ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'];
+          const enh = spawnEliteMinion(enhTypes[(Math.random() * 4) | 0]);
+          enh.affixEnh4S = true;
+          enemies.push(enh);
+        }
         // 非诗篇：升级判定特殊级/额外级附加波（2026-10-12 用户定稿，概率/权重同诗篇额外通道）——
         // 额外波次（特殊定位全池 50%/100%/100%）+ 真额外三项（单/双导弹互斥 + 增益无人舰）；
         // BOSS 战 / 结算窗口内升级不判定（避免乱入）；诗篇不走此分支（诗篇每波判定，见诗篇分支额外生成三连）
@@ -349,9 +378,40 @@
             const f = t3SpawnCardById(extra.id);
             if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
           }
+          affixExtraWaveBurst(lvUp);   // 词条（长歌级 4:bad:3 嬴乾）：额外波次生成后 5% 追加 5 个（大奖优先）/ 未中 25% 追加 1 个（互斥）
         }
       } else if (levelFlow.level < levelFlow.prevLevel) {
         levelFlow.prevLevel = levelFlow.level;
+      }
+
+      // ---------- 词条系统运行时挂点（03b-affix，2026-11-09 实装） ----------
+      // BOSS 击坠后延迟弹三选一（06-enemy killEnemy BOSS 分支 queueAffixSelection 置位倒计时；
+      // 归零 → 暂停主循环并弹出选择界面——本行只在战斗帧执行，游戏冻结期间自然挂起）
+      tickAffixPending(dt);
+      // 词条（长歌级 4:good:0）：场上每随机 15~35s 掉落一个暴走道具（生成回调 14-main 顶部注册）
+      tickAffixBerserkDrop(dt);
+
+      // ---------- 词条：BOSS 血量节点观察（2026-11-09 实装，仅 type==='boss' 四大 BOSS） ----------
+      for (const eb of enemies) {
+        if (eb.type !== 'boss' || eb.dying || eb.hp <= 0) continue;
+        // 词条（长歌级 4:bad:6）：所有 BOSS 血量首次低于 50% → 召唤一名随机 4S 精英协同作战
+        //（elDwellT 1e9 永驻；affixHelper 标记——BOSS 死亡时由 killEnemy BOSS 分支统一送离场）
+        if (affixHas('4:bad:6') && !eb.affixHelperSummoned && eb.hp <= eb.maxHp * 0.5) {
+          eb.affixHelperSummoned = true;
+          const helperTypes = ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'];
+          const helper = spawnEliteMinion(helperTypes[(Math.random() * 4) | 0], 1e9);
+          helper.affixHelper = true;
+          enemies.push(helper);
+        }
+        // 词条（真我级 2:good:1）：BOSS 血量每减少 10%（累计跨过每 10% 档，自满血向下计数）→ 掷一次 4% 斗志昂扬额外生成判定
+        if (affixHas('2:good:1')) {
+          const dzhStep = Math.min(10, Math.max(0, Math.ceil(eb.hp / (eb.maxHp * 0.1))));
+          if (eb._affixDzhStep == null) eb._affixDzhStep = 10;
+          if (dzhStep < eb._affixDzhStep) {
+            eb._affixDzhStep = dzhStep;
+            if (Math.random() < 0.04) spawnDouzhi('douzhi');
+          }
+        }
       }
 
       // ---------- 连携精英返场 / 张华&张策触发（2026-10-08 用户定稿，配置见 01-config ELITE_REVIVE） ----------
@@ -492,7 +552,7 @@
           const lv = levelFlow.level;
           const list = [];
           for (const roles of [['前波', '前后均可'], ['后波', '前后均可']]) {
-            const card = pickDesignedWaveCard(state.time, lv, { roles });
+            const card = pickDesignedWaveCard(state.time, lv, { roles, tierWAffix: affixHas('4:bad:3') });   // 词条（长歌级 4:bad:3 嬴乾）：主战 tier 权重修正（虚象×0.5→真我 / 具象×0.5→诗篇 / 诗篇+5）
             const f3 = card && t3SpawnCardById(card.id);
             if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
           }
@@ -511,7 +571,7 @@
           // 额外生成三连：①侧翼波次（许凯狗冲刺两侧不刷怪 → 冲刺期跳过，同非诗篇 noSide 规则）
           //               ②额外波次（特殊波已并入，权重不变）③真额外三项（单/双导弹互斥 + 增益无人舰）
           const extras = [
-            state.pilotDashT > 0 ? null : pickPoemFlankCard(lv),
+            state.pilotDashT > 0 ? null : pickPoemFlankCard(lv, { flankAffix: affixHas('4:bad:3') }),   // 词条（4:bad:3）：侧翼触发概率 +10%（≤100%）+ 侧翼 tier 诗篇权重 +5
             pickPoemExtraCard(lv),
             pickPoemTrueExtra(lv),
           ];
@@ -520,6 +580,7 @@
             const f = t3SpawnCardById(extra.id);
             if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
           }
+          affixExtraWaveBurst(lv);   // 词条（长歌级 4:bad:3 嬴乾）：额外波次生成后 5% 追加 5 个（大奖优先）/ 未中 25% 追加 1 个（互斥）
         };
         const phaseWaves = WAVE_POEM.wavesPerPhase[bossFlow.phase] ?? WAVE_POEM.wavesPerPhase[WAVE_POEM.wavesPerPhase.length - 1];
         if (state.pilotDashT > 0) {
@@ -596,6 +657,7 @@
           const card = pickDesignedWaveCard(state.time, levelFlow.level, {
             noSide: state.pilotDashT > 0,                                        // 许凯狗冲刺：两侧不刷怪 → 排除侧翼卡
             noCapital: enemies.some(e => e.type === 'capital'),                  // 主力舰同屏限 1 → 已有舰排除含 4类卡
+            tierWAffix: affixHas('4:bad:3'),                                     // 词条（长歌级 4:bad:3 嬴乾）：主战 tier 权重修正（虚象×0.5→真我 / 具象×0.5→诗篇 / 诗篇+5）
           });
           // WAVE_SPAWN_LIST 卡只有元数据（tier/role），生成数据（dots 队形）在 13 同 id 设计卡上——按 id 配对取卡
           const list = [];
@@ -611,6 +673,7 @@
             const card2 = pickDesignedWaveCard(state.time, levelFlow.level, {
               noSide: state.pilotDashT > 0,
               noCapital: enemies.some(e => e.type === 'capital') || capInList,
+              tierWAffix: affixHas('4:bad:3'),                                     // 词条（长歌级 4:bad:3 嬴乾）：追加位同为主战抽取，tier 权重修正一致
             });
             const f32 = card2 && t3SpawnCardById(card2.id);
             if (f32 && card2.id !== card.id) list.push({ f: f32, plan: buildT3SpawnPlan(f32) });
@@ -723,7 +786,7 @@
       }
     } else if (!state.paused) {
       // 暂停时完全冻结画面（不更新背景与粒子，避免暂停遮罩后仍有闪动）
-      state.time += dt;   // 全局时钟：非战斗态同样推进——演示屏的暴走环绕光点 / 光环呼吸 / 尾焰摆动 / 守愿者脉冲环都挂在 state.time 上，不推进会全部静止
+      state.time += dt;   // 全局时钟：非战斗态同样推进——演示屏的暴走环绕光点 / 光环呼吸 / 尾焰摆动 / 群星守愿脉冲环都挂在 state.time 上，不推进会全部静止
       updateDemo(dt);      // 主菜单攻击演示：驱动 state.demo（僚机开火门控）、阶段循环与开火（仅菜单可见时生效）
       updateStars(dt * 0.4);
       updateNebulae(dt * 0.4);
@@ -903,6 +966,6 @@
   scheduleLoop();
 
   export {
-    debugSetWeapon, lastTime, loopToken, loopByTimeout, scheduleLoop,
+    lastTime, loopToken, loopByTimeout, scheduleLoop,
     loop, gameWrap, gameSizer, wrapNaturalH, fitStage,
   };

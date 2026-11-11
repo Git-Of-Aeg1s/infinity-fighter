@@ -312,6 +312,109 @@ async function sceneSubWeapons() {
     sample('副武器 ' + sid + ' 主路径');
   }
   if (!subCards.length) errors.push({ key: '副武器卡片缺失', stack: 'subGrid 无卡片（buildSubWeaponCards 未执行？）' });
+  // 场景隔离收尾：实装副武器经本场景选中后跨场景残留（此前占位条目点击不选中无此问题）——末位复位回
+  // 默认副武器（捣蛋来袭），避免后续场景的承伤 / 时序断言吃到残留副武器弹
+  //（2026-11-11 时流之雨转正实测：残留雨弹对群星之扉场景黑洞承伤测量的 voyager 多结算一发 25 伤害致红）
+  if (isModules) {
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    cfgL.setSubWeapon(cfgL.SUB_WEAPONS.daodan);
+  }
+}
+
+async function sceneZhuixingSpear() {
+  // 坠星长枪（2026-11-11 实装）：① 垂直直射（vx=0、|vy|=巡航速 600、两翼出射点 ±22——用户定稿不倾斜）
+  // ② 驻留减速（长枪中心进入敌人碰撞盒 |vy| → 75、脱离恢复——速度置值但位置逐帧积分连续）
+  // ③ 无限穿透（穿出敌机底缘弹体仍存活、出屏才移除——不进通用碰撞区）④ 伤害结算（双枪首击
+  // 125×2 + 驻留期穿刺——焦香 h=70：驻留 ≈0.93s → 每枪 4×15 → 双枪总伤 ≈370）
+  // ⑤ 暴走错峰（Lv5：内侧 2 支立即出膛 + 外侧 2 支经 state.lanceDelayQ 延迟 0.2s——队列消费后全场 4 支）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_W/H（smoke 桩 canvas 尺寸是渲染分辨率，与逻辑坐标不一致）
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    if (spawn.makeEnemy && core.enemies && core.player && core.pBullets && core.state) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(60);        // 开局（玩家出场动画 enterDur 0.8s 完成——出场中 player 坐标仍在插值，过早取值会生成 NaN 敌机）
+      cfgL.setSubWeapon(cfgL.SUB_WEAPONS.zhuixingSpear);
+      key('4'); frames(2); key('4', false);         // 武器等级 4（双枪档）
+      const px = isFinite(core.player.x) ? core.player.x : cfgCore.CANVAS_W / 2;
+      const py = isFinite(core.player.y) ? core.player.y : cfgCore.CANVAS_H - 90;
+      const isolate = (keep, keepVolley) => {   // 场景隔离：清非本轮长枪（keepVolley = 捕获轮次 id，null = 全保留）/ 其他弹（主炮干扰）/ 他机 / 敌弹 / 导弹残留
+        for (let i = core.pBullets.length - 1; i >= 0; i--) {
+          const b = core.pBullets[i];
+          if (!b.lance || (keepVolley != null && b.volley !== keepVolley)) core.pBullets.splice(i, 1);   // 飞行全程 ≈3.1s > interval 2s——多轮并存，按轮次只留捕获轮
+        }
+        for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== keep) core.enemies.splice(i, 1);
+        if (core.eBullets) core.eBullets.length = 0;
+        if (core.dagouMissiles) core.dagouMissiles.length = 0;
+      };
+      // ①②③④ 常规双枪：capital 主力舰（192×134、4200 血——makeEnemy 通用入口 + hoverY/holdTimer 定点悬停，
+      // 无专属移动字段依赖）就位悬停于玩家正上方 → 捕获发射 → 跟踪驻留/穿透/伤害
+      core.enemies.length = 0; core.pBullets.length = 0;
+      const e = spawn.makeEnemy('capital', px, -110, { hoverY: py - 300, holdTimer: 1000 });
+      if (!e || e.type !== 'capital') {
+        errors.push({ key: '坠星长枪 目标生成失败', stack: 'makeEnemy capital 未返回预期实体' });
+      } else {
+        for (let f = 0; f < 480 && !(e.arrived || Math.abs(e.y - e.hoverY) < 12); f++) { isolate(e); frames(1); }   // 等就位（≤8s：capital 全程入场耗时 ≈234 帧，贴近原 240 上限 → 无固定种子下偶发超时 flaky，放宽一倍余量；期间长枪被隔离清除防干扰 hp 快照）
+        let fired = null;
+        for (let f = 0; f < 200 && !fired; f++) {
+          isolate(e); frames(1);
+          e.x = px; e.y = e.hoverY;   // 就位后钉死靶位（capital 悬停期横向巡航——横漂会让长枪提前侧向出盒、驻留时长不可断言）
+          fired = core.pBullets.find(b => b.lance && b.y < py - 4 && b.y > py - 40);   // 只认刚出膛（40px 内）的新轮
+        }
+        if (!fired) errors.push({ key: '坠星长枪 未发射', stack: '200 帧内无 lance 弹出膛（fireSubWeapon zhuixing 分支异常？）' });
+        else {
+          const keepVolley = fired.volley;
+          for (let i = core.pBullets.length - 1; i >= 0; i--) { const b = core.pBullets[i]; if (b.lance && b.volley !== keepVolley) core.pBullets.splice(i, 1); }   // 清旧轮残留
+          const lances = core.pBullets.filter(b => b.lance);
+          if (lances.length !== 2) errors.push({ key: '坠星长枪 双枪数量异常', stack: 'Lv4 单轮应 2 支，实际 ' + lances.length });
+          if (lances.some(b => Math.abs(b.vx) > 0.01)) errors.push({ key: '坠星长枪 非垂直直射', stack: 'vx=' + lances.map(b => b.vx.toFixed(2)).join(',') + '（用户定稿：垂直直射不倾斜）' });
+          if (lances.some(b => Math.abs(Math.abs(b.vy) - 600) > 1)) errors.push({ key: '坠星长枪 巡航弹速异常', stack: '|vy|=' + lances.map(b => Math.abs(b.vy).toFixed(1)).join(',') + '（应 ≈600）' });
+          if (lances.some(b => Math.abs(Math.abs(b.x - px) - 22) > 2)) errors.push({ key: '坠星长枪 出射点异常', stack: '出射点偏移 ' + lances.map(b => (b.x - px).toFixed(1)).join(',') + '（应 ±22 两翼）' });
+          const hp0 = e.hp;
+          let dwell = false, passed = false;
+          for (let f = 0; f < 300 && !(dwell && passed); f++) {
+            isolate(e, keepVolley); frames(1);
+            e.x = px; e.y = e.hoverY;   // 每帧续钉靶位（保持驻留时长精确可断言）
+            const ls = core.pBullets.filter(b => b.lance);
+            if (!ls.length) continue;
+            if (ls.some(b => Math.abs(Math.abs(b.vy) - 75) < 1)) dwell = true;
+            if (ls.some(b => b.y < e.y - e.h / 2 - 6)) passed = true;   // 已穿出敌机底缘仍存活 → 无限穿透
+          }
+          if (!dwell) errors.push({ key: '坠星长枪 驻留减速未生效', stack: '进入敌人碰撞盒后 |vy| 未降至 75（驻留速度）' });
+          if (!passed) errors.push({ key: '坠星长枪 穿透失败', stack: '长枪未穿出敌机（被销毁或提前消失？应为无限穿透）' });
+          const loss = hp0 - e.hp;
+          if (loss < 470 || loss > 510) errors.push({ key: '坠星长枪 伤害结算异常', stack: '双枪总伤 ' + loss + '（预期 490 = 2×[首击125 + 8×穿刺15]，capital h=134 定点驻留 1.79s）' });
+        }
+      }
+      // ⑤ 暴走错峰：Lv5（1~5 直设）→ 内侧 2 支立即 + 外侧 2 支 lanceDelayQ 延迟 0.2s
+      core.enemies.length = 0; core.pBullets.length = 0;
+      key('5'); frames(2); key('5', false);   // 暴走（限时 4s——断言窗口 <1s 足够）
+      let burst = false;
+      for (let f = 0; f < 200 && !burst; f++) {
+        core.pBullets.length = 0;   // 每帧全清（旧轮/主炮干扰——捕获帧必须只含当帧暴走轮）
+        frames(1);
+        if (core.pBullets.filter(b => b.lance).length === 2 && core.state.lanceDelayQ.length === 2) burst = true;
+      }
+      if (!burst) errors.push({ key: '坠星长枪 暴走未发射', stack: '暴走期内侧 2 支未出膛' });
+      else {
+        const n0 = core.pBullets.filter(b => b.lance).length;
+        const q0 = core.state.lanceDelayQ.length;
+        if (n0 !== 2) errors.push({ key: '坠星长枪 暴走内侧枪数异常', stack: '发射帧 lance=' + n0 + '（应 2 支内侧立即）' });
+        if (q0 !== 2) errors.push({ key: '坠星长枪 暴走错峰队列异常', stack: 'lanceDelayQ=' + q0 + '（应 2 支外侧待发）' });
+        let drained = false;
+        for (let f = 0; f < 40 && !drained; f++) { isolate(null); frames(1); if (!core.state.lanceDelayQ.length) drained = true; }
+        const n1 = core.pBullets.filter(b => b.lance).length;
+        if (!drained || n1 < 4) errors.push({ key: '坠星长枪 暴走错峰未补发', stack: '队列未消费或全场 lance=' + n1 + '（应 4 支）' });
+      }
+      // 收尾复位：默认副武器 + 常规火力（避免残留影响后续场景——同 sub-weapons 场景约定）
+      cfgL.setSubWeapon(cfgL.SUB_WEAPONS.daodan);
+      key('4'); frames(2); key('4', false);
+      core.enemies.length = 0; core.pBullets.length = 0;
+      sample('坠星长枪 垂直直射 / 驻留减速 / 无限穿透 / 伤害结算 / 暴走错峰');
+    }
+  }
 }
 
 async function sceneEncyclopedia() {
@@ -390,7 +493,8 @@ async function sceneSwarm() {
       if (coreSw.levelFlow.level !== 20) {
         errors.push({ key: '持续刷怪测试等级未锁', stack: 'swarm 模式 levelFlow.level=' + coreSw.levelFlow.level + '（预期恒 20）' });
       }
-      // 测试挑战按 7（debugForceGacha）：swarm 场默认不带萧杨，也应立刻建立抽卡演出且不动充能字段
+      // 测试挑战强制抽卡（debugForceGacha 函数级直调——原直按键 7 已于 2026-11-09 收进调试菜单，
+      // 键位分支删除但函数与行为不变）：swarm 场默认不带萧杨，也应立刻建立抽卡演出且不动充能字段
       //（14-main 键盘入口 → 07-player debugForceGacha；随后清演出跳过 ≈4s 状态机，不影响后续场景）
       const pmSw = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
       if (pmSw.debugForceGacha) {
@@ -1295,6 +1399,519 @@ async function sceneSweepKill() {
   }
 }
 
+async function sceneGrailHalo() {
+  // 愧悔魂灵圣杯（2026-11-10 实装）：① 入场到位位置连续（到位瞬间 y 与 hoverY 严格连续、全程相邻帧位移无瞬跳
+  // ——速度曲线铁律）② 漫游阶段活动带夹取（y 恒在屏高 20%~25% 内）③ 光环转移判定（近距敌人可转移 / 远距
+  // 不转移 / 持续伤害不转移）④ 击坠必掉 1 颗水晶（1 颗小水晶 = CRYSTAL_TIERS.small.val = 10 分）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_H（smoke 桩 canvas.height 是渲染分辨率，与逻辑坐标不一致——用错会导致活动带/停驻位全部错位）
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+    if (spawn.makeEnemy && enemyMod.grailRedirect && enemyMod.killEnemy && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      core.enemies.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      const H = cfgCore.CANVAS_H;
+      const e = spawn.makeEnemy('guiltGrail', 400, -70, { hoverY: H * 0.22, holdTimer: 1000 });
+      if (!e || e.type !== 'guiltGrail') {
+        errors.push({ key: '圣杯 生成失败', stack: 'makeEnemy guiltGrail 未返回预期实体' });
+      } else {
+        // ① 入场：跟踪到位（≤300 帧）；相邻帧位移步长有界（入场巡航 ≈250~300px/s ≈5px/帧，阈值 12）
+        let arrived = false, maxStep = 0, prevY = e.y;
+        for (let f = 0; f < 300 && !arrived; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          frames(1);
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);   // 隔离：清他机防弹道干扰
+          maxStep = Math.max(maxStep, Math.abs(e.y - prevY));
+          prevY = e.y;
+          arrived = !!e.arrived;
+        }
+        if (!arrived) errors.push({ key: '圣杯 未到位', stack: '300 帧内 arrived=false（入场分支异常？）' });
+        else {
+          if (Math.abs(e.y - e.hoverY) > 0.5) errors.push({ key: '圣杯 到位纵向不连续', stack: '到位瞬间 dy=' + (e.y - e.hoverY).toFixed(2) + 'px（应为 0）——位置连续性铁律' });
+          if (maxStep > 12) errors.push({ key: '圣杯 入场位移瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（入场巡航 ≈5px/帧）——速度曲线铁律' });
+          // ② 漫游：跟踪 300 帧（≈5s），活动带夹取 + 漫游速度更低（20px/s ≈0.33px/帧，阈值 2）
+          let bandBad = 0, wanderStep = 0;
+          prevY = e.y;
+          for (let k = 0; k < 300; k++) {
+            if (core.pBullets) core.pBullets.length = 0;
+            frames(1);
+            for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+            if (e.y < H * 0.20 - 0.5 || e.y > H * 0.25 + 0.5) bandBad++;
+            wanderStep = Math.max(wanderStep, Math.abs(e.y - prevY));
+            prevY = e.y;
+          }
+          if (bandBad > 0) errors.push({ key: '圣杯 越出活动带', stack: bandBad + ' 帧活动带越界（应恒在屏高 20%~25%）' });
+          if (wanderStep > 2) errors.push({ key: '圣杯 漫游位移瞬跳', stack: '相邻帧最大位移 ' + wanderStep.toFixed(2) + 'px（慢速漫游 ≈0.33px/帧）——速度曲线铁律' });
+          // ③ 光环转移判定：近距（带内）敌人 → 转移给圣杯；远距 → 不转移；持续伤害 → 不转移
+          const near = spawn.makeEnemy('side', e.x, e.y + 60, { behavior: 'pass' });
+          const far = spawn.makeEnemy('side', Math.max(30, e.x - 400), e.y, { behavior: 'pass' });
+          const gt = enemyMod.grailRedirect(near, 'bullet');
+          if (!gt || gt.g !== e) errors.push({ key: '圣杯 光环转移失效', stack: '150px 内敌人受伤未转移至圣杯（grailRedirect 返回 ' + (gt ? '非圣杯' : 'null') + '）' });
+          else if (enemyMod.grailRedirect(far, 'bullet') !== null) errors.push({ key: '圣杯 光环越界转移', stack: '400px 外敌人被判定在光环内' });
+          else if (enemyMod.grailRedirect(near, 'dot') !== null) errors.push({ key: '圣杯 持续伤害误转移', stack: '持续伤害（dot）不应转移' });
+          else if (enemyMod.grailRedirect(e, 'bullet') !== null) errors.push({ key: '圣杯 自转移', stack: '圣杯本体不应再向自身转移' });
+          // ④ 击坠掉落：「掉落水晶：1」→ convertCrystalDrop(1) = 1 颗小水晶 = CRYSTAL_TIERS.small.val（10 分）
+          core.enemies.length = 0; core.enemies.push(e);
+          const sumV = (arr) => arr.reduce((s, c) => s + (c.val || 0), 0);
+          const v0 = sumV(core.crystals);
+          enemyMod.killEnemy(core.enemies.indexOf(e));
+          const dv = sumV(core.crystals) - v0;
+          if (dv !== 10) errors.push({ key: '圣杯 水晶掉落数值错误', stack: '击坠后水晶总值差 ' + dv + '（应为 10 = 1 颗小水晶——「掉落水晶：1」）' });
+        }
+      }
+      core.enemies.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      sample('愧悔魂灵圣杯 入场连续性 / 活动带夹取 / 光环转移判定 / 击坠掉 1 水晶');
+    }
+  }
+}
+
+async function sceneStasisUnreal() {
+  // 静滞虚幻（3D，2026-11-11 实装）：① 顶部入场直落连续性（虚幻 75% 速）② 索敌锁定 → 炸弹即脱离 →
+  // 低速下坠/冲刺 → 爆炸生成静滞区域（r=100 / 5.5~7.5s / 真我只对我方生效）③ 静滞区域效果
+  //（我方/敌方移速 ×0.3、射速不受影响、我方子弹过境永久弹速 ×0.6 伤害 ×0.75）④ 预警区形成前击毁 →
+  // 原地殉爆（波及敌人 + 只对敌生效静滞区）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_H（桩坑：桩 canvas.height 是渲染分辨率）
+    const cfgE = await import(pathToFileURL(join(jsDir, '01-config-enemies.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+    if (spawn.makeEnemy && enemyMod.killEnemy && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      const H = cfgCore.CANVAS_H;
+      const SU = cfgE.STASIS_UNREAL;
+      const clearAll = () => {
+        core.enemies.length = 0;
+        if (core.pBullets) core.pBullets.length = 0;
+        if (core.eBullets) core.eBullets.length = 0;
+        if (core.frostZones) core.frostZones.length = 0;
+        if (core.dagouMissiles) core.dagouMissiles.length = 0;   // 大狗导弹残留会飞到屏顶击毁入场敌机（0.5s 命中 y=-16），必须随场景清场
+      };
+      // ① 入场：直落连续性（speedSlow = 虚幻 120×0.75 = 90px/s ≈1.5px/帧，阈值 6——速度曲线铁律）
+      clearAll();
+      const e = spawn.makeEnemy('stasisUnreal', core.player.x, -60, {});
+      if (!e || e.type !== 'stasisUnreal') {
+        errors.push({ key: '静滞虚幻 生成失败', stack: 'makeEnemy stasisUnreal 未返回预期实体' });
+      } else {
+        let locked = false, maxStep = 0, prevY = e.y;
+        for (let f = 0; f < 400 && !locked; f++) {
+          if (core.pBullets) core.pBullets.length = 0;   // 隔离：清我方弹防锁定前被击毁
+          if (core.dagouMissiles) core.dagouMissiles.length = 0;   // 隔离：大狗导弹残留同风险
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          frames(1);
+          maxStep = Math.max(maxStep, Math.abs(e.y - prevY));
+          prevY = e.y;
+          locked = e.blPhase === 1;
+        }
+        if (!locked) errors.push({ key: '静滞虚幻 未锁定', stack: '400 帧内未进入索敌锁定（blPhase!==1，入场分支异常？）' });
+        else {
+          if (maxStep > 6) errors.push({ key: '静滞虚幻 入场位移瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（直落 90px/s ≈1.5px/帧）——速度曲线铁律' });
+          // ② 锁定瞬间炸弹即脱离：blThrown 置位 + blBombs 出现静滞弹（su 标记）
+          if (!e.blThrown || core.blBombs.length !== 1 || !core.blBombs[0].su) {
+            errors.push({ key: '静滞虚幻 锁定未投弹', stack: 'blThrown=' + !!e.blThrown + ' blBombs=' + core.blBombs.length + '（锁定瞬间应即投弹且带 su 标记）' });
+          } else {
+            // 炸弹下坠 → 冲刺 → 爆炸：≤300 帧内应生成静滞区域（r=100 / 持续 5.5~7.5s / 真我只对我方生效）
+            let zone = null;
+            for (let f = 0; f < 300 && !zone; f++) {
+              frames(1);
+              zone = core.frostZones.find(z => z.stasis) || null;
+            }
+            if (!zone) errors.push({ key: '静滞虚幻 爆炸未生成静滞区域', stack: '300 帧内 frostZones 无 stasis 区（炸弹链路异常？）' });
+            else {
+              if (zone.r !== SU.frostR) errors.push({ key: '静滞区域 半径错误', stack: 'r=' + zone.r + '（应为 STASIS_UNREAL.frostR=' + SU.frostR + '）' });
+              if (zone.dur < SU.frostDurMin - 1e-6 || zone.dur > SU.frostDurMax + 1e-6) errors.push({ key: '静滞区域 持续时长越界', stack: 'dur=' + zone.dur.toFixed(2) + '（应随机于 ' + SU.frostDurMin + '~' + SU.frostDurMax + 's）' });
+              if (!zone.affectsPlayer || zone.affectsEnemies) errors.push({ key: '静滞区域 生效方向错误', stack: '真我投掷静滞区应只对我方生效（affectsPlayer/affectsEnemies=' + !!zone.affectsPlayer + '/' + !!zone.affectsEnemies + '）' });
+              // ③ 区域效果：玩家圈内移速 ×0.3、射速不受影响（静滞不减速射速）
+              const px0 = core.player.x, py0 = core.player.y;
+              core.player.x = zone.x; core.player.y = zone.y;
+              const pm = spawn.playerFrostMoveMul();
+              if (Math.abs(pm - SU.frostMoveSlow) > 1e-6) errors.push({ key: '静滞区域 玩家移速减速错误', stack: 'playerFrostMoveMul=' + pm + '（应为 ' + SU.frostMoveSlow + ' = -70%）' });
+              if (spawn.playerFrostSlowMul() !== 1) errors.push({ key: '静滞区域 误减速射速', stack: 'playerFrostSlowMul 应为 1（静滞只影响移速与子弹）' });
+              const te = spawn.makeEnemy('side', zone.x, zone.y, { behavior: 'pass' });
+              const em = spawn.enemyFrostZoneMoveMul(te);
+              if (Math.abs(em - 1) > 1e-6) errors.push({ key: '静滞区域 真我投掷区误伤敌机', stack: 'enemyFrostZoneMoveMul=' + em + '（真我投掷区只对我方生效，敌机应为 1）' });
+              // 我方子弹过境：永久弹速 ×0.6 / 伤害 ×0.75（stasisHit 一次性标记，直接缩放 vx/vy/dmg）
+              const b = { x: zone.x, y: zone.y, vx: 100, vy: 0, r: 5, dmg: 10, color: '#fff', lv: 4, mainShot: true };
+              core.pBullets.push(b);
+              frames(1);
+              if (!b.stasisHit || Math.abs(b.vx - 60) > 1e-6 || Math.abs(b.dmg - 7.5) > 1e-6) {
+                errors.push({ key: '静滞区域 子弹过境标记错误', stack: 'stasisHit=' + !!b.stasisHit + ' vx=' + b.vx + ' dmg=' + b.dmg + '（应为弹速 ×0.6=60 / 伤害 ×0.75=7.5）' });
+              }
+              core.player.x = px0; core.player.y = py0;   // 复位玩家
+            }
+          }
+        }
+      }
+      // ④ 预警区形成前击毁 → 原地殉爆：波及敌人受 600+20%maxHp 伤 + 生成只对敌生效的静滞区
+      clearAll();
+      const e2 = spawn.makeEnemy('stasisUnreal', core.player.x, -60, {});
+      // 强制独占（场景隔离）：自然刷怪会让 enemies 列表波动，且 makeEnemy 在屏外排队/数量闸门下可能延迟入列——
+      // 清空后仅保留 e2，保证击毁目标确定在场
+      core.enemies.length = 0;
+      if (!core.enemies.includes(e2)) core.enemies.push(e2);
+      for (let f = 0; f < 30 && e2.blPhase === 0; f++) {
+        if (core.pBullets) core.pBullets.length = 0;           // 隔离：清我方弹防锁定前被击毁
+        if (core.dagouMissiles) core.dagouMissiles.length = 0; // 隔离：大狗导弹残留 0.5s 飞抵屏顶会击毁 e2（历史 flaky 根因）
+        frames(1);   // 直落数帧（尚未进入索敌半径，未锁定）
+      }
+      const victim = spawn.makeEnemy('side', e2.x, e2.y, { behavior: 'pass' });   // 殉爆波及范围内（0px）
+      if (e2.blPhase === 1) errors.push({ key: '静滞虚幻 殉爆场景前置失败', stack: '30 帧内已锁定（玩家距离过近？场景隔离失败）' });
+      else if (!victim) errors.push({ key: '静滞虚幻 殉爆靶机生成失败', stack: 'makeEnemy side 未返回实体' });
+      else {
+        if (!core.enemies.includes(victim)) core.enemies.push(victim);   // 靶机同样强制入列
+        const idx2 = core.enemies.indexOf(e2);
+        if (idx2 < 0) errors.push({ key: '静滞虚幻 e2 提前离场', stack: '击毁前 e2 已不在 enemies（y=' + e2.y.toFixed(1) + ' blPhase=' + e2.blPhase + ' blThrown=' + !!e2.blThrown + '）——场景隔离不足或存在异常移除路径' });
+        else {
+          enemyMod.killEnemy(idx2);   // 未锁定击毁 → detonateBaoling 殉爆
+          const dz = core.frostZones.find(z => z.stasis) || null;
+          if (!dz || !dz.stasis) errors.push({ key: '静滞虚幻 殉爆未留静滞区', stack: '击毁后 frostZones 无 stasis 区' });
+          else if (!dz.affectsEnemies || dz.affectsPlayer) errors.push({ key: '静滞虚幻 殉爆静滞区生效方向错误', stack: '殉爆区应只对敌人生效（affectsEnemies/affectsPlayer=' + !!dz.affectsEnemies + '/' + !!dz.affectsPlayer + '）' });
+          else {
+            const em2 = spawn.enemyFrostZoneMoveMul(victim);
+            if (Math.abs(em2 - SU.frostMoveSlow) > 1e-6) errors.push({ key: '静滞虚幻 殉爆区敌机减速错误', stack: 'enemyFrostZoneMoveMul=' + em2 + '（只对敌生效的殉爆区内应为 ' + SU.frostMoveSlow + ' = -70%）' });
+            if (victim.hp >= victim.maxHp && core.enemies.includes(victim)) errors.push({ key: '静滞虚幻 殉爆未波及敌人', stack: '0px 距离靶机未受伤（600+20%maxHp 波及失效）' });
+          }
+        }
+      }
+      clearAll();
+      sample('静滞虚幻 入场连续性 / 锁定即投弹 / 静滞区域生成与效果 / 殉爆分派');
+    }
+  }
+}
+
+async function sceneCollapseConstruct() {
+  // 坍缩构造体（2D，2026-11-11 实装）：① 双逻辑分段移动平滑性（相邻帧位移上限，瞬移帧豁免——瞬移是用户定稿
+  // 设计特性）② 逻辑1 侧翼「[」路径走完 → 水平镜像瞬移（x'=W−x，y 不变）→ 底部镜像重走 → 出屏移除
+  // ③ 逻辑2 顶部下横上走完 → 底部瞬移（x 不变，y=H−50）→ 上横下重走 → 出屏移除 ④ A1 式刹停射击
+  //（强制首攻 → brake → fire → grad 'cb' 渐变弹 dmg 20）⑤ 随场高承伤乘区（constructAltHurtMul 0.5/1/1.5 线性）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_H（桩坑：桩 canvas.height 是渲染分辨率）
+    const cfgE = await import(pathToFileURL(join(jsDir, '01-config-enemies.js')).href);
+    const cfgD = await import(pathToFileURL(join(jsDir, '01-config-difficulty.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    if (spawn.spawnCollapseConstruct && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      const H = cfgCore.CANVAS_H, W = cfgCore.CANVAS_W;
+      const clearAll = () => {
+        core.enemies.length = 0;
+        if (core.pBullets) core.pBullets.length = 0;
+        if (core.eBullets) core.eBullets.length = 0;
+      };
+      // 逐帧推进 + 隔离（清我方弹防靶机被击毁；清敌方弹防玩家被弹幕干扰）；返回 { maxStep, teleported }
+      // ——瞬移当帧位移不计入 maxStep（位置跳变是设计行为），其余帧任何一帧超阈即记违规
+      const runSegs = (e, maxFrames, stepLimit) => {
+        let maxStep = 0, prevX = e.x, prevY = e.y, wasTele = false, outFrames = 0, teleOk = true;
+        for (let f = 0; f < maxFrames && outFrames < 30; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          if (core.eBullets) core.eBullets.length = 0;
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          e.phase = 1;                          // 常驻虚化（06-enemy 每帧递减 dt，这里逐帧重设）：免疫我方弹/撞机反伤，敌人不再被玩家弹幕击毁
+          if (core.player) { core.player.hp = core.player.maxHp; core.player.alive = true; }   // 玩家保活（碰撞伤害 35 不致死——fire gate 依赖 player.alive）
+          frames(1);
+          const teleNow = !!e.ccTeleported;
+          if (!(teleNow && !wasTele)) {   // 仅瞬移当帧（ccTeleported 由 false→true）豁免位移统计
+            const step = Math.hypot(e.x - prevX, e.y - prevY);
+            if (step > maxStep) maxStep = step;
+            if (step > stepLimit) teleOk = false;
+          }
+          prevX = e.x; prevY = e.y; wasTele = teleNow;
+          if (!core.enemies.includes(e)) outFrames++;   // 被通用出屏检测移除 → 离场完成
+        }
+        return { maxStep, teleOk, removed: !core.enemies.includes(e), teleFrames: outFrames > 0 };
+      };
+      // 生成两台（50/50 抽取），按 ccMode 分拣——两种逻辑各测一台；同逻辑重复时仅丢弃当前这台
+      //（不清全场——清全场会把已留用的另一台一并移出 enemies，导致其 runSegs 空转误报）
+      let m1 = null, m2 = null;
+      for (let t = 0; t < 20 && (!m1 || !m2); t++) {
+        const e = spawn.spawnCollapseConstruct();
+        if (e.ccMode === 1 && !m1) m1 = e;
+        else if (e.ccMode === 2 && !m2) m2 = e;
+        else {
+          const ei = core.enemies.indexOf(e);
+          if (ei >= 0) core.enemies.splice(ei, 1);   // 仅丢弃当前这台
+        }
+      }
+      if (!m1 || !m2) errors.push({ key: '坍缩构造体 双逻辑生成失败', stack: '20 次内未同时拿到 ccMode 1/2（spawn 抽取异常？）' });
+      else {
+        // 巡航 255px/s ≈ 4.25px/帧（60fps）→ 阈值 12（含刹停减速/转角低通过冲余量）
+        const r1 = runSegs(m1, 1500, 12);
+        if (!r1.teleFrames) errors.push({ key: '坍缩构造体 逻辑1 未离场', stack: '1500 帧内未被移除（镜像瞬移/离场链路异常？）' });
+        else {
+          if (!m1.ccTeleported) errors.push({ key: '坍缩构造体 逻辑1 未瞬移', stack: 'ccTeleported 未置位（首遍路径判定线异常？）seg=' + m1.ccSeg + ' x=' + m1.x.toFixed(1) + ' y=' + m1.y.toFixed(1) + ' turnX=' + m1.ccTurnX.toFixed(1) + ' turnY=' + m1.ccTurnY.toFixed(1) + ' homeX=' + m1.ccHomeX.toFixed(1) + ' maxStep=' + r1.maxStep.toFixed(2) });
+          if (!r1.teleOk) errors.push({ key: '坍缩构造体 逻辑1 位移瞬跳', stack: '相邻帧最大位移 ' + r1.maxStep.toFixed(2) + 'px（巡航 255 ≈4.25px/帧，阈值 12）——速度曲线铁律' });
+        }
+        clearAll();
+        // 逻辑2 需在 clearAll 之后重新生成（clearAll 清空 enemies——预生成的 m2 已不在场，直接跑会冻结在出生点）
+        let m2b = null;
+        for (let t = 0; t < 20 && !m2b; t++) {
+          const e = spawn.spawnCollapseConstruct();
+          if (e.ccMode === 2) m2b = e;
+          else {
+            const ei = core.enemies.indexOf(e);
+            if (ei >= 0) core.enemies.splice(ei, 1);
+          }
+        }
+        if (!m2b) errors.push({ key: '坍缩构造体 逻辑2 生成失败', stack: '20 次内未拿到 ccMode 2' });
+        else {
+          const r2 = runSegs(m2b, 1500, 12);
+          if (!r2.teleFrames) errors.push({ key: '坍缩构造体 逻辑2 未离场', stack: '1500 帧内未被移除（底部瞬移/下移离场链路异常？）' });
+          else {
+            if (!m2b.ccTeleported) errors.push({ key: '坍缩构造体 逻辑2 未瞬移', stack: 'ccTeleported 未置位（首遍路径判定线异常？）seg=' + m2b.ccSeg + ' x=' + m2b.x.toFixed(1) + ' y=' + m2b.y.toFixed(1) + ' turnY=' + m2b.ccTurnY.toFixed(1) + ' strafeX=' + m2b.ccStrafeX.toFixed(1) + ' upY=' + m2b.ccUpY.toFixed(1) + ' maxStep=' + r2.maxStep.toFixed(2) });
+            if (!r2.teleOk) errors.push({ key: '坍缩构造体 逻辑2 位移瞬跳', stack: '相邻帧最大位移 ' + r2.maxStep.toFixed(2) + 'px（阈值 12）——速度曲线铁律' });
+          }
+        }
+        // ④ 刹停射击：场内强制首攻 0.02s → brake 停稳 → fire 发射 grad 'cb' 弹（dmg 20 / r 6 / 拖尾 streak）
+        clearAll();
+        const e3 = spawn.spawnCollapseConstruct();
+        e3.fireTimer = 0.02;
+        e3.x = W / 2; e3.y = H * 0.15; e3.vx = 0; e3.vy = 0;   // 置于场内上部（远离玩家，减少碰撞干扰）
+        let shot = null;
+        for (let f = 0; f < 200 && !shot; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          e3.phase = 1;   // 常驻虚化：免疫我方弹（每帧重设对抗 06-enemy 递减）
+          if (core.player) { core.player.hp = core.player.maxHp; core.player.alive = true; }
+          frames(1);
+          shot = core.eBullets.find(b => b.grad === 'cb') || null;
+        }
+        if (!shot) errors.push({ key: '坍缩构造体 刹停未发射', stack: '200 帧内无 grad cb 弹（攻击状态机异常？ccAtk=' + e3.ccAtk + ')' });
+        else {
+          if (shot.dmg !== 20) errors.push({ key: '坍缩构造体 弹伤错误', stack: 'dmg=' + shot.dmg + '（应为 20）' });
+          if (!shot.streak || Math.abs(shot.r - cfgE.ENEMY_TYPES.collapseConstruct.bulletR) > 1e-6) errors.push({ key: '坍缩构造体 弹体参数错误', stack: 'streak=' + shot.streak + ' r=' + shot.r + '（应带拖尾且 r=注册表 bulletR）' });
+          // 发射后静止 0.15s 收势：fire 态剩余时间断言（粗粒度——发射后敌人应静止短暂时长再恢复移动）
+          if (e3.ccAtk !== 'fire') errors.push({ key: '坍缩构造体 发射后状态异常', stack: '发射当帧 ccAtk=' + e3.ccAtk + '（应为 fire 收势态）' });
+        }
+      }
+      // ⑤ 随场高承伤乘区：y=0 → 0.5 / y=H/2 → 1.0 / y=H → 1.5（线性）；非本型敌人恒 1
+      const mm = cfgD.constructAltHurtMul;
+      const mk = (y) => ({ type: 'collapseConstruct', y });
+      const checks = [[0, 0.5], [H / 2, 1.0], [H, 1.5], [-100, 0.5], [H + 300, 1.5]];
+      for (const [yy, want] of checks) {
+        const got = mm(mk(yy));
+        if (Math.abs(got - want) > 1e-6) errors.push({ key: '坍缩构造体 承伤乘区数值错误', stack: 'y=' + yy + ' mul=' + got + '（应为 ' + want + '：最上 0.5 / 中点 1.0 / 最下 1.5 线性）' });
+      }
+      if (mm({ type: 'voyager', y: 0 }) !== 1) errors.push({ key: '坍缩构造体 承伤乘区误伤他型', stack: 'voyager 在 y=0 处 mul 应为 1' });
+      clearAll();
+      sample('坍缩构造体 双逻辑镜像重走 / 瞬移与连续性 / 刹停渐变弹 / 场高承伤乘区');
+    }
+  }
+}
+
+async function sceneCocoonDream() {
+  // 破茧之梦（3E，2026-11-11 实装）：① 侧翼入场 + 七段路径全程推进连续性（巡航 200px/s = 法术大师A1 ×125%
+  // ≈3.33px/帧，阈值 6——速度曲线铁律：段切换只改期望速度方向、实际速度低通过渡无瞬跳）② 刹停攻击状态机：
+  // 首攻 2s → brake 停稳标记玩家瞬时位置 → fire 静置 0.25s → 五连弹逐发 ±5°（弹速同威龙 ≈418）→ 收势回巡航
+  // ③ 单轮攻击恰好 5 枚、弹速/偏移角合规 ④ 击坠必掉 1 颗水晶（「掉落水晶：1」）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_H（桩坑：桩 canvas.height 是渲染分辨率）
+    const cfgE = await import(pathToFileURL(join(jsDir, '01-config-enemies.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+    if (spawn.spawnCocoonDream && enemyMod.killEnemy && core.enemies && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(10);        // 开局（玩家就位）
+      const H = cfgCore.CANVAS_H;
+      const W = cfgCore.CANVAS_W;
+      const CD = cfgE.COCOON_DREAM;
+      const clearAll = () => {
+        core.enemies.length = 0;
+        if (core.pBullets) core.pBullets.length = 0;
+        if (core.eBullets) core.eBullets.length = 0;
+        if (core.frostZones) core.frostZones.length = 0;
+      };
+      // ① 七段路径全程推进 + 相邻帧位移连续性（禁玩家复位防清场重刷；只留本体一台）
+      clearAll();
+      const e = spawn.spawnCocoonDream();
+      if (!e || e.type !== 'cocoonDream' || !e.cdPath || e.cdPath.length !== 6) {
+        errors.push({ key: '破茧之梦 生成失败', stack: 'spawnCocoonDream 未返回带 6 航点的 cocoonDream 实体' });
+      } else {
+        core.player.x = W / 2; core.player.y = H - 60;   // 玩家钉在底部中央（远离弹着点复核区，避免死亡重开干扰）
+        let maxStep = 0, prevX = e.x, prevY = e.y, reached6 = false, exited = false, bulletSeen = false;
+        for (let f = 0; f < 1800 && !reached6; f++) {
+          if (core.pBullets) core.pBullets.length = 0;   // 隔离：清我方弹防被击毁
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e) core.enemies.splice(i, 1);
+          core.player.hp = core.player.maxHp; core.player.invuln = 99; core.player.invulnBlink = true;   // 防路径穿越撞死玩家
+          if (core.eBullets) core.eBullets.length = 0;   // ①阶段不考察子弹
+          frames(1);
+          maxStep = Math.max(maxStep, Math.hypot(e.x - prevX, e.y - prevY));
+          prevX = e.x; prevY = e.y;
+          if (core.enemies.indexOf(e) < 0) { exited = true; break; }   // 离场被通用移除（也是合法终点）
+          if (e.cdSeg >= 6) reached6 = true;
+        }
+        if (!reached6 && !exited) errors.push({ key: '破茧之梦 路径未推进', stack: '1800 帧内未到达离场段（cdSeg=' + e.cdSeg + '）——段推进判定异常' });
+        if (maxStep > 6) errors.push({ key: '破茧之梦 位移瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（巡航 200px/s ≈3.33px/帧）——速度曲线铁律' });
+        // ②③ 单轮攻击：恰好 5 枚、弹速同威龙（CD.bulletSpeed）、逐发偏移 ≤±5°（对刹车锁定角）
+        clearAll();
+        const e2 = spawn.spawnCocoonDream();
+        core.player.x = W / 2; core.player.y = H - 60;
+        let shotN = 0, badSpeed = 0, badAng = 0;
+        for (let f = 0; f < 900 && shotN < 5; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e2) core.enemies.splice(i, 1);
+          core.player.hp = core.player.maxHp; core.player.invuln = 99; core.player.invulnBlink = true;
+          frames(1);
+          if (core.eBullets && core.eBullets.length) {
+            for (const b of core.eBullets) {
+              const sp = Math.hypot(b.vx, b.vy);
+              if (Math.abs(sp - CD.bulletSpeed) > 1) badSpeed++;
+              const ba = e2.cdBaseAng != null ? e2.cdBaseAng : Math.atan2(b.vy, b.vx);
+              const da = Math.abs(Math.atan2(Math.sin(Math.atan2(b.vy, b.vx) - ba), Math.cos(Math.atan2(b.vy, b.vx) - ba)));
+              if (da > CD.burstJitter + 1e-6) badAng++;
+              shotN++;
+            }
+            core.eBullets.length = 0;   // 清弹防命中玩家/过期移除，只统计新生弹
+          }
+        }
+        if (shotN < 5) errors.push({ key: '破茧之梦 首攻未射出五连弹', stack: '900 帧内仅统计到 ' + shotN + ' 枚（首攻 2s + 刹停演出应 ≈2.7s 内完成）' });
+        else {
+          if (shotN > 5) errors.push({ key: '破茧之梦 单轮超发', stack: '一轮刹停统计到 ' + shotN + ' 枚（应恰好 5 枚五连弹）' });
+          if (badSpeed) errors.push({ key: '破茧之梦 弹速错误', stack: badSpeed + ' 枚弹速偏离 COCOON_DREAM.bulletSpeed（应同威龙 ≈' + CD.bulletSpeed.toFixed(0) + '）' });
+          if (badAng) errors.push({ key: '破茧之梦 偏移角越界', stack: badAng + ' 枚偏移角超出 ±5°（共 10° 范围——用户定稿）' });
+        }
+        // ④ 击坠必掉 1 颗水晶
+        clearAll();
+        const e3 = spawn.spawnCocoonDream();
+        core.enemies.length = 0; core.enemies.push(e3);
+        const sumV = (arr) => arr.reduce((s, c) => s + (c.val || 0), 0);
+        const v0 = sumV(core.crystals);
+        enemyMod.killEnemy(core.enemies.indexOf(e3));
+        const dv = sumV(core.crystals) - v0;
+        if (dv !== 10) errors.push({ key: '破茧之梦 水晶掉落数值错误', stack: '击坠后水晶总值差 ' + dv + '（应为 10 = 1 颗小水晶——「掉落水晶：1」）' });
+      }
+      core.enemies.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      if (core.eBullets) core.eBullets.length = 0;
+      sample('破茧之梦 七段路径连续性 / 刹停五连弹（弹速同威龙 ±5° 偏移）/ 击坠掉 1 水晶');
+    }
+  }
+}
+
+async function sceneQunxingGate() {
+  // 群星之扉特殊护甲（2026-11-11 实装）全链路回归：
+  // ① 免伤触发（stub Math.random=0 必中——前置消费点均带门控短路，不污染判定）：血量不损 / 无受击无敌
+  //    （不按闪避口径——同屏障 return false）/ 黑洞对象生成；参数公式口径（动态 count 含自身）：
+  //    dur=0.5+0.1s/件 · r=100+10px/件 · growT=0.15 出现缓入
+  // ② 黑洞吞弹：圈内普通弹被吞 / 圈外对照弹保留；激光（b.laser）中段覆盖拆两段（eBullets 内 laser 计数=2，
+  //    len 总和落在 (0, 原长)——两段随后持续被「覆盖段吞噬」磨短属预期）
+  // ③ 伤害 tick：圈内敌人 0.1s 一跳掉 10% maxHp（封顶 400）
+  // ④ 减速口径：enemyBlackholeMoveMul 非BOSS ×0.5 / BOSS ×1（BOSS 不受减速）
+  // ⑤ 到期清除（t≥dur → state.blackhole=null）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    const spawnMod = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    const prevArmor = cfgL.currentArmor;
+    const prevWingman = cfgL.currentWingman;
+    cfgL.setArmor(cfgL.ARMORS.qunxingGate);
+    cfgL.setWingman(cfgL.WINGMEN_CFG.none);   // 禁僚机：默认时空允诺自动射击会污染伤害 tick 断言（前序场景僚机弹残留同理）
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);   // 从上一场景干净返回
+    elements.startBtn.click(); frames(10);       // 开局（常规局）
+    core.enemies.length = 0; core.eBullets.length = 0;
+    if (core.pBullets) core.pBullets.length = 0;   // 玩家子弹残留清场（防前序场景弹体命中 voyager 干扰伤害断言）
+    core.player.invuln = 0; core.player.shield = 0; core.player.crystalShield = 0;
+    core.player.barrier = 0; core.player.permBarrier = 0;
+    // ① 免伤触发（stub 期间 damagePlayer 前置分支全部带门控短路——酒客/词条闪避/哈基米等不消费 random）
+    const origRandom = Math.random;
+    Math.random = () => 0;
+    const hp0 = core.player.hp;
+    const took = playerMod.damagePlayer(10);
+    Math.random = origRandom;
+    if (took) errors.push({ key: '群星之扉 免伤未生效', stack: 'damagePlayer 返回 true（免伤分支应 return false）' });
+    if (core.player.hp !== hp0) errors.push({ key: '群星之扉 免伤未生效', stack: '免伤后血量变化 ' + hp0 + ' → ' + core.player.hp });
+    if (core.player.invuln > 0) errors.push({ key: '群星之扉 口径不符', stack: '免伤触发了受击无敌（不按闪避口径应保持 0）' });
+    const bh = core.state.blackhole;
+    if (!bh) {
+      errors.push({ key: '群星之扉 黑洞未生成', stack: '免伤成功后 state.blackhole 为空' });
+    } else {
+      // 参数公式断言（动态 count——工作区默认装备可能已含其他群星系列件，不硬编码 count=1）
+      const cnt = cfgL.starsSeriesCount();
+      if (cnt < 1) {
+        errors.push({ key: '群星之扉 套装计数异常', stack: 'starsSeriesCount=' + cnt + '（群星之扉自身应计入，≥1）' });
+      }
+      const durExp = 0.5 + 0.1 * cnt, rExp = 100 + 10 * cnt;
+      if (Math.abs(bh.dur - durExp) > 1e-6 || Math.abs(bh.r - rExp) > 1e-6) {
+        errors.push({ key: '群星之扉 黑洞参数口径', stack: 'dur=' + bh.dur + ' r=' + bh.r + '（count=' + cnt + ' 应 ' + durExp + '/' + rExp + '——0.5s+0.1s/件 · 100px+10px/件）' });
+      }
+      if (Math.abs(bh.growT - 0.15) > 1e-6) {
+        errors.push({ key: '群星之扉 出现缓入缺失', stack: 'growT=' + bh.growT + '（应 0.15s 半径缓入——判定与视觉同源）' });
+      }
+    }
+    // ② 黑洞吞弹（等 rEff 长满：0.15s 缓入 ≈9 帧）；巨大蛋挞/词条大蛋挞与非激光弹同一整颗吞路径，
+    //    由吞弹分支条件覆盖（tartHitT==null 时不会被消散管线前置 continue 截走），不单独构造
+    const px = core.player.x, py = core.player.y;
+    core.eBullets.push({ x: px + 60, y: py, vx: 0, vy: 0, r: 4, len: 0, dmg: 5, color: '#fff', age: 0 });            // 圈内普通弹
+    core.eBullets.push({ x: px + 170, y: py, vx: 0, vy: 0, r: 4, len: 0, dmg: 5, color: '#fff', age: 0 });           // 圈外对照（屏内 410 < 480，且 170 > rEff 上限 140）
+    core.eBullets.push({ x: px - 200, y: py + 80, vx: 100, vy: 0, r: 5, len: 400, growRate: 0, laser: true, dmg: 16, color: '#a855f7', age: 0 });   // 横穿激光（y 偏移 80 避开玩家命中判定）
+    runFrames(12);
+    const lasers = core.eBullets.filter(bb => bb.laser);
+    const normals = core.eBullets.filter(bb => !bb.laser);
+    if (lasers.length !== 2) {
+      errors.push({ key: '群星之扉 激光截断异常', stack: '中段覆盖应拆两段（本颗靠尾段 + 克隆靠头段），实际 laser 弹 ' + lasers.length + ' 颗' });
+    } else {
+      const lenSum = lasers.reduce((s, bb) => s + bb.len, 0);
+      if (!(lenSum > 0 && lenSum < 400)) {
+        errors.push({ key: '群星之扉 激光截断异常', stack: '拆段后两段 len 总和应落在 (0, 400)（覆盖段被吞），实际 ' + lenSum.toFixed(1) });
+      }
+    }
+    if (normals.length !== 1) {
+      errors.push({ key: '群星之扉 吞弹异常', stack: '圈内普通弹应被吞、圈外对照弹保留，实际非激光弹剩余 ' + normals.length + ' 颗' });
+    }
+    // ③④ 伤害 tick + 减速口径（voyager 直调摆入圈内——测试场景直接摆位，不涉移动连续性）
+    // 摆位前清空全部玩家方射弹/特效数组：feijianWaves（不再陵落飞剑）/ friendStorms（天秀风暴）等
+    // 不在 resetGame 清单内，前序场景残留体飘入黑洞圈会污染伤害 tick 断言（实测多发 +25 飞剑伤害）
+    for (const arr of [core.pBullets, core.missiles, core.missileWarns, core.feijianWaves, core.friendStorms,
+                       core.dagouMissiles, core.ddjMissiles, core.meiScythes, core.xinRings, core.dashKillFx,
+                       core.bulwarkBurst, core.blBombs, core.popianMissiles, core.spellCubes, core.pillarStrikes,
+                       core.wgSlashes, core.windFlows, core.wingmen, core.eBullets]) {
+      if (arr && arr.length) arr.length = 0;
+    }
+    const e = spawnMod.spawnVoyager(null, 0, { flankFrom: -1 });
+    if (!e || e.type !== 'voyager') {
+      errors.push({ key: '群星之扉 伤害 tick 验证失败', stack: 'spawnVoyager 未返回 voyager 实体' });
+    } else {
+      e.x = px + 50; e.y = py;
+      const hpBefore = e.hp, dmgExpect = Math.min((e.maxHp || e.hp) * 0.10, 400);
+      const slowN = spawnMod.enemyBlackholeMoveMul(e);
+      const slowB = spawnMod.enemyBlackholeMoveMul({ type: 'boss', x: px, y: py, w: 50, h: 50 });
+      if (Math.abs(slowN - 0.5) > 1e-6) {
+        errors.push({ key: '群星之扉 减速口径', stack: '圈内非 BOSS 敌机移速应 ×0.5，实际 ×' + slowN });
+      }
+      if (slowB !== 1) {
+        errors.push({ key: '群星之扉 减速口径', stack: 'BOSS 不受黑洞减速（应 ×1），实际 ×' + slowB });
+      }
+      runFrames(8);   // tickT 累计 ≥0.1s（6 帧）→ 至少一跳
+      const lost = hpBefore - e.hp;
+      if (!(lost > 0 && Math.abs(lost - dmgExpect) < 1)) {
+        errors.push({ key: '群星之扉 伤害 tick 异常', stack: '应掉 10% maxHp（封顶 400）=' + dmgExpect.toFixed(1) + '，实际掉 ' + lost.toFixed(1) });
+      }
+    }
+    // ⑤ 到期清除（dur 0.6s：t≈0.2s + 30 帧 ≈0.7s > 0.6s）
+    runFrames(30);
+    if (core.state.blackhole !== null) {
+      errors.push({ key: '群星之扉 黑洞未到期清除', stack: 't ≥ dur 后 state.blackhole 应为 null，实际仍存在' });
+    }
+    cfgL.setArmor(prevArmor);
+    cfgL.setWingman(prevWingman);
+    core.enemies.length = 0; core.eBullets.length = 0;
+    key('p'); frames(5); key('p', false);
+    elements.pauseHomeBtn.click(); frames(10);
+    sample('群星之扉 免伤+黑洞全链路（吞弹含激光截断拆段 / 伤害 tick / 减速 BOSS 豁免 / 到期清除）');
+  }
+}
+
 async function sceneHoverBob() {
   // 御4 / 铁砧：到位悬停后除左右巡航外，应有小幅上下浮动（2026-09-29 用户反馈新增）——
   // 直调 spawnYu4 / spawnAnvil（长 holdTimer，不走自然刷怪），跟踪到位后纵向轨迹：
@@ -1862,9 +2479,10 @@ const SCENES = [
   { name: 'core-flow', desc: '主界面空闲 / 开局战斗 / 移动爆弹 / 暂停恢复重开 / 二次开局', files: '14-main 07-player 08-entities 02-core', run: sceneCoreFlow },
   { name: 'pilots', desc: '13 名驾驶员卡片选中主路径 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
   { name: 'sub-weapons', desc: '全部副武器卡片主路径（演示发射 / 战斗 / 重开冷却）', files: '07-player 12-ui', run: sceneSubWeapons },
+  { name: 'zhuixing', desc: '坠星长枪（垂直直射 / 驻留减速 / 无限穿透 / 伤害结算 / 暴走错峰队列）', files: '07-player 08-entities 10-draw-world 01-config-loadout', run: sceneZhuixingSpear },
   { name: 'encyclopedia', desc: '怪物图鉴预览渲染 + 数值与机制图鉴 DOM 构建', files: '12-ui 13-encyclopedia', run: sceneEncyclopedia },
   { name: 'wave-test', desc: '权重表「波次」子页试波挑战 + = 追加补波', files: '12-ui 13-encyclopedia 04-spawn 14-main', run: sceneWaveTest },
-  { name: 'swarm', desc: '持续刷怪测试 Lv20 锁级 + 按 7 强制抽卡', files: '04-spawn 14-main 07-player', run: sceneSwarm },
+  { name: 'swarm', desc: '持续刷怪测试 Lv20 锁级 + 强制抽卡（调试菜单同款函数直调）', files: '04-spawn 14-main 07-player', run: sceneSwarm },
   { name: 'starslayer', desc: '群星之杀暴走三线斩击 hp 有限性（血条消失+无敌回归哨兵）', files: '07-player 08-entities 01-config-loadout', run: sceneStarslayer },
   { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
   { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
@@ -1874,6 +2492,11 @@ const SCENES = [
   { name: 'darkhand', desc: '黑暗之手（登场 / 技能循环 / 蛋挞技能4 / 连携召唤离场 / 爆弹波及）', files: '05-boss 07-player 01-config-boss', run: sceneDarkhand },
   { name: 'elites', desc: '4S 精英四机入场连续性 + 强制首技能窗口', files: '04-spawn 06-enemy 01-config-difficulty', run: sceneElites },
   { name: 'sweep-kill', desc: '秒杀类禁亡语召唤（增生 / 法术阵列）', files: '06-enemy 04-spawn', run: sceneSweepKill },
+  { name: 'grail-halo', desc: '愧悔魂灵圣杯（入场连续性 / 活动带夹取 / 150px 光环转移判定 / 击坠掉 1 水晶）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneGrailHalo },
+  { name: 'stasis-unreal', desc: '静滞虚幻（入场连续性 / 锁定即投弹 / 静滞区域生成与效果 / 子弹过境永久减益 / 殉爆分派）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneStasisUnreal },
+  { name: 'collapse-cc', desc: '坍缩构造体（双逻辑镜像重走 / 瞬移与连续性 / 刹停渐变弹 / 场高承伤乘区）', files: '04-spawn 06-enemy 01-config-enemies 01-config-difficulty', run: sceneCollapseConstruct },
+  { name: 'cocoon-dream', desc: '破茧之梦（侧翼七段路径连续性 / 刹停五连弹弹速同威龙±5° 偏移 / 击坠掉 1 水晶）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneCocoonDream },
+  { name: 'qunxing-gate', desc: '群星之扉（免伤不按闪避口径 / 黑洞吞弹含激光覆盖段截断拆段 / 伤害 tick / 减速 BOSS 豁免 / 到期清除）', files: '07-player 08-entities 04-spawn 01-config-loadout', run: sceneQunxingGate },
   { name: 'hover-bob', desc: '御4 / 铁砧到位悬停纵向微摆（连续性 + 公式复核）', files: '04-spawn 06-enemy', run: sceneHoverBob },
   { name: 'gacha', desc: '原石规则（非萧杨不计数 / 16 颗充能 / Q 释放 / 转化概率）', files: '07-player 01-config-loadout', run: sceneGacha },
   { name: 'gamepad', desc: '手柄全链路（认领 / 菜单导航 / 摇杆死区 / 爆弹暂停 / 拔出回退）', files: '02-core 14-main 07-player 12-ui', run: sceneGamepad },

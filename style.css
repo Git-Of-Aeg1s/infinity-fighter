@@ -924,7 +924,7 @@ canvas#game {
   width: calc(50% - 10px);
   height: 82px;
   /* 文字行与战机/僚机高框同款顶对齐：标签「护甲/副武器」同「僚机」一行、
-     名称「群星守望」等同「守愿者」一行（同 padding-top + 同 flex 流，天然逐像素对齐） */
+     名称「群星守望」等同「群星守愿」一行（同 padding-top + 同 flex 流，天然逐像素对齐） */
   justify-content: flex-start;
   padding-top: 8px;   /* 与战机/僚机高框同步：12→8 略微上移 */
 }
@@ -1479,7 +1479,7 @@ canvas#game {
 
 .plane-grid {
   display: flex;
-  flex-wrap: wrap;   /* 5 张卡自动换行（3+2 两行，2026-10-17）：面板内宽 ≈436px / 卡宽 138px，单行 722px 溢出时 justify-content:center 会把两端卡片裁出可视区（混乱将至/天底、群星允诺「消失」根因） */
+  flex-wrap: wrap;   /* 5 张卡自动换行（3+2 两行，2026-10-17）：面板内宽 ≈436px / 卡宽 138px，单行 722px 溢出时 justify-content:center 会把两端卡片裁出可视区（混乱将至/天底、时空允诺「消失」根因） */
   gap: 12px;
   justify-content: center;
 }
@@ -1676,6 +1676,7 @@ kbd {
 
 #pauseRetryBtn,
 #pauseBackBtn,
+#pauseDebugBtn,
 #retrialBtn {
   display: block;
   margin: 10px auto 0;
@@ -1692,6 +1693,7 @@ kbd {
 
 #pauseRetryBtn:hover,
 #pauseBackBtn:hover,
+#pauseDebugBtn:hover,
 #retrialBtn:hover {
   box-shadow: 0 0 20px rgba(124, 231, 255, 0.45);
   transform: translateY(-1px);
@@ -1699,11 +1701,124 @@ kbd {
 
 #pauseRetryBtn:active,
 #pauseBackBtn:active,
+#pauseDebugBtn:active,
 #retrialBtn:active { transform: translateY(0); }
 
 #pauseRetryBtn.hidden,
 #pauseBackBtn.hidden,
+#pauseDebugBtn.hidden,
 #retrialBtn.hidden { display: none; }
+
+/* ---------- 调试菜单面板（2026-11-09 调试菜单窗口）：风格对齐暂停页按钮（青色系） ---------- */
+#debugOverlay button {
+  display: block;
+  margin: 8px auto 0;
+  padding: 6px 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(124, 231, 255, 0.5);
+  background: linear-gradient(180deg, rgba(124, 231, 255, 0.22), rgba(124, 231, 255, 0.06));
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+#debugOverlay button:hover:not(:disabled) {
+  box-shadow: 0 0 16px rgba(124, 231, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+#debugOverlay button:active:not(:disabled) { transform: translateY(0); }
+
+#debugOverlay button:disabled {
+  opacity: 0.38;
+  cursor: default;
+  border-color: rgba(124, 231, 255, 0.18);
+  background: rgba(124, 231, 255, 0.04);
+}
+
+/* 开关条目 ON 态：描边/文字提亮（与文案「：开/关」构成双重状态信号） */
+#debugOverlay button.debug-on {
+  border-color: rgba(124, 231, 255, 0.95);
+  background: linear-gradient(180deg, rgba(124, 231, 255, 0.4), rgba(124, 231, 255, 0.14));
+  text-shadow: 0 0 6px rgba(124, 231, 255, 0.8);
+}
+
+/* 攻击等级行：◄ 标签 ► 横排（其余按钮纵向） */
+#debugOverlay .debug-level-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+#debugOverlay .debug-level-row button {
+  display: inline-block;
+  margin: 0;
+  padding: 4px 12px;
+}
+
+#debugOverlay .debug-level-row span {
+  min-width: 92px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+#debugOverlay .debug-desc {
+  font-size: 12px;
+  color: rgba(180, 220, 255, 0.65);
+  margin: 6px 0 2px;
+}
+
+/* ---------- 暂停页「当前词条」（2026-11-10 用户需求）：icon + 名字紧凑列表 ---------- */
+/* 正/负配色沿用图鉴词条页口径（正面 #4ade80 / 负面 #ff5a5a，13-encyclopedia renderInfoAffix） */
+#pauseAffixList {
+  margin-top: 10px;
+  max-width: 420px;
+  max-height: 38vh;
+  overflow-y: auto;
+  text-align: left;
+  border-top: 1px solid rgba(124, 231, 255, 0.25);
+  padding-top: 6px;
+}
+
+#pauseAffixList .pa-head {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: rgba(124, 231, 255, 0.85);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+#pauseAffixList .pa-row,
+#pauseAffixList .pa-name {
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 1px;
+}
+
+#pauseAffixList .pa-special {
+  margin: 2px 0 6px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255, 255, 255, 0.35);
+}
+
+#pauseAffixList .pa-name { color: #ffffff; }
+
+#pauseAffixList .pa-line {
+  font-size: 11px;
+  line-height: 1.7;
+  color: rgba(220, 235, 255, 0.75);
+}
+
+#pauseAffixList .pa-good { color: #4ade80; }
+#pauseAffixList .pa-bad { color: #ff5a5a; }
+
+#pauseAffixList.hidden { display: none; }
 
 /* ---------- BOSS 测试模式 ---------- */
 .boss-test-row {
