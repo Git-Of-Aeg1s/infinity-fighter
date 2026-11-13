@@ -346,6 +346,21 @@ canvas#game {
   to   { box-shadow: 0 0 13px rgba(255, 192, 203, 0.95); }
 }
 
+/* 时流（超越艇·时流绿环命中我方的增益，2026-11-13）：亮绿状态条 */
+.timeflow-bar .buff-tag {
+  color: #7fffd4;
+}
+
+.timeflow-bar .buff-fill {
+  background: linear-gradient(90deg, #45e0e8, #7fffd4);
+  animation: timeflow-pulse 0.55s ease-in-out infinite alternate;
+}
+
+@keyframes timeflow-pulse {
+  from { box-shadow: 0 0 4px rgba(127, 255, 212, 0.55); }
+  to   { box-shadow: 0 0 13px rgba(127, 255, 212, 0.95); }
+}
+
 /* ---------- 左下角：装甲技能量表（七日澜心）+ HP 条与生命 ---------- */
 .hud-bl {
   position: absolute;
@@ -2929,3 +2944,82 @@ kbd {
    而圆形图标（.achv-glyph）自带 translateY(-4px) 上移、圆心在 17px 处——名称同步上移 4px，
    使其垂直中心落在圆心的水平高度上 */
 .info-achv-row h4 { transform: translateY(-4px); }
+
+/* ---------- 手机模式（触屏适配，docs/手机模式设计.md；桌面 pointer: fine 行为零变化） ---------- */
+/* 手势与选择禁用：防下拉刷新 / 双击缩放 / 长按弹菜单等触屏浏览器默认行为（设计稿 §5.2 / §4.4） */
+html, body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+canvas#game, .touch-btn { touch-action: none; }
+
+/* 触控按钮（设计稿 §4.3）：容器铺满舞台但 pointer-events: none 不拦截游戏区拖动，
+   按钮单独恢复；z-index 4 = 高于 HUD(1)、低于遮罩(5)/主菜单(6)——暂停页弹出时不误触 */
+.touch-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: none;
+  pointer-events: none;
+}
+.touch-btn {
+  pointer-events: auto;
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 2px solid rgba(124, 231, 255, 0.4);
+  border-radius: 50%;
+  background: rgba(8, 14, 28, 0.35);
+  color: rgba(124, 231, 255, 0.9);
+  font-size: 21px;
+  font-family: inherit;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  opacity: 0.4;   /* ≤0.4 减少对弹幕视野干扰（设计稿 §4.3），按下反馈瞬时提亮 */
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+.touch-btn:active {
+  opacity: 0.85;
+  transform: scale(1.08);
+}
+.touch-pause { top: 56px; right: 12px; }
+.touch-skill { bottom: 148px; right: 14px; }
+.touch-bomb { bottom: 72px; right: 14px; }
+
+/* 手机端裁剪（设计稿 §4.4 用户定稿）：外挂列（音量键 / FPS / 手柄指示）悬出画面右缘，
+   手机窄屏下整列落在视口外不可达——直接隐藏；触控按钮仅粗指针设备显示 */
+@media (pointer: coarse) {
+  .music-toggle, .fps-meter, .pad-indicator { display: none; }
+  .touch-ui { display: block; }
+}
+
+/* 横屏提示遮罩（设计稿 §5.4）：游戏为竖版 STG 锁竖屏——触屏设备横屏时全屏提示旋转，桌面永不出现 */
+.rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(5, 9, 20, 0.92);
+  color: var(--accent);
+  font-size: 30px;
+  letter-spacing: 6px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+.rotate-hint span {
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  .rotate-hint { display: flex; }
+}

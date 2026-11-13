@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 战舰变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(1 名) 04-spawn(43 名) 05-boss(5 名) 06-enemy(42 名) 07-player(4 名) 08-entities(7 名) 09b-draw-enemies(25 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(1 名) 13-encyclopedia(12 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(2 名) 04-spawn(44 名) 05-boss(5 名) 06-enemy(43 名) 07-player(4 名) 08-entities(8 名) 09b-draw-enemies(25 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(2 名) 13-encyclopedia(12 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -20,6 +20,8 @@
     popianU: 2, sponsor: 2, sponsorDeluxe: 2,
     baolingG: 3, pulseMatrix: 3, unreal: 3, stasisUnreal: 3, cocoonDream: 3,
     warGhost: 4, puxuefeng: 4, hanxixian: 4, xiayong: 4, xinguodong: 4,
+    // 超越艇（2C 五色变体，2026-11-13 实装）：独立 type 归入 2 类
+    beyondWing_red: 2, beyondWing_blue: 2, beyondWing_violet: 2, beyondWing_cyan: 2, beyondWing_pink: 2,
   };
 
   // 怪物等级（类别 + 类内强度档 A~F，A 最弱）：为刷新波次重构打的元数据基础。
@@ -62,6 +64,8 @@
     warGhost: '4C',
     puxuefeng: '4S', hanxixian: '4S', xiayong: '4S', xinguodong: '4S', zhangzhang: '4S',   // 黑暗之手麾下四精英 + 张华&张策：S 档（特殊精英强度，2026-09-30 由 D 档改 F 档、2026-10-05 由 F 档改 S 档——独立 4S 敌人，不再属衍生级）
     guiltGrail: '4D',   // 2026-10-19 占位批次
+    // —— 2026-11-13 占位批次（用户定稿登记，未实装）：4C 与战争幽灵共享强度档（等级 = 类别+档位，非唯一 id）——
+    thunderWrath: '4C', starSlayer_darkSun: '4C', starSlayer_whiteNight: '4C', starSlayer_violetMoon: '4C',
     // BOSS（长歌级，5 系列，轮次对应 BOSS_ROUNDES）
     boss: '5A', boss_darkhand: '5B', boss_storm: '5C',
     boss_storm2: '5S',
@@ -121,14 +125,43 @@
     },
     gunship: {
       w: 76, h: 62, hp: 400,  score: 350,  color: '#c084fc', drawScale: 1.55,   // 紫晶基准血量 400；赤红 400 / 金曜 420 见 VARIANTS（变体另带独立下降速度与首射延迟）
-      bulletSpeed: 250, bulletR: 4, bulletDmg: 8, crashDmg: 36,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 36,   // 长条弹伤害基准 14（2026-11-13 用户定稿 8→14：与 4 类主力舰统一，总表已同步）
       firstFire: [1.2, 2.4],   // 出场后首次射击延迟随机区间（就位后计，与出场途径无关）；金曜走此默认，紫晶/赤红见 VARIANTS
       fireInterval: [1.8, 2.4],
     },
     capital: {
       w: 192, h: 134, hp: 4200, score: 1200, color: '#ff4d6d', drawScale: 2.0,   // 三变体同血量；下降速度按变体区分（250/220/280，见 updateEnemyMovement）；分数 1200（2026-10-13 用户定稿 1300→1200，总表待同步）
-      bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 48,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 14, crashDmg: 48,   // 长条弹伤害基准 14（2026-11-13 用户定稿 10→14：与 3 类战舰统一，「普通长条射弹」伤害基准，超越艇加成弹以此计）
       fireInterval: [2.4, 2.8],
+    },
+    // 超越艇（2C 五色变体，2026-11-13 用户定稿实装）：独立 type（非 striker 变体，ENEMY_GRADES 按独立键登记）
+    // 通用口径：血 60 / 诗篇 420（POEM_HP 绝对覆盖）；分数与水晶占位 1 待定；碰撞盒 46×40（同赤红突击艇，2026-11-13 二轮反馈回调 50×44→46×40）；碰撞 34（28×1.2）；
+    // 不可侧翼入场（04-spawn 仅顶部入位）；停留线 = 前锋线下移 3% 屏高（≈23.8px，06-enemy 消费）；移动速度 = 赤红 ×1.2（奔雷 ×2.4，逐机 spdMul）；
+    // 首射 0.7~1.7s（奔雷 0.3~0.5s，逐机 firstDelay 覆盖）；专属攻击参数组见 BEYOND_WING；常规刷怪池不进入（图鉴挑战/波次测试召唤）
+    beyondWing_red: {   // 炽翼（红）：圆弹 8 / 长条 14（「普通长条射弹」基准），四段循环 1圆→3圆→1长→3长
+      w: 46, h: 40, hp: 60, score: 1, color: '#FF4632', drawScale: 1.4,
+      bulletSpeed: 280, bulletR: 5, bulletDmg: 8, crashDmg: 34,
+      fireInterval: [0.7, 1.7],
+    },
+    beyondWing_blue: {   // 奔雷（蓝）：锁定加速圆弹 19（基准 14+5），三轮 1/2/3 枚夹角 35°、轮次间隔 0.5s
+      w: 46, h: 40, hp: 60, score: 1, color: '#4D9FFF', drawScale: 1.4,
+      bulletSpeed: 200, bulletR: 5, bulletDmg: 19, crashDmg: 34,
+      fireInterval: [1.8, 2.5],
+    },
+    beyondWing_violet: {   // 织夜（深蓝紫）：快速长条弹 24（基准 14+10）、140% 弹速、每 1s 再加速 20%；第 2 次起每次固定追加 1 枚快弹（8）至多 3 枚
+      w: 46, h: 40, hp: 60, score: 1, color: '#6D5AE8', drawScale: 1.4,
+      bulletSpeed: 392, bulletR: 5, bulletDmg: 24, crashDmg: 34,
+      fireInterval: [1.8, 2.5],
+    },
+    beyondWing_cyan: {   // 时流（青）：绿环支援弹无伤害（命中敌机减攻击间隔 / 命中我方 +2s 时流 buff）
+      w: 46, h: 40, hp: 60, score: 1, color: '#45E0E8', drawScale: 1.4,
+      bulletSpeed: 240, bulletR: 5, bulletDmg: 0, crashDmg: 34,
+      fireInterval: [0.9, 1.5],   // 实际三档随机 0.9/1.2/1.5（每次攻击后重抽，06-enemy 消费）
+    },
+    beyondWing_pink: {   // 浮梦（淡粉）：弧线拖尾弹 18（基准 14+4），必经间距 80%~120% 随机点
+      w: 46, h: 40, hp: 60, score: 1, color: '#F9A8D4', drawScale: 1.4,
+      bulletSpeed: 240, bulletR: 5, bulletDmg: 18, crashDmg: 34,
+      fireInterval: [1, 2],
     },
     // 特殊3类：炮火先兆者（后排炮兵，先兆者家族 3A）—— 灰黑形体 + 红色充能核心，充满后召唤垂直落下的导弹
     harbinger: {
@@ -898,7 +931,7 @@
     entryWarn: 2.1,        // 入场白色风波预警总时长（s）= 流带 1.2 + 预警圈 0.9（2026-10-03 用户定稿「增长速度 -40%」1.6/0.6 ≈ 2.667 两段 55/45；2026-10-12 用户定稿两段改值 1.2/0.9）
     entryWarnBand: 1.2,    // 入场预警 · 流带生长时长（s）：风波流带自屏外远端沿来向延伸至停留点（前段）
     entryWarnCircle: 0.9,  // 入场预警 · 预警圈浮现时长（s）：停留点双环预警圈淡入，与流带淡出重叠（后段）
-    entrySpreadDeg: 60,    // 来向扇区半角（度）：以停留点正上方为轴 ±60° 内随机取来向
+    entrySpreadDeg: 180,   // 来向扇区半角（度）：以停留点正上方为轴 ±半角内随机取来向——2026-11-13 用户定稿 60 → 180（±180° = 360° 任意角度入场）；预警流带/冲刺/机头朝向全按 wgDir 向量化，任意角度通用
     entrySpeed: 1500,      // 入场冲刺巡航速度（px/s，屏外起点沿来向直冲）
     entryDecelK: 14,       // 临近停留点指数减速逼近率（1/s）：v = min(entrySpeed, k×剩余距离)，≈0.35s 平滑减速到 0（位置逐帧连续、无 snap）
     entryDmg: 50,          // 入场冲撞命中我方伤害（+强力击退，复用 05-boss knockbackPlayer；独立于 crashDmg）
@@ -1358,6 +1391,42 @@
     exitDur: 1.8,    // 离场下移（同时渐隐）时长（ease-in：峰值速度 = 2×shift/exitDur = 80 px/s）
   };
 
+  // 超越艇（2C 五色变体，2026-11-13 用户定稿实装）专属攻击/移动参数组
+  // 通用移动口径：速度 = 赤红突击艇 ×spdMul（奔雷 2.4 其余 1.2，makeEnemy 覆盖 entrySpd/chargeBase 前置倍率）；
+  // 停留线 = 前锋停留线（y 200~240 逐架随机）整体下移 3% 屏高（CANVAS_H=792 → ≈23.8px → y 224~264）；
+  // 停留时长/横摆/末段减速与常规 2 类一致；不可侧翼入场
+  const BEYOND_WING = {
+    spdMul: 1.2,               // 默认速度倍率（=赤红 ×1.2：入位 300 / 诗篇 336、冲锋 (120+(lv-1)×5)×1.2）
+    spdMulBlue: 2.4,           // 奔雷专属（=赤红 ×2.4：入位 600 / 诗篇 672、冲锋 ×2.4）
+    holdShift: CANVAS_H * 0.03,   // 停留线整体下移 3% 屏高 ≈23.8px（y 224~264）
+    red: {
+      barDmg: 14,       // 炽翼长条弹伤害（「普通长条射弹」基准 14，圆弹走注册表 8）
+      volleyGap: 0.12,  // 3 枚轮依次出膛间隔（s）
+    },
+    blue: {
+      maxSpeed: 400,    // 加速圆弹末速（初速走注册表 bulletSpeed 200）
+      accel: 400,       // 加速度 px/s²（≈0.5s 从 200 加速到 400）
+      rowDeg: 35,       // 相邻子弹夹角（度）：1 枚轮瞄准玩家位置；2 枚轮 ±35°（无瞄准弹）；3 枚轮 0°/±35°
+      roundGap: 0.5,    // 三轮之间间隔（s），每轮重新锁定玩家瞬时位置
+    },
+    violet: {
+      accelPerSec: 1.2,  // 快速长条弹每 1s 加速 20%（速度 ×1.2/s 指数增长，弹速基准 = 注册表 392 = 280×140%）
+      quickDmg: 8,       // 追加快弹伤害（普通圆弹口径）
+      quickSpeed: 280,   // 追加快弹弹速
+      maxExtras: 3,      // 追加快弹累计上限（第 2 次攻击起每次固定 +1 枚，累计 3 枚后不再追加）
+    },
+    cyan: {
+      ivs: [0.9, 1.2, 1.5],  // 攻击间隔三档随机（每次攻击后重抽；发射枚数 = 间隔÷0.3 → 3/4/5 枚）
+      gapReduce: 0.3,        // 绿环弹命中敌机：每次攻击间隔减少量（s），可叠加——下 n 次攻击各 -0.3s、不重复减免
+      buffDur: 2,            // 时流状态持续（s，重复命中刷新至 2s）
+      buffMul: 1.5,          // 时流状态：我方射速、弹道速度 +50%
+    },
+    pink: {
+      offMin: 25, offMax: 60,   // 初始方向与连线方向随机夹角（度）
+      distMin: 0.8, distMax: 1.2,   // 必经点距离 = 自身-玩家间距 × 随机区间（点可出屏）
+    },
+  };
+
   /* ---------- 2/3/4 类变体：不同颜色 + 不同技能（weight 为出现权重） ----------
    * striker 2类：赤红(直射±10°、不追踪) / 烈橙(spread 前方双弹、夹角 40°/50°/60° 随机) / 幽蓝(homing 追踪弹、登场 30% 0.5s 虚化护盾) / 霜白(silent 不开火、停留同普通 2类) / 坚垒(fortress 黄色倒置机体+前置能量盾：不开火、移速同全体突击艇、停留更低) / 幽暮(dusk 黑色机白核：浮现→落点环射→渐隐离场)；入位/冲锋速度逐变体定义
    * gunship 3类：紫(mixed 散射+追踪) / 红(aggressive 火力猛瞄准连射) / 金(ring 环形弹幕密集)；血量/下降速度/首射延迟逐变体定义
@@ -1480,6 +1549,7 @@
     PULSE_MATRIX, FASHI_ARRAY, WAR_MATRIX, GUILT_GRAIL, STRIKER_HOLD_Y, STRIKER_FORTRESS,
     SHIP_ENTRY, STRIKER_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
+    BEYOND_WING,
     SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR,
     SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,
     CAPITAL_PALETTE, GUNSHIP_PALETTE,

@@ -59,7 +59,7 @@
     mid -= big * 6;
     return { small, mid, big };
   }
-  const CHAOS_SMALL_DMG_MUL = 1.6;   // 混乱将至主炮弹（mainShot）：对非 BOSS / 非 4S（四精英）敌人伤害 +60%（2026-10-10 用户定稿由 +80% 下调；结算见 08-entities）
+  const CHAOS_SMALL_DMG_MUL = 1.8;   // 混乱将至主炮弹（mainShot）：对非 BOSS / 非 4S（四精英）敌人伤害 +80%（2026-11-13 用户定稿恢复 2026-10-10 下调前的 +80% 口径；结算见 08-entities）
   const PIERCE_WEAKEN_MUL = 0.5;   // mainPierce 穿透弹（无衰减率弹，如副武器·极夜流光激光）穿透后的伤害倍率：减半（结算见 08-entities）
 
   const SPAWN_PHASE_TIMES = [50, 50, 50];    // 各阶段刷怪时长（s）：三轮均为 50s（后续轮次与第一轮节奏一致）

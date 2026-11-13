@@ -1,7 +1,7 @@
 // 09a-draw-loadout.js：玩家 / 僚机 / 装甲形体与玩家武器·拾取特效绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(9 名) 12-ui(3 名) 13-encyclopedia(3 名)
+  // 被依赖：10-draw-world(9 名) 12-ui(6 名) 13-encyclopedia(6 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { armorGlyphFx, bossFlow, clamp, ctx, dagouMissiles, frostZones, missileWarns, missiles, player, playerHitFx, state, wingmen } from './02-core.js';
@@ -30,6 +30,9 @@
     if (!player.alive) return;
     const wkBerserk = player.weapon === 5;
     const isBulwark = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'fan');
+    const isCheyue = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'lance');   // 彻月：紫色电磁发射舱（lance 贯穿弹模型）
+    const isJiye = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'beam');   // 极夜千星：激光发射装置 + 光球环绕（beam kind）
+    const isJinxiao = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'droplet');   // 今宵：双反应装置边架 + 中央能量球（droplet 追踪水滴模型）
     for (const w of wingmen) {
       ctx.save();
       ctx.translate(w.x, w.y);
@@ -43,7 +46,7 @@
       // 尾焰渐变（2026-10-12 性能）：跨度随焰长逐帧波动 → 按 0.5px 量化缓存复用（终点偏差 ≤0.25px 不可辨），
       // 消除每帧 createLinearGradient；焰体路径仍用真实焰长，飘动不变
       const flameH = fl + flameExt;
-      const fg = cachedLoadoutGrad(((isBulwark ? 1 : 0) | (wkBerserk ? 2 : 0)) * 512 + Math.round(flameH * 2), () => {
+      const fg = cachedLoadoutGrad(((isBulwark ? 1 : 0) | (wkBerserk ? 2 : 0) | (isJiye ? 4 : 0)) * 512 + Math.round(flameH * 2), () => {
         const g0 = ctx.createLinearGradient(0, flameY0, 0, flameY0 + Math.round(flameH * 2) / 2);
         if (isBulwark) {
           if (wkBerserk) {
@@ -54,6 +57,17 @@
             g0.addColorStop(0, 'rgba(190, 225, 255, 0.9)');
             g0.addColorStop(0.5, 'rgba(120, 185, 255, 0.5)');
             g0.addColorStop(1, 'rgba(70, 140, 230, 0)');
+          }
+        } else if (isJiye) {
+          // 极夜千星：淡蓝白尾焰（与激光 beamGlow #b8d6ff 同族——冷色激光装置排焰）
+          if (wkBerserk) {
+            g0.addColorStop(0, 'rgba(240, 250, 255, 0.95)');
+            g0.addColorStop(0.5, 'rgba(184, 214, 255, 0.65)');
+            g0.addColorStop(1, 'rgba(118, 168, 240, 0)');
+          } else {
+            g0.addColorStop(0, 'rgba(200, 230, 255, 0.9)');
+            g0.addColorStop(0.5, 'rgba(160, 200, 240, 0.5)');
+            g0.addColorStop(1, 'rgba(110, 160, 220, 0)');
           }
         } else if (wkBerserk) {
           g0.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
@@ -90,8 +104,9 @@
         ctx.fill();
       }
       if (!isBulwark && wkBerserk) {
-        // 时空允诺暴走内芯：焰体中央淡金内焰（取暴走弹中段同款 barMid #ffd9a0），读作星核过载金芯
-        ctx.fillStyle = 'rgba(255, 217, 160, 0.95)';
+        // 暴走内芯：时空允诺焰体中央淡金内焰（取暴走弹中段同款 barMid #ffd9a0，读作星核过载金芯）；
+        // 彻月改白紫内焰（电磁过载白芯）、极夜千星改淡蓝白内焰（激光过载色——与 beamGlow #b8d6ff 同族）
+        ctx.fillStyle = isCheyue ? 'rgba(238, 230, 255, 0.95)' : isJiye ? 'rgba(220,240,255,0.95)' : isJinxiao ? 'rgba(236,227,255,0.95)' : 'rgba(255, 217, 160, 0.95)';
         ctx.beginPath();
         ctx.moveTo(flameX - 2, flameY0);
         ctx.lineTo(flameX, flameY0 + fl * 0.66);
@@ -140,8 +155,11 @@
         continue;
       }
       // 机体
-      paintWingman(ctx, w.side, wkBerserk, false, player.berserkSpread);   // 暴走机翼展开进度与刃帆同源（berserkSpread ≈0.33s 平滑过渡，见 07-player updatePlayer）
-      // 暴走：机体辉光脉动（星核过载）+ 翼尖微光
+      if (isJiye) paintWingmanJiye(ctx, w.side, wkBerserk, w.flameT);   // 极夜千星：激光发射装置 + 光球环绕（beam 激光炮模型）
+      else if (isCheyue) paintWingmanCheyue(ctx, w.side, wkBerserk, false, player.berserkSpread);   // 彻月：紫色电磁发射舱
+      else if (isJinxiao) paintWingmanJinxiao(ctx, w.side, wkBerserk, false);   // 今宵：双反应装置边架 + 中央能量球（暴走边架紫化 + 能量球过载增亮）
+      else paintWingman(ctx, w.side, wkBerserk, false, player.berserkSpread);   // 时空允诺：蓝紫星焰机翼
+      // 暴走：机体辉光脉动（两型共用紫系星核过载光晕）；翼尖微光为时空允诺造型专属（彻月晶体闪烁在 paintWingmanCheyue 内）
       if (wkBerserk) {
         const pulse = 0.35 + Math.sin(state.time * 14) * 0.15;
         // 机体辉光：以星核为中心的脉动光晕（2026-10-12 性能：渐变按 pulse 峰值(0.5)烘焙 + globalAlpha 缩放，
@@ -155,11 +173,13 @@
         ctx.globalAlpha = (0.30 + pulse * 0.25) / 0.425;
         ctx.fillStyle = aura;
         ctx.beginPath(); ctx.arc(0, -1, 17, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = pulse;   // 翼尖微光自带透明度（原逻辑）
-        ctx.shadowColor = '#b49bff'; ctx.shadowBlur = 10;
-        ctx.fillStyle = '#cbb8ff';
-        // 翼尖已随尾翼下旋 ~20°：尖端实际位置 (±12.3, 11.4)
-        for (const t of [[12.3, 11.4]]) { ctx.beginPath(); ctx.arc(w.side < 0 ? -t[0] : t[0], t[1], 2.0, 0, Math.PI * 2); ctx.fill(); }
+        if (!isCheyue && !isJiye && !isJinxiao) {
+          ctx.globalAlpha = pulse;   // 翼尖微光自带透明度（原逻辑）
+          ctx.shadowColor = '#b49bff'; ctx.shadowBlur = 10;
+          ctx.fillStyle = '#cbb8ff';
+          // 翼尖已随尾翼下旋 ~20°：尖端实际位置 (±12.3, 11.4)
+          for (const t of [[12.3, 11.4]]) { ctx.beginPath(); ctx.arc(w.side < 0 ? -t[0] : t[0], t[1], 2.0, 0, Math.PI * 2); ctx.fill(); }
+        }
         ctx.globalAlpha = 1; ctx.shadowBlur = 0;
       }
       ctx.restore();
@@ -339,6 +359,312 @@
     g.beginPath();
     g.ellipse(0, 9, 1.7, 0.8, 0, 0, Math.PI * 2);
     g.fill();
+  }
+
+  // 彻月僚机造型：紫色电磁发射舱（悬浮电磁炮塔语言——同「会悬浮飞行的炮」家族，但读作发射舱而非战机）
+  //   顶部竖直电磁加速双导轨（贯穿射弹出膛口）+ 棱角八边形舱体（紫色垂直渐变）+ 中部电磁线圈双环 +
+  //   外侧姿态鳍片；暴走时外侧纵列展开 3 颗紫色水晶晶体（自舱体侧缘平滑滑出，依次间歇闪烁白光）
+  // side：-1=左僚机（鳍片/晶体在左）/ +1=右僚机；缩略图默认 +1
+  // spreadT：暴走晶体展开进度 0~1（游戏内传 player.berserkSpread ≈0.33s 平滑过渡；still 预览传 1=满展）
+  function paintWingmanCheyue(g, side = 1, berserk = false, still = false, spreadT = 1) {
+    const out = side < 0 ? -1 : 1;   // 外侧方向（远离主机的一侧）
+
+    // (0) 外侧姿态鳍片：先于舱体绘制（翼根藏进舱体内、由舱体压住衔接处）——后掠小三角（同 paintWingman 尾翼语言，紫色系提亮一档）
+    g.save();
+    g.rotate(out * 0.30);   // 整片鳍向下旋 ~17°
+    const finG = g.createLinearGradient(out * 2, 0, out * 12.5, 0);
+    finG.addColorStop(0, 'rgba(122, 92, 214, 0.97)');      // 根：中紫
+    finG.addColorStop(0.55, 'rgba(158, 130, 240, 0.92)');  // 中：亮紫
+    finG.addColorStop(1, 'rgba(192, 174, 255, 0.55)');     // 尖：淡紫渐透
+    g.fillStyle = finG;
+    g.beginPath();
+    g.moveTo(out * 1.5, -1);
+    g.lineTo(out * 12.5, 5.5);
+    g.lineTo(out * 2.2, 6);
+    g.closePath();
+    g.fill();
+    // 尾缘暗色收边 + 前缘淡高光（同 paintWingman 翼面处理）
+    g.strokeStyle = 'rgba(40, 28, 96, 0.5)';
+    g.lineWidth = 0.9;
+    g.beginPath(); g.moveTo(out * 12.5, 5.5); g.lineTo(out * 2.2, 6); g.stroke();
+    g.strokeStyle = 'rgba(214, 202, 255, 0.35)';
+    g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(out * 1.5, -1); g.lineTo(out * 12.5, 5.5); g.stroke();
+    g.restore();
+
+    // (0.5) 暴走水晶晶体：外侧纵列 3 颗紫色水晶（依次间歇闪烁白光）——绘于舱体之下（衔接处被舱体压住）。
+    //   展开动画：进度 p 驱动晶体自舱体侧缘锚点平滑滑出至展开位（任一帧位置与前一帧严格连续；p=0 不绘制）
+    //   闪白：三颗相位错开（依次间歇）——平滑脉冲 sin^3 驱动，不使用逐帧随机（杯口纪律：顶点系数逐帧固定）
+    if (berserk) {
+      const p = still ? 1 : clamp(spreadT, 0, 1);
+      if (p > 0.001) {
+        const t = still ? 2.1 : state.time;   // still：冻结相位（预览确定性）
+        for (let i = 0; i < 3; i++) {
+          const cy = -3.5 + i * 6.5;                        // 纵列 y（上/中/下）
+          const cx = out * (6 + 4.5 * p);                   // 自舱体侧缘（x=6）滑出至 x=10.5
+          const halfW = (2.6 + (i === 1 ? 1.1 : 0)) * p;    // 中间颗最大（主晶）
+          const halfH = (4.6 + (i === 1 ? 1.4 : 0)) * p;
+          const cg = g.createLinearGradient(cx - halfW, cy - halfH, cx + halfW, cy + halfH);
+          cg.addColorStop(0, 'rgba(238, 228, 255, 0.98)');
+          cg.addColorStop(0.45, 'rgba(178, 148, 255, 0.92)');
+          cg.addColorStop(1, 'rgba(110, 76, 208, 0.9)');
+          const ph = t * 5 - i * 1.4;                       // 相位 i×1.4 错开 → 依次闪白
+          const flash = still ? 0.45 : Math.pow(Math.max(0, Math.sin(ph)), 3);
+          g.save();
+          if (flash > 0.02) { g.shadowColor = 'rgba(255, 255, 255, 0.9)'; g.shadowBlur = 5 + flash * 6; }
+          g.fillStyle = cg;
+          g.beginPath();
+          g.moveTo(cx, cy - halfH);
+          g.lineTo(cx + halfW, cy);
+          g.lineTo(cx, cy + halfH);
+          g.lineTo(cx - halfW, cy);
+          g.closePath();
+          g.fill();
+          if (flash > 0.02) {
+            g.fillStyle = `rgba(255, 255, 255, ${(flash * 0.85).toFixed(3)})`;   // 同路径重涂白（闪烁白光）
+            g.fill();
+            g.strokeStyle = `rgba(255, 255, 255, ${(0.35 + flash * 0.5).toFixed(3)})`;
+            g.lineWidth = 0.8;
+            g.beginPath(); g.moveTo(cx, cy - halfH + 1); g.lineTo(cx, cy + halfH - 1); g.stroke();   // 中脊亮线
+          }
+          g.restore();
+        }
+      }
+    }
+
+    // (1) 顶部电磁加速双导轨：竖直两根平行导轨（射弹自 y≈-8 出舱、导轨顶 y=-16 辉光读作出膛口）
+    const railG = g.createLinearGradient(0, -16, 0, -2);
+    railG.addColorStop(0, '#ece6ff');
+    railG.addColorStop(0.5, '#a892f0');
+    railG.addColorStop(1, '#5b46b2');
+    g.fillStyle = railG;
+    g.strokeStyle = 'rgba(206, 192, 255, 0.9)';
+    g.lineWidth = 0.9;
+    for (const sx of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(sx * 1.3, -2);
+      g.lineTo(sx * 1.9, -14.5);
+      g.lineTo(sx * 3.4, -15.5);
+      g.lineTo(sx * 3.0, -3.5);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    }
+    // 轨道顶端发射口辉光（紫白）
+    g.fillStyle = 'rgba(224, 208, 255, 0.95)';
+    for (const sx of [-1, 1]) {
+      g.beginPath(); g.arc(sx * 2.6, -14.8, 1.0, 0, Math.PI * 2); g.fill();
+    }
+
+    // (2) 舱体：棱角八边形（紫色垂直渐变）——承载导轨与线圈
+    const hullG = g.createLinearGradient(0, -9, 0, 10);
+    hullG.addColorStop(0, '#efe9ff');
+    hullG.addColorStop(0.4, '#b795ff');
+    hullG.addColorStop(0.75, '#7c5ada');
+    hullG.addColorStop(1, '#3b2a80');
+    g.fillStyle = hullG;
+    g.strokeStyle = 'rgba(206, 190, 255, 0.85)';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(0, -9);
+    g.lineTo(5.5, -6);
+    g.lineTo(8.5, 1);
+    g.lineTo(5, 8);
+    g.lineTo(0, 10);
+    g.lineTo(-5, 8);
+    g.lineTo(-8.5, 1);
+    g.lineTo(-5.5, -6);
+    g.closePath();
+    g.fill();
+    g.stroke();
+
+    // (3) 装甲分块线（暗紫，勾勒舱体机械结构）
+    g.strokeStyle = 'rgba(30, 20, 66, 0.35)';
+    g.lineWidth = 0.8;
+    g.beginPath(); g.moveTo(-5.5, -6); g.lineTo(-8.5, 1); g.stroke();
+    g.beginPath(); g.moveTo(5.5, -6); g.lineTo(8.5, 1); g.stroke();
+    g.beginPath(); g.moveTo(-5, 8); g.lineTo(0, 5.5); g.lineTo(5, 8); g.stroke();
+
+    // (4) 电磁线圈双环：舱体中部上下两圈椭圆环（紫金描边——电磁发射舱的身份标识）+ 中央电磁核心
+    g.strokeStyle = 'rgba(212, 186, 255, 0.75)';
+    g.lineWidth = 1.1;
+    g.beginPath(); g.ellipse(0, -2.5, 6.2, 2.0, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(150, 122, 236, 0.6)';
+    g.lineWidth = 0.9;
+    g.beginPath(); g.ellipse(0, 3.5, 5.2, 1.7, 0, 0, Math.PI * 2); g.stroke();
+    // 电磁核心：白核 → 紫晕（暴走更亮）
+    const coreG = g.createRadialGradient(0, -1, 0.4, 0, -1, 4.2);
+    coreG.addColorStop(0, '#ffffff');
+    coreG.addColorStop(0.4, berserk ? 'rgba(240, 232, 255, 0.95)' : 'rgba(224, 212, 255, 0.9)');
+    coreG.addColorStop(0.75, 'rgba(160, 132, 255, 0.85)');
+    coreG.addColorStop(1, 'rgba(66, 44, 140, 0.9)');
+    g.fillStyle = coreG;
+    g.beginPath(); g.arc(0, -1, 3.2, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(228, 216, 255, 0.6)';
+    g.lineWidth = 0.7;
+    g.beginPath(); g.arc(0, -1, 4.4, 0, Math.PI * 2); g.stroke();
+
+    // (5) 底部推进环：星焰接口（与 drawWingmen 的紫色三角星焰衔接）
+    g.fillStyle = 'rgba(158, 134, 255, 0.85)';
+    g.beginPath(); g.ellipse(0, 9, 3.3, 1.5, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(238, 230, 255, 0.92)';
+    g.beginPath(); g.ellipse(0, 9, 1.7, 0.8, 0, 0, Math.PI * 2); g.fill();
+  }
+
+  // 今宵僚机造型：双反应装置边架 + 中央能量球（悬浮能量容器语言——两侧斜边架为反应装置导轨，
+  // 顶部中央留能量豁口、架顶外端短横端口、底部圆润基座；中央淡紫能量球内部弧纹缓旋读作能量流转）
+  // side：-1=左僚机（端口朝左）/ +1=右僚机；缩略图默认 +1；berserk：边架紫化 + 能量球过载增亮（弹体金化为暴走主视觉）
+  function paintWingmanJinxiao(g, side = 1, berserk = false, still = false) {
+    const rail = berserk ? '#c3b0f5' : '#9aa7b8';   // 边架描边（常态冷灰蓝 / 暴走紫化过载）
+    // (1) 底部圆润基座：能量容器底壳（深灰蓝纵渐变 + 下缘描边）
+    g.beginPath();
+    g.moveTo(-8.5, 1);
+    g.quadraticCurveTo(-9.5, 11, 0, 13.5);
+    g.quadraticCurveTo(9.5, 11, 8.5, 1);
+    g.closePath();
+    const baseG = g.createLinearGradient(0, 0, 0, 14);
+    baseG.addColorStop(0, '#5d6b7e');
+    baseG.addColorStop(1, '#39434f');
+    g.fillStyle = baseG;
+    g.fill();
+    g.strokeStyle = '#20262e';
+    g.lineWidth = 1;
+    g.stroke();
+    // (2) 两侧反应装置边架：顶部外角(±11,-13)→向下收拢(±6,5)粗描边（架体）+ 内侧高光细线；
+    //     顶部中央不相连（能量豁口）；架顶短横端口朝僚机外侧（side 定向）
+    g.lineCap = 'round';
+    g.lineWidth = 3.2;
+    g.strokeStyle = rail;
+    g.beginPath();
+    g.moveTo(-11, -13); g.lineTo(-6, 5);
+    g.moveTo(11, -13); g.lineTo(6, 5);
+    g.stroke();
+    g.lineWidth = 1;
+    g.strokeStyle = berserk ? 'rgba(242,236,255,0.85)' : 'rgba(200,214,235,0.6)';
+    g.beginPath();
+    g.moveTo(-10.2, -12.2); g.lineTo(-5.6, 3.6);
+    g.moveTo(10.2, -12.2); g.lineTo(5.6, 3.6);
+    g.stroke();
+    g.lineWidth = 2.6;
+    g.strokeStyle = rail;
+    g.beginPath();
+    g.moveTo(side * 11, -13); g.lineTo(side * 15, -13);
+    g.stroke();
+    // (3) 中央能量球：径向渐变淡紫球体（常亮微光）+ 内部两道固定弧纹缓旋（相位系数固定、不逐帧随机；
+    //     still 冻结相位供图鉴/选卡静态帧）
+    const og = g.createRadialGradient(0, -4, 1, 0, -3, 6.5);
+    og.addColorStop(0, '#f3eeff');
+    og.addColorStop(0.55, berserk ? '#e9d9ff' : '#cfc0ff');
+    og.addColorStop(1, berserk ? '#b18cff' : '#a58fff');
+    g.fillStyle = og;
+    g.shadowColor = berserk ? 'rgba(190,150,255,0.9)' : 'rgba(150,124,255,0.7)';
+    g.shadowBlur = 8;
+    g.beginPath(); g.arc(0, -3, 6.2, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+    const rot = still ? 0.5 : state.time * 1.6;
+    g.strokeStyle = berserk ? 'rgba(255,244,214,0.85)' : 'rgba(240,233,255,0.75)';
+    g.lineWidth = 1.1;
+    g.save();
+    g.translate(0, -3); g.rotate(rot);
+    g.beginPath(); g.arc(0, 0, 3.4, 0.4, 2.1); g.stroke();
+    g.beginPath(); g.arc(0.9, 0.6, 2.2, 3.2, 4.9); g.stroke();
+    g.restore();
+  }
+
+  // 极夜千星僚机造型 —— 激光发射装置 + 周围光球环绕
+  //   主体：中央扁平六边形发射基座（深灰蓝 #2a3a5e），顶面圆形发射口（朝前方开）
+  //   发射口：亮蓝色光圈（beamGlow #b8d6ff），暴走时口扩大 + 白芯激光过载外溢
+  //   光球：3 个淡蓝色光球（beamGlow 色系），绕基座公转（角速度 state.time × 2.2；暴走 × 4.4）
+  //   基座整体扁平朝前：横向略宽、前后略扁（side 镜像仅影响光球公转相位）
+  function paintWingmanJiye(g, side = 1, berserk = false, flameT = 0) {
+    // 基座：扁平六边形（前后方向扁、横向宽），顶面发射口朝前（+y 方向，发射朝向玩家正上 = -y，但视觉向前）
+    const bz = !!berserk;
+    g.save();
+
+    // (1) 基座本体：六边形 —— 六顶点朝横四 + 前后二，深灰蓝渐变（前亮后暗）
+    g.beginPath();
+    // 横向宽 11，后向扁 7（底座厚度）、前向短 5（发射口前伸）
+    const bx = 11, byB = 7, byF = 5;   // 半宽 / 后向扁 / 前向短（绝对正值）
+    g.moveTo(-bx, -byB);                 // 后左上
+    g.lineTo(-bx * 0.6, -byF);           // 前左上（后向向前收窄）
+    g.lineTo(0, -byF * 1.2);             // 最前端（最凸出点）
+    g.lineTo(bx * 0.6, -byF);            // 前右上
+    g.lineTo(bx, -byB);                  // 后右上
+    g.lineTo(bx * 0.55, byB * 0.5);      // 右下（前后衔接处）
+    g.lineTo(-bx * 0.55, byB * 0.5);     // 左下
+    g.closePath();
+    // 基座渐变：顶面亮（前方白蓝高光）→ 底暗（深灰蓝阴影）
+    const bodyG = g.createLinearGradient(0, -byB * 1.2, 0, byB);
+    bodyG.addColorStop(0, bz ? 'rgba(58,90,130,0.98)' : 'rgba(42,58,94,0.95)');
+    bodyG.addColorStop(0.6, bz ? 'rgba(40,62,100,0.95)' : 'rgba(32,44,72,0.92)');
+    bodyG.addColorStop(1, bz ? 'rgba(25,35,60,0.98)' : 'rgba(20,28,48,0.95)');
+    g.fillStyle = bodyG;
+    g.fill();
+    // 基座前缘高光：顶面最亮条（前向 -y 方向最凸边）
+    g.strokeStyle = bz ? 'rgba(200,230,255,0.85)' : 'rgba(160,200,240,0.55)';
+    g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(-bx * 0.6, -byF + 0.5); g.lineTo(bx * 0.6, -byF + 0.5); g.stroke();
+
+    // (2) 发射口：基座顶面圆形，朝前方（+y 方向朝前、实际激光朝 -y 发射）
+    // 发射口：椭圆（侧面视角压缩），外圈蓝色光圈（beamGlow），内圈黑（发射芯）
+    g.save();
+    // 发射口在基座顶面最凸出点前方，半径 bz 时扩大
+    const portR = bz ? 4.5 : 3.5;
+    const portY = -byF * 0.85;   // 发射口在前端凸点处
+    // 外圈发光光环
+    g.globalCompositeOperation = 'lighter';
+    g.shadowColor = '#b8d6ff';
+    g.shadowBlur = bz ? 14 : 8;
+    g.fillStyle = bz ? 'rgba(184,214,255,0.85)' : 'rgba(184,214,255,0.6)';
+    g.beginPath(); g.ellipse(0, portY, portR, portR * 0.45, 0, 0, Math.PI * 2); g.fill();
+    // 内圈（激光核心）：白色亮芯，暴走时更亮更大
+    g.fillStyle = bz ? 'rgba(255,255,255,0.95)' : 'rgba(220,235,255,0.85)';
+    g.beginPath(); g.ellipse(0, portY, portR * (bz ? 0.75 : 0.6), portR * 0.35, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+
+    // (3) 基座前缘激光过载外溢（暴走时）：从发射口朝前（-y 方向）射出短段激光光晕
+    if (bz) {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.shadowColor = '#ffffff';
+      g.shadowBlur = 10;
+      const overLen = 6;   // 从发射口朝前溢出长度
+      // 外溢：淡蓝光晕，沿 -y 方向朝前（发射口在 +y 端，激光向前朝 -y）
+      g.strokeStyle = 'rgba(184,214,255,0.85)';
+      g.lineWidth = 2.6;
+      g.beginPath(); g.moveTo(0, portY); g.lineTo(0, portY - overLen); g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.95)';
+      g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(0, portY); g.lineTo(0, portY - overLen * 0.75); g.stroke();
+      g.restore();
+    }
+
+    // (4) 周围光球：3 个淡蓝色光球绕基座公转，角速度随暴走加速
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    const N = 3;
+    const omega = (bz ? 4.4 : 2.2) * state.time;   // 角速度（state.time 帧连续源）
+    const orbitR = 18;   // 公转半径（相对基座中心）
+    // 初始相位：三球均匀分布（相差 120°），加 side 偏移使左右僚机公转镜像
+    const phaseOffset = (side < 0 ? Math.PI / N : 0);   // 左僚机整体偏 60°，保持对称
+    for (let k = 0; k < N; k++) {
+      const ang = omega + (k * 2 * Math.PI / N) + phaseOffset;
+      const ox = Math.cos(ang) * orbitR;
+      const oy = Math.sin(ang) * orbitR * 0.55;   // 公转轨道横向椭圆化（侧面视角 z 压缩）
+      // 光球本体：淡蓝色 + 外层发光 + 偶尔随机大小脉动
+      const pulse = 0.85 + Math.sin(flameT * 6 + k * 2.1) * 0.15;   // 同源脉动（不同相位错开）
+      const rO = 1.8 * pulse * (bz ? 1.4 : 1);
+      g.shadowColor = '#b8d6ff';
+      g.shadowBlur = bz ? 14 : 9;
+      g.fillStyle = bz ? 'rgba(200,225,255,0.9)' : 'rgba(184,214,255,0.8)';
+      g.beginPath(); g.arc(ox, oy, rO, 0, Math.PI * 2); g.fill();
+      // 光球内核（更亮小白点）
+      g.fillStyle = bz ? 'rgba(255,255,255,0.95)' : 'rgba(220,235,255,0.9)';
+      g.beginPath(); g.arc(ox, oy, rO * 0.45, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+
+    g.restore();
   }
 
   // 群星守愿僚机造型 —— 方案A：重甲堡垒型（坦克反应装甲风格）
@@ -2443,7 +2769,7 @@
   }
 
   export {
-    drawWingmen, paintWingman, paintWingmanBulwark, paintStarslayer,
+    drawWingmen, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark, paintStarslayer,
     paintShip, drawPlayer, drawStarslayerBeam, drawFrostZones,
     drawPlayerHitFx, drawMissileWarns, drawMissiles, drawDagouMissiles,
     drawItemPickFx,

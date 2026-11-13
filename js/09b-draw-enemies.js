@@ -1,7 +1,7 @@
 // 09b-draw-enemies.js：敌机形体 / 弹幕标记 / 法术方块 / 战争幽灵斩击绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(39 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(40 名) 13-encyclopedia(1 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, player, popianMissiles, slashFx, spellCubes, state, wgSlashes } from './02-core.js';
@@ -2938,6 +2938,160 @@
     }
   }
 
+  // ── 超越艇（2C 五变体，2026-11-13 用户定稿实装）本体绘制：自带填充与描边。
+  // 形体 = 2类菱形基准略大 + 两侧中部水平外伸尖角 + 方形核心（一角竖直朝上；浮梦更大且持续旋转）；
+  // 本体 = 各自主题色立体渐变（上暗→主色→下亮；2026-11-13 二轮反馈：本体用主题色而非灰黑）；
+  // 尾焰 = 机尾对应色双层三角焰，登场/冲锋离场期长（26px）、停留期短（10px）——焰长逐帧指数平滑
+  //（≈0.2s 过渡，无档位瞬跳）；五色特效：炽翼=核心火舌 / 奔雷=核心电弧 / 织夜=本体多色斑共存流动（深蓝紫族）/
+  // 时流=青时炮艇同款三圈纹路（核心援护环+双侧援护舱）/ 浮梦=大核心旋转
+  // hex 颜色乘系数调明暗（超越艇本体立体渐变端色用；mul>1 提亮、<1 压暗）
+  function bwShade(hex, mul) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, Math.round(((n >> 16) & 255) * mul));
+    const g = Math.min(255, Math.round(((n >> 8) & 255) * mul));
+    const b = Math.min(255, Math.round((n & 255) * mul));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawBeyondWingBody(e) {
+    const TAU = Math.PI * 2;
+    const t = state.time;
+    // 尾焰长度：入场段（未到停留线）/ 冲锋离场段（holdTimer 走完）长焰，停留期短焰——逐帧向目标平滑逼近（≈0.2s 过渡）
+    const entering = e.holdTimer > 0 && e.holdY != null && e.y < e.holdY - 1;
+    const charging = e.holdTimer != null && e.holdTimer <= 0;
+    const flameTarget = (entering || charging) ? 26 : 10;
+    e.bwFlameLen = e.bwFlameLen == null ? flameTarget : e.bwFlameLen + (flameTarget - e.bwFlameLen) * 0.12;
+
+    // 尾焰（先画垫底，机尾朝上 -y 喷出）：外焰主色 + 内焰白亮
+    const fl = e.bwFlameLen;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, -10); ctx.lineTo(0, -13 - fl); ctx.lineTo(4.5, -10); ctx.closePath();
+    ctx.fillStyle = e.color; ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(-2.2, -10); ctx.lineTo(0, -13 - fl * 0.62); ctx.lineTo(2.2, -10); ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // 机体：菱形（2类突击艇同款基准）+ 两侧中部水平尖角（侧腰点向外伸三角尖）
+    //（2026-11-13 二轮反馈：体积回调与突击艇一致——原 50×44 视觉缩回 46×40 基准）
+    ctx.beginPath();
+    ctx.moveTo(0, 14);            // 机头（下）
+    ctx.lineTo(15, -4);           // 右侧腰
+    ctx.lineTo(24, -4);           // 右尖角（水平外伸 9px）
+    ctx.lineTo(15, -9);           // 尖角上根
+    ctx.lineTo(0, -13);           // 机尾（上）
+    ctx.lineTo(-15, -9);          // 左尖角上根
+    ctx.lineTo(-24, -4);          // 左尖角
+    ctx.lineTo(-15, -4);          // 左侧腰
+    ctx.closePath();
+    if (e.type === 'beyondWing_violet') {
+      // 织夜：多色斑共存流动（2026-11-13 用户二轮反馈「多种颜色混合共存流动，不是单纯变色」）——
+      // 机体 clip 内：暗紫底色 + 4 个径向色斑（亮蓝/紫/亮紫/深蓝）圆心各以不同速度绕本体漂移，
+      // 斑点边缘径向淡出、相互叠加融合 = 深蓝与深紫（及过渡紫）同时共存且持续流动；各机独立相位（wobble）
+      const ph = (e.wobble || 0);
+      ctx.save();
+      ctx.clip();   // 机体路径裁剪（路径仍保留，restore 后 stroke 照常）
+      const base = ctx.createLinearGradient(0, -13, 0, 14);
+      base.addColorStop(0, '#2a2060'); base.addColorStop(1, '#1a1240');
+      ctx.fillStyle = base;
+      ctx.fillRect(-26, -18, 52, 36);
+      const blobs = [
+        { c: '#4a66e8', r: 13.5, sp: 0.50, p0: 0 },   // 亮蓝
+        { c: '#7a3bd0', r: 12, sp: 0.38, p0: 2.1 },   // 紫
+        { c: '#a04ae0', r: 9.5, sp: 0.62, p0: 4.4 },  // 亮紫
+        { c: '#3147b8', r: 13, sp: 0.31, p0: 5.6 },   // 深蓝
+      ];
+      for (const bl of blobs) {
+        const bx = Math.cos(ph + t * bl.sp + bl.p0) * 15;
+        const by = Math.sin(ph * 1.3 + t * bl.sp * 1.35 + bl.p0 * 1.7) * 8.5;
+        const rg = ctx.createRadialGradient(bx, by, 0, bx, by, bl.r);
+        rg.addColorStop(0, bl.c);
+        rg.addColorStop(1, 'rgba(20, 14, 48, 0)');
+        ctx.globalAlpha = 0.78;
+        ctx.fillStyle = rg;
+        ctx.fillRect(-26, -18, 52, 36);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else {
+      // 其余四机：本体 = 各自主题色立体渐变（上暗 → 主色 → 下亮，gunship 舰体同方向）——
+      // 2026-11-13 用户反馈「本体是粉色/红色等主题色，不是核心那种灰黑」
+      const hull = ctx.createLinearGradient(0, -13, 0, 14);
+      hull.addColorStop(0, bwShade(e.color, 0.52));
+      hull.addColorStop(0.55, e.color);
+      hull.addColorStop(1, bwShade(e.color, 1.24));
+      ctx.fillStyle = hull;
+      ctx.fill();
+    }
+    ctx.strokeStyle = (e.type === 'beyondWing_violet' ? 'rgba(178, 158, 235, 0.5)' : bwShade(e.color, 1.45));   // 描边：主色亮化（织夜亮紫描边）——与主题色本体融合
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 方形核心：一角竖直朝上（45° 方位菱形四点）；浮梦核心较大（R6，2026-11-13 二轮反馈略微缩小 7→6）且持续旋转（ω 1.3 rad/s），其余静止
+    const coreR = e.type === 'beyondWing_pink' ? 6 : 4.5;
+    const rot = e.type === 'beyondWing_pink' ? t * 1.3 + (e.wobble || 0) : 0;
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(0, -coreR); ctx.lineTo(coreR, 0); ctx.lineTo(0, coreR); ctx.lineTo(-coreR, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = e.color; ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+
+    if (e.type === 'beyondWing_red') {
+      // 炽翼：核心上方两簇橙红火舌（高度/宽度正弦跳动，辉光橙红）
+      ctx.shadowColor = '#ff8a3c'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#ff9a3c';
+      for (const s of [-1, 1]) {
+        const h = 5 + 2.5 * Math.sin(t * 9 + s * 2.1 + (e.wobble || 0));
+        const w = 2.2 + 0.8 * Math.sin(t * 11 + s * 1.3);
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(s * 1.2, -3.5);
+        ctx.quadraticCurveTo(s * (3 + w), -3.5 - h * 0.45, s * 2.6, -3.5 - h);
+        ctx.quadraticCurveTo(s * (1.8 + w * 0.35), -3.5 - h * 0.5, s * 0.4, -3.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    } else if (e.type === 'beyondWing_blue') {
+      // 奔雷：核心左右随机折线电弧（逐帧换形闪烁，白青辉光）
+      ctx.shadowColor = '#9fd8ff'; ctx.shadowBlur = 6;
+      ctx.strokeStyle = '#cfe9ff'; ctx.lineWidth = 1.3;
+      ctx.globalAlpha = 0.9;
+      for (const s of [-1, 1]) {
+        const a0 = (s > 0 ? 0.35 : Math.PI - 0.35) + Math.sin(t * 7 + s * 1.7 + (e.wobble || 0)) * 0.45;
+        const px = Math.cos(a0) * 5.5, py = Math.sin(a0) * 5.5;
+        ctx.beginPath();
+        ctx.moveTo(px * 0.55, py * 0.55);
+        ctx.lineTo(px + (Math.random() - 0.5) * 3, py + (Math.random() - 0.5) * 3);
+        ctx.lineTo(px * 1.6 + (Math.random() - 0.5) * 3.5, py * 1.6 + (Math.random() - 0.5) * 3.5);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    } else if (e.type === 'beyondWing_cyan') {
+      // 时流：三圈纹路（青时炮艇同款）——核心援护环 + 双侧援护舱（亮绿脉动，呼应绿环支援弹）
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4 + (e.wobble || 0));
+      ctx.shadowColor = '#7fffd4'; ctx.shadowBlur = 3 + pulse * 8;
+      ctx.globalAlpha = 0.30 + pulse * 0.6;
+      ctx.strokeStyle = '#7fffd4'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, 0, 8.5, 0, TAU); ctx.stroke();
+      for (const s of [-1, 1]) {
+        ctx.beginPath(); ctx.arc(s * 13, 2, 2.8, 0, TAU); ctx.stroke();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
+  }
+
   // 幽暮突击艇机体：2类菱形的黑色版本 —— 暗黑渐变菱形 + 微亮描边（暗背景下勾勒轮廓）+ 中央白色发光核心；
   // 浮现渐显 / 离场渐隐的透明度由 e.duskFade 控制（乘到 globalAlpha）
   function drawDuskStrikerBody(e) {
@@ -3581,15 +3735,6 @@
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(90, 90, 102, 0.4)';   // 绒毛短弧（轮廓外圈绒感，非纹路；四次定稿：角度范围对称化 -0.95π~+0.95π）
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 9; i++) {
-      const a = -Math.PI * 0.95 + (i / 8) * Math.PI * 1.9;
-      const cx = Math.cos(a) * 8.8, cy = 5 + Math.sin(a) * 10.5;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2.2, a - 0.7, a + 0.7);
-      ctx.stroke();
-    }
     // ---- 眼（前端两道竖条黑缝——强力敌人压迫感；三次定稿缩小，四次定稿上侧向外偏 10° 倾斜，
     // 五次定稿略微上移 11.5 → 10.5）----
     ctx.fillStyle = '#0a0a12';
@@ -6120,7 +6265,7 @@
     drawAnvilBody, drawPopianBody, drawPopianUBody, drawVoyagerBody, drawFashiMatrixBody,
     drawFashiArrayBody, drawPulseMatrixBody, drawPmOrphanWave, drawJiaoxiangBody, drawFashiA1Body,
     drawWarMatrixBody, drawGuiltGrailBody,
-    drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody,
+    drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody, drawBeyondWingBody,
     paintSkull, paintSnowflake, paintBaolingBomb, paintUnrealBomb, paintStasisUnrealBomb,
     drawBaolingBody, drawBaolingGBody, drawUnrealBody, drawStasisUnrealBody, drawCocoonDreamBody, drawBaolingWarn,
     drawCollapseConstructBody,

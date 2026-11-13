@@ -7,7 +7,7 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
@@ -252,6 +252,23 @@
       // 坚垒易伤递增计时锚点（2026-10-11 用户定稿：登场后每过 1s 受到伤害 +10%、10s 起每秒 +20%）——
       // 记登场时刻 state.time，年龄在 08-entities enemyDamageMul 结算（state.time 暂停冻结、年龄不含暂停时长）
       if (variant.id === 'fortress') e.fortBorn = state.time;
+    }
+    // 超越艇（2C 五变体，2026-11-13 实装）：独立 type 复用 2 类前锋移动骨架——
+    // 入位/冲锋速度 = 赤红 ×spdMul（奔雷 ×2.4，其余 ×1.2；冲锋关卡增量 5×mul 经 e.chargeLvStep 传递，06-enemy 消费）；
+    // 停留线 = 前锋线 rand(200,240) + 3% 屏高（BEYOND_WING.holdShift，编队 opts.holdY 兼容）；停留时长同常规 2 类；
+    // 首射 = 0.7~1.7s（奔雷 0.3~0.5s）+ 难度加成 ffa（覆盖 e 对象字面量按循环间隔算的 initFire——循环间隔只用于攻击后重置）；
+    // 浮梦（pink）登场 50% 概率一层次数盾（chargeShield 通道，白色浅盾视觉与增生侧翼艇同款）
+    if (type && type.startsWith('beyondWing_')) {
+      const mul = type === 'beyondWing_blue' ? BEYOND_WING.spdMulBlue : BEYOND_WING.spdMul;
+      e.entrySpd = (isPoem() ? STRIKER_POEM_ENTRY : STRIKER_ENTRY) * mul;
+      e.chargeBase = 120 * mul;
+      e.chargeLvStep = 5 * mul;
+      e.holdY = (opts.holdY != null ? opts.holdY : rand(200, 240)) + BEYOND_WING.holdShift;
+      e.holdTimer = opts.holdTimer != null ? opts.holdTimer : strikerHold();
+      e.fireTimer = opts.fireTimer != null ? opts.fireTimer
+        : (type === 'beyondWing_blue' ? rand(0.3, 0.5) : rand(0.7, 1.7)) + ffa;
+      e.pattern = (Math.random() * 4) | 0;   // 攻击段起点随机（炽翼四段循环 0~3 / 奔雷三轮 %3 取 0~2；其余无消费）
+      if (type === 'beyondWing_pink' && Math.random() < 0.5) { e.chargeShield = 1; e.chargeShieldMax = 1; }
     }
     // 蓝色4类(capital azure)：出现时 20% 概率带护盾，前 5s 虚化不会受伤
     if (type === 'capital' && variant && variant.id === 'azure' && Math.random() < PHASE_CHANCE) {
@@ -1249,14 +1266,15 @@
 
   // 特殊4类：战争幽灵（诗篇新敌实装 2026-09-29）—— 白色风波预警 → 极速入场冲撞 → 抵达演出 →
   // 驻留中场技能循环 → 直线预警加速斩出离场（挑战模式传 forever 永驻不离场）。
-  // 停留点（屏高 50%~65% / 屏宽 15%~85% 随机）与来向（停留点正上方 ±60° 扇区随机）在此抽取；
-  // 预警期间本体静驻屏外起点（在通用出界移除边界内：|屏外 x| ≤ 430），预警结束沿来向冲刺、
-  // 临近停留点指数减速（v = min(entrySpeed, k×剩余距离)，位置逐帧连续无 snap）；
+  // 停留点（屏高 50%~65% / 屏宽 15%~85% 随机）与来向在此抽取——2026-11-13 用户定稿：来向 360° 任意角度
+  //（entrySpreadDeg 180 = ±180° 全角）；预警期间本体静驻屏外起点（预警流带/冲刺/机头朝向全按 wgDir 向量化），
+  // 预警结束沿来向冲刺、临近停留点指数减速（v = min(entrySpeed, k×剩余距离)，位置逐帧连续无 snap）；
+  // 屏下来向的底部出界移除豁免见 06-enemy 通用移除（wgPhase ≤ 1 入场期豁免）；
   // 移动/技能/光环/半血召唤状态机见 06-enemy warGhost 分支
   function spawnWarGhost(forever, stayYPct) {
     const stayX = CANVAS_W * rand(WAR_GHOST.stayXPctMin, WAR_GHOST.stayXPctMax);
     const stayY = CANVAS_H * (stayYPct != null ? stayYPct : rand(WAR_GHOST.stayYPctMin, WAR_GHOST.stayYPctMax));   // stayYPct：波次指定目标高度比例（波次示意「w*1」50%~70%，2026-10-11）
-    // 来向：以停留点正上方为轴 ±60° 扇区内随机取一方向（upAng 相对竖直向上的偏角）
+    // 来向：以停留点正上方为轴 ±entrySpreadDeg 扇区内随机取一方向（upAng 相对竖直向上的偏角；180 = 全角 360°）
     const upAng = -Math.PI / 2 + rand(-1, 1) * WAR_GHOST.entrySpreadDeg * Math.PI / 180;
     const dir = { x: -Math.cos(upAng), y: -Math.sin(upAng) };   // 飞行方向（单位向量）：从来向指向停留点
     // 屏外起点：沿来向回退 D；D 受通用出界移除边界钳制（x ∈ [-430, W+430]），保证冲刺起点在屏外且不被当帧移除
@@ -2040,6 +2058,14 @@
         break;
       case 'collapseConstruct':
         spawnCollapseConstruct();   // 坍缩构造体：50% 侧翼「[」/「]」镜像重走 / 50% 顶部下横上→底部瞬移重走；出屏后由 updateChallenge 重新生成
+        break;
+      case 'beyondWing_red':
+      case 'beyondWing_blue':
+      case 'beyondWing_violet':
+      case 'beyondWing_cyan':
+      case 'beyondWing_pink':
+        // 超越艇（2C 五变体，2026-11-13）：2类前锋骨架（随机水平位置顶部入位）——挑战口径 holdTimer 1e9 永驻场停留攻击
+        makeEnemy(ch.type, rand(70, CANVAS_W - 70), -50, { holdTimer: 1e9 });
         break;
       case 'warGhost':
         spawnWarGhost(true);   // 战争幽灵：风波预警极速入场 → 驻留中场技能循环（技能1/2/3）；挑战模式永驻场（不离场、不触发离场斩）

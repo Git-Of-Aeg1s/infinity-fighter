@@ -12,7 +12,7 @@
   import { DPR, canvas, clamp, ctx, diffGrid, encyDetail, encyDiffGroup, encyList, encyTabs, encyclopedia, infoBody, infoClose, infoEntryBtn, infoModal, infoTabs, levelFlow, overlay, setCtx, state } from './02-core.js';   // encyDiffGroup：按钮组改全文档 querySelectorAll 后不再直接引用，保留占位（02-core 归域契约名，12-ui 同用）
   import { SPECIAL3_POOL, WAVE_FORMATIONS, sideSpawnWeights, special3Weight, spawnDiagonalRaid, spawnGunshipWings, spawnMirrorRow, spawnSideColumn, spawnSideGroup, spawnSideKamikazeStream, spawnSideSweep, spawnStrikerGroup, spawnStrikerVee, strikerVariantWeights } from './04-spawn.js';
   import { WEAPON_LINES } from './07-player.js';
-  import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
+  import { paintShip, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark } from './09a-draw-loadout.js';
   import { paintWarGhostCandidate } from './09b-draw-enemies.js';
   import { drawEnemy } from './10-draw-world.js';
   import { drawBoss } from './11-draw-boss.js';
@@ -31,7 +31,7 @@
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'fashiMatrix', 'popian', 'popianU', 'voyager', 'fashiA1', 'douzhi', 'sponsor', 'sponsorDeluxe', 'collapseConstruct', 'beyondWing_red', 'beyondWing_blue', 'beyondWing_violet', 'beyondWing_cyan', 'beyondWing_pink'] },   // 赤红/烈橙/幽蓝/紫晶/霜白（紫晶之下）/坚垒(黄)/幽暮(黑) + 矩阵/破片/破片U/浮海飘航者/A1/斗志/赞助/豪华 + 2D 坍缩构造体 / 2C 超越艇五变体（2026-10-19 占位，按登记规则暂置本页最下方）
     { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal', 'harbingerLead', 'harbingerHub', 'harbingerPolar', 'stasisUnreal', 'cocoonDream', 'lanxinShip_blue', 'lanxinShip_white', 'lanxinShip_black', 'lanxinShip_violet', 'lanxinShip_pink'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻 + 先兆者家族三变种（3B/3C/3D，2026-10-16 按登记规则暂置本页最下方）+ 3D 静滞虚幻 / 3E 破茧之梦 / 3C 澜心舰五变体（2026-10-19 占位，同上）
     // 诗篇级：张华&张策 = wip 白方块占位，其余全部实装（专属外观预览）；四精英顺序 = 朴→夏→韩→辛
-    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-11-10 实装转正，仍置本页末位）
+    { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail', 'thunderWrath', 'starSlayer_darkSun', 'starSlayer_whiteNight', 'starSlayer_violetMoon'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-11-10 实装转正，仍置本页末位）+ 4C 雷霆之怒/诛星舰三变体（2026-11-13 占位，按登记规则暂置本页最下方）
 
     // 长歌级：黑暗之手紧跟旧日之歌下方（2026-10-01 用户定稿排序）；5D/5E 占位（2026-10-19）置本页最下方
     { name: '长歌级', entries: ['boss', 'boss_darkhand', 'boss_storm', 'boss_storm2', 'returnStar', 'starsVoice'] },
@@ -413,9 +413,32 @@ boss_storm: {
     },
     guiltGrail: {
       name: '愧悔魂灵圣杯', type: 'guiltGrail', color: '#6f6a5c', hp: 9000, score: 1,   // 诗篇 27000（POEM_HP.guiltGrail 覆写）；2026-11-10 实装转正（原 2026-10-19 占位条目作废）
-      pvZoom: 0.4,   // 预览缩小：150px 光环（直径 300+）远大于 96 碰撞盒，不缩则光环在预览离屏（max(w,h)×1.9）中被裁切。
-                     // 测试1 形象评审大画幅不沿用本条目 mock——renderInfoBullets 内派生对象覆盖 pvZoom/pvNoAura/pvDrawScale（杯身适配放大 + 省光环 + 高分辨率）
+      // pvZoom 0.4 已撤销（2026-11-13 用户反馈：图鉴条目卡圣杯过小）——原为 150px 光环（直径 300+）全入图所设，
+      // 但光环 alpha 仅 0.06~0.13 在缩略图近乎不可见，却把杯身压成小点；改预览统一省光环、杯身按碰撞盒适配
+      pvNoAura: true,   // 全部预览（条目卡/详情页/测试1 评审画幅）省光环（drawGuiltGrailBody 门控；游戏内光环不受影响）
       desc: '不攻击的光环承伤体：周身 150px 淡金光环将范围内所有敌人受到的伤害转移至自身。无法转移爆弹、萧杨抽卡等特殊的强大全屏伤害，且自身受到爆弹、抽卡伤害时立刻被击坠。本体直接受到子弹攻击（转移的伤害不算，群星之杀这类非子弹伤害不算）时此伤害增加 25%；受到转移的非强力范围伤害（如群星之杀斩击、捣蛋来袭爆炸伤害；辛国栋之怒这类持续伤害不转移）时减少 20%。停留于屏高 20%~25% 缓慢游走，不攻击，碰撞伤害 60，击坠掉落 1 颗水晶。',   // 机制描述按实装口径（desc 不受 lore 纪律约束；lore 未提供故不写）
+    },
+    // —— 2026-11-13 占位批次（4 条，用户定稿登记）：wip 白方块占位，名称按用户原文；
+    // 等级代号 4C 与战争幽灵共享强度档（同 2C 超越艇先例），实装时逐个换专属外观/数值/机制 ----------
+    thunderWrath: {
+      name: '雷霆之怒', type: 'thunderWrath', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-11-13 用户定稿登记）。',
+    },
+    starSlayer_darkSun: {
+      name: '黑日诛星舰', type: 'starSlayer_darkSun', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-11-13 用户定稿登记；诛星舰三变体之一）。',
+    },
+    starSlayer_whiteNight: {
+      name: '白夜诛星舰', type: 'starSlayer_whiteNight', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-11-13 用户定稿登记；诛星舰三变体之一）。',
+    },
+    starSlayer_violetMoon: {
+      name: '紫月诛星舰', type: 'starSlayer_violetMoon', color: '#8a93a6', hp: 0, score: 0,
+      wip: true,
+      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-11-13 用户定稿登记；诛星舰三变体之一）。',
     },
     returnStar: {
       name: '「归星」', type: 'returnStar', color: '#8a93a6', hp: 0, score: 0,
@@ -428,29 +451,24 @@ boss_storm: {
       desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
     },
     beyondWing_red: {
-      name: '炽翼超越艇（红）', type: 'beyondWing_red', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记；（颜色）后缀按用户原文）。',
+      name: '炽翼超越艇（红）', type: 'beyondWing_red', color: '#FF4632', hp: 60, score: 1,   // 诗篇 420（POEM_HP 覆写）；2026-11-13 实装转正（原 2026-10-19 占位条目作废）；分数 1 / 水晶 1 均为待定占位
+      desc: '五色超越艇之一（红色）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处（y≈224~264），随后向下冲锋；移动速度为赤红突击艇的 120%（入位 300 / 冲锋同倍率）。<br>攻击为四段循环（起点随机）：单发圆弹 → 三枚圆弹（相邻夹角 20°、依次出膛）→ 单发长条弹 → 三枚长条弹（依次），循环往复；圆弹伤害 8，长条弹伤害 14（与 3/4 类战舰长条弹同口径）。攻击间隔 0.7~1.7s 随机，首次攻击同区间。碰撞伤害 34，血量 60（诗篇 420）。核心附近有火焰特效，登场与离场期间尾焰较长。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     beyondWing_blue: {
-      name: '奔雷超越艇（蓝）', type: 'beyondWing_blue', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '奔雷超越艇（蓝）', type: 'beyondWing_blue', color: '#4D9FFF', hp: 60, score: 1,   // 诗篇 420（POEM_HP 覆写）；2026-11-13 实装转正；分数 1 / 水晶 1 均为待定占位
+      desc: '五色超越艇之一（蓝色）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处；移动速度为赤红突击艇的 240%（全家族最快，入位 600 / 诗篇 672）。<br>攻击时依次射出三轮加速圆弹：第一轮 1 枚（瞄准玩家瞬时位置）、第二轮 2 枚（±17.5°，无瞄准弹）、第三轮 3 枚（中间瞄准 + 两侧 ±35°），相邻夹角 35°，轮次间隔 0.5s，每轮发射瞬间重新锁定玩家瞬时位置。子弹初速 200 加速至 400，样式与风暴编织者雷环子弹一致、边缘改为红橙色，伤害 19。攻击间隔 1.8~2.5s，首次攻击 0.3~0.5s。碰撞伤害 34，血量 60（诗篇 420）。<br>被击坠时 1% 概率在击坠位置召唤一次风暴编织者同款的雷霆轰击（立即落雷）。核心附近有雷电特效。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     beyondWing_violet: {
-      name: '织夜超越艇（深蓝紫）', type: 'beyondWing_violet', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '织夜超越艇（深蓝紫）', type: 'beyondWing_violet', color: '#6D5AE8', hp: 60, score: 1,   // 诗篇 420（POEM_HP 覆写）；2026-11-13 实装转正；分数 1 / 水晶 1 均为待定占位
+      desc: '五色超越艇之一（深蓝紫）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处；移动速度为赤红突击艇的 120%。本体呈深蓝与深紫（及过渡紫）多色斑混合共存流动。<br>朝玩家发射快速长条弹：弹速为普通长条射弹的 140%（392），此后每 1s 再加速 20%，红色更浓，伤害 24（基准 14+10）。自第二次攻击起，每次攻击额外快速追加 1 枚子弹（伤害 8）朝上一次射击时锁定的原位置，累计至多 3 枚后不再追加。攻击间隔 1.8~2.5s。碰撞伤害 34，血量 60（诗篇 420）。<br>被击坠时 4% 概率（真我/诗篇 6%）立刻攻击一次。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     beyondWing_cyan: {
-      name: '时流超越艇（青）', type: 'beyondWing_cyan', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '时流超越艇（青）', type: 'beyondWing_cyan', color: '#45E0E8', hp: 60, score: 1,   // 诗篇 420（POEM_HP 覆写）；2026-11-13 实装转正；分数 1 / 水晶 1 均为待定占位
+      desc: '五色超越艇之一（青色）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处；移动速度为赤红突击艇的 120%。机体带有青时炮艇同款的三圈纹路。<br>攻击间隔在 0.9 / 1.2 / 1.5s 三档随机（每次攻击后重抽），发射（间隔 ÷ 0.3）枚绿环射弹（3/4/5 枚）：本体白色、边缘亮绿色、无拖尾；其中必定包含朝左和朝右水平直射各 1 枚，1 枚优先瞄准场上血量最高的敌方单位（无则随机方向），其余 0~2 枚朝随机方向射击。<br>绿环射弹命中敌方单位时，使其接下来 n 次攻击间隔各减少 0.3s（n = 命中叠加层数，每次攻击消耗一层、不重复减免）；命中我方战机时不造成伤害，改为使我方获得 2s 时流状态：射速与弹道速度 +50%（重复命中刷新至 2s，读条显示于右下角）。<br>碰撞伤害 34，血量 60（诗篇 420）。被击坠时朝随机方向直射 1 枚绿环射弹。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     beyondWing_pink: {
-      name: '浮梦超越艇（淡粉）', type: 'beyondWing_pink', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '浮梦超越艇（淡粉）', type: 'beyondWing_pink', color: '#F9A8D4', hp: 60, score: 1,   // 诗篇 420（POEM_HP 覆写）；2026-11-13 实装转正；分数 1 / 水晶 1 均为待定占位
+      desc: '五色超越艇之一（淡粉）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处；移动速度为赤红突击艇的 120%。核心较大且以一定速度持续旋转。<br>登场时 50% 概率拥有一层次数盾（抵御一次伤害，穿透类弹同样被挡）。<br>攻击时锁定自身与玩家连线方向上、间距 80%~120% 的一个点（可在屏幕外），射出的弧线拖尾弹（红橙主体、外环粉光）必定经过该点（出界时除外）：初始方向与连线方向成 25°~60° 随机夹角，以圆滑弧线途经该点后转直线飞出，伤害 18（基准 14+4）。攻击间隔 1~2s 随机。碰撞伤害 34，血量 60（诗篇 420）。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     lanxinShip_blue: {
       name: '洪流澜心舰（蓝）', type: 'lanxinShip_blue', color: '#8a93a6', hp: 0, score: 0,
@@ -1995,6 +2013,27 @@ boss_storm: {
       const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
       return cfg.count * cfg.dmg / cfg.interval * (level === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%（弹速 +50% 不影响 DPS）
     }
+    // lance 模型（彻月）：单发贯穿射弹，周期=interval；Lv5 暴走每周期连射 3 发（+2×burstGap 发射时长）
+    if (wingman.weapon && wingman.weapon.kind === 'lance') {
+      const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
+      const shots = cfg.aimFracs ? cfg.aimFracs.length : 1;
+      const cycleTime = cfg.interval + (shots - 1) * (wingman.weapon.burstGap || 0);
+      return 2 * shots * cfg.dmg / cycleTime * (level === 5 ? BERSERK.subRateMul : 1);   // 双僚机合计；暴走全局修正：射速 +50%
+    }
+    // beam 模型（极夜千星）：常态（Lv1~4）每 interval 秒发 1 发大激光；暴走（Lv5）持续模式每 tickIv 发 1 发小单发（每秒 1/tickIv 次）
+    if (wingman.weapon && wingman.weapon.kind === 'beam') {
+      const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
+      if (level === 5 && cfg.tickIv != null) {
+        // 暴走持续：每秒发射数 = 1/tickIv × BERSERK.subRateMul（全局射速加速）；每次伤害 = cfg.dmgTick
+        return 2 * cfg.dmgTick * (1 / cfg.tickIv) * BERSERK.subRateMul;   // 双僚机合计
+      }
+      return 2 * cfg.dmg / cfg.interval * (level === 5 ? BERSERK.subRateMul : 1);
+    }
+    // droplet 模型（今宵）：每周期 count 发错序发射，周期=interval（错序总时长 0.3s/0.42s < interval 不延长）；暴走 8 发 + 全局射速 ×subRateMul
+    if (wingman.weapon && wingman.weapon.kind === 'droplet') {
+      const cfg = wingman.weapon.levels[level] || wingman.weapon.levels[1];
+      return 2 * cfg.count * cfg.dmg / cfg.interval * (level === 5 ? BERSERK.subRateMul : 1);   // 双僚机合计；暴走全局修正：射速 +50%
+    }
     // volley 模型（时空允诺）：按“连射周期”折算——每周期发 sum(volleys) 发，周期 = 轮间隔 + 冷却
     const lv = WINGMAN_LEVELS[level] || WINGMAN_LEVELS[1];
     const perCycle = lv.volleys.reduce((a, b) => a + b, 0);
@@ -2031,6 +2070,25 @@ boss_storm: {
       c.scale(-0.62 * BULWARK.scale, 0.62 * BULWARK.scale); c.translate(-13.6, 12.75);
       flame(3, 5, 16.6, 3, 'rgba(190, 225, 255, 0.9)', 'rgba(120, 185, 255, 0.5)', 'rgba(70, 140, 230, 0)');   // 壁垒常态焰：焰根对齐本体中线 x=+3
       paintWingmanBulwark(c, 1, false, 0.25, true);
+    }
+    else if (wingman && wingman.weapon && wingman.weapon.kind === 'lance') {
+      // 彻月：紫色电磁发射舱 + 暴走水晶晶体（静态帧满展）；左右反转与选机卡一致
+      c.scale(-0.95, 0.95);
+      flame(0, 8, 11, 3, 'rgba(200, 180, 255, 0.9)', 'rgba(150, 124, 255, 0.5)', 'rgba(116, 92, 236, 0)');   // 彻月常态紫焰（电磁舱紫系）
+      paintWingmanCheyue(c, 1, true, true, 1);   // still 冻结相位、满展（晶体静态帧闪白取固定值）
+    }
+    else if (wingman && wingman.weapon && wingman.weapon.kind === 'beam') {
+      // 极夜千星：激光发射装置 + 周围光球环绕（静态帧，光球公转相位冻结）；左右反转与选机卡一致
+      c.scale(-0.95, 0.95);
+      // 极夜千星尾焰：淡蓝白色（与激光 beamGlow #b8d6ff 同族），短扁（僚机通用尾焰）
+      flame(0, 8, 11, 3, 'rgba(200,230,255,0.9)', 'rgba(160,200,240,0.5)', 'rgba(110,160,220,0)');
+      paintWingmanJiye(c, 1, false, 0);   // flameT=0 冻结光球公转相位
+    }
+    else if (wingman && wingman.weapon && wingman.weapon.kind === 'droplet') {
+      // 今宵：双反应装置边架 + 中央能量球（静态帧，能量球弧纹相位冻结）；左右反转与选机卡一致
+      c.scale(-0.95, 0.95);
+      flame(0, 8, 11, 3, 'rgba(224,208,255,0.9)', 'rgba(178,150,255,0.5)', 'rgba(150,120,245,0)');   // 今宵常态淡紫焰（能量容器紫系）
+      paintWingmanJinxiao(c, 1, false, true);   // still 冻结能量球弧纹相位
     }
       else {
         const sw = wingman.scale || 1;   // 时空允诺整体尺寸系数（与游戏内/选机卡同源 ×1.045）
@@ -2097,7 +2155,7 @@ boss_storm: {
       });
     }
     infoBody.appendChild(buildDpsTable(headers, rows));
-    infoAppendNote('表中数值为<b>每秒平均伤害（DPS）</b> = 该火力等级下持续输出 10s 的理论总伤 ÷ 10。<b>战机</b>行为主炮单独输出，<b>僚机</b>行为左右两架合计；均为<b>裸伤</b>（不含敌方减伤 / 易伤、御4 力场、斗志昂扬攻速翻倍等战斗修正）。<b>混乱将至</b>主炮弹<b>无穿透</b>，对<b>非 BOSS / 非 4S（黑暗之手四精英）</b>敌人伤害 <b>+60%</b>。暴走（Lv5）为限时 4s 强化形态，此处按其伤害 / 射速持续计算；<b>僚机</b>在等级配置之上叠加暴走全局修正——射速 +50%、弹速 +50%（Lv5 列已计入）；<b>群星之杀</b>常态瞄准线 1 条，暴走为 <b>3 条判定白线</b>（中线 + 左右刃中心各一）各自独立判定，每线<b>连斩 2 次</b>——同一攻击 6 斩按「中→左→右」排列依次释放（暴走每击间隔 0.05s / 非暴走 0.1s），相邻斩击（含跨线）与竖直方向夹角至少相差 20°；逐击重新锁定——两次斩击可落不同目标；判定矩形短边为半长 ×0.42 / 显式值 ×1.2；暴走斩击伤害 +50%，Lv5 列按<b>三线全中同一目标</b>口径（中线 2 斩必中 + 左右侧线走廊命中同一目标——BOSS 等大机体常见；小怪单体实战仅中线命中时为表值 ÷3）。<b>连斩不延长攻击周期</b>——首击瞬间即起算下一轮攻击间隔，连斩间隔与冷却并行流逝，总周期恒 = interval，表值即持续 DPS。');
+    infoAppendNote('表中数值为<b>每秒平均伤害（DPS）</b> = 该火力等级下持续输出 10s 的理论总伤 ÷ 10。<b>战机</b>行为主炮单独输出，<b>僚机</b>行为左右两架合计；均为<b>裸伤</b>（不含敌方减伤 / 易伤、御4 力场、斗志昂扬攻速翻倍等战斗修正）。<b>混乱将至</b>主炮弹<b>无穿透</b>，对<b>非 BOSS / 非 4S（黑暗之手四精英）</b>敌人伤害 <b>+80%</b>。暴走（Lv5）为限时 4s 强化形态，此处按其伤害 / 射速持续计算；<b>僚机</b>在等级配置之上叠加暴走全局修正——射速 +50%、弹速 +50%（Lv5 列已计入）；<b>群星之杀</b>常态瞄准线 1 条，暴走为 <b>3 条判定白线</b>（中线 + 左右刃中心各一）各自独立判定，每线<b>连斩 2 次</b>——同一攻击 6 斩按「中→左→右」排列依次释放（暴走每击间隔 0.05s / 非暴走 0.1s），相邻斩击（含跨线）与竖直方向夹角至少相差 20°；逐击重新锁定——两次斩击可落不同目标；判定矩形短边为半长 ×0.42 / 显式值 ×1.2；暴走斩击伤害 +50%，Lv5 列按<b>三线全中同一目标</b>口径（中线 2 斩必中 + 左右侧线走廊命中同一目标——BOSS 等大机体常见；小怪单体实战仅中线命中时为表值 ÷3）。<b>连斩不延长攻击周期</b>——首击瞬间即起算下一轮攻击间隔，连斩间隔与冷却并行流逝，总周期恒 = interval，表值即持续 DPS。<b>今宵</b>每轮射弹在轮启动瞬间按「离玩家距离权重」分配锁定目标——同距敌人轮转均分、距离越远份额越少（近 / 中 / 远三敌约 3:2:1）；射弹自僚机尾部错序逐发出舱（burstGap 0.06s），初始角度扇形展开（内侧近竖直、外侧最横）+ 向上加速度下坠弧线折返，折返点即刻转为追踪，锁定目标失效自动转锁最近合格敌人，无目标直飞。');
   }
 
   // ---------- 护甲：ARMORS 注册表驱动（desc 详细数值文案；与主菜单卡片简短文案 brief 区分） ----------
@@ -2215,7 +2273,7 @@ boss_storm: {
     }
     infoBody.appendChild(buildDpsTable(headers, dpsRows));
     infoBody.appendChild(buildDpsTable(['副武器 / 参数', ...INFO_FIRE_LEVELS.map(lv => lv === 5 ? 'Lv5' : 'Lv' + lv)], paramRows));
-    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与叮咚鸡导弹完全同款（600 溅射 / 低区直击 200，表中 DPS 按爆炸伤害折算；每发发射后 10% 概率 0.3s 后连射一发，连射弹同样可继续连射、伤害一律为正常导弹的 60%（固定不递减））；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。<b>时流之雨</b>左右发射口各 4 条、最靠两侧先发依次到内；初始横向速度朝各自一侧（自外向内依次减小）并指数衰减归零——弹道弯曲；射弹触碰道具玩家直接结算（升级 / 暴走 / 量子护盾 / 结晶护盾改为在剩余时长上增加对应时长，突破常规重置式上限；回血超出上限部分转等额非永久屏障），周身 40px 吸收水晶；命中敌人下一次攻击间隔 +0.3s（每轮射弹对同一敌人仅一次，BOSS 生效）。<b>坠星长枪</b>为垂直直射无限穿透弹：表中 DPS 为<b>大体积特攻口径</b>（对高 90px 悬停大型敌机、全部命中——首击 + 驻留期每 0.2s 一次穿刺；窄体 / 快速下坠目标实际命中枪数与穿刺数更少）；暴走 4 支出射点横向均布、外侧两支错峰 0.2s，间隔 1.6s 为暴走绝对值（不吃全局修正，伤害已配平）。暴走（Lv5）为限时 4s 形态，Lv5 列已含暴走全局修正：<b>捣蛋来袭 / 无界飞剑 / 极夜流光 / 时流之雨</b> = 射速 +50%、弹速 +50%（间隔行显示修正后有效值）；<b>辛国栋之怒</b> = 灼烧伤害 +50%（射速 / 弹速 / 半径不变，灼烧 DPS 行显示修正后值）；<b>坠星长枪</b>为专属形态（4 枪 + 伤害提升已直接配平在 Lv5 档，间隔行显示配置绝对值）。');
+    infoAppendNote('表中为<b>裸数值</b>（不含敌方减伤 / 易伤、大无垠之王增伤、极夜流光对 4类 +50% 增伤等战斗修正）。副武器攻速远低于主炮（主炮 Lv4 间隔 0.12s）。<b>辛国栋之怒</b>为恒速穿透灼烧：表中 DPS 为火环持续触及单个敌人时的每秒伤害（每 0.1s 结算一次）；<b>捣蛋来袭</b>与叮咚鸡导弹完全同款（600 溅射 / 低区直击 200，表中 DPS 按爆炸伤害折算；每发发射后 10% 概率 0.3s 后连射一发，连射弹同样可继续连射、伤害一律为正常导弹的 60%（固定不递减））；<b>极夜流光</b>激光可穿透 1 个非 BOSS / 非 4类敌人。<b>无界飞剑</b>发射位置均分屏幕宽度，每剑仅命中首个敌人（暴走 50% 概率穿透一次）。<b>时流之雨</b>左右发射口各 4 条、最靠两侧先发依次到内；初始横向速度朝各自一侧（自外向内依次减小）并指数衰减归零——弹道弯曲；射弹触碰道具玩家直接结算（升级 / 暴走 / 量子护盾 / 结晶护盾改为在剩余时长上增加对应时长，突破常规重置式上限；回血超出上限部分转等额非永久屏障），周身 40px 吸收水晶；命中敌人下一次攻击间隔 +0.3s（每轮射弹对同一敌人仅一次，BOSS 生效）。<b>坠星长枪</b>为垂直直射无限穿透弹：发射时长枪自机体中心渐显滑向出射位（挂机跟随）后垂直上射（同飞剑波——间隔仍自触发起算，滑移不影响攻击节奏）；表中 DPS 为<b>大体积特攻口径</b>（对高 90px 悬停大型敌机、全部命中——首击 + 驻留期每 0.2s 一次穿刺；窄体 / 快速下坠目标实际命中枪数与穿刺数更少）；暴走 4 支出射点横向均布、外侧两支稍慢错峰，间隔 1.6s 为暴走绝对值（不吃全局修正，伤害已配平）。暴走（Lv5）为限时 4s 形态，Lv5 列已含暴走全局修正：<b>捣蛋来袭 / 无界飞剑 / 极夜流光 / 时流之雨</b> = 射速 +50%、弹速 +50%（间隔行显示修正后有效值）；<b>辛国栋之怒</b> = 灼烧伤害 +50%（射速 / 弹速 / 半径不变，灼烧 DPS 行显示修正后值）；<b>坠星长枪</b>为专属形态（4 枪 + 伤害提升已直接配平在 Lv5 档，间隔行显示配置绝对值）。');
   }
 
   // ---------- 驾驶员：PILOTS 注册表驱动（desc 详细机制文案；与主菜单卡片简短文案 brief 区分） ----------
@@ -2441,11 +2499,15 @@ boss_storm: {
     drawEncyPreview(ENCY_DATA.stasisUnreal, mkBox(), 300, 240, false, false);      // 静滞虚幻：静帧（评审完毕）
     drawEncyPreview(ENCY_DATA.cocoonDream, mkBox(), 300, 240, false, false);       // 破茧之梦：静帧
     drawEncyPreview(ENCY_DATA.collapseConstruct, mkBox(), 300, 240, false, false); // 坍缩构造体：静帧（live 槽按「让位最新评审对象」先例让给圣杯形象评审）
-    // 圣杯形象评审专用 mock（2026-11-11 八轮：条目卡 pvZoom 0.4 是光环全入图用，评审画幅沿用杯身仅 ~60px）：
-    // 派生对象覆盖三参——pvZoom 1.5（480×380 画幅杯身适配放大 ≈2.55 倍）、pvNoAura（省光环：大倍率下裁出画布且整画蒙淡金，
-    // drawGuiltGrailBody 门控）、pvDrawScale 2（离屏分辨率 ×2 防 blit 放大发糊，沿浮海飘航者 K 倍率先例）；
-    // 条目卡 / 详情页预览走 ENCY_DATA.guiltGrail 原对象，完全不受影响
-    const grailReview = { ...ENCY_DATA.guiltGrail, pvZoom: 1.5, pvNoAura: true, pvDrawScale: 2 };
+    drawEncyPreview(ENCY_DATA.beyondWing_red, mkBox(), 300, 240, false, false);    // 超越艇五变体静帧（2026-11-13 实装，形象评审入口——live 槽沿用圣杯）
+    drawEncyPreview(ENCY_DATA.beyondWing_blue, mkBox(), 300, 240, false, false);
+    drawEncyPreview(ENCY_DATA.beyondWing_violet, mkBox(), 300, 240, false, false);
+    drawEncyPreview(ENCY_DATA.beyondWing_cyan, mkBox(), 300, 240, false, false);
+    drawEncyPreview(ENCY_DATA.beyondWing_pink, mkBox(), 300, 240, false, false);
+    // 圣杯形象评审专用 mock（2026-11-11 八轮；11-13 九轮撤销 pvZoom 0.4 后条目级已 pvNoAura）：
+    // 派生对象覆盖 pvZoom 1.5（480×380 画幅杯身适配放大）与 pvDrawScale 2（离屏分辨率 ×2 防 blit 放大发糊，
+    // 沿浮海飘航者 K 倍率先例）；pvNoAura 自条目继承（预览统一省光环）；条目卡 / 详情页预览走原对象正常适配
+    const grailReview = { ...ENCY_DATA.guiltGrail, pvZoom: 1.5, pvDrawScale: 2 };
     startEncyPreviewLoop(grailReview, mkBox(), 480, 380);                          // 圣杯：live 大画幅评审主角（冒泡/闪点动效）
   }
 

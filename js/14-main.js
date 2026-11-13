@@ -11,7 +11,7 @@
   import { BOSS_MINION_WAVE, BOSS_SEQUENCE, BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL } from './01-config-boss.js';
   import { isPoem, WAVE_POEM, currentDifficulty, diffMods } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_CAPACITY, REWARD_ITEMS, SPAWN_PHASE_LEVEL, SPAWN_PHASE_TIMES, SPAWN_RUSH, SPAWN_RUSH_CAP, SPAWN_SLOW_MUL, pickDesignedWaveCard, pickPoemExtraCard, pickPoemFlankCard, pickPoemTrueExtra, pickRewardDroneType, rewardDroneChance } from './01-config-spawn.js';
-  import { armorGlyphFx, blastRings, bossEntranceActive, bossPhantom, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, startBtn, state, updateNebulae, updateStars, watchClearFx } from './02-core.js';
+  import { armorGlyphFx, blastRings, bossEntranceActive, bossPhantom, bossFlow, bulwarkBurst, canvas, clamp, crystalBursts, ctx, dashKillFx, departRevivedElites, encyClose, enemies, enemyEnterFrac, fpsMeter, gameoverHomeBtn, initNebulae, initStars, keys, levelFlow, menuStartBtn, musicToggle, padPressed, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, player, playerHitFx, pollGamepad, rand, resultAchieve, retrialBtn, startBtn, state, TOUCH_DEVICE, touch, touchBombBtn, touchPauseBtn, touchSkillBtn, updateNebulae, updateStars, watchClearFx } from './02-core.js';
   import { startAlarm, stopAlarm, updateBGM } from './03-audio.js';
   import { AFFIX_DESIGN, affixHas, affixXinguodongRings, registerAffixBerserkDrop, registerWenjiukeRemoved, tickAffixBerserkDrop, tickAffixPending } from './03b-affix.js';
   import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, queueHarbingerLead, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnEliteMinion, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWarGhost, spawnWave, updateChallenge, updateDelayedSpawns, updateHarbLeadQueue, updatePoemRearCards } from './04-spawn.js';
@@ -131,7 +131,11 @@
     if (state.mode === 'playing' && !state.paused) {
       // 持续刷怪测试页：数字键直接获得对应道具（立即生效），常规作弊键全部让位
       if (swarmTest && SWARM_CHEAT_ITEMS[k] && !e.repeat) {
-        applyRewardItem(SWARM_CHEAT_ITEMS[k]);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
+        const item = SWARM_CHEAT_ITEMS[k];
+        // 手机端不产出牢大特饮（docs/手机模式设计.md §7.1 移动端内容差异：触屏无移速键位意义，桌面端不受影响）
+        if (!(TOUCH_DEVICE && item === 'laodaDrink')) {
+          applyRewardItem(item);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
+        }
       }
       const lv = '12345'.indexOf(k);
       if (lv >= 0 && !swarmTest) debugSetWeapon(lv + 1);   // 武器等级直设（07-player，菜单与键位共用入口）
@@ -212,6 +216,69 @@
     }
   }
 
+  // ---------- 触控输入（手机模式，docs/手机模式设计.md §4；键盘/手柄之外的第三路输入） ----------
+  // 拖动跟指：主指（游戏区首个触下）负责移动——目标点映射方案（§4.2）：pointerdown 记录「机体−指尖」初始偏移
+  // （钳制 ≤90px），此后 07-player 以「指尖 + 偏移」为目标点指数逼近；桌面鼠标不启用（§4.5，只认 pointerType==='touch'）。
+  // 副指不抢占移动（多点触控：主指拖动 + 副指按按钮互不干扰），按钮走各自的 pointerdown 监听（见下）
+  // 舞台元素名取 stageEl（不取 stage）：01-config-spawn / 09b-draw-enemies 存在同名局部变量，
+  // check-names 完整性检查按词匹配会误判为跨模块引用（同 gamepad 不取 pad 的先例）
+  const stageEl = document.querySelector('.stage');
+  const TOUCH_OFFSET_MAX = 90;   // 拖动跟指初始偏移上限（px，画布逻辑坐标）：机体与指尖的最远视距
+  // 指针事件 → 画布逻辑坐标：.stage 被 fitStage 整体 transform 缩放，rect 尺寸 / 画布逻辑尺寸 = 当前缩放比 k
+  function touchStagePoint(e) {
+    const r = stageEl.getBoundingClientRect();
+    const kx = r.width > 0 ? r.width / CANVAS_W : 1;
+    const ky = r.height > 0 ? r.height / CANVAS_H : 1;
+    return { x: (e.clientX - r.left) / kx, y: (e.clientY - r.top) / ky };
+  }
+  function touchRelease(e) {
+    if (!touch.active || e.pointerId !== touch.pointerId) return;
+    touch.active = false;
+    touch.pointerId = -1;
+  }
+  stageEl.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' || touch.active) return;   // 非触控 / 已有主指：不认领
+    const p = touchStagePoint(e);
+    touch.pointerId = e.pointerId;
+    touch.fx = p.x; touch.fy = p.y;
+    // 初始偏移 = 机体 − 指尖，向量钳制 ≤90px：按下帧只换目标点、不改位置（位置严格连续，无瞬跳——速度曲线铁律；
+    // 超视距按下时机体先平滑追赶至 90px 视距圈最近点，再转入跟随）
+    const ddx = player.x - p.x, ddy = player.y - p.y;
+    const dd = Math.hypot(ddx, ddy);
+    const clampK = dd > TOUCH_OFFSET_MAX ? TOUCH_OFFSET_MAX / dd : 1;
+    touch.ox = ddx * clampK;
+    touch.oy = ddy * clampK;
+    touch.active = true;
+    try { stageEl.setPointerCapture(e.pointerId); } catch (err) { /* 桩环境无此 API：跳过 */ }
+  });
+  stageEl.addEventListener('pointermove', (e) => {
+    if (!touch.active || e.pointerId !== touch.pointerId || e.pointerType !== 'touch') return;
+    const p = touchStagePoint(e);
+    touch.fx = p.x; touch.fy = p.y;
+  });
+  // 抬指/取消释放主指：绑在 window——捕获失败（桩环境/个别浏览器）时事件目标可能不在 .stage 内，窗口层兜底
+  window.addEventListener('pointerup', touchRelease);
+  window.addEventListener('pointercancel', touchRelease);
+
+  // 触控动作按钮（DOM 元素在 .stage 内随缩放一致；pointerdown 即触发——弹幕游戏零延迟优先，不等 up），
+  // 与键盘 keydown / 手柄 padCombatTick 调用同一批动作函数，不复制逻辑。preventDefault 抑制双击缩放等
+  // 浏览器手势，stopPropagation 防止按钮按下被舞台拖动跟指误认领成「主指」
+  touchBombBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.mode === 'playing' && !state.paused) useBomb();
+  });
+  touchSkillBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（Q）：与键盘 q 键同口径
+  });
+  touchPauseBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.mode === 'playing') togglePause();   // 暂停/恢复：与键盘 P/Esc 同口径（togglePause 内部守卫拦截模态态）
+  });
+
   // ---------- 主循环 ----------
   let lastTime = performance.now();
   let fpsEma = 0;       // FPS 指数滑动平均（音量键下方灰色读数，纯展示）
@@ -229,6 +296,14 @@
     else { loopByTimeout = false; loopToken = requestAnimationFrame(step); }
   }
   document.addEventListener('visibilitychange', () => {
+    // 手机切后台自动暂停（来电/锁屏/切应用不裸奔挨打；桌面行为不变——触屏设备专属，docs/手机模式设计.md §6）。
+    // 顺手释放拖动主指：后台期间抬指的 pointerup 可能被系统吞掉，回前台后不复旧目标点漂移。
+    // togglePause 内部守卫会拦截词条模态/调试菜单开启期（与键盘 P 同口径）
+    if (document.hidden && TOUCH_DEVICE && state.mode === 'playing' && !state.paused) {
+      togglePause();
+      touch.active = false;
+      touch.pointerId = -1;
+    }
     if (loopToken == null) return;
     if (document.hidden && !loopByTimeout) {          // 转不可见：挂起中的 rAF 永不执行，取消并改排定时器
       cancelAnimationFrame(loopToken);

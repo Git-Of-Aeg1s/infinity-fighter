@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>大无垠战机 · Big Infinity Fighter</title>
-  <link rel="stylesheet" href="./style.css?v=20261110b" />
+  <link rel="stylesheet" href="./style.css?v=20261113a" />
   <!-- 曾尝试 modulepreload 并行预取 14 个 ES modules（v0.3.7）：实测刷新后 JS 就绪时间几乎不变
        （本机 http 瀑布式加载仅 ~90ms），反而把 1.5MB JS 的编译+顶层执行集中到同一帧，
        造成刷新后 ~69ms 长任务 + 主菜单零点几秒可感掉帧。已回滚，勿再加。 -->
@@ -121,6 +121,19 @@
           <div class="buff-track"><div class="buff-fill" id="jingdunFill"></div></div>
           <span class="buff-tag">晶盾</span>
         </div>
+        <div class="buff-bar timeflow-bar" id="timeflowBar">
+          <div class="buff-track"><div class="buff-fill" id="timeflowFill"></div></div>
+          <span class="buff-tag">时流</span>
+        </div>
+      </div>
+
+      <!-- 触控按钮（手机模式，docs/手机模式设计.md §4.3）：桌面（pointer: fine）由 CSS 隐藏不渲染显示；
+           容器 pointer-events: none 不拦截游戏区拖动，按钮单独恢复（pointerdown 即触发，绑定在 14-main）。
+           视觉 64px 画布逻辑 px（fitStage 缩放 k≈0.75 的手机上实显 ≈48px，热区含外扩 padding ≥44px 达 Apple HIG 下限） -->
+      <div class="touch-ui">
+        <button id="touchPauseBtn" class="touch-btn touch-pause" aria-label="暂停">❚❚</button>
+        <button id="touchSkillBtn" class="touch-btn touch-skill" aria-label="驾驶员技能">Q</button>
+        <button id="touchBombBtn" class="touch-btn touch-bomb" aria-label="高能爆弹">爆</button>
       </div>
 
       <!-- 主菜单（独立页面态）：idle 时全屏显示，进入战斗隐藏。
@@ -133,7 +146,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.5.0</span>
+          <span class="menu-version">v0.6.0</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
         <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；
@@ -408,6 +421,10 @@
       </div>
     </div>
   </div>
+
+  <!-- 横屏提示遮罩（手机模式，docs/手机模式设计.md §5.4）：游戏为竖版 STG 锁竖屏——触屏设备横屏时
+       覆盖全屏提示旋转（CSS media query 显隐，pointer: coarse + orientation: landscape 才显示，桌面永不出现） -->
+  <div class="rotate-hint">请竖屏游玩<span>本游戏为竖屏射击，请将手机转回竖向</span></div>
 
   <!-- 游戏脚本：ES modules，显式 import/export 声明依赖；按序号加载保持执行顺序（01 常量 → 14 启动入口），
        跨模块可变绑定（ctx / currentPlane / currentWingman）的写操作必须经由所有者模块暴露的 setter -->

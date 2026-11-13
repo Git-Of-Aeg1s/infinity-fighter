@@ -1,13 +1,13 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(6 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(41 名) 07-player(51 名) 08-entities(22 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(28 名) 11-draw-boss(9 名) 12-ui(97 名) 13-encyclopedia(19 名) 14-main(38 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(6 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(42 名) 07-player(54 名) 08-entities(25 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(30 名) 11-draw-boss(9 名) 12-ui(99 名) 13-encyclopedia(19 名) 14-main(43 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
   import { CANVAS_H, CANVAS_W, STAR_COUNT } from './01-config-core.js';
   import { PILOTS, PLAYER_CFG, currentArmor, hasPilot } from './01-config-loadout.js';
-  import { DOUZHI } from './01-config-enemies.js';
+  import { BEYOND_WING, DOUZHI } from './01-config-enemies.js';
   import { diffMods, invulnDiffMul, isPoem } from './01-config-difficulty.js';
 
 
@@ -40,6 +40,8 @@
   const douzhiFill = document.getElementById('douzhiFill');
   const jingdunBar = document.getElementById('jingdunBar');
   const jingdunFill = document.getElementById('jingdunFill');
+  const timeflowBar = document.getElementById('timeflowBar');   // 时流读条（超越艇·时流绿环命中我方增益，2026-11-13）
+  const timeflowFill = document.getElementById('timeflowFill');
   // 七日澜心（装甲技能）圆形计数表：左下角生命值上方量表（12-ui updateHUD 渲染填充角度）
   const skillGauge = document.getElementById('skillGauge');
   const skillGaugeRing = document.getElementById('skillGaugeRing');
@@ -81,6 +83,11 @@
   const pauseHomeBtn = document.getElementById('pauseHomeBtn');
   const pauseRetryBtn = document.getElementById('pauseRetryBtn');
   const pauseBackBtn = document.getElementById('pauseBackBtn');
+  // 触控按钮（手机模式，docs/手机模式设计.md §4.3；CSS @media (pointer: coarse) 显隐控制）：
+  // 爆弹 / 驾驶员技能（Q）/ 暂停——pointerdown 即触发，事件绑定在 14-main（与键盘 keydown 同一动作函数）
+  const touchBombBtn = document.getElementById('touchBombBtn');
+  const touchSkillBtn = document.getElementById('touchSkillBtn');
+  const touchPauseBtn = document.getElementById('touchPauseBtn');
 
   // 怪物图鉴 DOM
   const encyclopedia = document.getElementById('encyclopedia');
@@ -108,7 +115,7 @@
   //   · 流程与全局：mode / paused / time / score / lives / victoryOverlay / demo
   //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatInvuln
   //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* /
-  //     dagou* / daodanChains / rain* / lanceDelayQ / lanceVolleySeq / meiCounter / ddj* / gachaStones / gachaReady
+  //     dagou* / rain* / lanceVolleySeq / meiCounter / ddj* / gachaStones / gachaReady
   //   · 奖励道具效果：laoda* / magnetBonus / swordStorm* / frostField / bombCapAdd / bengbagGot / jiuke* / itemPickFx / honghongT
   //   · 技能演出与特效：gachaFx / xinFuryRings / aiyiWaves / aiyiWaveSeq
   //   · 秒杀与亡语门控：aiyiSelfDestruct / sweepKill / aiyiFinalDeath / selfDestructVictory
@@ -127,6 +134,7 @@
     flash: 0,          // 全屏白闪强度（高能爆弹等触发；原 08-entities 顶层变量并入）
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
+    timeflowT: 0,      // 时流状态（超越艇·时流绿环命中我方，2026-11-13）：我方射速/弹速 +50% 剩余时间（s，2s 刷新制；07-player 递减、12-ui 右下角读条）
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
     poemBombDropped: 0,    // 诗篇爆弹掉落计数：本局已掉出的高能爆弹颗数（上限 2；02-core bombDropGate 读写、resetGame 归零——绷绷背包补弹不走 gate 不计数）
     hpKitLastLv: -999,     // 加血套件等级窗口节流（2026-10-10）：上次普通敌人实际掉落加血套件的关卡等级（-999 = 未登记；06-enemy rollItemDrops 读写，resetGame 归位）
@@ -166,8 +174,7 @@
     daodanChains: [],      // 捣蛋来袭（副武器）：待发射的连射链弹（{t, lv}；结构与叮咚鸡连射链同构——每发捣蛋导弹发射后按 PILOTS.dagou.chainChance 追加，resetGame 清空）
     rainLaunchQ: [],       // 时流之雨（副武器）：待发射雨弹队列（{t, side, lat, volley, dmg}；一轮 8 条按 rankGap 依次入队——07-player 推进发射，发射瞬间取机体实时位置；resetGame/重生清空）
     rainVolleySeq: 0,      // 时流之雨：射弹轮次 id（fireSubWeapon 每轮 +1；敌人 rainVid 记录去重「每轮每敌一次」攻击延迟判定，08-entities 写敌人侧）
-    lanceDelayQ: [],       // 坠星长枪（副武器）：暴走外侧两支长枪的错峰待发队列（{t, ox, dmg, tickDmg, spd, volley}；t = 距发射剩余秒数，ox = 出射点横向偏移——07-player 推进发射，发射瞬间取机体实时位置；resetGame/重生清空）
-    lanceVolleySeq: 0,     // 坠星长枪：射弹轮次 id（fireSubWeapon 每轮 +1，弹体与待发队列项携带——smoke 场景按轮次隔离多轮并存的长枪）
+    lanceVolleySeq: 0,     // 坠星长枪：射弹轮次 id（fireSubWeapon 每轮 +1，拔枪波与弹体携带——smoke 场景按轮次隔离多轮并存的长枪；拔枪波本体在 02-core lanceWaves 数组）
     meiCounter: 0,         // 依：击杀计数（上限 PILOTS.mei.counterMax；满自动召唤镰刀清扫，见 07-player updatePilotStatus）
     ddjGauge: 0,           // 大狗：当前层计数进度（0~8，关卡提升掷增量；满转入持有层数）
     ddjLayers: 0,          // 大狗：持有满层数（0~3；按 Q 消耗一层射导弹 + 武器升级）
@@ -328,10 +335,12 @@
   /** @type {Array} */ const dashKillFx = [];   // 许凯狗冲刺：被击杀敌机身上的白光冲击（扩散白环 + 渐隐闪核，生成于 14-main 秒杀循环，绘制见 10-draw-world drawDashKillFx）
   /** @type {Array} */ const dagouMissiles = []; // 叮咚鸡：导弹雨（自下而上、命中后小范围溅射；白蓝渐变先兆者同款；副武器「捣蛋来袭」直射弹复用本数组，规则数值完全同款）
   /** @type {Array} */ const feijianWaves = [];  // 副武器·无界飞剑：待发射飞剑波（尾部下沉 → 分裂悬浮 → 中央先发依次前射，见 07-player updateFeijianWaves）
+  /** @type {Array} */ const lanceWaves = [];   // 副武器·坠星长枪：待发射拔枪波（长枪自机体中心渐显滑向出射位 → 到位即垂直上射，见 07-player updateLanceWaves / 10-draw-world drawLanceWaves）
   /** @type {Array} */ const xinRings = [];      // 副武器·辛国栋之怒：恒速飞行的空间系穿透灼烧火环（玫红→粉渐变，见 07-player updateXinRings）
   /** @type {Array} */ const blastRings = [];    // 爆炸冲击圈（叮咚鸡导弹雨 / 捣蛋来袭爆炸时的蓝色扩散环，指示波及范围；见 07-player dagouMissileBlast）
   /** @type {Array} */ const meiScythes = [];     // 依：镰刀清扫（计数充满自动召唤，绕机旋转 + 周期伤害/消弹；见 07-player updateMeiScythes）
   /** @type {Array} */ const ddjMissiles = [];   // 大狗：Q 导弹（前向 120° 扇形 4 发直线飞行，直击伤害；见 07-player updateDdjMissiles）
+  /** @type {Array} */ const beamFx = [];        // 极夜千星：瞬时激光炮视觉残留（hitscan——发射瞬间全程结算无飞行弹体；元素 { x, y0, y1, t, dur, berserk, remain }，07-player 生成、08-entities 推进寿命、10-draw-world 绘制；消散期无伤害）
 
   // 结晶护盾解除冲击波：淡粉环自机体扩散（范围对应其 250px 消弹半径，样式同量子护盾冲击波）
   // 与 08-entities 的 shieldBurst 同构，但归属 02-core：tryBulwarkCheatDeath 在本模块置位（02 不得反向 import 08）
@@ -360,6 +369,20 @@
   // 摇杆径向死区：多数手柄中位存在 ±0.03~0.08 残留漂移，0.18 起步可靠忽略；
   // 出死区后 (r-死区)/(1-死区) 线性归一——推杆行程 ↔ 移速线性对应，速度曲线天然连续（无档位切换瞬跳）
   const PAD_DEADZONE = 0.18;
+
+  // 触屏设备检测（手机模式，docs/手机模式设计.md）：主要交互为粗指针（手指）的设备——手机 / 平板为 true，
+  // 带鼠标的桌面（含触屏笔记本，primary pointer 仍是 mouse）为 false。用于移动端专属逻辑（手机端裁剪 HUD /
+  // 切后台自动暂停 / 牢大特饮平台门控），触控「输入」本身不依赖此常量（见 touch，按 pointerType 区分）。
+  // typeof 守卫：Node 无头（smoke 桩）无 matchMedia，取 false 即可
+  const TOUCH_DEVICE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
+  // 触控输入状态（手机模式第三路输入，docs/手机模式设计.md §4.1）：14-main pointer 事件监听写入
+  // （仅 pointerType==='touch'，桌面鼠标不启用），07-player 移动合流读取。
+  // active = 主指（游戏区首个按下）按住中；pointerId = 主指标识（多点触控：副指走按钮互不抢占）；
+  // fx/fy = 主指当前画布逻辑坐标（指针事件 → .stage 缩放比换算，见 14-main 绑定处）；
+  // ox/oy = pointerdown 瞬间记录的「机体 − 指尖」初始偏移（向量钳制 ≤90px——拖动跟指目标点映射，
+  // 目标点 = 指尖 + 偏移，由 07-player 指数逼近，按下帧位置不变、无瞬跳）
+  const touch = { active: false, pointerId: -1, fx: 0, fy: 0, ox: 0, oy: 0 };
 
   // 手柄按键边沿判定：本帧按下且上一帧未按下（14-main 战斗动作 / 12-ui 菜单确认·返回共用）
   function padPressed(name) { return !!(gamepad.btn[name] && !gamepad.prev[name]); }
@@ -622,6 +645,12 @@
     return state.hasteT > 0 ? DOUZHI.buffMul : 1;
   }
 
+  // 时流状态倍率（超越艇·时流绿环命中我方，2026-11-13）：我方射速 / 弹道飞行速度 ×1.5（timeflowT > 0）
+  // 与斗志昂扬互相独立乘算叠加；消费点：07-player 开火冷却递减与玩家弹幕发射速度
+  function timeflowMul() {
+    return state.timeflowT > 0 ? BEYOND_WING.cyan.buffMul : 1;
+  }
+
   // 按权重从池中随机取一个 id（weights 缺失的 id 视为 1）——BOSS 技能加权随机用
   function weightedPick(pool, weights) {
     let total = 0;
@@ -859,21 +888,23 @@
   export {
     canvas, ctx, setCtx, DPR, hpFill, hpBar, hpBarrier, hpPermBarrier, scoreText, stonePanel, stoneCount,
     bombIcons, livesText, berserkBar, berserkFill, shieldBar, shieldFill,
-    douzhiBar, douzhiFill, jingdunBar, jingdunFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
+    douzhiBar, douzhiFill, jingdunBar, jingdunFill, timeflowBar, timeflowFill, skillGauge, skillGaugeRing, pilotGauge, pilotGaugeRing, pilotGaugeKey, pilotGaugeCount, kingBonus,
     overlay, overlayTitle, overlayDesc, startBtn,
     musicToggle, fpsMeter, padIndicator, menuScreen, menuStartBtn, titleBar,
     planeGrid, diffGrid, diffLabel,
     wingmanGrid, armorGrid, subGrid, pilotGridMain, pilotGridSub, bossTestRow,
     retrialBtn, gameoverHomeBtn, resultAchieve, pauseHomeBtn, pauseRetryBtn, pauseBackBtn, encyclopedia, encyTabs, encyList,
+    touchBombBtn, touchSkillBtn, touchPauseBtn,
     encyDiffGroup,
     encyDetail, encyClose, infoEntryBtn, infoModal, infoTabs, infoBody,
     infoClose, state, bossFlow, levelFlow, player, enemies,
     pBullets, eBullets, trailGhosts, particles, powerups, crystals,
     missileWarns, missiles, blBombs, frostZones, pmWaves, popianMissiles, spellCubes, cubeHitFx, wgSlashes,
-    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, xinRings, blastRings, meiScythes, ddjMissiles,
+    zoneMarks, windFlows, pillarStrikes, stars, wingmen, douzhiFx, friendStorms, dashKillFx, dagouMissiles, feijianWaves, lanceWaves, xinRings, blastRings, meiScythes, ddjMissiles, beamFx,
     slashFx, playerHitFx, phaseFx, keys, gamepad, padPressed, pollGamepad, PAD_DEADZONE, STAR_TINTS, initStars, updateStars, drawStars,
+    TOUCH_DEVICE, touch,
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
-    drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, bossPhantom, entranceDt, hasteMul, weightedPick, spawnParticles,
+    drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, bossPhantom, entranceDt, hasteMul, timeflowMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul, bombDropGate,
     clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
     dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,

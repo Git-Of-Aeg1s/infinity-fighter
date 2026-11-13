@@ -216,6 +216,7 @@
     crystalCore: 100,   // 水晶核芯艇（1S）：诗篇不额外加血（2026-10-15 用户明示「100，这个我刚才就说过」= 基准即诗篇值）
     striker_crimson: 400, striker_amber: 400, striker_azure: 400, striker_violet: 400, striker_white: 400,
     striker_fortress: 3000, striker_dusk: 300,
+    beyondWing_red: 420, beyondWing_blue: 420, beyondWing_violet: 420, beyondWing_cyan: 420, beyondWing_pink: 420,   // 超越艇五变体（2026-11-13 用户定稿）
     gunship_violet: 2000, gunship_crimson: 2000, gunship_amber: 2500, gunship_orange: 2000, gunship_cyan: 2000,
     capital_crimson: 9000, capital_azure: 9000, capital_crgold: 10000,
     harbinger: 3000, harbingerLead: 2400, harbingerHub: 4500, harbingerPolar: 2400,   // 先兆者家族四型（2026-10-16 用户定稿：先导/极夜 800/2400、中枢 1500/4500）

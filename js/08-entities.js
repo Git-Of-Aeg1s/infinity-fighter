@@ -1,17 +1,17 @@
 // 08-entities：子弹 / 道具 / 水晶 / 粒子更新 + 全屏特效状态（state.flash / 冲击波）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(4 名) 10-draw-world(3 名) 12-ui(3 名) 14-main(10 名)
+  // 被依赖：04-spawn(1 名) 05-boss(1 名) 06-enemy(1 名) 07-player(5 名) 10-draw-world(3 名) 12-ui(3 名) 14-main(10 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{bombs, score}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, SHIELD_DURATION, currentArmor, hasPilot } from './01-config-loadout.js';
-  import { FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, JIAOXIANG, ELITES, STASIS_UNREAL, enemyGrade } from './01-config-enemies.js';
+  import { BEYOND_WING, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, JIAOXIANG, ELITES, STASIS_UNREAL, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
   import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, constructAltHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, CRYSTAL_ABSORB_DELAY, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
-  import { bossEntranceActive, bossPhantom, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts } from './02-core.js';
+  import { bossEntranceActive, bossPhantom, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, timeflowMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts, beamFx, wingmen } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy, grailRedirect, applyRainAttackDelay } from './06-enemy.js';
   import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain } from './07-player.js';
@@ -124,6 +124,63 @@
     return true;
   }
 
+  // ---------- 极夜千星瞬时激光炮（hitscan，2026-11-12 用户定稿改版）----------
+  // 发射瞬间自僚机出舱口竖直向上全程结算：无飞行弹体、无限射程（扫至屏顶）——不存在「射速/弹速」概念；
+  // 沿途敌人按「距僚机由近到远」依次结算，贯穿剩余伤害 beamRemain 每次命中按敌人命中前血量扣减
+  //（用户口径：伤害100 打 hp10 敌 → 穿透、剩 90；打 hp200 敌 → 扣 min(100,200)=100 归零、光束截断无法穿透）；
+  // 结算完毕生成 beamFx 视觉残留（快速消散——寿命推进在本文件 updateBullets 顶部、绘制见 10-draw-world drawJiyeBeamFx，
+  // 消散期无伤害：全部伤害已在生成瞬间结算完毕）。
+  // 修正口径 = 通用碰撞区我方子弹的公共子集（僚机弹 wing 口径）：enemyDamageMul(wing) / rewardOutMul /
+  // 次数盾（穿透类弹同样被挡——耗 1 层、光束截断无伤害）/ 圣杯转移（穿透类打转移目标一律截断）/
+  // 屏障优先吸收 / 夏勇屏障 / 冰封词条计数；命中粒子照常迸出。
+  function scanJiyeBeam(originX, originY, dmg, radius, isBerserk, side) {
+    const path = [];
+    for (const e of enemies) {
+      if (!enemyOnScreen(e) || e.dying || e.phase > 0) continue;   // 屏外 / 渐隐消逝 / 虚化：光束穿透不结算
+      if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;   // BOSS 登场虚化同口径
+      if (e.y >= originY) continue;   // 仅结算僚机口上方的敌人（光束向上）
+      if (Math.abs(e.x - originX) >= e.w / 2 + radius) continue;   // x 与光束相交判定
+      path.push(e);
+    }
+    path.sort((a, b) => b.y - a.y);   // 由近到远（y 大 = 靠近僚机 = 先结算）
+    let remain = dmg;
+    let endY = 0;   // 光束末端 y（默认 0 = 无限射程扫至屏顶）
+    for (const e of path) {
+      if (remain <= 0) break;
+      if (e.hp <= 0 || e._deathSettled) continue;   // 同帧已被其他伤害杀死的敌人跳过（快照防御，同 lanceSettle 口径）
+      // 次数盾：单次伤害抵御一次（耗 1 层——穿透类弹同样被挡），光束截断无伤害
+      if ((e.chargeShield || 0) > 0) {
+        e.chargeShield--;
+        spawnParticles(e.x, e.y, '#ffffff', 6, 150);
+        endY = e.y; remain = 0;
+        break;
+      }
+      const hpBefore = e.hp;   // 命中前血量（贯穿剩余伤害按敌人当前血量扣减）
+      let hurt = dmg * enemyDamageMul(e, true) * rewardOutMul();
+      const gt = grailRedirect(e, 'bullet');
+      if (gt) {   // 圣杯转移：穿透类打转移目标不触发穿透、一律截断（同通用命中区口径）
+        gt.g.hp -= hurt * pxpfChargeHurtMul(gt.g) * constructAltHurtMul(gt.g);
+        spawnParticles(e.x, e.y, '#ffe9b0', 4, 120);
+        if (gt.g.hp <= 0) killEnemy(enemies.indexOf(gt.g));
+        endY = e.y; remain = 0;
+        break;
+      }
+      if (e.type === 'guiltGrail') hurt *= GUILT_GRAIL.directBulletMul;   // 圣杯本体直击 ×1.25（2026-11-10 用户定稿）
+      if (e.barrier > 0) { const abs = Math.min(e.barrier, hurt); e.barrier -= abs; hurt -= abs; }   // 屏障优先吸收
+      e.hp -= xiayongBarAbsorb(e, hurt * pxpfChargeHurtMul(e) * constructAltHurtMul(e));
+      affixFreezeNote(e, hurt);   // 词条（诗篇级 3:good:2）冰封：僚机弹命中与伤害计数
+      spawnParticles(e.x, e.y, '#ffffff', 4, 120);
+      remain -= Math.min(remain, Math.max(hpBefore, 0));   // 贯穿剩余伤害扣减（用户口径）
+      if (e.hp <= 0) killEnemy(enemies.indexOf(e));
+      if (remain <= 0) { endY = e.y; break; }   // 剩余归零：光束截断于该敌（无法穿透）
+    }
+    // 视觉残留（2026-11-13 用户定稿）：发射后跟随玩家走（推进循环里 x/y0 跟随僚机——僚机 lerp 跟玩家）、0.8s 渐隐消失；
+    // 暴走持续模式：刷新同侧已有光束寿命（t 重置 → 单条常驻，停止暴走后 0.8s 渐隐兜底）；常态每次生成新光束
+    const prev = isBerserk ? beamFx.find(fx => fx.side === side && fx.berserk) : null;
+    if (prev) { prev.t = 0; prev.y0 = originY; prev.y1 = endY; prev.remain = remain; }
+    else beamFx.push({ x: originX, y0: originY, y1: endY, t: 0, dur: 0.8, berserk: !!isBerserk, remain, side: side || 0 });
+  }
+
   function updateBullets(dt) {
   // 玩家屏障（青时战舰支援弹）：持续 10s，末 1s 线性衰减至 0（可见的快速消散）；
   // 衰减按 Math.min 收敛——屏障被打掉的量不回填（衰减公式只封顶、不补偿）；
@@ -149,8 +206,18 @@
       dashKillFx[i].t += dt;
       if (dashKillFx[i].t >= dashKillFx[i].max) dashKillFx.splice(i, 1);
     }
-    // 斗志昂扬增益：期间我方（含僚机）弹道飞行速度翻倍 —— 作用于所有在飞子弹，增益结束即恢复常速
-    const hm = hasteMul();
+    // 极夜千星瞬时激光残留：寿命尽即移除（消散期无伤害——全部结算已在生成瞬间完成）；
+    // x/y0 跟随僚机（僚机 lerp 跟玩家——2026-11-13 用户定稿「光束发射后仍然跟着玩家走」），y1 保持结算末端
+    for (let i = beamFx.length - 1; i >= 0; i--) {
+      const fx = beamFx[i];
+      fx.t += dt;
+      const w = wingmen.find(ww => ww.side === fx.side);   // 僚机不在（切换/未展开）时保持最后位置
+      if (w) { fx.x = w.x; fx.y0 = w.y - 8; }
+      if (fx.t >= fx.dur) beamFx.splice(i, 1);
+    }
+    // 斗志昂扬增益：期间我方（含僚机）弹道飞行速度翻倍 —— 作用于所有在飞子弹，增益结束即恢复常速；
+    // 时流状态（超越艇·时流绿环命中我方，2026-11-13）：射速/弹速 +50%——同口径独立乘算叠加
+    const hm = hasteMul() * timeflowMul();
     for (let i = pBullets.length - 1; i >= 0; i--) {
       const b = pBullets[i];
       // 副武器·时流之雨：横向初速逐帧指数衰减归零（vx ×e^(−latDecay·dt)，连续函数无档位跳变——速度曲线铁律；
@@ -213,6 +280,9 @@
         }
         continue;   // 长枪走专属移动与结算，不进通用碰撞区
       }
+      // 僚机·今宵水滴弹弧线段：恒定向上加速度（vy 连续积分，速度矢量无档位跳变——速度曲线铁律；
+      // jxAy 为向上加速度幅值，+y 向下坐标系中向上 = vy 递减）；追踪段不作用（jxPhase 1 起由下方追踪块接管转向与限速）
+      if (b.jxDrop && b.jxPhase === 0) b.vy -= b.jxAy * dt;
       b.x += b.vx * hm * dt; b.y += b.vy * hm * dt;
       // 沿飞行方向加速至上限（友方大风暴风弹：暴风之眼技能6 同款风条弹道；其他我方弹无此字段不受影响）
       if (b.accel) {
@@ -240,6 +310,49 @@
           const maxTurn = b.turnRate * dt;
           const na = cur + clamp(diff, -maxTurn, maxTurn);
           b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
+        }
+      }
+      // 僚机·今宵水滴弹追踪段：弧线段下坠折返（vy 转负）即刻切换追踪——限角速度转向锁定目标 +
+      // 沿当前方向加速逼近上限（方向/速度大小逐帧连续，发射→弧线→追踪全程无瞬跳；2026-11-13 用户反馈
+      // 「根本没追击敌人」——追踪切换自「升回出舱高度」提前至折返点，转向窗口更长、追踪动作更醒目，
+      // 折返后仍先沿僚机外侧上升再弯向目标，保留「从下往上上来，随后快速去追踪」的节奏）；
+      // 锁定目标失效（被移除 / 离屏 / 虚化 / 濒死 / BOSS 登场虚化）自动重锁最近合格敌人，无目标保持直飞
+      if (b.jxDrop) {
+        b.jxT += dt;
+        if (b.jxPhase === 0 && (b.vy < 0 || b.jxT > 1.0)) b.jxPhase = 1;   // 折返点（vy 转负）→追踪（1.0s 超时兜底）
+        if (b.jxPhase === 1) {
+          // 目标有效性：被移除（enemies 不含）/ 失效即弃锁（成员扫描与失效判定一趟完成）
+          if (b.jxTarget) {
+            let ok = false;
+            for (const e of enemies) {
+              if (e !== b.jxTarget) continue;
+              ok = !e.dying && e.phase <= 0 && enemyOnScreen(e) && !(e.type === 'boss' && (bossEntranceActive() || bossPhantom(e)));
+              break;
+            }
+            if (!ok) b.jxTarget = null;
+          }
+          // 重锁：最近合格敌人（索敌口径同上 homing 区）
+          if (!b.jxTarget) {
+            let bestD = Infinity;
+            for (const e of enemies) {
+              if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
+              if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;
+              const dx = e.x - b.x, dy = e.y - b.y, d = dx * dx + dy * dy;
+              if (d < bestD) { bestD = d; b.jxTarget = e; }
+            }
+          }
+          const sp = Math.hypot(b.vx, b.vy) || 1;
+          const cur = Math.atan2(b.vy, b.vx);
+          let na = cur;
+          if (b.jxTarget) {
+            const want = Math.atan2(b.jxTarget.y - b.y, b.jxTarget.x - b.x);
+            let diff = want - cur;
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            else if (diff < -Math.PI) diff += Math.PI * 2;
+            na = cur + clamp(diff, -b.jxTurn * dt, b.jxTurn * dt);   // 限角速度转向（角度积分平滑）
+          }
+          const ns = Math.min(b.jxMaxSpd * hm, sp + b.jxAccel * hm * dt);   // 沿当前方向加速逼近上限（连续）
+          b.vx = Math.cos(na) * ns; b.vy = Math.sin(na) * ns;
         }
       }
       // 风条生长：刚射出时很短，沿飞行方向随时间迅速长到全长
@@ -271,12 +384,13 @@
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (!enemyOnScreen(e)) continue;   // 屏幕外敌人（尚未入场 / 已离场 / 侧翼界外）不受我方子弹伤害
-        if (b.lastHit === e) continue;   // 穿透弹防同机重复结算（不再陵落飞剑：刚穿过的机体下一帧仍重叠）
+        if (b.lastHit === e || (b.hits && b.hits.has(e))) continue;   // 穿透弹防同机重复结算（不再陵落飞剑：刚穿过的机体下一帧仍重叠；彻月贯穿弹：长弹逐帧穿越——hits Set 防同敌多帧重复结算）
         if (e.phase > 0) continue;   // 虚化：炮弹穿过护盾，可打到后面的敌人
         if (e.dying) continue;   // 渐隐消逝中的暴风之眼：死亡演出期间不再受击
         if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;   // BOSS 登场虚化：警报/入场动画期间射弹穿透不结算；词条（0:bad:5）虚化护盾同规则
         const hsE = (e.type === 'hanshuang' && e.hsNoDecel) ? HANSHUANG.entryHitScale : 1;   // 寒霜入场未减速：判定箱略缩
         if (Math.abs(b.x - e.x) < e.w / 2 * hsE + b.r && Math.abs(b.y - e.y) < e.h / 2 * hsE + b.r) {
+          const hpBefore = e.hp;   // 命中前血量（极夜千星贯穿剩余伤害按敌人当前血量扣减——见下方 beamBullet 分支）
           // 青时战舰召唤体次数盾：单次伤害抵御一次（耗 1 层、弹体销毁——穿透类弹同样被挡）；
           // 时空允诺暴走弹（僚机 b.wing + b.glow，群星守愿 oval 弹除外）无视次数盾直接伤害
           if ((e.chargeShield || 0) > 0 && !(b.wing && b.glow && !b.oval)) {
@@ -288,7 +402,7 @@
           // 4类主力舰：对玩家 Lv4 / 暴走(Lv5) 火力减伤 15%；玩家 Lv1 时对 BOSS 武器伤害 +20%
           // 全部敌人减伤/易伤修正集中在 enemyDamageMul（与空间斩击共用）
           // mainPierce 穿透弱化：无衰减率弹（副武器·极夜流光激光）穿透后伤害减半（b.weakened 标记）
-          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +60%（2026-10-10 用户定稿由 +80% 下调）
+          // 混乱将至主炮（mainShot，2026-10-02 用户定稿：取消穿透改小怪特化）：对非 BOSS / 非 4S（四精英）敌人伤害 +80%（2026-11-13 用户定稿恢复 2026-10-10 下调前口径）
           // 奖励道具·哦哦！抽卡！：演出期间我方输出 -60%（主武器/僚机/副武器共用乘区）
           // 奖励道具·不再陵落：所有来自该道具的飞剑（llSword 标记）对 BOSS 减伤 20%（2026-10-18 用户定稿——原低弧 lowArc 50% 规则随螺旋改版删除）
           let dmg = b.dmg * (b.weakened ? PIERCE_WEAKEN_MUL : 1) * enemyDamageMul(e, b.wing, b.capVuln)
@@ -328,7 +442,18 @@
           // 2026-10-12 用户定稿改线性——原乘法 0.8 连乘 64% 作废；衰减按 pierceBase 重算进 b.dmg，并记 lastHit 防同机重复结算）；
           // 无 pierceStep 的弹穿透后伤害减半（b.weakened）
           let pierce = false;
-          if (b.pierce != null && e.type === 'escort') { pierce = true; b.lastHit = e; }   // 无限穿透不耗次数，但仍记 lastHit 防重叠帧对同一机体重复结算（2026-10-12 bug 修复）
+          // 极夜千星激光炮（僚机 beamBullet）：贯穿剩余伤害——每次命中按「敌人命中前血量」扣减
+          //（用户口径：伤害100 打 hp10 敌人 → 穿透、剩 90；打 hp200 敌人 → 扣 min(100,200)=100 归零、无法穿透）；
+          // 剩余 >0 穿透（hits Set 已在上游去重），归零不穿透 → 走下方 !pierce 统一销毁（killEnemy 照常执行）
+          if (b.beamBullet) {
+            if (!b.hits) b.hits = new Set(); b.hits.add(e);
+            b.beamRemain -= Math.min(b.beamRemain, Math.max(hpBefore, 0));
+            if (b.beamRemain > 0) pierce = true;
+          }
+          // 彻月贯穿弹（僚机）：无限穿透任意敌人、对每个敌人仅结算一次（hits Set 已去重）——
+          // 不销毁、不消耗次数
+          else if (b.pierceAll) { if (!b.hits) b.hits = new Set(); b.hits.add(e); pierce = true; }
+          else if (b.pierce != null && e.type === 'escort') { pierce = true; b.lastHit = e; }   // 无限穿透不耗次数，但仍记 lastHit 防重叠帧对同一机体重复结算（2026-10-12 bug 修复）
           else if (b.pierce > 0 && (e.type === 'side' || e.type === 'prolifera')) { pierce = true; b.pierce--; }
           else if (b.mainPierce > 0 && e.type !== 'boss' && e.type !== 'capital' && e.type !== 'fashiArray') {
             pierce = true; b.mainPierce--;
@@ -547,6 +672,21 @@
           b.vx *= ns / sp; b.vy *= ns / sp;
         }
       }
+      // 织夜快速长条弹（超越艇，2026-11-13）：每 1s 弹速 ×timeGrow（指数加速 ×1.2/s，无上限——飞行窗口短增幅温和）
+      if (b.timeGrow) {
+        const g = Math.pow(b.timeGrow, dt);
+        b.vx *= g; b.vy *= g;
+      }
+      // 浮梦弧线弹（超越艇，2026-11-13）：恒速圆弧段——逐帧按 om 旋转速度向量（模长不变，位置积分自然连续），
+      // remain 用尽即过必经点 → 转直线飞出（残余角差 ≤ om·dt ≈0.3° 可忽略；「出界时除外」由出界移除兜底）
+      if (b.arcTurn) {
+        const dAng = b.arcTurn.om * dt;
+        const cs = Math.cos(dAng), sn = Math.sin(dAng);
+        const nvx = b.vx * cs - b.vy * sn, nvy = b.vx * sn + b.vy * cs;
+        b.vx = nvx; b.vy = nvy;
+        b.arcTurn.remain -= Math.abs(dAng);
+        if (b.arcTurn.remain <= 0) b.arcTurn = null;
+      }
       if (b.trail) {
         // 轨迹残影：记录帧间线段（缺省暗紫；b.trailCol 自定义色 + b.trailLife 短拖尾；
         // b.trailR 拖尾显示半径——大子弹等大弹径弹用较小半径绘制更纤细的锥形尾，缺省同弹体半径）。
@@ -579,6 +719,27 @@
       }
       // 青时战舰支援弹：命中敌机 → 施加 200 屏障；命中玩家机身（全机身盒判定、无需核心）→ 加屏障 24（诗篇 28）
       // 持续 10s（2026-10-12 用户定稿：重复命中叠加——barrier/barrierMax 同步增长，被伤害消耗过的量不回填，并刷新持续时间）；对双方均无伤害
+      // 时流绿环（超越艇·时流，2026-11-13，supportKind 'timeflow'）：命中我方机身（全机身判定、无需核心）→
+      // 不受伤 +2s 时流状态（射速/弹速 +50%，右下角读条，重复命中刷新至 2s）；命中敌机 → 其下 n 次攻击间隔
+      // 各 -0.3s（bwGapStacks 叠加、06-enemy resetEnemyFireTimer 逐次消费——不重复减免）
+      if (b.support && b.supportKind === 'timeflow') {
+        let hit = false;
+        if (player.alive && Math.abs(b.x - player.x) < player.w / 2 + b.r && Math.abs(b.y - player.y) < player.h / 2 + b.r) {
+          state.timeflowT = BEYOND_WING.cyan.buffDur;   // 刷新至 2s
+          spawnParticles(b.x, b.y, '#7fffd4', 12, 180);
+          hit = true;
+        }
+        if (!hit) for (const en of enemies) {
+          if (en === b.owner || !enemyOnScreen(en) || en.dying) continue;
+          if (Math.abs(b.x - en.x) < en.w / 2 + b.r && Math.abs(b.y - en.y) < en.h / 2 + b.r) {
+            en.bwGapStacks = (en.bwGapStacks || 0) + 1;
+            spawnParticles(b.x, b.y, '#7fffd4', 8, 140);
+            hit = true; break;
+          }
+        }
+        if (hit) eBullets.splice(i, 1);
+        continue;
+      }
       if (b.support) {
         let hit = false;
         if (player.alive && Math.abs(b.x - player.x) < player.w / 2 + b.r && Math.abs(b.y - player.y) < player.h / 2 + b.r) {
@@ -1151,4 +1312,5 @@
   export {
     enemyDamageMul, updateBullets, POWERUP_MAGNET_RADIUS, spawnPowerup, applyPowerupPickup, updatePowerups,
     updateCrystals, collectAllItems, collectAllCrystals, updateParticles, shieldBurst, berserkBursts, bombBursts,
+    scanJiyeBeam,
   };

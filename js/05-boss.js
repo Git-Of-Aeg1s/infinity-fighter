@@ -1,7 +1,7 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(7 名) 11-draw-boss(5 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(8 名) 11-draw-boss(5 名) 14-main(3 名)
   // 依赖计数：01-config(21) 02-core(15) 04-spawn(3) 07-player(3) 08-entities(1) 02-achievements(1)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
@@ -1258,6 +1258,12 @@
     spawnParticles(x, y, '#bfe6ff', 12, 200);   // 蓝点光（雷电轰击感，与爆闪演出叠加）
     shake(6, 0.25);
   }
+
+  // 超越艇·奔雷亡语公共入口（2026-11-13 实装）：在任意位置触发一次风暴编织者同款雷霆轰击。
+  // 口径：立即落雷（区域伤害 40/诗篇 60 + 中心外扩雷环 + 粒子 + 震屏，fireS2Strike 原样复用）——
+  // 技能5 的 1.2s 雷电积聚预警为 BOSS 实体级演出（e.skill.strikes 状态机），击坠亡语为 1% 稀有事件
+  // 不搭实体级预警；伤害走 bossDmgMul 难度乘区与「雷霆轰击」可莉减免挂点（同原生口径）
+  function fireStormStrikeAt(x, y) { fireS2Strike(x, y, 1, 1); }
 
   // 技能3 一轮齐射：场地正中四道斜下电弧光束（左右镜像对称，角度随机、触壁反弹）
   function fireS3Volley(e, sm) {
@@ -3195,4 +3201,5 @@
     pushBossBullet, updateBoss, startBossSkill, runBossSkill, updateBossLootMarks, updateLovelyShieldMark,
     updateAffixCrystalMark,
     updateBossStorm2, startStorm2Skill, runStorm2Skill, storm2Nozzle, storm2BallPos, spawnStorm2Ring, pickStorm2Aims, S2_STRIKE_R,
+    fireStormStrikeAt,
   };

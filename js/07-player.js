@@ -3,7 +3,7 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：04-spawn(1 名) 05-boss(4 名) 06-enemy(10 名) 08-entities(14 名) 10-draw-world(1 名) 12-ui(6 名) 13-encyclopedia(1 名) 14-main(18 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, blackhole, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx, rainLaunchQ, rainVolleySeq}
+  //   state.{bombs, demo, flash, hurt, lives, score, meiCounter, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, blackhole, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaStones, gachaReady, gachaStonesTotal, gachaFx, xinFuryRings, honghongT, itemPickFx, rainLaunchQ, rainVolleySeq, lanceVolleySeq}
   //
   import { CANVAS_H, CANVAS_W, DEMO_BOTTOM, DEMO_TOP } from './01-config-core.js';
   import { ARMOR_SKILLS, dagouWaveIv, BERSERK, BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, STARSLAYER, SUB_WEAPONS, WEAPON_DROP_HITS, WEAPON_LEVELS, WINGMAN, WINGMAN_LEVELS, WINGMAN_SPREAD, armorMaxHp, currentArmor, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombDmgMul, pilotEntry, starsSeriesCount } from './01-config-loadout.js';
@@ -12,10 +12,10 @@
   import { DARKHAND } from './01-config-boss.js';
   import { diffMods, invulnDiffMul, isPoem, pxpfChargeHurtMul, constructAltHurtMul, xiayongBarAbsorb, xiayongHornDmgMul } from './01-config-difficulty.js';
   import { CRYSTAL_GIANT_COLORS, REWARD_ITEMS } from './01-config-spawn.js';
-  import { blBombs, bossEntranceActive, bossPhantom, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, crystals, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyFireIv, enemyOnScreen, enemies, entranceDt, feijianWaves, frostZones, friendStorms, gamepad, hasteMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { blBombs, bossEntranceActive, bossPhantom, bossFlow, bulwarkBurst, clamp, clearEnemyBulletsNear, crystalBursts, crystals, dagouMissiles, dashKillFx, dhGuardActive, eBullets, enemyFireIv, enemyOnScreen, enemies, entranceDt, feijianWaves, lanceWaves, frostZones, friendStorms, gamepad, hasteMul, timeflowMul, hpFill, keys, menuScreen, missiles, missileWarns, pBullets, particles, phaseFx, pillarStrikes, player, playerHitFx, popianMissiles, rand, rewardOutMul, shake, slashFx, spawnArmorGlyphFx, spawnBlastRing, spawnParticles, spellCubes, state, touch, tryBulwarkCheatDeath, wgSlashes, windFlows, wingmen, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { playerFrostMoveMul, playerFrostSlowMul, yu4AuraMul } from './04-spawn.js';
   import { cancelBossWarns, clearMissiles, enemyColorTags, grailRedirect, killEnemy } from './06-enemy.js';
-  import { berserkBursts, bombBursts, enemyDamageMul, shieldBurst } from './08-entities.js';
+  import { berserkBursts, bombBursts, enemyDamageMul, scanJiyeBeam, shieldBurst } from './08-entities.js';
   import { achvClearKillSrc, achvNoteArmorSkillUsed, achvNoteCheat, achvNoteChengyueRoll, achvNoteDagouChain, achvNoteDamage, achvNoteGachaGold, achvNoteGiantCrystal, achvNoteHajimiDodge, achvNoteHuiHeal, achvNoteKingDmg, achvNoteLanxinShieldEnd, achvNoteLanxinShieldStart, achvNoteLovelyBurst, achvNoteLingluoHp1, achvNoteLingluoSkill, achvNoteMaxinSpeed, achvNotePilotSkillUsed, achvNoteQixingBigHalve, achvOnBombUsed, achvOnDeath, achvSetKillSrc } from './02-achievements.js';
   import { endGame } from './12-ui.js';
 
@@ -47,7 +47,7 @@
       if (toMissile) {
         dagouMissiles.push({ x: player.x + ox, y: player.y + oy, vy: -dc.speed, r: dc.r, dmgMul: 1, berserk: player.weapon >= 5, src: 'daodan' });
       } else {
-        pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r, dmg, color: currentPlane.bulletColor, lv: player.weapon, mainShot: true, mainGun: true });   // mainShot：混乱将至主炮弹（无穿透；对非 BOSS/非 4S 敌人 +60%，结算见 08-entities）；mainGun：战机本体主炮弹（保底正面乘区消费标记，见 08-entities）
+        pBullets.push({ x: player.x + ox, y: player.y + oy, vx: 0, vy: -PLAYER_CFG.bulletSpeed, r, dmg, color: currentPlane.bulletColor, lv: player.weapon, mainShot: true, mainGun: true });   // mainShot：混乱将至主炮弹（无穿透；对非 BOSS/非 4S 敌人 +80%，结算见 08-entities）；mainGun：战机本体主炮弹（保底正面乘区消费标记，见 08-entities）
       }
     }
     // Lv4：主弹射出后延迟半拍，在中间位置补射 2 发（视觉错开，全部直射）
@@ -205,20 +205,24 @@
         }
       }
     } else if (f.kind === 'zhuixing') {
-      // 坠星长枪：白色长枪垂直向上直射（出射点横向分布、弹道不倾斜——2026-11-11 用户定稿）。
-      // Lv1~4 两翼出射点各 1 支；暴走（Lv5）4 支出射点横向均布：内侧两支立即发射、
-      // 外侧两支延迟 berserkDelay 错峰（走 state.lanceDelayQ 待发队列——同捣蛋连射链 / 时流之雨
-      // 待发队列约定：停火锁期间倒计时冻结、发射瞬间取机体实时位置）。
-      // 伤害 / 弹速倍率在发射（或入队）瞬间定格快照；暴走弹速 ×subSpdMul（驻留速度不变，见 08-entities）
-      const spd = player.weapon >= 5 ? BERSERK.subSpdMul : 1;   // 暴走全局修正：弹速 +50%
-      state.lanceVolleySeq++;   // 轮次 id（弹体/队列项携带——多轮并存识别，同 rainVolleySeq 先例）
-      if (player.weapon >= 5) {
-        for (const ox of f.berserkOffs) launchZhuixingLance(ox, cfg.dmg, cfg.tickDmg, spd, state.lanceVolleySeq);
-        for (const ox of f.berserkOffsOuter) state.lanceDelayQ.push({ t: f.berserkDelay, ox, dmg: cfg.dmg, tickDmg: cfg.tickDmg, spd, volley: state.lanceVolleySeq });
-      } else {
-        launchZhuixingLance(-f.portOff, cfg.dmg, cfg.tickDmg, spd, state.lanceVolleySeq);
-        launchZhuixingLance(f.portOff, cfg.dmg, cfg.tickDmg, spd, state.lanceVolleySeq);
-      }
+      // 坠星长枪：入列一轮拔枪波（同无界飞剑波——2026-11-13 用户定稿：非瞬时发射，长枪自机体中心
+      // 渐显滑向出射位 drawT，到位即垂直向上射出；滑移期间枪体挂机跟随移动，绘制见 10-draw-world drawLanceWaves）。
+      // 出射点横向分布、弹道不倾斜：Lv1~4 两翼各 1 支；暴走（Lv5）4 支出射点横向均布，
+      // 内侧立即滑移、外侧延后 berserkDelay 再滑移（射出时间点稍慢——错峰保留）。
+      // 伤害/弹速倍率在入列瞬间定格快照；发射瞬间取机体实时位置；interval 自触发瞬间起算——
+      // 滑移时长不影响攻击节奏（同飞剑「间隔自生成入列起算」口径）
+      const berserk = player.weapon >= 5;
+      const spd = berserk ? BERSERK.subSpdMul : 1;   // 暴走全局修正：弹速 +50%
+      state.lanceVolleySeq++;   // 轮次 id（拔枪波/弹体携带——多轮并存识别，同 rainVolleySeq 先例）
+      const offs = berserk ? [...f.berserkOffs, ...f.berserkOffsOuter] : [-f.portOff, f.portOff];
+      lanceWaves.push({
+        t: 0, f, volley: state.lanceVolleySeq, dmg: cfg.dmg, tickDmg: cfg.tickDmg, spd, berserk,
+        lances: offs.map(ox => ({
+          ox,
+          at: f.drawT + (berserk && f.berserkOffsOuter.includes(ox) ? f.berserkDelay : 0),   // 滑移到位时刻；外侧两支延后开始滑移
+          fired: false,
+        })),
+      });
     } else {
       return false;
     }
@@ -283,16 +287,10 @@
       if (!playerFireLocked()) r.t -= dt;
       if (r.t <= 0) { state.rainLaunchQ.splice(i, 1); launchRainDrop(r); }
     }
-    // 坠星长枪暴走错峰队列推进（置顶于 cfg 判空之前：副武器卸下/切换后遗留待发弹照常走完——同上两队列约定）；
-    // 停火锁期间倒计时冻结；发射瞬间取机体实时位置；伤害/弹速倍率为入队瞬间快照（暴走中不掉级，快照兜底）
-    for (let i = state.lanceDelayQ.length - 1; i >= 0; i--) {
-      const r = state.lanceDelayQ[i];
-      if (!playerFireLocked()) r.t -= dt;
-      if (r.t <= 0) { state.lanceDelayQ.splice(i, 1); launchZhuixingLance(r.ox, r.dmg, r.tickDmg, r.spd, r.volley); }
-    }
+    state.timeflowT = Math.max(0, state.timeflowT - dt);   // 时流状态倒计时（超越艇·时流绿环命中我方置位，2s 刷新制；12-ui 右下角读条消费）
     const cfg = subFireCfg();
     if (!cfg) return;
-    player.subCooldown -= dt * hasteMul();
+    player.subCooldown -= dt * hasteMul() * timeflowMul();   // 时流状态（超越艇·时流，2026-11-13）：射速 +50%——与斗志昂扬独立乘算
     if (player.subCooldown <= 0) {
       if (playerFireLocked()) {
         player.subCooldown = 0;   // 保持就绪，解除锁定后立即开火（与主炮同策略）
@@ -333,6 +331,34 @@
         }
       }
       if (allFired) feijianWaves.splice(i, 1);
+    }
+  }
+
+  // 坠星长枪拔枪波推进：长枪自机体中心渐显滑向出射位（drawT 内 easeOutCubic，滑移中挂机跟随玩家移动
+  // ——绘制端按当前 player 位置插值）→ 到位即垂直上射（launchZhuixingLance，发射瞬间取机体实时位置）；
+  // 停火锁期间计时冻结（同 rainLaunchQ/lanceDelayQ 旧队列约定）；警报 / BOSS 登场动画：滑移中长枪
+  // 快速消散渐隐（dieT，同飞剑波口径——消散期内不再发射）
+  function updateLanceWaves(dt) {
+    const lock = playerFireLocked();
+    for (let i = lanceWaves.length - 1; i >= 0; i--) {
+      const w = lanceWaves[i];
+      if (!lock) w.t += dt;
+      if (w.dieT == null && (bossFlow.stage === 'warn' || bossEntranceActive())) w.dieT = 0.3;
+      if (w.dieT != null) {
+        w.dieT -= dt;
+        if (w.dieT <= 0) lanceWaves.splice(i, 1);
+        continue;
+      }
+      let allFired = true;
+      for (const s of w.lances) {
+        if (s.fired) continue;
+        allFired = false;
+        if (w.t >= s.at) {
+          s.fired = true;
+          launchZhuixingLance(s.ox, w.dmg, w.tickDmg, w.spd, w.volley);
+        }
+      }
+      if (allFired) lanceWaves.splice(i, 1);
     }
   }
 
@@ -596,7 +622,7 @@
       }
     }
 
-    player.slashCd -= dt * playerFrostSlowMul() * hasteMul();
+    player.slashCd -= dt * playerFrostSlowMul() * hasteMul() * timeflowMul();
     if (player.slashCd > 0) return;
     // 锁定中 / 无目标：保持就绪，解锁 / 出现目标后立即斩击（暴走任一线有目标即触发一轮）
     const anyLineT = player.slashTarget || (player.slashSideT && (player.slashSideT[0] || player.slashSideT[1]));
@@ -623,9 +649,10 @@
   }
 
   // 僚机射速增益：斗志昂扬期间翻倍；群星之杀在非 boss 战时额外 ×wingmanHaste（补偿清杂弱）；
-  // 寒霜光圈内随主机一并减速（×playerFrostSlowMul：顶部入场 ×0.65 / 侧翼 ×0.75——僚机成对跟随主机，主机在圈内僚机必在圈内）
+  // 寒霜光圈内随主机一并减速（×playerFrostSlowMul：顶部入场 ×0.65 / 侧翼 ×0.75——僚机成对跟随主机，主机在圈内僚机必在圈内）；
+  // 时流状态（超越艇·时流，2026-11-13）：射速 +50%（与斗志昂扬独立乘算）
   function wingmanHasteMul() {
-    let m = hasteMul() * playerFrostSlowMul();
+    let m = hasteMul() * timeflowMul() * playerFrostSlowMul();
     if (currentPlane.wingmanHaste && !enemies.some(e => e.type === 'boss')) m *= currentPlane.wingmanHaste;
     return m;
   }
@@ -718,6 +745,68 @@
           // 本轮定格：等级配置 + 暴走标记取启动瞬间值，轮内不再读实时火力（每轮子弹完全一致）
           w.burst = { kind: 'fan', angles: buildFanAngles(wpn, player.weapon), idx: 0, gap: 0, lv, bz: player.weapon === 5 && !!wpn.berserk };
           w.cooldown = lv.interval * affixWingIv() / (player.weapon === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%（僚机与副武器统一）；词条（真我级 2:good:3）：僚机间隔 ×0.7
+        }
+        continue;
+      }
+
+      // ---- lance 模型（彻月）：单发贯穿射弹，固定瞄准玩家正上方 +50% 屏高；暴走三连射 +60/+50/+40 ----
+      if (wpn.kind === 'lance') {
+        if (w.burst) {
+          w.burst.gap -= dt * wingmanHasteMul();
+          if (w.burst.gap <= 0) {
+            fireCheyueBolt(w, w.burst.fracs[w.burst.idx], w.burst.bz);
+            w.burst.idx++;
+            if (w.burst.idx >= w.burst.fracs.length) w.burst = null;
+            else w.burst.gap = wpn.burstGap;
+          }
+          continue;
+        }
+        w.cooldown -= dt * wingmanHasteMul();
+        if (w.cooldown <= 0) {
+          const lv = wpn.levels[player.weapon] || wpn.levels[1];
+          // 本轮定格：暴走标记 + 瞄准序列取启动瞬间值（轮中暴走开启/结束下一轮才生效——同 fan/volley 口径）
+          w.burst = { fracs: lv.aimFracs || [wpn.aimFrac], idx: 0, gap: 0, bz: player.weapon === 5 };
+          w.cooldown = lv.interval * affixWingIv() / (player.weapon === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%；词条（真我级 2:good:3）：僚机间隔 ×0.7
+        }
+        continue;
+      }
+
+      // ---- beam 模型（极夜千星）：朝前直射单发激光炮 ----
+      // 常态（Lv1~4）：每 interval 秒发 1 发；暴走持续模式（Lv5）：每 tickIv 秒发 1 发短单发（持续伤害拆低）
+      // 贯穿剩余伤害 = 原始 dmg，每次命中敌人扣减 Math.min(剩余, 敌人血量)，归零则消失（消费见 08-entities）
+      if (wpn.kind === 'beam') {
+        const lv = wpn.levels[player.weapon] || wpn.levels[1];
+        const bz = player.weapon === 5;
+        w.cooldown -= dt * wingmanHasteMul();
+        if (w.cooldown <= 0) {
+          fireJiyeBeam(w, bz);
+          // 冷却启动：持续模式用 tickIv，常态用 interval（暴走全局 ×subRateMul 射速加速）
+          const baseIv = bz ? (lv.tickIv || lv.interval) : lv.interval;
+          w.cooldown = baseIv * affixWingIv() / (bz ? BERSERK.subRateMul : 1);
+        }
+        continue;
+      }
+
+      // ---- droplet 模型（今宵）：每 interval 启动一轮 count 发错序发射（常规 6 / 暴走 8 发，burstGap 间隔）----
+      // 轮启动瞬间定格：分配/等级/暴走取启动瞬间值（错序发射期间暴走开启/结束下一轮生效——同 fan/lance 口径）；
+      // 初始角度扇形展开 + 逐发出舱（2026-11-13 用户定稿「角度不一样、不同时射出」）；弹道弧线/追踪两段见 08-entities jxDrop 区
+      if (wpn.kind === 'droplet') {
+        if (w.burst) {
+          w.burst.gap -= dt * wingmanHasteMul();
+          if (w.burst.gap <= 0) {
+            fireJinxDrop(w, w.burst.idx, w.burst.lv, w.burst.bz, w.burst.targets);
+            w.burst.idx++;
+            if (w.burst.idx >= w.burst.targets.length) w.burst = null;
+            else w.burst.gap = wpn.burstGap;
+          }
+          continue;
+        }
+        w.cooldown -= dt * wingmanHasteMul();
+        if (w.cooldown <= 0) {
+          const lv = wpn.levels[player.weapon] || wpn.levels[1];
+          // 本轮定格：目标分配 + 等级 + 暴走标记取启动瞬间值（轮内逐发一致）
+          w.burst = { idx: 0, gap: 0, lv, bz: player.weapon === 5, targets: pickJinxiaoTargets(lv.count) };
+          w.cooldown = lv.interval * affixWingIv() / (player.weapon === 5 ? BERSERK.subRateMul : 1);   // 暴走全局修正：射速 +50%；词条（真我级 2:good:3）：僚机间隔 ×0.7
         }
         continue;
       }
@@ -967,6 +1056,99 @@
       });
     }
   }
+  // 彻月单发贯穿射弹：金色锥状长弹（len 46 ≈ 坠星长枪），发射瞬间锁定「玩家正上方 +frac 屏高」瞄准点
+  // （aimX/aimY 取发射瞬间玩家实时位置，弹道直线不追踪——同坠星长枪「发射瞬间锁定不跟踪」口径）；
+  // 无限穿透、对每个敌人仅结算一次伤害（pierceAll + hits Set，消费见 08-entities 通用命中区）；
+  // 暴走弹速 ×subSpdMul（僚机体系全局 +50%，无时空允诺 1.15 行内加成——彻月非 volley 体系）
+  function fireCheyueBolt(w, frac, bz) {
+    const wpn = currentWingman.weapon;
+    const lv = wpn.levels[bz ? 5 : player.weapon] || wpn.levels[1];
+    const aimX = player.x, aimY = player.y - CANVAS_H * frac;   // 发射瞬间锁定：玩家正上方 +frac 屏高
+    const ang = Math.atan2(aimY - w.y, aimX - w.x);   // 朝瞄准点的直线方向（左右僚机出发位置不同 → 弹道自两侧向瞄准点汇聚）
+    const speed = wpn.bulletSpeed * (bz ? BERSERK.subSpdMul : 1);
+    pBullets.push({
+      x: w.x, y: w.y - 8,
+      sx: w.x, sy: w.y - 8,   // 出舱点（同僚机弹约定，绘制端消费）
+      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+      r: wpn.r, len: wpn.len, dmg: lv.dmg,
+      wing: true, cheBolt: true,       // cheBolt：彻月贯穿弹专属绘制标记（10-draw-world paintCheyueBolt）
+      pierceAll: true, hits: null,     // 无限穿透 + 每敌一次（hits Set 惰性建——08-entities 命中区消费）
+      phase: (w.side + 1) * 3.7,       // 金色闪电相位（左右僚机错开；绘制端按 state.time+phase 平滑驱动，不用逐帧随机）
+      glow: !!bz,                      // 暴走弹更亮（供次数盾判定与绘制端共用——同僚机弹 b.wing+b.glow 口径）
+      berserkFire: !!bz,
+    });
+  }
+  // 极夜千星激光炮：白色、根部细→弧状增粗、瞬时命中（hitscan——2026-11-12 用户定稿改版）：
+  // 无飞行弹体、无弹速概念——发射瞬间自僚机出舱口竖直向上全程结算（无限射程扫至屏顶），
+  // 贯穿剩余伤害 beamRemain 沿途按「敌人命中前血量」扣减、归零则光束截断（结算见 08-entities scanJiyeBeam）；
+  // 视觉为 beamFx 残留光束（快速消散、消散期无伤害）。
+  function fireJiyeBeam(w, bz) {
+    const wpn = currentWingman.weapon;
+    const lv = wpn.levels[bz ? 5 : player.weapon] || wpn.levels[1];
+    const dmg = bz ? (lv.dmgTick != null ? lv.dmgTick : lv.dmg) : lv.dmg;
+    scanJiyeBeam(w.x, w.y - 8, dmg, wpn.r, !!bz, w.side);   // 出舱点（同僚机弹约定）；radius = 判定半宽；side 供光束残留跟随僚机
+  }
+
+  // ---------- 今宵：追踪水滴弹目标分配与齐射 ----------
+  // 合格敌人口径同僚机通用索敌（08-entities homing 区）：屏内 / 非虚化 / 非濒死 / 非 BOSS 登场虚化
+  // 距离权重 w = 1/(0.6 + d/CANVAS_H)（d=玩家到敌人距离）：同距敌人权重相同（均分基础），
+  //   近中远三档（≈150/350/600px）权重比 ≈3:2:1（2026-11-12 用户示意口径「近的占得锁定权重较大」）
+  // 逐发 D'Hondt 最大份额分配：每发取 w/(1+已分配数) 最大者——按比例收敛不超额；
+  //   份额并列（同距敌人）按轮转键逐发轮流——同距敌人平均分布；jxRot 逐轮自增使跨轮余数也轮流
+  //  （A3B2 → A2B3 交替），不固定偏袒同一目标
+  let jxRot = 0;
+  function pickJinxiaoTargets(n) {
+    const cand = [];
+    for (const e of enemies) {
+      if (!enemyOnScreen(e) || e.phase > 0 || e.dying) continue;
+      if (e.type === 'boss' && (bossEntranceActive() || bossPhantom(e))) continue;
+      cand.push(e);
+    }
+    const out = new Array(n).fill(null);
+    if (!cand.length) return out;
+    const w = cand.map(e => 1 / (0.6 + Math.hypot(e.x - player.x, e.y - player.y) / CANVAS_H));
+    const spent = new Array(cand.length).fill(0);
+    for (let k = 0; k < n; k++) {
+      let best = -1, bestR = -1, bestRot = Infinity;
+      for (let i = 0; i < cand.length; i++) {
+        const r = w[i] / (1 + spent[i]);
+        const rot = ((i - k - jxRot) % cand.length + cand.length) % cand.length;   // 并列轮转键（逐发+逐轮错开）
+        if (r > bestR + 1e-9) { best = i; bestR = r; bestRot = rot; }
+        else if (Math.abs(r - bestR) <= 1e-9 && rot < bestRot) { best = i; bestRot = rot; }
+      }
+      spent[best]++;
+      out[k] = cand[best];
+    }
+    jxRot++;
+    return out;
+  }
+
+  // 今宵单发出舱（错序发射消费——updateWingmen droplet 分支按 burstGap 逐发调用）：
+  //   出舱点=僚机尾部（w.y+10，尾焰接口下方）；初始角度扇形展开——基准方向=竖直向下偏向僚机外侧
+  //  （atan2(arcVy0, side·arcSideVx)），各发按 idx 在 ±spreadTotal/2 内错开（内侧一发近乎竖直、外侧一发最横；
+  //   偏移随 -side 镜像保证左右僚机扇形对称：均为内侧近竖直→外侧最横，配合错序发射读作逐发向外扫的水泉）；
+  //   初速模长恒 hypot(arcVy0, arcSideVx) ≈ 230.9（只改方向不改速率——同轮各发下坠深度 34~48px 均不入界）；
+  //   targets 为轮启动瞬间 pickJinxiaoTargets 的分配结果（弹存 jxTarget 引用，失效重锁见 08-entities）；
+  //   暴走全局修正照僚机体系：冷却 ÷subRateMul（updateWingmen 消费）、弹速上限 ×subSpdMul
+  function fireJinxDrop(w, idx, lv, bz, targets) {
+    const wpn = currentWingman.weapon;
+    const n = targets.length;
+    const spd = Math.hypot(wpn.arcVy0, wpn.arcSideVx);
+    const base = Math.atan2(wpn.arcVy0, w.side * wpn.arcSideVx);   // 基准方向角（向下偏僚机外侧）
+    const off = n > 1 ? ((idx / (n - 1)) - 0.5) * (wpn.spreadTotal * Math.PI / 180) * -w.side : 0;   // 内侧(0)近竖直 → 外侧(n-1)最横，随 side 镜像
+    const ang = base + off;
+    pBullets.push({
+      x: w.x, y: w.y + 10,
+      sx: w.x, sy: w.y + 10,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,   // 尾部出舱：向下 + 扇形错开（左僚机朝左下扇、右僚机朝右下扇）
+      r: wpn.r, len: wpn.len, dmg: lv.dmg,
+      wing: true, jxDrop: true,          // jxDrop：今宵水滴弹专属弹道标记（08-entities 弧线/追踪推进、10-draw-world 绘制）
+      jxPhase: 0, jxT: 0,   // 0=弧线段 / 1=追踪段；折返点（vy 转负）切换
+      jxAy: wpn.arcAy, jxTurn: wpn.turnRate, jxMaxSpd: wpn.maxSpeed * (bz ? BERSERK.subSpdMul : 1), jxAccel: wpn.speedAccel,
+      jxTarget: targets[idx] || null,    // 锁定目标（轮启动瞬间分配；失效自动重锁最近合格敌人）
+      glow: !!bz, berserkFire: !!bz,     // 暴走金弹（10-draw-world 配色消费；僚机弹通用标记）
+    });
+  }
   function updatePlayer(dt) {
     // 暴走刃帆变形进度（0=常态刃 1=暴走巨帆；进入/退出暴走平滑过渡，约 0.33s）
     const sailTarget = (player.weapon === 5 && player.berserk > 0) ? 1 : 0;
@@ -1036,9 +1218,27 @@
         const ease = p * p * (3 - 2 * p);
         player.y = player.enterFromY + (CANVAS_H - 90 - player.enterFromY) * ease;
       } else {
-        // 移动输入：手柄左摇杆模拟量优先（14-main 每帧 pollGamepad 写入 gamepad.ax/ay——已做径向死区归一，模长 ≤1），
-        // 键盘 WASD/方向键与手柄十字键为数字回退。摇杆幅值直接线性乘移速：回中时幅值连续衰减至 0，
-        // 速度曲线无档位切换（铁律）；数字键路径保持原归一化行为完全不变
+        // 移动输入三路合流：触控 > 手柄左摇杆模拟量 > 键盘 WASD/方向键与手柄十字键（docs/手机模式设计.md §4.5，
+        // 触控插在手柄之前——触控抬起 touch.active=false 即自动回落）。pspd 提前算好供触控 / 键盘两条路径共用
+        const pspd = PLAYER_CFG.speed * playerFrostMoveMul() * state.maxinSpeedMul * state.laodaMul * (affixHas('sp1') ? 1.5 : 1);   // 寒霜光圈内移动速度 -35%；马兴犬：Shift 加速 / CapsLock 减速；牢大特饮 +40%（laodaMul 指数逼近平滑过渡）；词条（特殊对 sp1）疾速航行：移速 +50%（状态切换型乘区，不涉及移动公式突变）
+        if (touch.active) {
+          // 触控拖动跟指（目标点映射，docs/手机模式设计.md §4.2）：目标点 = 指尖实时位置（fx/fy）+ 按下瞬间
+          // 定格的初始偏移（ox/oy，向量钳制 ≤90px 记录于 14-main pointerdown）——按下帧目标点替换不改变当前速度，
+          // 位置严格连续。逼近公式：速度 = 剩余距离 × 14（指数衰减，≈0.16s 走完 90% 剩余距离；远距离段被
+          // 下行限幅钳在 pspd——满速追赶、进入 ≈28px 半径内平滑减速停住，全程速度连续无档位切换）。
+          // 限幅取同一 pspd：与键盘/手柄共享速度上限。抬指（active=false）即静止，与松键口径一致
+          const tx = touch.fx + touch.ox, ty = touch.fy + touch.oy;
+          let mvx = (tx - player.x) * 14, mvy = (ty - player.y) * 14;
+          const mv = Math.hypot(mvx, mvy);
+          if (mv > 1) {   // <1px/s 的残余逼近按 0 处理（停稳，不无限蠕动）
+            if (mv > pspd) { mvx = mvx / mv * pspd; mvy = mvy / mv * pspd; }
+            player.x += mvx * dt;
+            player.y += mvy * dt;
+          }
+        } else {
+        // 键盘 / 手柄十字键（原路径原样保留）：手柄左摇杆模拟量优先（14-main 每帧 pollGamepad 写入 gamepad.ax/ay——
+        // 已做径向死区归一，模长 ≤1），键盘 WASD/方向键与手柄十字键为数字回退。摇杆幅值直接线性乘移速：
+        // 回中时幅值连续衰减至 0，速度曲线无档位切换（铁律）；数字键路径保持原归一化行为完全不变
         if (gamepad.connected && (gamepad.ax !== 0 || gamepad.ay !== 0)) {
           dx = gamepad.ax; dy = gamepad.ay;
         } else {
@@ -1051,10 +1251,10 @@
         const len = Math.hypot(dx, dy);
         // 摇杆模拟量（len ≤ 1）保留幅值不归一化；键盘 / 十字键数字向量（len = 1 或 √2）归一到 1（原行为）
         if (len > 1) { dx /= len; dy /= len; }
-        const pspd = PLAYER_CFG.speed * playerFrostMoveMul() * state.maxinSpeedMul * state.laodaMul * (affixHas('sp1') ? 1.5 : 1);   // 寒霜光圈内移动速度 -35%；马兴犬：Shift 加速 / CapsLock 减速；牢大特饮 +40%（laodaMul 指数逼近平滑过渡）；词条（特殊对 sp1）疾速航行：移速 +50%（状态切换型乘区，不涉及移动公式突变）
         player.x += dx * pspd * dt;
         player.y += dy * pspd * dt;
       }
+        }
       }
       // 击退位移（风暴风流/风柱命中 / 黑暗之手登场阴影掠过击飞）：随时间快速衰减
       if (player.kbT > 0) {
@@ -1092,7 +1292,7 @@
       // 群星之杀：不发射普通子弹，改为锁定光束 + 周期性空间斩击
       updateStarslayer(dt);
     } else {
-      player.cooldown -= dt * playerFrostSlowMul() * hasteMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍
+      player.cooldown -= dt * playerFrostSlowMul() * hasteMul() * timeflowMul();   // 寒霜光圈内射速 -35%；斗志昂扬增益期间攻速翻倍；时流状态（超越艇·时流）射速 +50%（2026-11-13）
       if (player.cooldown <= 0) {
         if (!playerFireLocked()) {
           player.cooldown = (berserk ? BERSERK.interval : WEAPON_LEVELS[player.weapon].interval) * affixFireIv();   // 词条（真我级 2:good:4）：战机攻击间隔 ×0.8
@@ -1107,6 +1307,7 @@
     // 副武器：独立冷却的第二武器
     updateSubWeapon(dt);
     updateFeijianWaves(dt);   // 无界飞剑：待发射飞剑波推进（波次与火力等级无关，锁定入场时继续）
+    updateLanceWaves(dt);     // 坠星长枪：待发射拔枪波推进（滑移挂机 → 到位上射，见 updateLanceWaves）
     updateXinRings(dt);       // 辛国栋之怒：灼烧火环推进
     updateRewardFx(dt);       // 奖励道具效果推进（牢大/飞剑风暴/寒霜力场/酒客/抽卡演出）
 
@@ -1390,7 +1591,7 @@
     player.subCooldown = 0;      // 副武器冷却就绪
     feijianWaves.length = 0;     // 无界飞剑：未发射的飞剑波随重生清除（否则冻结在阵亡位置）
     state.rainLaunchQ.length = 0;   // 时流之雨：未发射的雨弹待发队列随重生清除（同飞剑波口径）
-    state.lanceDelayQ.length = 0;   // 坠星长枪：暴走外侧两支错峰待发队列随重生清除（同时流之雨口径）
+    lanceWaves.length = 0;       // 坠星长枪：拔枪滑移中的长枪随重生清除（同飞剑波口径）
     // 辛国栋之怒火环死亡不消失（2026-10-12 用户定稿：灼烧火环跨命保留；2026-10-14 用户定稿：死亡期间不再冻结、
     // 火环照常飞行与灼烧——updatePlayer 死亡分支内调用 updateXinRings；仅重开/金陨口径见 12-ui resetGame 与金陨段）
   }
@@ -2292,6 +2493,7 @@
     for (let i = blBombs.length - 1; i >= 0; i--) { const b = blBombs[i]; if (hit(b.x, b.y)) { pop(b.x, b.y); blBombs.splice(i, 1); } }   // 暴鸰炸弹
     for (let i = spellCubes.length - 1; i >= 0; i--) { const c = spellCubes[i]; if (hit(c.x, c.y)) { pop(c.x, c.y); spellCubes.splice(i, 1); } }   // 大/小正方体
     for (let i = feijianWaves.length - 1; i >= 0; i--) { const f = feijianWaves[i]; if (hit(f.x, f.y)) feijianWaves.splice(i, 1); }   // 飞剑波
+    for (let i = lanceWaves.length - 1; i >= 0; i--) { const w = lanceWaves[i]; if (w.lances.some(s => hit(player.x + s.ox, player.y - 12))) lanceWaves.splice(i, 1); }   // 坠星长枪拔枪波（滑移中挂机位置）
     for (let i = xinRings.length - 1; i >= 0; i--) { const g2 = xinRings[i]; if (hit(g2.x, g2.y)) { pop(g2.x, g2.y); xinRings.splice(i, 1); } }   // 辛国栋之怒火环（我方残留区域一并清除）
     for (let i = frostZones.length - 1; i >= 0; i--) { const z = frostZones[i]; if (hit(z.x, z.y)) { pop(z.x, z.y); frostZones.splice(i, 1); } }   // 虚幻寒冷区域等残留 buff 区域
     // 水晶：波及即消失并视为被吸收（无视 0.1s 吸收延迟——用户定稿；结算口径与 08-entities 拾取一致）
@@ -3273,6 +3475,7 @@
       // 与 updatePlayer 同构：副武器冷却 / 飞剑波 / 灼烧火环 / 捣蛋导弹均不依赖主炮机型）
       updateSubWeapon(dt);      // 演示屏同步展示副武器弹道（弹体由演示屏裁剪边界回收）
       updateFeijianWaves(dt);   // 无界飞剑：演示屏内同样完成 后移下沉→分裂就位→依次前射 演出
+      updateLanceWaves(dt);     // 坠星长枪：演示屏内同样完成 拔枪滑移→到位上射 演出
       updateXinRings(dt);       // 辛国栋之怒：演示屏无目标时朝正前方发射，在飞火环照常推进
       updateDagouMissiles(dt);  // 捣蛋来袭：演示屏同样发射导弹（演示屏内无敌人不会命中，飞出上缘后回收）
     updateDelayedShots(dt);   // Lv4 半拍补射队列（演示与游戏共用逻辑）
@@ -3289,6 +3492,7 @@
     beamSparkT, pickSlashTarget, doSlashLine, pickSlashDeg, updateStarslayer, wingmanHasteMul, updateSlashFx,
     initWingmen, updateWingmen, buildFanAngles, fireWingmanFanShot, computeShieldSegs, bulwarkActive,
     segIntersect, shieldSweepHit, shieldReflectHit, clipAgainstShield, fireWingmanVolley, updatePlayer, clearEnemyBullets,
+    pickJinxiaoTargets, fireJinxDrop,
     playerFireLocked, respawnPlayer, damagePlayer, testDamagePlayer, pickupKit, pickupBerserk, useBomb,
     rainApplyKit, rainApplyBerserk,
     GACHA_FX_DRAW, accumulateWeaponDropHit, tryChengyueShield, armorSkillGain, triggerArmorSkill, updateDemo,

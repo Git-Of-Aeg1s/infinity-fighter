@@ -8,16 +8,16 @@
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
   import { affixBerserkDurView, affixHas, affixModalOpen, affixOwnedEntries, openWenjiukeOpening, queueAffixSelection, resetAffixRunState, wenjiukeDebuffEntries, wenjiukeOpeningOpen } from './03b-affix.js';
-  import { DOUZHI } from './01-config-enemies.js';
+  import { BEYOND_WING, DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
-  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpBar, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
+  import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpBar, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, timeflowBar, timeflowFill, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { resetSpawnWaveState } from './04-spawn.js';
   import { currentBombCap, debugForceGacha, debugSetWeapon, debugToggleInvuln, delayedShots, initWingmen } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
-  import { paintShip, paintWingman, paintWingmanBulwark } from './09a-draw-loadout.js';
+  import { paintShip, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark } from './09a-draw-loadout.js';
   import { encyReturnAvailable, openEncyclopedia } from './13-encyclopedia.js';
 
 
@@ -45,7 +45,7 @@
   // 值相同则跳过 DOM 写入（省 JS↔DOM 桥与样式解析成本；classList.toggle 幂等成本低，不缓存）。
   // 这些 HUD 元素仅本模块写入（bombIcons innerHTML 同理），值缓存无失同步风险。
   let _hudHpW = '', _hudTrackW = '', _hudTrackBase = null, _hudBarW = '', _hudBarRight = '', _hudPermW = '', _hudScoreDisp = '', _hudScore = -1,
-      _hudLivesN = -1, _hudDiffName = null, _hudBerserkW = '', _hudShieldW = '', _hudDouzhiW = '', _hudJingdunW = '',
+      _hudLivesN = -1, _hudDiffName = null, _hudBerserkW = '', _hudShieldW = '', _hudDouzhiW = '', _hudJingdunW = '', _hudTimeflowW = '',
       _hudSkillFrac = -1, _hudSkillColor = null, _hudPilotFrac = -1, _hudPilotMode = null,
       _hudPilotCnt = null, _hudKing = -1, _hudBombInf = false;
 
@@ -141,6 +141,11 @@
     jingdunBar.classList.toggle('active', jingdunOn);
     const jingdunW = jingdunOn ? (player.crystalShield / crystalShieldDur() * 100) + '%' : '0%';
     if (jingdunW !== _hudJingdunW) { jingdunFill.style.width = jingdunW; _hudJingdunW = jingdunW; }
+    // 时流读条（右下角，亮绿；超越艇·时流绿环命中我方的增益倒计时——射速/弹速 +50%，2026-11-13）
+    const timeflowOn = state.timeflowT > 0;
+    timeflowBar.classList.toggle('active', timeflowOn);
+    const timeflowW = timeflowOn ? (state.timeflowT / BEYOND_WING.cyan.buffDur * 100) + '%' : '0%';
+    if (timeflowW !== _hudTimeflowW) { timeflowFill.style.width = timeflowW; _hudTimeflowW = timeflowW; }
     // 装甲技能圆形计数表（左下角、生命值上方，七日澜心专属）：按填充角度显示量表，满时高亮提示按 F
     const skillDef = ARMOR_SKILLS[currentArmor.id];
     skillGauge.classList.toggle('hidden', !skillDef || state.mode !== 'playing');
@@ -219,6 +224,7 @@
     levelFlow.spawnTimer = 1.2;
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
+    state.timeflowT = 0;    // 时流状态（超越艇·时流绿环命中我方，射速/弹速 +50%）剩余时长重开归零
     state.affixTartCd = 0; state.affixFreezeHits = 0; state.affixFreezeDmg = 0;   // 词条域：大蛋挞冷却 / 冰封计数重开归零
     player.affixBzSpecial = false; player.affixBzBase = 0; player.affixBzKits = 0;   // 词条（0:good:5）无敌暴走快照重开清零
     // 奖励道具效果状态归位（道具槽已取消——击坠立即生效；07-player applyRewardItem 置位 / updateRewardFx 推进）
@@ -788,6 +794,90 @@
       c.closePath();
       c.fill();
       paintWingmanBulwark(c, 1, true, 0.35, true);   // 重甲堡垒机体（暴走过热状态，静态帧；still 冻结相位保证预览确定性）
+    } else if (wm.weapon && wm.weapon.kind === 'lance') {
+      // 彻月：紫色电磁发射舱（暴走：含外侧水晶晶体展开，静态帧满展）；舱体中心即本地原点，直落画布中心
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
+      fg.addColorStop(0, 'rgba(210, 190, 255, 0.95)');
+      fg.addColorStop(0.5, 'rgba(158, 132, 255, 0.65)');
+      fg.addColorStop(1, 'rgba(122, 96, 242, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(-3, 8);
+      c.lineTo(0, 8 + 14 + 5);
+      c.lineTo(3, 8);
+      c.closePath();
+      c.fill();
+      // 暴走内芯（静态帧）：白紫内焰（电磁过载白芯——与游戏内 drawWingmen 彻月分支同款）
+      c.fillStyle = 'rgba(238, 230, 255, 0.95)';
+      c.beginPath();
+      c.moveTo(-2, 8);
+      c.lineTo(0, 8 + 14 * 0.66);
+      c.lineTo(2, 8);
+      c.closePath();
+      c.fill();
+      paintWingmanCheyue(c, 1, true, true, 1);   // 与游戏内僚机同一造型（still 冻结相位、满展）
+      // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（电磁核心过载）——同时空允诺紫系光晕
+      const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+      aura.addColorStop(0, 'rgba(186, 160, 255, 0.55)');
+      aura.addColorStop(1, 'rgba(186, 160, 255, 0)');
+      c.fillStyle = aura;
+      c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+    } else if (wm.weapon && wm.weapon.kind === 'beam') {
+      // 极夜千星：激光发射装置 + 周围光球环绕（静态帧，光球公转相位冻结）；舱体中心即本地原点，直落画布中心
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
+      fg.addColorStop(0, 'rgba(200, 230, 255, 0.9)');
+      fg.addColorStop(0.5, 'rgba(160, 200, 240, 0.5)');
+      fg.addColorStop(1, 'rgba(110, 160, 220, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(-3, 8);
+      c.lineTo(0, 8 + 14 + 5);
+      c.lineTo(3, 8);
+      c.closePath();
+      c.fill();
+      // 暴走内芯（静态帧）：淡蓝白内焰（激光过载色——与游戏内 drawWingmen 极夜千星分支同款）
+      c.fillStyle = 'rgba(240, 250, 255, 0.95)';
+      c.beginPath();
+      c.moveTo(-2, 8);
+      c.lineTo(0, 8 + 14 * 0.66);
+      c.lineTo(2, 8);
+      c.closePath();
+      c.fill();
+      paintWingmanJiye(c, 1, true, 0);   // 暴走静态帧（发射口扩大+过载外溢+光球加速；flameT=0 冻结光球脉动）
+      // 暴走状态（静态帧）：机体辉光（激光核心过载）——淡蓝系光晕（与 beamGlow 同族）
+      const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+      aura.addColorStop(0, 'rgba(184, 214, 255, 0.55)');
+      aura.addColorStop(1, 'rgba(184, 214, 255, 0)');
+      c.fillStyle = aura;
+      c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+    } else if (wm.weapon && wm.weapon.kind === 'droplet') {
+      // 今宵：双反应装置边架 + 中央能量球（静态帧，能量球弧纹相位冻结）；舱体中心即本地原点，直落画布中心
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
+      fg.addColorStop(0, 'rgba(224, 208, 255, 0.95)');
+      fg.addColorStop(0.5, 'rgba(178, 150, 255, 0.65)');
+      fg.addColorStop(1, 'rgba(150, 120, 245, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(-3, 8);
+      c.lineTo(0, 8 + 14 + 5);
+      c.lineTo(3, 8);
+      c.closePath();
+      c.fill();
+      // 暴走内芯（静态帧）：淡紫白内焰（能量容器过载色——与游戏内 drawWingmen 今宵分支同款）
+      c.fillStyle = 'rgba(236, 227, 255, 0.95)';
+      c.beginPath();
+      c.moveTo(-2, 8);
+      c.lineTo(0, 8 + 14 * 0.66);
+      c.lineTo(2, 8);
+      c.closePath();
+      c.fill();
+      paintWingmanJinxiao(c, 1, true, true);   // 与游戏内僚机同一造型（still 冻结能量球弧纹相位）
+      // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（能量球过载）——淡紫系光晕
+      const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+      aura.addColorStop(0, 'rgba(190, 150, 255, 0.55)');
+      aura.addColorStop(1, 'rgba(190, 150, 255, 0)');
+      c.fillStyle = aura;
+      c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
     } else {
       if (wm.scale != null && wm.scale !== 1) c.scale(wm.scale, wm.scale);   // 时空允诺整体尺寸系数（与游戏内 drawWingmen 同源 ×1.045）
       const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);

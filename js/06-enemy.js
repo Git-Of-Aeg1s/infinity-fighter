@@ -7,13 +7,13 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, PILOTS, PLAYER_CFG, currentArmor, hasPilot, starsSeriesCount } from './01-config-loadout.js';
-  import { ANVIL, BAOLING, BAOLING_G, COLLAPSE, COCOON_DREAM, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SHIP_ENTRY, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, STASIS_UNREAL, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BAOLING, BAOLING_G, BEYOND_WING, COLLAPSE, COCOON_DREAM, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SHIP_ENTRY, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, STASIS_UNREAL, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, YU4 } from './01-config-enemies.js';
   import { BOSS, BOSS_BULLET, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
   import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul, constructAltHurtMul } from './01-config-difficulty.js';
   import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
-  import { blBombs, bombDropGate, bossEntranceActive, bossPhantom, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
+  import { blBombs, bombDropGate, bossEntranceActive, bossPhantom, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, TOUCH_DEVICE, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, enemyBlackholeMoveMul, gachaBottomSlowMul, makeEnemy, spawnAnvil, spawnFashiA1, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, yu4AuraMul } from './04-spawn.js';
-  import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss } from './05-boss.js';
+  import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss, fireStormStrikeAt } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
   import { affixHas, affixNoteBossKill, queueAffixSelection, wenjiukeBossRoundKill } from './03b-affix.js';
   import { accumulateWeaponDropHit, applyRewardItem, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, meiNoteKill, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
@@ -200,10 +200,13 @@
       // 按碰撞盒判定时立绘上半截 ≈49px 尚在屏内即被移除消失；未写回（非立绘机型/素材未加载）回退碰撞盒，行为不变）
       if (!e.entered && e.x > 0 && e.x < CANVAS_W && e.y > 0 && e.y < CANVAS_H) e.entered = true;
       const pxSkillPhase = e.type === 'puxuefeng' && e.elPhase != null && e.elPhase >= 10 && e.elPhase <= 15;
+      // 战争幽灵入场期（相位 0 预警 / 1 冲刺）：2026-11-13 用户定稿来向 360° 任意角度——自屏下来向时起点深入
+      // 屏下（底部出界判定无屏外余量，与 x 侧 ±460 不对称），豁免整段出界移除；相位 2 起本体必已抵屏内停留点，恢复正常判定
+      const wgEntryPhase = e.type === 'warGhost' && e.wgPhase != null && e.wgPhase <= 1;
       const drawW = e.drawW || e.w, drawH = e.drawH || e.h;
       const xOutL = e.entered ? -(60 + drawW / 2) : -460;
       const xOutR = CANVAS_W + (e.entered ? 60 + drawW / 2 : 460);
-      if (!pxSkillPhase && (e.y - drawH / 2 > CANVAS_H || e.x < xOutL || e.x > xOutR ||
+      if (!pxSkillPhase && !wgEntryPhase && (e.y - drawH / 2 > CANVAS_H || e.x < xOutL || e.x > xOutR ||
           (e.leaving && e.y + drawH / 2 < 0))) {
         enemies.splice(i, 1);
         continue;
@@ -445,7 +448,9 @@
       }
       return;
     }
-    if (e.type === 'striker') {
+    // 超越艇（2C 五变体，2026-11-13 实装）复用 2 类前锋移动骨架：入位→停留（横摆）→冲锋，
+    // 停留线/速度倍率在 makeEnemy 生成时已按 BEYOND_WING 覆写（holdY +3% 屏高、entrySpd/chargeBase ×spdMul）
+    if (e.type === 'striker' || (e.type && e.type.startsWith('beyondWing_'))) {
       // 前锋定位：快速入位到前锋停留线（y 200~240 逐架随机）停留，随后向下冲锋（冲锋速度随关卡 +5/s 线性增长）
       // 入位/冲锋基准速度逐变体定义（VARIANTS.striker entry/charge，幽暮不适用）；各变体停留规则已统一（无额外修正）
       const holdY = e.holdY != null ? e.holdY : 210;
@@ -474,14 +479,17 @@
       if (e.holdTimer > 0) {
         // 停留倒数自生成即起算（与攻击倒数同口径）；下降至前锋停留线：接近时逐渐减速到 0（而非瞬间归零）
         // （速度地板 0.04：旧 0.12 地板会让机体带 ~17px/s 残速撞上吸附线，产生"微微卡顿"）
+        // 吸附判断外提（2026-11-13 随超越艇奔雷 600px/s 入位发现）：高速机逼近滞后一帧可越过线 ≤1 帧步长（~2px），
+        // 原吸附在 y<holdY 块内导致越线后 y 冻结在线下方——外提后越线即回拉吸附（≤2px 视觉无感）
         e.holdTimer -= dt;
-        if (e.y < holdY) {
+        const distHold = holdY - e.y;
+        if (distHold <= 0.5) {
+          e.y = holdY; e.vy = 0;
+        } else if (e.y < holdY) {
           if (e.vy == null) e.vy = descend;
-          const dist = holdY - e.y;
-          const targetVy = dist >= 70 ? descend : descend * Math.max(0.04, dist / 70);
+          const targetVy = distHold >= 70 ? descend : descend * Math.max(0.04, distHold / 70);
           e.vy += (targetVy - e.vy) * Math.min(1, dt * 12);
           e.y += e.vy * dt;
-          if (dist <= 0.5) { e.y = holdY; e.vy = 0; }
         }
         // 停留期横摆（入位/冲锋无横移；各架独立相位）；横摆幅度 0.6s 缓入——到位瞬间无横向速度突变；
         // 叠加轻微避让（separationVx 位置连续函数）并同乘 holdSwayT 缓入——避让速度同样从 0 平滑起、无瞬跳
@@ -491,7 +499,8 @@
         return;
       }
       // 冲锋启动：较短时间内从 0 平滑加速到冲锋速度（无横移）
-      const charge = ((e.chargeBase != null ? e.chargeBase : 120) + (levelFlow.level - 1) * 5) * e.speedMul;
+      //（e.chargeLvStep：超越艇冲锋关卡增量 5×spdMul——「速度 = 赤红 ×1.2/2.4」含增量部分；缺省 5 与既有 2 类一致）
+      const charge = ((e.chargeBase != null ? e.chargeBase : 120) + (levelFlow.level - 1) * (e.chargeLvStep != null ? e.chargeLvStep : 5)) * e.speedMul;
       if (e.vy == null) e.vy = 0;
       e.vy += (charge - e.vy) * Math.min(1, dt * 10);
       e.y += e.vy * dt;
@@ -2120,6 +2129,19 @@
     if (typeof e.elGapT === 'number') e.elGapT += d;
   }
 
+  // 攻击间隔统一重置出口（非 BOSS 通用开火链路消费）：变体 iv 优先 + 时流绿环减免消费。
+  // 时流超越艇绿环弹命中敌机 → e.bwGapStacks +1（08-entities 结算，可叠加）；
+  // 语义（2026-11-13 用户定稿）：叠 n 层 → 接下来 n 次攻击间隔各 -0.3s、每次消耗一层（不重复减免）。
+  // 收口本 helper：通用开火出口与超越艇各攻击分支（含时流三档随机）统一走此重置；
+  // 不走 fireTimer 的技能状态机（A1/A2/战争矩阵/精英等）天然不受影响，与攻击延迟词条同口径
+  function resetEnemyFireTimer(e, cfg) {
+    let t = enemyFireIv(cfg);
+    if (e.fireIv) t = rand(e.fireIv[0], e.fireIv[1]);   // 变体专属攻击间隔（烈橙 1.4~2.4s）
+    if ((e.bwGapStacks || 0) > 0) { t -= BEYOND_WING.cyan.gapReduce; e.bwGapStacks--; }
+    e.fireTimer = t;
+    return t;
+  }
+
   function updateEnemyFire(e, dt) {
     // 萧杨抽卡停火窗口：全场敌机停火——释放瞬间已清空 scheduled 并中止释放中的技能（07-player startGacha），
     // 此 gate 保证停火窗口内不产生新的开火触发
@@ -2512,8 +2534,7 @@
     e.fireTimer -= dt * enemyFireIvMul(e) * dwellFireAmp(e);   // 寒霜力场 -60%（BOSS 减半）+ 驻留增压（按类别阈值：2 类 6s / 3 类战舰 10s / 4 类 14s 后 ×2，诗篇 5/7.5/10；其余 3 类无表项排除）
     if (e.fireTimer > 0) return;
     const cfg = ENEMY_TYPES[e.type];
-    e.fireTimer = enemyFireIv(cfg);
-    if (e.fireIv) e.fireTimer = rand(e.fireIv[0], e.fireIv[1]);   // 变体专属攻击间隔（烈橙 1.4~2.4s）
+    resetEnemyFireTimer(e, cfg);   // 通用重置出口（含变体 iv 与时流绿环减免消费，见 helper）
     // 词条（真我级 2:bad:6）3A连击：3A 类战舰（gunship）释放技能后 10% 概率下一次攻击间隔减少 80%
     //（与其他乘区乘算 → 直接乘 0.2；技能3 挂起恢复路径在 scheduled 恢复处另行掷取）
     if (e.type === 'gunship' && affixHas('2:bad:6') && Math.random() < 0.1) e.fireTimer *= 0.2;
@@ -2558,6 +2579,123 @@
         // 赤红：垂直向前直射，带 ±10° 随机偏差、不追踪
         pushEBullet(e, Math.PI / 2 + rand(-Math.PI / 18, Math.PI / 18), cfg.bulletSpeed, cfg);
       }
+      return;
+    }
+    /* ---------- 超越艇（2C 五变体，2026-11-13 用户定稿实装）----------
+     * 独立 type 分支；攻击间隔重置统一走 resetEnemyFireTimer（含时流绿环减免消费）；
+     * 移动骨架与 2 类前锋共用（入位→停留→冲锋，见 updateEnemyMovement beyondWing 兼容注释）
+     */
+    if (e.type === 'beyondWing_red') {
+      // 炽翼：四段循环（起点随机 e.pattern%4）——1圆 → 3圆 → 1长 → 3长；
+      // 3 枚段相邻夹角 20° 对称展开（-20/0/+20）依次出膛（volleyGap 0.12s）；长条弹 = 「普通长条射弹」同款（SHIP_BULLET_LEN/COLOR）伤害 14
+      const step = e.pattern % 4;
+      const bar = step >= 2;
+      const barOpts = { len: SHIP_BULLET_LEN, color: SHIP_BULLET_COLOR, dmg: BEYOND_WING.red.barDmg };
+      const shot = (ang, extra) => pushEBullet(e, ang, cfg.bulletSpeed, cfg, bar ? barOpts : (extra || {}));
+      if (step === 0 || step === 2) {
+        shot(Math.PI / 2);   // 单发段：垂直直射
+      } else {
+        // 3 枚段：相邻夹角 20°、依次出膛（中间 → 左 → 右，各延一拍 volleyGap 0.12s）
+        shot(Math.PI / 2);
+        for (const [i, s] of [[1, -1], [2, 1]]) {
+          const ang = Math.PI / 2 + s * (20 * Math.PI / 180);
+          e.scheduled.push({ t: i * BEYOND_WING.red.volleyGap, fn: () => shot(ang) });
+        }
+      }
+      e.pattern = (e.pattern + 1) % 4;
+      resetEnemyFireTimer(e, cfg);
+      return;
+    }
+    if (e.type === 'beyondWing_blue') {
+      // 奔雷：一轮攻击 = 依次射出 1/2/3 枚三轮（轮次间隔 0.5s，每轮发射瞬间重新锁定玩家瞬时位置）；
+      // 相邻夹角 35°：1 枚轮瞄准玩家位置 / 2 枚轮 ±17.5°（无瞄准弹）/ 3 枚轮 0/±35°；
+      // 加速圆弹：初速 200（注册表）→ accel 400 → 上限 400；样式 = 雷环子弹同款渐变圆、边缘红橙（grad）+ 短拖尾
+      const half = BEYOND_WING.blue.rowDeg * Math.PI / 360;   // 相邻夹角一半（17.5°）
+      const bo = {
+        accel: BEYOND_WING.blue.accel, maxSpeed: BEYOND_WING.blue.maxSpeed,
+        grad: true, color: '#ff8a5c',
+        trail: true, trailCol: '255, 138, 92', trailLife: 0.16,   // 短拖尾（红橙，同雷环 0.16s）
+      };
+      const fireRound = (r) => {
+        const aim = Math.atan2(player.y - e.y, player.x - e.x);
+        if (r === 0) pushEBullet(e, aim, cfg.bulletSpeed, cfg, bo);
+        else if (r === 1) {
+          pushEBullet(e, aim - half, cfg.bulletSpeed, cfg, bo);
+          pushEBullet(e, aim + half, cfg.bulletSpeed, cfg, bo);
+        } else {
+          pushEBullet(e, aim, cfg.bulletSpeed, cfg, bo);
+          pushEBullet(e, aim - 2 * half, cfg.bulletSpeed, cfg, bo);
+          pushEBullet(e, aim + 2 * half, cfg.bulletSpeed, cfg, bo);
+        }
+      };
+      fireRound(0);   // 首轮同帧
+      e.scheduled.push({ t: BEYOND_WING.blue.roundGap, fn: () => fireRound(1) });
+      e.scheduled.push({ t: 2 * BEYOND_WING.blue.roundGap, fn: () => fireRound(2) });
+      resetEnemyFireTimer(e, cfg);
+      return;
+    }
+    if (e.type === 'beyondWing_violet') {
+      // 织夜：朝玩家射快速长条弹（弹速 392 = 280×140% 注册表、每 1s 再加速 20% 指数 timeGrow、红色更浓）；
+      // 第 2 次攻击起每次固定追加 1 枚快弹（普通圆弹 280、伤害 8）朝上一次射击锁定的原位置快照，累计至多 3 枚后不再追加
+      e.bwShotN = (e.bwShotN || 0) + 1;
+      const lock = { x: player.x, y: player.y };   // 本次射击的原位置快照（供下一次攻击的快弹使用）
+      pushEBullet(e, Math.atan2(player.y - e.y, player.x - e.x), cfg.bulletSpeed, cfg, {
+        len: SHIP_BULLET_LEN, color: '#ff2e3e',   // 长条弹同款胶囊体、红色更浓
+        timeGrow: BEYOND_WING.violet.accelPerSec,   // 每 1s 弹速 ×1.2（08-entities 指数推进）
+      });
+      if (e.bwShotN >= 2 && (e.violetExtras || 0) < BEYOND_WING.violet.maxExtras) {
+        e.violetExtras = (e.violetExtras || 0) + 1;
+        const prev = e._violetPrevLock || lock;
+        pushEBullet(e, Math.atan2(prev.y - e.y, prev.x - e.x), BEYOND_WING.violet.quickSpeed, cfg, { dmg: BEYOND_WING.violet.quickDmg, r: 5 });
+      }
+      e._violetPrevLock = lock;
+      resetEnemyFireTimer(e, cfg);
+      return;
+    }
+    if (e.type === 'beyondWing_cyan') {
+      // 时流：攻击间隔三档随机 0.9/1.2/1.5s（每次攻击后重抽）→ 发射 (间隔÷0.3) 枚绿环支援弹（3/4/5 枚）；
+      // 分配：必含朝左/朝右水平直射各 1 枚；1 枚优先瞄准场上血量最高敌机（不含自身，无则随机方向）；其余 0~2 枚随机方向；
+      // 绿环弹：白芯亮绿边（grad 'ts'）、无拖尾、命中判定同青时屏障支援弹（support 通道——可命中敌机与我方全机身）：
+      //   命中敌机 → 该敌机下 n 次攻击间隔各 -0.3s（bwGapStacks 叠加、resetEnemyFireTimer 逐次消费）
+      //   命中我方机身 → 不受伤、+2s 时流状态（射速/弹速 +50%，08-entities/07-player 结算）
+      const iv = BEYOND_WING.cyan.ivs[(Math.random() * BEYOND_WING.cyan.ivs.length) | 0];
+      e.fireTimer = iv;
+      if ((e.bwGapStacks || 0) > 0) { e.fireTimer = Math.max(0.1, e.fireTimer - BEYOND_WING.cyan.gapReduce); e.bwGapStacks--; }
+      const n = Math.round(iv / 0.3);
+      const ro = { r: 7, support: true, supportKind: 'timeflow', grad: 'ts', color: '#45E0E8' };
+      pushEBullet(e, Math.PI, cfg.bulletSpeed, cfg, ro);      // 朝左水平直射
+      pushEBullet(e, 0, cfg.bulletSpeed, cfg, ro);            // 朝右水平直射
+      let aim = Math.random() * Math.PI * 2;
+      let best = null;
+      for (const o of enemies) {
+        if (o === e || o.dying || o.hp <= 0) continue;
+        if (!best || o.hp > best.hp) best = o;
+      }
+      if (best) aim = Math.atan2(best.y - e.y, best.x - e.x);
+      pushEBullet(e, aim, cfg.bulletSpeed, cfg, ro);
+      for (let k = 3; k < n; k++) pushEBullet(e, Math.random() * Math.PI * 2, cfg.bulletSpeed, cfg, ro);
+      return;
+    }
+    if (e.type === 'beyondWing_pink') {
+      // 浮梦：弧线拖尾弹——锁定自身-玩家连线方向上间距 80%~120% 的必经点 Q（可出屏），
+      // 初始方向与连线方向偏 25~60° 随机（左右各半），以恒速圆弧经过 Q（过点后转直线飞出）。
+      // 圆弧几何（S=出膛点、d0=初始方向）：以 d0 为轴 Q 的前向/侧向分量 a=Dq·cosθ、b=Dq·sinθ（θ 带符号）；
+      // 圆心 O = S + t·n（n 左法线）由 |OQ|=|OS| 解得 t = Dq²/(2b)，R=|t|，角速度 ω = -sign(t)·v/R（恒速圆弧），
+      // 总转角 φ = 2·atan2(|b|, a)（θ 25°~60° → φ 50°~120°）；08-entities 逐帧旋转速度向量、remain 用尽后转直线
+      const sx = e.x, sy = e.y + e.h / 2;
+      const D = Math.hypot(player.x - sx, player.y - sy) || 1;
+      const dir = Math.atan2(player.y - sy, player.x - sx);
+      const Dq = D * rand(BEYOND_WING.pink.distMin, BEYOND_WING.pink.distMax);
+      const th = rand(BEYOND_WING.pink.offMin, BEYOND_WING.pink.offMax) * Math.PI / 180 * (Math.random() < 0.5 ? 1 : -1);
+      const a = Dq * Math.cos(th), b = Dq * Math.sin(th);
+      const tC = Dq * Dq / (2 * b);   // b≠0 恒成立（|θ|≥25°）
+      const v = cfg.bulletSpeed;
+      pushEBullet(e, dir + th, v, cfg, {
+        x: sx, y: sy,
+        grad: 'fm', streak: 18, taper: true,   // 红橙主体+粉光外环（grad 具名风味）+ 锥状短拖尾
+        arcTurn: { om: -Math.sign(tC) * v / Math.abs(tC), remain: 2 * Math.atan2(Math.abs(b), a) },
+      });
+      resetEnemyFireTimer(e, cfg);
       return;
     }
     if (e.type === 'gunship') {
@@ -2979,6 +3117,9 @@
       taper: !!opts.taper,          // 拖尾锥状化标记（头宽尾尖三角填充；无标记走等宽线段——BOSS 大子弹 streak 不受影响）
       split: opts.split || null,    // 分裂弹配置（飞行一段→减速→分裂）
       support: !!opts.support,      // 青时战舰支援弹标记（命中加屏障、不造成伤害，见 08-entities；此前 opts.support 未透传导致整条屏障链路失效）
+      supportKind: opts.supportKind || null,   // 支援弹效果类型（2026-11-13 扩展）：null/'shield'=青时屏障（既有）；'timeflow'=时流绿环（超越艇·时流——命中敌机减攻击间隔叠层 / 命中我方 +时流 buff）
+      timeGrow: opts.timeGrow || 0, // 指数加速标记（织夜快速长条弹）：每 1s 弹速 ×此值（08-entities 逐帧推进）
+      arcTurn: opts.arcTurn || null, // 恒速圆弧段（浮梦必经点弹）：{ om, remain }——逐帧旋转速度向量，remain 用尽后转直线（08-entities 推进）
       weave: opts.weave || null,    // 蛇行弹配置 { amp, om, ph }（朝向绕 baseAng 正弦摆动、恒速前进，见 08-entities）
       baseAng: ang,                 // 出射基准角（蛇行摆动中心）
       age: 0,                       // 存在时长（蛇行相位推进用）
@@ -4596,10 +4737,12 @@
   //   稀有度——sponsor 90% 普通 + 10% 稀有 / sponsorDeluxe 必定稀有；同稀有度内从 01-config REWARD_ITEMS 等权抽 id
   //   （noDrop 标记排除「哦哦！抽卡！」——萧杨 16 颗原石专属技能，见 07-player noteGachaStone）；
   //   绷绷背包一局限得一次（bengbagGot 过滤）；2026-10-01 改版：道具槽已取消——抽中即直接生效
-  //   （07-player applyRewardItem：效果结算 + 机体前方道具图标/扩散波特效），图鉴文案见 13-encyclopedia「道具」页签
+  //   （07-player applyRewardItem：效果结算 + 机体前方道具图标/扩散波特效），图鉴文案见 13-encyclopedia「道具」页签；
+  //   牢大特饮手机端不产出（TOUCH_DEVICE 过滤，docs/手机模式设计.md §7.1 移动端内容差异；作弊键发放同口径门控在 14-main）
   function grantRewardItem(kind, x, y) {
     const rarity = kind === 'sponsorDeluxe' ? 'rare' : (Math.random() < 0.9 ? 'normal' : 'rare');
-    const pool = Object.values(REWARD_ITEMS).filter(it => it.rarity === rarity && !it.noDrop && !(it.id === 'bengbag' && state.bengbagGot));
+    const pool = Object.values(REWARD_ITEMS).filter(it => it.rarity === rarity && !it.noDrop && !(it.id === 'bengbag' && state.bengbagGot)
+      && !(it.id === 'laodaDrink' && TOUCH_DEVICE));
     if (pool.length === 0) return;
     const it = pool[(Math.random() * pool.length) | 0];
     if (it.id === 'bengbag') state.bengbagGot = true;
@@ -5319,6 +5462,25 @@
       const v = e._sideVel || { vx: 0, vy: 60 };
       const cfg = ENEMY_TYPES.side;
       pushEBullet(e, Math.atan2(v.vy, v.vx), cfg.bulletSpeed, cfg, { x: e.x, y: e.y });
+    }
+    // 超越艇亡语（2C，2026-11-13 实装；置于消弹之后同上移序口径、词条禁用 4:good:3 下停发）：
+    //   时流：击坠时朝随机方向直射一枚绿环射弹（同款支援弹，命中判定照常——命中我方同样给时流 buff）；
+    //   织夜：4% 概率（真我/诗篇 6%）立刻攻击一次（快速长条弹 + 追加未封顶时的快弹，朝玩家当前位置）；
+    //   奔雷：1% 概率在击坠位置召唤一次风暴编织者同款雷霆轰击（立即落雷口径，见 05-boss fireStormStrikeAt）；炽翼/浮梦无亡语
+    if (e.type && e.type.startsWith('beyondWing_') && !affixHas('4:good:3')) {
+      const cfg = ENEMY_TYPES[e.type];
+      if (e.type === 'beyondWing_cyan') {
+        pushEBullet(e, Math.random() * Math.PI * 2, cfg.bulletSpeed, cfg, { r: 7, support: true, supportKind: 'timeflow', grad: 'ts', color: '#45E0E8' });
+      } else if (e.type === 'beyondWing_violet') {
+        if (Math.random() < (isHardTier() ? 0.06 : 0.04)) {
+          pushEBullet(e, Math.atan2(player.y - e.y, player.x - e.x), cfg.bulletSpeed, cfg, { len: SHIP_BULLET_LEN, color: '#ff2e3e', timeGrow: BEYOND_WING.violet.accelPerSec });
+          if ((e.violetExtras || 0) < BEYOND_WING.violet.maxExtras) {
+            pushEBullet(e, Math.atan2(player.y - e.y, player.x - e.x), BEYOND_WING.violet.quickSpeed, cfg, { dmg: BEYOND_WING.violet.quickDmg, r: 5 });
+          }
+        }
+      } else if (e.type === 'beyondWing_blue') {
+        if (Math.random() < 0.01) fireStormStrikeAt(e.x, e.y);
+      }
     }
     // ── 词条挂点（击坠类，2026-11-09 实装；置于亡语弹之后，天然豁免同击消弹，同上移序口径）──
     // 长歌级 4:good:2：击坠敌人时 40% 概率立刻消除其残留在场上的所有弹幕（owner 定向清弹）
