@@ -1,0 +1,22 @@
+.opencode/skills/infinity-fighter/SKILL.md
+  h_345b78e95cbc59 129
+README.md
+  h_345b78e95cbc59 3,194,239
+docs/手机模式设计.md
+  h_345b78e95cbc59 3
+index.html
+  h_345b78e95cbc59 149
+package.json
+  h_345b78e95cbc59 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4f116ebb200b68295ed60cbdda170f4d68d48e3",
+  "prompts": {},
+  "humans": {
+    "h_345b78e95cbc59": {
+      "author": "aegis.wang <aegis.wang@ly.com>"
+    }
+  }
+}
