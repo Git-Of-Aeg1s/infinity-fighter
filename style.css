@@ -1,3 +1,17 @@
+/* BOSS 警报书法字体（2026-11-16 用户定稿：志莽行书替代华文行楷）：
+   华文行楷为随 Windows/Office 分发的商业字体不可嵌入分发，手机端亦普遍缺失（Android 连楷体链都没有，
+   警报直接掉到 serif 系统字体完全失去书法风格）。志莽行书为 Google Fonts OFL 开源授权（可商用可分发），
+   笔势最接近行楷。此处仅内嵌警报专用子集（警告/WARNING/Lv.数字/八大 BOSS 名共 30 字符，26.7KB woff2，
+   由 fonts.googleapis.com text 参数子集化生成），canvas 端由 11-draw-boss 顶层 document.fonts.load
+   预加载（canvas 不触发 CSS 字体自动加载），就绪后 alarmFont 优先走本字体 */
+@font-face {
+  font-family: 'Zhi Mang Xing';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./assets/fonts/zhi-mang-xing-alarm.woff2') format('woff2');
+}
+
 :root {
   --bg-deep: #05070f;
   --bg-panel: rgba(12, 18, 34, 0.72);
@@ -1220,9 +1234,19 @@ canvas#game {
 }
 
 /* 装备框内的 ∞（洄）：字形小、墨水顶边比 ◈/⛨ 等大字形低约 5px，视觉锚定偏下——
-   在基准 top 46.8px 基础上再上移 2px 补偿（仅装备框；卡片/图鉴排版不同不适用） */
-.loadout-armor-glyph.glyph-sym {
+   在基准 top 46.8px 基础上再上移 2px 补偿（仅装备框；卡片/图鉴排版不同不适用）。
+   2026-11-16 C 方案矢量化后同款补偿适用 SVG 版（双环 svg 高 0.64em，墨水中心与 Corbel 字形相近）：
+   .glyph-svg 与 .glyph-sym 共用此 top；SVG 路径挂 .glyph-svg，字符回退路径挂 .glyph-sym */
+.loadout-armor-glyph.glyph-sym,
+.loadout-armor-glyph.glyph-svg {
   top: 44.8px;
+}
+
+/* 数值图鉴「护甲」页标题内的 ∞ 矢量图标：.glyph-svg svg 默认 block+margin auto 是卡片居中布局，
+   标题行内 span 中必须改行内排版（inline-block + 基线微调），否则 h4 标题被换行破坏 */
+.info-wave-card h4 .glyph-svg svg {
+  display: inline-block;
+  vertical-align: -0.06em;
 }
 
 /* ---------- 装备选择面板：展开时覆盖演示屏区域 ---------- */

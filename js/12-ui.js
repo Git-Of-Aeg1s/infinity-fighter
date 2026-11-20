@@ -3,11 +3,11 @@
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
   // 被依赖：07-player(1 名) 13-encyclopedia(1 名) 14-main(14 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
-  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeT, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx, tianxiuDebugSpam, tianxiuDebugSpamT, dagouDebugRapid, dagouMissT}（后 4 个 = 调试菜单开关条目，原 14-main 分支平移——2026-11-09）  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
+  //   state.{bombs, challenge, crystalMagnetMul, demo, flash, hasteT, hurt, lives, mode, orangeBombUsed, paused, score, shakeMag, shakeTime, testBoss, time, victoryOverlay, laodaT, laodaMul, magnetBonus, swordStormT, swordStormAcc, frostField, bombCapAdd, bengbagGot, jiukeDodgePct, gachaFx, gachaStones, gachaReady, itemPickFx, tianxiuDebugSpam, tianxiuDebugSpamT, dagouDebugRapid, dagouMissT}（后 4 个 = 调试菜单开关条目，原 14-main 分支平移——2026-11-09）  levelFlow.{capitalIdleT, douzhiSkipOnce, hpKitWaveCd, jiaoxiang13Done, level, lowPressureT, prevLevel, poemClearNext, poemClearT, poemWaveIdx, spawnTimer}  bossFlow.{defeatedName, pending, phase, postDelay, postWaveT, stage, timer, victoryDelay, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive } from './01-config-loadout.js';
-  import { affixBerserkDurView, affixHas, affixModalOpen, affixOwnedEntries, openWenjiukeOpening, queueAffixSelection, resetAffixRunState, wenjiukeDebuffEntries, wenjiukeOpeningOpen } from './03b-affix.js';
+  import { ARMOR_SKILLS, crystalShieldDur, dagouWaveIv, ARMORS, BERSERK, BULWARK, PILOTS, PLANES, PLAYER_CFG, SHIELD_DURATION, SUB_WEAPONS, TXC, WINGMEN_CFG, armorMaxHp, currentArmor, currentPilotMain, currentPilotSub, currentPlane, currentSubWeapon, currentWingman, hasPilot, pilotBombStartAdd, setArmor, setPilotMain, setPilotSub, setPlane, setSubWeapon, setWingman, specialGearActive, txcActive } from './01-config-loadout.js';
+  import { affixBerserkDurView, affixHas, affixModalOpen, affixOwnedEntries, openJiukeOpening, jiukeOpeningOpen, openWenjiukeOpening, queueAffixSelection, resetAffixRunState, wenjiukeDebuffEntries, wenjiukeOpeningOpen } from './03b-affix.js';
   import { BEYOND_WING, DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
@@ -15,9 +15,9 @@
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements, resetAchievements } from './02-achievements.js';
   import { resetSpawnWaveState } from './04-spawn.js';
-  import { currentBombCap, debugForceGacha, debugSetWeapon, debugToggleInvuln, delayedShots, initWingmen } from './07-player.js';
-  import { berserkBursts, bombBursts, shieldBurst } from './08-entities.js';
-  import { paintShip, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark } from './09a-draw-loadout.js';
+  import { currentBombCap, debugForceGacha, debugSetWeapon, debugToggleInvuln, delayedShots, initWingmen, txcResetRuntime } from './07-player.js';
+  import { berserkBursts, bombBursts, shieldBurst, tisuRings } from './08-entities.js';
+  import { paintShip, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark, paintWingmanTianSuo } from './09a-draw-loadout.js';
   import { encyReturnAvailable, openEncyclopedia } from './13-encyclopedia.js';
 
 
@@ -59,7 +59,9 @@
     // 上限每秒回 2 时轨道随之变宽复原。宽度用 **px** 而非百分比：.hp-row 处于内容收缩布局
     //（原靠 .hp-bar 固定 180px 撑宽），子项 width:100% 会反向依赖行宽造成循环塌缩
     //（实机复现：整行缩到 20px、血条 2px 不可见）——首帧捕获 CSS 基准宽后按比例缩放
-    const maxFull = armorMaxHp() || PLAYER_CFG.maxHp;
+    // 天秀混沌王子（2026-11-17 用户定稿实装）：血量固定 8000 —— 轨道宽按 8000 满宽（armorMaxHp 基准
+    // 会让 8000/140 比例溢出钳制成满宽，无功能问题但语义错位；特判按 TXC.maxHp 满宽展示）
+    const maxFull = txcActive() ? TXC.maxHp : (armorMaxHp() || PLAYER_CFG.maxHp);
     if (_hudTrackBase == null) _hudTrackBase = hpBar.offsetWidth || 180;   // 首帧捕获（写内联宽前测量，style.css 固定 180px；offsetWidth = 布局像素，不受舞台 transform 缩放污染；DOM 桩测出 0 时回退）
     const trackW = (Math.round(clamp(maxHp / maxFull, 0, 1) * _hudTrackBase * 100) / 100) + 'px';
     if (trackW !== _hudTrackW) { hpBar.style.width = trackW; _hudTrackW = trackW; }
@@ -225,6 +227,8 @@
     state.time = 0;
     state.hasteT = 0;       // 斗志昂扬增益（攻速/弹速翻倍）剩余时长
     state.timeflowT = 0;    // 时流状态（超越艇·时流绿环命中我方，射速/弹速 +50%）剩余时长重开归零
+    state.paralyzeT = 0;    // 麻痹状态（雷霆之怒雷电光环：禁移动/禁主动技能/攻击间隔翻倍）剩余时长重开归零
+    state.blackSunStacks = 0;   // 黑日诛星舰强化层数缓存（每帧 updateEnemies 重算，重开归零防残留）
     state.affixTartCd = 0; state.affixFreezeHits = 0; state.affixFreezeDmg = 0;   // 词条域：大蛋挞冷却 / 冰封计数重开归零
     player.affixBzSpecial = false; player.affixBzBase = 0; player.affixBzKits = 0;   // 词条（0:good:5）无敌暴走快照重开清零
     // 奖励道具效果状态归位（道具槽已取消——击坠立即生效；07-player applyRewardItem 置位 / updateRewardFx 推进）
@@ -234,7 +238,7 @@
     state.frostField = null;
     state.blackhole = null;   // 群星之扉黑洞区域随重开清空（跨局残留会冻结在旧位置持续吞弹/烧敌）
     state.bombCapAdd = 0; state.bengbagGot = false;
-    state.jiukeT = 0; state.jiukeDodgePct = 0;
+    state.jiukeDodgePct = 0;
     state.itemPickFx.length = 0;
     state.xgLooseBombs.length = 0;   // 辛国栋击毁残留的地毯轰炸落点预警（对局重开清空）
     state.gachaFx = null;
@@ -359,6 +363,7 @@
     state.demo = false;   // 离开/进入任何局：关闭主菜单攻击演示标记（由 updateDemo 在 idle 重新置位）
     shieldBurst.active = false;
     bombBursts.length = 0;         // 高能爆弹震荡波列表随重开清空（多道并存）
+    tisuRings.length = 0;          // 时流天梭发射环列表随重开清空
     berserkBursts.length = 0;      // 暴走冲击波列表随重开清空（多道并存；主菜单演示中途开局时可能仍存留）
     crystalBursts.length = 0;      // 结晶护盾解除冲击波列表随重开清空（多道并存）
     bulwarkBurst.active = false;   // 最终壁垒免死金环随重开熄灭
@@ -404,8 +409,10 @@
       player.y = CANVAS_H - 90;
       player.enterT = 0;
     }
-    player.maxHp = armorMaxHp();   // 当前装甲下的每条命最大 HP（复合装甲 +40）
+    player.maxHp = txcActive() ? TXC.maxHp : armorMaxHp();   // 当前装甲下的每条命最大 HP（复合装甲 +40）；天秀混沌王子：固定 8000（无视装甲 maxHpAdd——用户定稿）
     player.hp = player.maxHp;
+    state.txcSpeedMul = 1;   // 天秀混沌王子：移速乘区回基准（updateRewardFx 指数逼近重新到位——速度曲线铁律）
+    txcResetRuntime();   // 天秀混沌王子运行态复位：普通攻击状态机 / 折线光束冷却 / 四定时技能置首轮冷却 / 光束数组清空
     player.cooldown = 0;
     player.subCooldown = 0;   // 副武器冷却归零（此处统一复位）
     state.dagouDebugRapid = false;    // 作弊键 9（叮咚鸡导弹连发）离开游戏后默认关闭，新局需重新按 9 开启（用户 2026-10-02 指定）
@@ -418,10 +425,11 @@
     player.invuln = state.pilotDashT > 0 ? state.pilotDashT : 1.0;   // 许凯狗：开局无敌覆盖整个冲刺阶段（不闪动）
     player.invulnBlink = false;   // 开局无敌不闪动：清掉上一局残留的受击闪动标记（登场/重生无敌保持机体完整可见）
     player.alive = true;
-    player.weapon = (state.testBoss || state.challenge) ? 4 : (currentPlane.startWeapon || 1);   // BOSS 试炼 / 图鉴挑战：默认火力 Lv4
-    // 捣蛋来袭 / 辛国栋之怒：开局不立即射击——首射前先等待一个完整攻击间隔（按当前火力等级取参）
+    player.weapon = txcActive() ? 1 : (state.testBoss || state.challenge) ? 4 : (currentPlane.startWeapon || 1);   // BOSS 试炼 / 图鉴挑战：默认火力 Lv4；天秀混沌王子：不受火力等级影响恒 1（占位）
+    // 捣蛋来袭 / 辛国栋之怒：开局不立即射击——首射前先等待一个完整攻击间隔（按当前火力等级取参）；
+    // 天秀混沌王子：副武器选择失效，不做首射等待
     const subFire0 = currentSubWeapon.fire;
-    if (subFire0 && (subFire0.kind === 'daodan' || subFire0.kind === 'xinring')) {
+    if (!txcActive() && subFire0 && (subFire0.kind === 'daodan' || subFire0.kind === 'xinring')) {
       player.subCooldown = (subFire0.levels[player.weapon] || subFire0.levels[1]).interval;
     }
     player.berserkBanner = 0;
@@ -431,8 +439,9 @@
     player.hitFxT = 0;
     player.slashCd = 0; player.slashTarget = null; player.slashSideT = null; player.slashQueue = []; player.slashPrevDeg = null; player.slashGapT = 0;   // 群星之杀斩击运行态重置
     player.berserkSpread = 0;   // 暴走刃帆变形进度归零（否则上一局暴走中返回主界面，主菜单演示会残留金光/光点）
-    // 磁力装甲：开局自带量子护盾（仅开局，重生不带）
-    player.shield = (currentArmor.startShield || 0);
+    // 磁力装甲：开局自带量子护盾（仅开局，重生不带）；天秀混沌王子：无法获得任何护盾效果（用户定稿），
+    // 装甲 startShield 不授予（开局被动通道，不属于「拾取」故不触发随机冷却归零）
+    player.shield = txcActive() ? 0 : (currentArmor.startShield || 0);
 
     if (autoStart) {
       state.mode = 'playing';
@@ -461,6 +470,11 @@
     // BOSS 试炼 / 图鉴挑战同样生效（温酒客效果重做无难度豁免口径）
     if (autoStart && currentPilotMain.id === 'wenjiuke') {
       openWenjiukeOpening(true);
+    }
+    // 酒客之王开局六对词条覆盖层（2026-11-17 用户定稿）：同温酒客口径——仅真正开局且主槽酒客之王时弹出；
+    // 六对已在 openJiukeOpening 内抽签登记生效（03b-affix grantJiukePairs），确认后恢复主循环
+    if (autoStart && currentPilotMain.id === 'jiukewang') {
+      openJiukeOpening(true);
     }
   }
 
@@ -531,7 +545,7 @@
     const pilotVal = document.getElementById('loadoutPilotVal');
     if (planeVal) planeVal.textContent = currentPlane.name;
     if (armorVal) armorVal.textContent = currentArmor.name;
-    if (subVal) subVal.textContent = currentSubWeapon.name;
+    if (subVal) subVal.textContent = currentSubWeapon.name;   // 天秀混沌王子：战机/副武器/僚机选择失效（2026-11-17 用户定稿）——摘要不标注（2026-11-18 用户反馈：选项卡不要出现「天秀混沌王子」字样）
     // 驾驶员菱形框摘要：主驾驶员名 + 副驾驶员名（副行为空则只显示主；有简称 short 的显示简称，悬停提示仍用全名）
     const pilotDiamond = document.querySelector('.pilot-diamond');
     const pilotSubVal = document.getElementById('loadoutPilotSubVal');
@@ -548,9 +562,14 @@
     // 装甲名正下方的半透明图标（绝对定位，不挤动文字）：随当前装甲同步图案与颜色
     const armorGlyph = document.getElementById('loadoutArmorGlyph');
     if (armorGlyph) {
-      armorGlyph.textContent = currentArmor.glyph;
+      if (currentArmor.iconSvg) {
+        armorGlyph.classList.add('glyph-svg');   // 矢量图标（洄 ∞ 双环，2026-11-16 C 方案矢量化）：currentColor 继承注册色 + drop-shadow 辉光
+        armorGlyph.innerHTML = typeof currentArmor.iconSvg === 'function' ? currentArmor.iconSvg() : currentArmor.iconSvg;
+      } else {
+        armorGlyph.textContent = currentArmor.glyph;
+        armorGlyph.classList.toggle('glyph-sym', !!currentArmor.sym);   // ∞（洄）字形回退路径：换 Corbel 修左右不对称（iconSvg 注入失败 / 桩环境）
+      }
       armorGlyph.style.color = currentArmor.color;
-      armorGlyph.classList.toggle('glyph-sym', !!currentArmor.sym);   // ∞（洄）字形换 Corbel 修左右不对称
     }
     // 副武器名正下方的框内图标（同装甲框图案：绝对定位在空区居中，不挤动文字）：随当前副武器同步图案与颜色
     // 无界飞剑等带 glyphTransform/glyphBold 的字形与选择卡片同款应用（CSS 基准 translateX(-50%) 必须保留，切换时回退复位）
@@ -878,6 +897,34 @@
       aura.addColorStop(1, 'rgba(190, 150, 255, 0)');
       c.fillStyle = aura;
       c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
+    } else if (wm.weapon && wm.weapon.kind === 'shuttle') {
+      // 时流天梭：时计环发射座（静态帧，环相位冻结）；舱体中心即本地原点，直落画布中心
+      const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
+      fg.addColorStop(0, 'rgba(224, 242, 255, 0.95)');
+      fg.addColorStop(0.5, 'rgba(140, 200, 255, 0.65)');
+      fg.addColorStop(1, 'rgba(80, 150, 235, 0)');
+      c.fillStyle = fg;
+      c.beginPath();
+      c.moveTo(-3, 8);
+      c.lineTo(0, 8 + 14 + 5);
+      c.lineTo(3, 8);
+      c.closePath();
+      c.fill();
+      // 暴走内芯（静态帧）：白蓝内焰（能量脊过载色——与游戏内 drawWingmen 时流天梭分支同款）
+      c.fillStyle = 'rgba(224, 244, 255, 0.95)';
+      c.beginPath();
+      c.moveTo(-2, 8);
+      c.lineTo(0, 8 + 14 * 0.66);
+      c.lineTo(2, 8);
+      c.closePath();
+      c.fill();
+      paintWingmanTianSuo(c, 1, true, 1.7, true);   // 与游戏内僚机同一造型（still 冻结环体/光珠相位）
+      // 暴走状态（静态帧，强度对齐游戏内 pulse 峰值）：机体辉光（时计环过载）——白蓝系光晕
+      const aura = c.createRadialGradient(0, -1, 2, 0, -1, 17);
+      aura.addColorStop(0, 'rgba(180, 220, 255, 0.55)');
+      aura.addColorStop(1, 'rgba(180, 220, 255, 0)');
+      c.fillStyle = aura;
+      c.beginPath(); c.arc(0, -1, 17, 0, Math.PI * 2); c.fill();
     } else {
       if (wm.scale != null && wm.scale !== 1) c.scale(wm.scale, wm.scale);   // 时空允诺整体尺寸系数（与游戏内 drawWingmen 同源 ×1.045）
       const fg = c.createLinearGradient(0, 8, 0, 8 + 14 + 5);
@@ -949,7 +996,7 @@
       desc.innerHTML = wm.desc;
       card.append(name, desc);
       card.addEventListener('click', () => {
-        if (wm.placeholder) return;   // 占位僚机：不可选中（currentWingman 永不指向占位条目）
+        if (wm.placeholder || txcActive()) return;   // 占位僚机不可选中；天秀混沌王子：僚机选择失效（点击不生效，2026-11-17 用户定稿）
         setWingman(wm);
         wingmanGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.wingman === wm.id));
@@ -1008,7 +1055,7 @@
         card.append(cvs, name, desc);
       }
       card.addEventListener('click', () => {
-        if (p.placeholder) return;   // 占位战机：不可选中（currentPlane 永不指向占位条目）
+        if (p.placeholder || txcActive()) return;   // 占位战机不可选中；天秀混沌王子：战机选择失效（点击不生效，2026-11-17 用户定稿）
         setPlane(p);
         planeGrid.querySelectorAll('.plane-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.plane === p.id));
@@ -1176,6 +1223,7 @@
   function togglePause() {
     if (affixModalOpen()) return;   // 词条选择界面开启期间禁用暂停/恢复（避免选择中误触 P / Start 解除冻结）
     if (wenjiukeOpeningOpen()) return;   // 温酒客开局确认模态同口径禁用（确认前冻结主循环，P/Start 不应穿透）
+    if (jiukeOpeningOpen()) return;   // 酒客之王开局词条覆盖层同口径禁用（2026-11-17 新增）
     if (debugMenuOpen()) return;   // 调试菜单开启期间同口径禁用（面板覆盖暂停页，P/Start 先关面板再操作——防暂停态切换后面板动作条目置灰态失真）
     state.paused = !state.paused;
     if (state.paused) {
@@ -1241,8 +1289,13 @@
         + (a.placeholder ? ' placeholder' : '');   // placeholder = 占位装备：灰阶降透明展示、不可选中（style.css .placeholder）
       card.dataset.armor = a.id;
       const glyph = document.createElement('div');
-      glyph.className = 'armor-card-glyph' + (a.sym ? ' glyph-sym' : '');
-      glyph.textContent = a.glyph;
+      if (a.iconSvg) {
+        glyph.className = 'armor-card-glyph glyph-svg';   // 矢量图标（洄 ∞ 双环，2026-11-16 C 方案矢量化）
+        glyph.innerHTML = typeof a.iconSvg === 'function' ? a.iconSvg() : a.iconSvg;
+      } else {
+        glyph.className = 'armor-card-glyph' + (a.sym ? ' glyph-sym' : '');
+        glyph.textContent = a.glyph;
+      }
       glyph.style.color = a.color;
       const name = document.createElement('div');
       name.className = 'armor-card-name';
@@ -1292,7 +1345,7 @@
       desc.innerHTML = w.brief || w.desc;   // 卡片用简短文案（brief）；详细数值见数值与机制图鉴「副武器」页
       card.append(glyph, name, desc);
       card.addEventListener('click', () => {
-        if (w.placeholder) return;   // 占位副武器：不可选中（currentSubWeapon 永不指向占位条目）
+        if (w.placeholder || txcActive()) return;   // 占位副武器不可选中；天秀混沌王子：副武器选择失效（点击不生效，2026-11-17 用户定稿）
         setSubWeapon(w);
         subGrid.querySelectorAll('.armor-card').forEach(el =>
           el.classList.toggle('selected', el.dataset.sub === w.id));
@@ -1352,6 +1405,7 @@
           setPilotSub(p);
           if (currentPilotMain.id === p.id) setPilotMain(PILOTS.none);
         }
+        initWingmen();   // 主驾驶员切换后重挂僚机（2026-11-18 用户反馈）：切出天秀混沌王子时僚机曾被清空且无人重建——统一在此重建（txc 门控内部：仍为天秀则保持清空）
         buildPilotCards();   // 重渲染两侧网格的选中态（简单可靠）
         refreshLoadout();    // 菱形框摘要同步
       });

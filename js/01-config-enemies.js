@@ -1,7 +1,7 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 战舰变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(2 名) 04-spawn(44 名) 05-boss(5 名) 06-enemy(43 名) 07-player(4 名) 08-entities(8 名) 09b-draw-enemies(25 名) 10-draw-world(7 名) 11-draw-boss(1 名) 12-ui(2 名) 13-encyclopedia(12 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(2 名) 04-spawn(46 名) 05-boss(5 名) 06-enemy(46 名) 07-player(5 名) 08-entities(9 名) 09b-draw-enemies(25 名) 10-draw-world(9 名) 11-draw-boss(1 名) 12-ui(2 名) 13-encyclopedia(14 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
@@ -16,6 +16,8 @@
     hanshuang: 3, weilong: 3, yu4: 3, anvil: 3, baoling: 3, jiaoxiang: 3, fashiA2: 3,
     capital: 4, fashiArray: 4, warMatrix: 4,
     guiltGrail: 4,   // 愧悔魂灵圣杯（4D，2026-11-10 实装）：4 类体格光环承伤体
+    starSlayer_darkSun: 4, starSlayer_whiteNight: 4, starSlayer_violetMoon: 4,   // 诛星舰三变体（4C，2026-11-16 用户定稿实装）：独立 type（三舰行为互异，非变体机制——超越艇五独立键先例）
+    thunderWrath: 4,   // 雷霆之怒（4C，2026-11-16 用户定稿实装）：战争矩阵体格的雷电光环机
     // 诗篇新敌占位（wip）：按其设计类别归入（黑暗之手四精英在 PILOTS.mei.elites 单独按 4 类计并 ×4）
     popianU: 2, sponsor: 2, sponsorDeluxe: 2,
     baolingG: 3, pulseMatrix: 3, unreal: 3, stasisUnreal: 3, cocoonDream: 3,
@@ -371,6 +373,50 @@
       w: 98, h: 72, hp: 4200, score: 1400, color: '#ffd24a', drawScale: 1.28,   // 金黄渐变流动机体；2026-10-01 用户定稿整体缩小 25%（碰撞盒与绘制比例同 ×0.75，视觉/判定比例不变）；分数 1400（2026-10-13 用户定稿 1300→1400，总表待同步）
       bulletSpeed: 138, bulletR: 5, bulletDmg: 10, crashDmg: 40,   // bulletSpeed=技能3弹幕弹速（2026-10-03 用户定稿 +25% 110.4→138，回到 -20% 前基准）；bulletDmg=弹幕每发伤害；入场冲撞走 WAR_GHOST.entryDmg 50
       fireInterval: [1e9, 1e9],   // 攻击逻辑在专属状态机内处理（技能循环），不走通用开火
+    },
+    // —— 4C 诛星舰三变体（2026-11-16 用户定稿实装，原 11-13 占位批次转正）：各个主力舰形状基准上的改型 ——
+    // 大小/碰撞盒同主力舰 192×134（drawScale 2.0）；仅顶部居中入场（不能侧翼）、停留位同主力舰（hoverY 140）；
+    // 速度 = 主力舰 ×1.2（spawn 传 opts.speedMul，入场初速/巡航/离场在 06-enemy 舰家族移动分支统一乘算）；
+    // hp 5000 / 诗篇 10500（POEM_HP 绝对覆盖）；击坠分数与水晶 1/1（待定占位）；
+    // 碰撞伤害 = 主力舰 48 × 120% = 57.6；攻击节奏框架已定（首攻 1.2~2.0s / 攻击间隔 2.2~2.6s——
+    // updateEnemyFire 占位分支直接 return，弹幕内容待技能设计批次，本批次不发射）；
+    // 归属怪物种类及权重待定，不入常规刷怪池（图鉴挑战 / 波次测试召唤）。
+    // 变体特殊能力（机制见 06-enemy killEnemy 亡语区与 updateEnemies 黑日层）：
+    //   黑日：场上所有白色/黑色敌人（enemyColorTags 含 white/black——标记由各敌人批次登记，本机标签 ['black']）
+    //         速度/加速度 +20%、攻击力 +25%，至多叠加 2 层（场上每台黑日诛星舰 1 层，state.blackSunStacks 缓存）；
+    //   白夜：被击坠时立刻召唤 3 个白影侧翼艇朝自身坠落位置直飞离场——360° 任意边界入场（可从底部）、
+    //         有先后顺序快速接连入场（间隔 0.18s），50% 同一位置入场 / 50% 不同位置（标签 ['white']）；
+    //   紫月：被击坠前（死亡结算瞬间）使自身 125px（诗篇 150px）范围内所有敌人（包括自身）立刻向下
+    //         发射一枚紫电侧翼艇同款亡语射弹（pushEBullet 朝下、ENEMY_TYPES.side 弹参数）（标签 ['purple']）
+    starSlayer_darkSun: {   // 黑日诛星舰：黑曜舰体 + 炽红日环（视觉见 10-draw-world starSlayer 饰件层；配色 STARS_SLAYER_PALETTE.darkSun）
+      w: 192, h: 134, hp: 5000, score: 1, color: '#2b1a20', drawScale: 2.0,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 57.6,
+      firstFire: [1.2, 2.0], fireInterval: [2.2, 2.6],   // 攻击节奏框架（占位不发射——弹幕内容待技能设计批次）
+    },
+    starSlayer_whiteNight: {   // 白夜诛星舰：月白银蓝舰体 + 冷光饰带（配色 STARS_SLAYER_PALETTE.whiteNight）
+      w: 192, h: 134, hp: 5000, score: 1, color: '#c9d6ea', drawScale: 2.0,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 57.6,
+      firstFire: [1.2, 2.0], fireInterval: [2.2, 2.6],
+    },
+    starSlayer_violetMoon: {   // 紫月诛星舰：深紫舰体 + 紫月牙环（配色 STARS_SLAYER_PALETTE.violetMoon）
+      w: 192, h: 134, hp: 5000, score: 1, color: '#6d3fc0', drawScale: 2.0,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 57.6,
+      firstFire: [1.2, 2.0], fireInterval: [2.2, 2.6],
+    },
+    // 雷霆之怒（4C，2026-11-16 用户定稿实装）：战争矩阵体格的蓝色雷霆光环机——大小/碰撞盒同战争矩阵
+    // 124×72（drawScale 1）；仅顶部居中入场（不能侧翼）、停留位 50% 屏高（水平居中，主力舰同款小幅摆动）；
+    // 速度 = 主力舰 ×1.6（spawn 传 opts.speedMul 统一乘算）；hp 3000 / 诗篇 7000；分数与水晶 1/1（待定占位）；
+    // 碰撞伤害 = 战争矩阵 50 × 120% = 60；攻击节奏框架已定（首攻 1.0~1.6s / 攻击间隔 1.6~2.2s——
+    // updateEnemyFire 占位分支直接 return，弹幕内容待技能设计批次，本批次不发射）；
+    // 形象待定（本批次暂以战争矩阵体格改蓝的临时绘制，后续批次定稿）；归属权重待定不入常规池（图鉴挑战召唤）。
+    // 特殊能力雷电光环（参数见 THUNDER）：周身 125px 光环——经过的敌方射弹&光束弹速 +20%、伤害 +2（诗篇 4）、
+    // 附蓝色电光特效且命中我方麻痹 0.5s（对自身射弹同样生效）；光环对进入的我方战机每 0.4s 造成 20 伤害
+    // （enemyDmgMul 乘区）并麻痹 0.1s（不触发无敌帧）。麻痹：无法移动、无法释放主动技能（自动释放也算；
+    // 爆弹除外），攻击间隔翻倍（state.paralyzeT，见 02-core 归域与 07-player 消费）
+    thunderWrath: {
+      w: 124, h: 72, hp: 3000, score: 1, color: '#4d9fff', drawScale: 1,
+      bulletSpeed: 230, bulletR: 5, bulletDmg: 0, crashDmg: 60,
+      firstFire: [1.0, 1.6], fireInterval: [1.6, 2.2],   // 攻击节奏框架（占位不发射——弹幕内容待技能设计批次）
     },
     // 特殊3类：脉冲矩阵 —— 三座法术矩阵菱形「骑边拼合」成等边三角形（长对角线各骑一条边、中心=边中点，
     // 6 个长轴端点两两重合于三角形顶点）+ 中央暗红核心；五档充能张合（纯视觉：闭合→全开露核心按攻击周期循环）；
@@ -1356,6 +1402,33 @@
     transferSplashMul: 0.8,  // 转移的非强力范围伤害（群星之杀斩击 / 捣蛋来袭爆炸）×0.8（减少 20%）
   };
 
+  // 4C 诛星舰三变体参数（2026-11-16 用户定稿实装；ENEMY_TYPES.starSlayer_* 条目、机制见 06-enemy）
+  const STARS_SLAYER = {
+    speedMul: 1.2,          // 速度 = 主力舰 ×1.2（spawn 传 opts.speedMul，入场初速/巡航/离场统一乘算）
+    darkSunSpdMul: 1.2,     // 黑日每层：白色/黑色敌人速度、加速度 +20%（乘算叠加，2 层 ×1.44）
+    darkSunDmgMul: 1.25,    // 黑日每层：白色/黑色敌人攻击力 +25%（乘算叠加，2 层 ×1.5625）
+    darkSunStacksMax: 2,    // 至多叠加 2 层（场上每台黑日诛星舰 1 层，state.blackSunStacks 每帧缓存）
+    whiteNightMinions: 3,   // 白夜亡语：召唤白影侧翼艇数量
+    whiteNightGap: 0.18,    // 白夜亡语：白影接连入场间隔（s，快速接连非同时）
+    whiteNightSpeed: 200,   // 白夜亡语白影飞行速度模长（快速档 SIDE_SPEED_FAST 同值——360° 直线穿越直至离场）
+    violetMoonR: 125,       // 紫月亡语范围半径（px）
+    violetMoonRPoem: 150,   // 紫月亡语范围半径 · 诗篇
+  };
+
+  // 雷霆之怒雷电光环参数（2026-11-16 用户定稿实装；ENEMY_TYPES.thunderWrath 条目，机制见 06-enemy / 08-entities）
+  const THUNDER = {
+    speedMul: 1.6,        // 速度 = 主力舰 ×1.6（spawn 传 opts.speedMul，入场初速/巡航/离场统一乘算）
+    holdYPct: 0.5,        // 停留位置：50% 屏高（2026-11-16 用户定稿；水平居中主力舰同款小幅摆动）
+    auraR: 125,           // 光环半径（px，2026-11-16 用户定稿）：对敌弹加成判定与对我方 tick 伤害判定同径
+    auraTick: 0.4,        // 光环对我方 tick 间隔（s）：进入光环即刻第一跳，此后每 0.4s 一跳
+    tickDmg: 20,          // 光环对我方 tick 伤害（enemyDmgMul 乘区；不触发无敌帧——damagePlayer noInvulnGrant）
+    tickParalyze: 0.1,    // 光环 tick 麻痹时长（s）
+    bulletSpdMul: 1.2,    // 过光环敌方射弹&光束：弹速 +20%（一次性，沿当前方向加速；光束生长速率同步 ×1.2）
+    bulletDmgAdd: 2,      // 过光环敌方射弹&光束：伤害 +2（基础弹）
+    bulletDmgAddPoem: 4,  // 过光环敌方射弹&光束：伤害 +4（诗篇，isPoem 硬分支）
+    hitParalyze: 0.5,     // 电光弹命中我方麻痹时长（s）
+  };
+
   // 2类（突击艇）前锋停留线：位于 3/4 类悬停高度（y≈110~170）的前方（更靠下），凸显其前锋定位
   const STRIKER_HOLD_Y = 210;
 
@@ -1481,6 +1554,14 @@
     crgold:  { dark: '#5e3a06', base: '#ff9a1a', light: '#ffe2a8', accent: '#ffd166', glow: '#ffaa22' },   // 赤金：橙黄舰体 + 金色饰带/双环
   };
 
+  // 4C 诛星舰三变体精细化配色（2026-11-16 实装；主力舰同规格五键——舰体暗→亮渐变 + 专属强调色/辉光；
+  // 游戏内绘制消费见 10-draw-world starSlayer 分支，测试3 方案页同源取色）
+  const STARS_SLAYER_PALETTE = {
+    darkSun:     { dark: '#141014', base: '#2e1c24', light: '#573038', accent: '#ff4632', glow: '#ff3355' },   // 黑日：黑曜舰体 + 炽红日环/日冕光弧
+    whiteNight:  { dark: '#39496b', base: '#c9d6ea', light: '#f4f8ff', accent: '#7ce7ff', glow: '#9fc4ff' },   // 白夜：月白银蓝舰体 + 冷光饰带/月白翼光
+    violetMoon:  { dark: '#241040', base: '#6d3fc0', light: '#c9a6ff', accent: '#b57bff', glow: '#8b5cf6' },   // 紫月：深紫舰体 + 紫月牙环/紫色电纹
+  };
+
   // 3类战舰精细化配色（按变体区分：舰体暗→亮渐变 + 专属强调色/辉光，与 4 类涂装同规格）
   const GUNSHIP_PALETTE = {
     violet:  { dark: '#3b1a63', base: '#c084fc', light: '#e9d5ff', accent: '#7ce7ff', glow: '#a855f7' },
@@ -1547,6 +1628,7 @@
     FASHI_A1, FASHI_A2, POPIAN, POPIAN_U, VOYAGER, COLLAPSE,
     WAR_GHOST, ELITES, ZHANGZHANG, FASHI_MATRIX,
     PULSE_MATRIX, FASHI_ARRAY, WAR_MATRIX, GUILT_GRAIL, STRIKER_HOLD_Y, STRIKER_FORTRESS,
+    STARS_SLAYER, STARS_SLAYER_PALETTE, THUNDER,
     SHIP_ENTRY, STRIKER_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
     BEYOND_WING,

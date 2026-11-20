@@ -1,7 +1,7 @@
 // 01-config-core：画布 / 演示屏坐标 / 星空 / 全部图片素材、加载器与贴图处理（配置域群叶子）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-loadout(7 名) 01-config-enemies(1 名) 01-config-difficulty(2 名) 02-core(3 名) 03b-affix(2 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09a-draw-loadout(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
+  // 被依赖：01-config-loadout(8 名) 01-config-enemies(1 名) 01-config-difficulty(2 名) 02-core(3 名) 03b-affix(2 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(2 名) 07-player(4 名) 08-entities(2 名) 09a-draw-loadout(3 名) 10-draw-world(11 名) 11-draw-boss(16 名) 12-ui(2 名) 13-encyclopedia(6 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
 
@@ -41,7 +41,7 @@
   let lightningImg = null;
   const lightningLoader = new Image();
   lightningLoader.onload = () => { lightningImg = lightningLoader; };
-  lightningLoader.src = 'assets/lightning-1.png';
+  lightningLoader.src = 'assets/lightning-1.webp';
   let lightningImgAlt = null;
   const lightningLoaderAlt = new Image();
   lightningLoaderAlt.onload = () => { lightningImgAlt = lightningLoaderAlt; };
@@ -77,7 +77,7 @@
   let scytheImg = null;
   const scytheLoader = new Image();
   scytheLoader.onload = () => { scytheImg = scytheLoader; };
-  scytheLoader.src = 'assets/scythe_transparent.png';
+  scytheLoader.src = 'assets/scythe_transparent.webp';
 
   // 黑暗之手 BOSS 与四精英形象（透明底人物图）：图鉴预览专用（13-encyclopedia drawEncyPreview wip 分支）；
   // 实体技能未实装，游戏内仍为白色方块占位（WIP_PLACEHOLDER_TYPES）；异步预加载，未加载时图鉴回退白色方块
@@ -113,26 +113,27 @@
     }
     return { x: (Math.random() * 2 - 1) * 0.14, y: (Math.random() * 2 - 1) * 0.36 };
   }
-  darkhandLoader.src = 'assets/darkhand_transparent.png';
+  darkhandLoader.src = 'assets/darkhand_transparent.webp';
   let puxuefengImg = null;
   const puxuefengLoader = new Image();
   puxuefengLoader.onload = () => { puxuefengImg = puxuefengLoader; };
-  puxuefengLoader.src = 'assets/piaoxuefeng_transparent.png';   // 素材文件名为 piaoxuefeng（朴姓读 Piáo），代码键名为 puxuefeng
+  puxuefengLoader.src = 'assets/piaoxuefeng_transparent.webp';   // 素材文件名为 piaoxuefeng（朴姓读 Piáo），代码键名为 puxuefeng
   let hanxixianImg = null;
   const hanxixianLoader = new Image();
   hanxixianLoader.onload = () => { hanxixianImg = hanxixianLoader; };
-  hanxixianLoader.src = 'assets/hanxixian_transparent.png';
+  hanxixianLoader.src = 'assets/hanxixian_transparent.webp';
   let xiayongImg = null;
   const xiayongLoader = new Image();
   xiayongLoader.onload = () => { xiayongImg = xiayongLoader; };
-  xiayongLoader.src = 'assets/xiayong_transparent.png';
+  xiayongLoader.src = 'assets/xiayong_transparent.webp';
   let xinguodongImg = null;
   const xinguodongLoader = new Image();
   xinguodongLoader.onload = () => { xinguodongImg = xinguodongLoader; };
-  xinguodongLoader.src = 'assets/xinguodong_transparent.png';
+  xinguodongLoader.src = 'assets/xinguodong_transparent.webp';
 
-  // 黑暗之手弹幕贴图：素材库水彩风格蛋挞（tart_round_transparent.png 1024×1024 / tart_strip_transparent.png
-  // 长条版 / tart_ultra_long_transparent.png 1964×200 超长版）——加载完成后绘制到离屏 canvas 做「绿幕抠绿」烘焙
+  // 黑暗之手弹幕贴图：素材库水彩风格蛋挞（tart_round_transparent.webp / tart_strip_transparent.webp
+  // 长条版 / tart_ultra_long_transparent.webp 超长版；2026-11-16 由 PNG 转 webp q85——手机端 GitHub Pages
+  // 大图加载慢导致贴图缺失，体积 18.3MB → 4.0MB）——加载完成后绘制到离屏 canvas 做「绿幕抠绿」烘焙
   //（绿色占优度 → alpha 软阈值渐变，边缘不生硬），产出透明底 tartImg / tartStripImg / tartUltraImg
   // 供 10-draw-world / 11-draw-boss 蛋挞弹分支贴图；未加载/烘焙失败时回退常规渐变弹渲染。
   // （仅游戏运行域内 getImageData：本作经本地服务器运行，file:// 直开会因 ES modules 先行失败，无污染风险）
@@ -158,11 +159,11 @@
     loader.src = src;
   }
   let tartImg = null;
-  bakeGreenTart('assets/tart_round_transparent.png', img => { tartImg = img; });
+  bakeGreenTart('assets/tart_round_transparent.webp', img => { tartImg = img; });
   let tartStripImg = null;
-  bakeGreenTart('assets/tart_strip_transparent.png', img => { tartStripImg = img; });
+  bakeGreenTart('assets/tart_strip_transparent.webp', img => { tartStripImg = img; });
   let tartUltraImg = null;
-  bakeGreenTart('assets/tart_ultra_long_transparent.png', img => { tartUltraImg = img; });   // 超长蛋挞（1964×200，黑暗之手技能4 爪翼毁灭蛋挞，2026-10-08）
+  bakeGreenTart('assets/tart_ultra_long_transparent.webp', img => { tartUltraImg = img; });   // 超长蛋挞（黑暗之手技能4 爪翼毁灭蛋挞，2026-10-08）
 
   // ---------- 副武器系统：注册表与参数 ----------
   // 副武器是主机体直接挂载的第二种武器（区别于僚机的独立机体）：主菜单选择、整场战斗生效，
@@ -261,6 +262,17 @@
   // 注册表键序 = 主菜单卡片展示顺序（none 除外，不展示）：
   //   主槽：叮咚鸡 / 许凯狗 / 埃逸 / 可莉 / 哈基米大王 / 马兴犬 / 温酒客 / 胡笛客
   //   副槽：小艺 / 大无垠之王 / 迪奥 / 天秀忧郁王子 / 炼金璃 / 依 / 大狗 / 萧杨
+  // 洄「∞ 双环」矢量图标（iconSvg）：内联 SVG 字符串——currentColor 继承注册色（#39C5BB），
+  // 辉光由 .glyph-svg 的 drop-shadow 提供。**2026-11-16 C 方案矢量化**（用户定稿）：原 ∞ 走 .glyph-sym
+  // 字符字形（Corbel 校准双环重叠率 0.958），但 Corbel / Segoe UI Symbol 在手机端均不存在 → 回退系统
+  // 字体导致双环比例失准 + 位置补偿（top 44.8px）失效；SVG 双环几何对称 100% 一致，跨端像素级稳定。
+  // glyph 字符与 .glyph-sym 类保留作字形回退（桩环境 / SVG 注入异常时），渲染分支见 12-ui / 13-encyclopedia
+  function huiRingsSvg() {
+    return '<svg viewBox="-21 -10 42 20" style="width:1.35em;height:0.64em" xmlns="http://www.w3.org/2000/svg">'
+      + '<g fill="none" stroke="currentColor" stroke-width="2.5">'
+      + '<circle cx="-9.7" r="8.6"/><circle cx="9.7" r="8.6"/></g></svg>';
+  }
+
   // 迪奥「彼岸花」矢量图标（iconSvg）：内联 SVG 字符串——currentColor 继承注册色，
   // 辉光由 .glyph-svg 的 drop-shadow 提供（渲染点：主菜单驾驶员卡片 / 数值图鉴「驾驶员」页标题）。
   function higanbanaSvg() {
@@ -308,5 +320,5 @@
     xiayongImg, xiayongLoader, xinguodongImg, xinguodongLoader,
     bakeGreenTart, tartImg, tartStripImg, tartUltraImg,
     subGradSeq, flameRingSvg, dogMissileSvg, polarStarSvg,
-    swordSvg, rainDropSvg, higanbanaSvg, meiGlyphSvg, STAR_COUNT,
+    swordSvg, rainDropSvg, higanbanaSvg, huiRingsSvg, meiGlyphSvg, STAR_COUNT,
   };

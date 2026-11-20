@@ -1,10 +1,10 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 03b-affix(7 名) 04-spawn(2 名) 05-boss(3 名) 06-enemy(6 名) 07-player(26 名) 08-entities(10 名) 09a-draw-loadout(6 名) 10-draw-world(3 名) 12-ui(28 名) 13-encyclopedia(13 名) 14-main(5 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 03b-affix(7 名) 04-spawn(2 名) 05-boss(4 名) 06-enemy(10 名) 07-player(29 名) 08-entities(14 名) 09a-draw-loadout(8 名) 10-draw-world(4 名) 12-ui(30 名) 13-encyclopedia(13 名) 14-main(5 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
-  import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, polarStarSvg, rainDropSvg, swordSvg } from './01-config-core.js';
+  import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, huiRingsSvg, polarStarSvg, rainDropSvg, swordSvg } from './01-config-core.js';
 
 
 
@@ -22,7 +22,7 @@
     enterDur: 0.8,       // 主菜单开局飞入时长：从演示屏站位 smoothstep 滑向出战位（期间操控锁定，主炮照常）
     magnetRadius: 150,   // 水晶吸附半径（基础值，2026-10-12 用户定稿 132→150；击败旧日之歌后另乘 crystalMagnetMul 1.5 → 225）
     hitRadius: 4,        // 判定点半径：仅机身中心小点被击中才算命中
-    hitOffsetY: 4,       // 判定点下移偏移（与白点视觉位置一致）
+    hitOffsetY: -14,     // 判定点纵向偏移：与座舱视觉核心统一同位 (0, -14)（2026-11-17 用户定稿「判定点应当跟核心保持同一位置」，原 +4 与核心错位 18px；全机型核心统一落位见 09a SHIP_CORE_Y 注释；全部受击/瞄准消费点走本常量）
   };
 
   // 火力 5 级：直射窄弹道，射线数递增；Lv4 为 5 射线 + 半拍后于中间补射 2 发（视觉错开，不增宽）
@@ -125,11 +125,13 @@
       halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
       brief: '受伤时概率使该次伤害减半',
       desc: '受到伤害时 30% 概率伤害减半<br>单次伤害 &gt;40 时概率提升到 60%' },
-    hui:      { id: 'hui', name: '洄', glyph: '∞', color: '#39C5BB', sym: true,   // sym：∞ 字形换 Corbel 渲染（Segoe UI 下右环偏大）
-      regenInterval: 2, regenHp: 1,   // 恢复间隔（s）/ 每次恢复量
-      bossKillLostPct: 0.35,            // 击败 BOSS：回复 35% 已损失生命
-      brief: '缓慢回复血量击败BOSS回血',
-      desc: '每 2 秒恢复 1 生命<br>击败 BOSS 时回复 35% 已损失生命' },
+    hui:      { id: 'hui', name: '时流之洄', glyph: '∞', color: '#39C5BB', sym: true, iconSvg: huiRingsSvg, timeflowSeries: true,   // iconSvg：∞ 双环矢量化（2026-11-16 C 方案——Corbel/Segoe UI Symbol 手机缺失致字形失准，SVG 双环几何对称跨端稳定）；sym/glyph 字符保留作 .glyph-sym 字形回退（Corbel 链）；
+      // 2026-11-17 用户定稿改版：原「洄」更名「时流之洄」；周期回复 2s/1HP → 3s/2HP；原 bossKillLostPct「击败 BOSS 回复 35% 已损失」删除——
+      // 由时流套装取代（timeflowSeriesCount ≥3 即三件全带：装甲时流之洄 + 副武器时流之雨 + 僚机时流天梭 → 击败 BOSS 立刻恢复全部生命，
+      // 消费点 06-enemy BOSS 击坠结算）；与小艺的一切联动删除（原 60% 取代口径 / 回血道具 +5% 均作废）
+      regenInterval: 3, regenHp: 2,   // 恢复间隔（s）/ 每次恢复量
+      brief: '缓慢回复血量集齐时流套装BOSS后满血',
+      desc: '每 3 秒恢复 2 生命<br>携带至少 3 件时流装备（自身计入——装甲时流之洄 / 副武器时流之雨 / 僚机时流天梭）时：<br>击败 BOSS 时立刻恢复全部生命' },
     lanxin:   { id: 'lanxin', name: '七日澜心', glyph: '❀', color: '#FFC0CB',
       brief: '收集水晶以充能结晶护盾，按F释放',
       desc: '收集水晶填充左下角量表（按角度）<br>首轮 BOSS 掉落的水晶对量表收益 +700%<br>BOSS 战期间击杀敌人直接充能 1%~3%<br>按 F 触发：结晶护盾环绕自身 <b>4s</b><br>（量子护盾样式+晶体网格，护盾期间量表停计；<br>装备炼金璃延长至 <b>5.2s</b>）<br>消失时清除周围 250px 内所有敌弹并发出小范围冲击波' },
@@ -149,7 +151,7 @@
       desc: '触发暴走时 22.5% 概率获得量子护盾<br>暴走续时也判定一次<br>BOSS 战中概率提升到 40%<br>（每个 BOSS 限一次）<br>护盾时长 <b>4s</b>（与暴走时长一致）' },
     chixin:   { id: 'chixin', name: '炽心', glyph: '❂', color: '#ff7a18',
       burnR: 108, burnDmg: 10, burnInterval: 0.125,   // 火环半径 / 每跳伤害 / 灼烧间隔（s）
-      burnTagMul: 1.5,   // 灰色 / 黑色标记敌人（enemyColorTags 含 'gray'/'black'：灰黑系特殊无人机/炮兵、幽暮与黑色 BOSS）灼烧增伤倍率
+      burnTagMul: 1.5,   // 黑色标记敌人（enemyColorTags 含 'gray'/'black'；2026-11-16 九色定稿后现役仅 black——幽暮/坍缩构造体/炮火先兆者×3/四精英与张华&张策/黑暗之手/旧日之歌含黑/黑日诛星舰）灼烧增伤倍率
       brief: '战机周身围绕火环，灼烧接近的敌人',
       desc: '自身环绕焦香同款火环（半径 108，淡）<br>免疫焦香火环伤害与寒霜减速<br>火环灼烧周围敌人：每 0.125s 10 伤害<br>对灰 / 黑标记敌人伤害 +50%' },
     standard: { id: 'standard', name: '标准护甲', glyph: '▣', color: '#9aa7b8', noEffect: true,
@@ -183,6 +185,14 @@
   function starsSeriesCount() {
     return [currentPlane, currentArmor, currentPilotMain, currentPilotSub, currentWingman, currentSubWeapon]
       .filter(x => x && x.starsSeries).length;
+  }
+
+  // 时流系列套装计数（2026-11-17 用户定稿）：当前装备中带 timeflowSeries 标记的件数——
+  // 现役三件 = 装甲时流之洄（原「洄」）+ 副武器时流之雨 + 僚机时流天梭；计数 ≥3（即三件全带）时
+  // 时流之洄获得「击败 BOSS 立刻恢复全部生命」额外效果（消费点 06-enemy BOSS 击坠结算）
+  function timeflowSeriesCount() {
+    return [currentPlane, currentArmor, currentPilotMain, currentPilotSub, currentWingman, currentSubWeapon]
+      .filter(x => x && x.timeflowSeries).length;
   }
 
   // 装甲技能（量表型，按 F 触发；后续新技能在此注册，逻辑见 07-player triggerArmorSkill）：
@@ -326,6 +336,7 @@
       weapon: {
         kind: 'beam',
         r: 5,                    // 光束路径判定半宽（scanJiyeBeam x 相交判定）
+        shieldKeep: 0.35,        // 次数盾保留比例（2026-11-17 用户定稿：破盾消耗当前剩余伤害的 65%、35% 继续结算敌人本体且光束继续穿透）
         levels: {
           1: { interval: 3.0, dmg: 315 },   // 双僚机 DPS 2×315/3 = 210
           2: { interval: 2.9, dmg: 348 },   // 双僚机 DPS 2×348/2.9 = 240
@@ -353,11 +364,11 @@
         aimFrac: 0.4,            // 常规瞄准高度：玩家正上方 +40% 屏高（2026-11-13 用户定稿由 +50% 下移）
         burstGap: 0.08,          // 暴走三连射相邻两发间隔（s）——「快速连射」口径（fan staggerGap 0.05 / volley volleyGap 0.11 居中）
         levels: {
-          1: { interval: 2.4, dmg: 240 },      // 双僚机 DPS 200
-          2: { interval: 2.3, dmg: 264 },      // 双僚机 DPS 229.6（显示 230）
-          3: { interval: 2.2, dmg: 286 },      // 双僚机 DPS 260
-          4: { interval: 2.0, dmg: 300 },      // 双僚机 DPS 300
-          5: { interval: 1.0, dmg: 128.89, aimFracs: [0.5, 0.4, 0.3] },   // 暴走三连射：瞄准 +50%/+40%/+30% 屏高（2026-11-13 用户定稿由 +60/+50/+40 下移）；DPS = 6×128.89×1.5/1.16 = 1000
+          1: { interval: 2.4, dmg: 216 },      // 双僚机 DPS 180（2026-11-17 用户定稿抹平档）
+          2: { interval: 2.3, dmg: 241.5 },    // 双僚机 DPS 210
+          3: { interval: 2.2, dmg: 264 },      // 双僚机 DPS 240
+          4: { interval: 2.0, dmg: 280 },      // 双僚机 DPS 280
+          5: { interval: 1.0, dmg: 118.58, aimFracs: [0.5, 0.4, 0.3] },   // 暴走三连射：瞄准 +50%/+40%/+30% 屏高（2026-11-13 用户定稿由 +60/+50/+40 下移）；DPS = 6×118.58×1.5/1.16 = 920
         },
       },
     },
@@ -389,11 +400,61 @@
         speedAccel: 700,  // 追踪段沿当前方向加速率（px/s²，速度大小连续逼近上限）
         r: 4.2, len: 15,  // 判定半宽 / 绘制全长（水滴）
         levels: {
-          1: { interval: 2.7, dmg: 42, count: 6 },   // 双僚机 DPS 186.7（显示 187）
-          2: { interval: 2.6, dmg: 47, count: 6 },   // 双僚机 DPS 216.9（显示 217）
-          3: { interval: 2.5, dmg: 51, count: 6 },   // 双僚机 DPS 244.8（显示 245）
-          4: { interval: 2.4, dmg: 56, count: 6 },   // 双僚机 DPS 280
-          5: { interval: 1.2, dmg: 46, count: 8 },   // 暴走 8 发：DPS = 2×8×46/1.2×1.5 = 920
+          1: { interval: 2.7, dmg: 45, count: 6 },    // 双僚机 DPS 200（2026-11-17 用户定稿抹平档）
+          2: { interval: 2.6, dmg: 47.67, count: 6 }, // 双僚机 DPS 220
+          3: { interval: 2.5, dmg: 52.08, count: 6 }, // 双僚机 DPS 250
+          4: { interval: 2.4, dmg: 58, count: 6 },    // 双僚机 DPS 290
+          5: { interval: 1.2, dmg: 47.5, count: 8 },  // 暴走 8 发：DPS = 2×8×47.5/1.2×1.5 = 950
+        },
+      },
+    },
+
+    // ── 时流天梭（2026-11-17 实装）：左右僚机每 interval 秒各发射一颗贯穿天梭弹（kind: 'shuttle'）——
+    //   · 发射瞬间随机分工锁定（07-player fireTisuBolt）：一侧僚机瞄准「当前血量最高敌人」（2026-11-17 用户定稿口径）、
+    //     另一侧瞄准「敌人密度最高处」（densityR 半径内邻居最多者，瞄准其位置）——发射瞬间锁位直线不追踪（同彻月口径）；
+    //   · 弹体状态机（08-entities tisu 区）：fly 极速飞向瞄准点 → 过冲 100~120% 距离（每次冲刺独立随机，
+    //     全向钳制距屏缘 ≥edgeMargin——「不会离场或太靠近边缘」）→ 指数刹车刹停（k=dampK，≈0.2s 平滑刹停——速度曲线铁律）→
+    //     hold 停止 holdT 秒（悬停/转向武装解除不结算伤害）→ turn 快速转向（turnRate rad/s 角度积分）随机敌人
+    //     （1 类敌人权重 lowGradeWeight 极低、其余 1；两僚机各自独立随机——瞄准未必同一目标）→ dash 贯穿射出——
+    //     常规（Lv1~4）单发直出离场；暴走（Lv5）除末段外 dash 过冲后再次 stop（停止-再射逻辑 ×stops 次），
+    //     末段贯穿离场；每段冲刺独立命中集（同一敌人可被同一颗弹的多段冲刺各伤害一次）；
+    //   · 专属机制（2026-11-17 三次定稿）：无视吸收型屏障直扣机体——屏障通道 e.barrier（青时支援/夏勇技能/
+    //     黄金壁垒词条已统一并入单通道）不吸收直扣；次数盾 chargeShield 挡本次伤害（本体不受伤）但弹体继续贯穿不销毁
+    //     （次数盾语义=伤害吸收券，同彻月/长枪口径）、虚化照常相位免疫（phase>0 碰撞候选过滤）；
+    //     对「当前带屏障」敌人每颗弹首次伤害 ×2（tisuBonus Set 跨段只翻倍一次）；
+    //   · 装备联动（恒定生效）：自身所有伤害 ×selfDmgMul（1.5，08-entities 结算点乘入）；副武器所有伤害 ×subPenaltyMul
+    //     （0.5，07-player wingSubPenaltyMul() 在各副武器伤害结算点乘入——不再陵落 llSword 属奖励道具不算副武器）；
+    //   · 暴走全局修正照僚机体系：射速 ÷subRateMul（2s → 1.333s 实际发射间隔——不门控、多颗天梭可同时在场上叠加穿行）、
+    //     弹速 ×subSpdMul（1500 → 2250）；
+    //   DPS（图鉴口径，双僚机合计，列实际值=含自身 ×1.5 联动；2026-11-17 用户定稿抹平档——彻月/时流天梭同档）：
+    //     常规 = 2 僚机/2s × 2 伤害段 × dmg × 1.5 = 3×dmg = 180/210/240/280；
+    //     暴走 = 2×(subRateMul/interval) 颗/s × 5 伤害段 × dmg × 1.5 = 11.25×dmg = 920
+    tianSuo: {
+      id: 'tianSuo', name: '时流天梭', timeflowSeries: true,   // 时流系列装备（timeflowSeries 计入 timeflowSeriesCount——时流之洄三件套之一，2026-11-17 用户定稿）
+      desc: '时隙穿梭，两段贯阵',
+      offsetX: 46, offsetY: 16,   // 后侧站位（同僚机通用参数值）
+      // 时计环发射座（09a paintWingmanTianSuo 绘制）：横置纺锤梭体（靛蓝舱体+天蓝能量脊）+ 中段黄铜刻度环缓转
+      //（12 刻度）+ 环上蓝白时标光珠；发射瞬间环体加速充能；暴走环体速转、光珠金白化
+      barTail: '#2b4fd8', barMid: '#4d9fff', barHead: '#bfe6ff',   // 尾深蓝 → 中天蓝 → 头淡白蓝
+      flame: '#7ecbff',
+      weapon: {
+        kind: 'shuttle',
+        dashSpeed: 1500,          // 冲刺弹速（「几乎极速」——高于彻月 1280；暴走 ×subSpdMul = 2250）
+        turnRate: 14,             // 转向角速度（rad/s，≈0.22s 转 180°——角度积分平滑）
+        dampK: 12,                // 末段指数刹车逼近率（速度 = 剩距×k，≈0.2s 平滑刹停；初段 v=dashSpeed 无缝衔接——brakeR = dashSpeed/k）
+        edgeMargin: 36,           // 停止点全向距屏缘最小距离（「不会离场或者太靠近边缘」）
+        overshootMin: 1.0, overshootMax: 1.2,   // 过冲距离系数区间（每次冲刺独立随机 ×100~120%）
+        densityR: 110,            // 密度判定半径（邻居最多者即密度最高处）
+        lowGradeWeight: 0.15,     // 再瞄随机权重：1 类敌人极低优先级（其余权重 1）
+        len: 40, r: 6,            // 弹体长 / 判定半宽（蓝色锥状天梭）
+        selfDmgMul: 1.5,          // 装备期间自身所有伤害 ×1.5（08-entities 结算点消费）
+        subPenaltyMul: 0.5,       // 装备期间副武器所有伤害 ×0.5（07-player wingSubPenaltyMul 消费——副武器伤害结算点挂乘区）
+        levels: {
+          1: { interval: 2.0, dmg: 60, stops: 1, hold: 0.8 },      // 图鉴 DPS（实际值）= 3×60 = 180（2026-11-17 用户定稿抹平档）
+          2: { interval: 2.0, dmg: 70, stops: 1, hold: 0.8 },      // 图鉴 DPS 210
+          3: { interval: 2.0, dmg: 80, stops: 1, hold: 0.8 },      // 图鉴 DPS 240
+          4: { interval: 2.0, dmg: 93.33, stops: 1, hold: 0.8 },   // 图鉴 DPS 280
+          5: { interval: 2.0, dmg: 81.78, stops: 4, hold: 0.5 },   // 暴走：停止-再射 ×4（末段离场）、停止 0.5s、2s 间隔叠加不门控；图鉴 DPS 11.25×81.78 = 920
         },
       },
     },
@@ -521,7 +582,7 @@
       },
     },
     shiliuRain: {
-      id: 'shiliuRain', name: '时流之雨', glyph: '☂', iconSvg: rainDropSvg(), color: '#dceeff',   // iconSvg = 雨滴矢量（2026-11-11 按用户射弹形象转绘：半圆头朝上 + 尾端收尖 + 双侧水蒸气雾点，待用户审定）；glyph ☂ 保留作字形回退（占位 ◇ 随实装作废）
+      id: 'shiliuRain', name: '时流之雨', glyph: '☂', iconSvg: rainDropSvg(), color: '#dceeff', timeflowSeries: true,   // 时流系列装备（timeflowSeries 计入 timeflowSeriesCount——时流之洄三件套之一，2026-11-17 用户定稿）；iconSvg = 雨滴矢量（2026-11-11 按用户射弹形象转绘：半圆头朝上 + 尾端收尖 + 双侧水蒸气雾点，待用户审定）；glyph ☂ 保留作字形回退（占位 ◇ 随实装作废）
       brief: '发射弯曲雨弹<br>吸收道具与水晶',
       desc: '机体左右两个发射口各射出 <b>4</b> 条雨弹（共 8 条）<br>最靠两侧的先发出，随后依次向内（左右两两同序）<br>各弹自带朝本侧的初始横向速度（4 条自外向内依次减小）<br>横向速度逐帧指数衰减归零——弹道由斜升渐弯为竖直<br>弹体为普通长条弹 <b>×2.5</b> 长的透明雨滴<br>（白色半圆头 + 周身水蒸气雾气）<br>射弹<b>触碰道具</b>：玩家直接获得该道具效果——<br>·升级 / 暴走 / 量子护盾 / 结晶护盾改为在剩余时长上<b>增加对应时长</b>（突破常规重置式上限）<br>·回血道具<b>超出生命上限的部分转为等额屏障</b>（非永久，随伤害消耗、持续 10s）<br>射弹周身 <b>40px</b> 范围吸收水晶（等同拾取结算）<br>命中敌人：其<b>下一次攻击间隔 +0.3s</b><br>（每一轮射弹对同一敌人仅触发一次，对 BOSS 同样生效）<br>伤害较低——约为无界飞剑的四成（见下方对比表格）',
       fire: {
@@ -641,35 +702,15 @@
       desc: '胡笛客卑鄙无耻。<br>没有任何效果。',
     },
 
-    // ── 东坤蝰（2026-10-17 用户定稿实装）：暴走强化型主驾驶员——
-    //    berserkDurAdd 暴走时长延长（s；全部触发/续时赋值统一走 berserkDuration() 入口）/ 
-    //    berserkDmgCut 暴走期间受到的伤害降低（消费点 07-player damagePlayer 驾驶员乘区段，player.berserk > 0 判定）。
-    //    𓆙 埃及圣书体眼镜蛇象形（U+13199，完整立蛇形象；Win10+ Segoe UI Historic 支持——2026-10-17 用户授权选形）；
-    //    #b57bee 毒紫；brief/desc = 用户给定原文
-    dongkun: {
-      id: 'dongkun', name: '东坤蝰', glyph: '𓆙', color: '#b57bee', slot: 'main',
-      berserkDurAdd: 0.8, berserkDmgCut: 0.2,
-      brief: '暴走时间增长<br>暴走时有减伤',
-      desc: '暴走时间增长<br>暴走时有减伤',
-    },
-    // ── 龚粥（2026-10-17 用户定稿实装）：道具改造型主驾驶员——
-    //    shieldHealPct 量子护盾道具替换为回血道具的回血量（×生命上限）：
-    //    生成层替换（08-entities spawnPowerup：shield → hp + healPct 标记于道具对象，场上出现即回血外观），
-    //    回血结算（08-entities applyPowerupPickup 'hp' 分支：p.healPct ?? HP_KIT_HEAL_PCT）；
-    //    小艺+洄连携（回血道具额外 +5%）同在该分支叠加。♨ 温泉符号（一碗热粥冒热气意象，2026-10-17 用户授权选形）；
-    //    #e6b960 粥米黄；brief/desc = 用户给定原文
-    gongzhou: {
-      id: 'gongzhou', name: '龚粥', glyph: '♨', color: '#e6b960', slot: 'main',
-      shieldHealPct: 0.20,
-      brief: '所有量子护盾变为加血道具，但恢复效果减弱',
-      desc: '所有量子护盾变为加血道具，但恢复效果减弱',
-    },
+    // ── 东坤蝰 / 龚粥：已删除（2026-11-18 用户定稿——README v0.4.5 词条页配套设计「技能移入词条池」的
+    //    批次处理落地：词条 81 个已全部实装（2026-11-17 审计 AFFIX_UNIMPLEMENTED 清空），本体随之移除；
+    //    暴走时长/暴走减伤/护盾转回血效果由对应词条承接）
     xiaoyi: {
       id: 'xiaoyi', name: '小艺', glyph: '❁', color: '#8ce36b', slot: 'sub', default: true,
       pickupHealPct: 0.05, pickupHealPctLow: 0.10, pickupHealHpGateLow: 40,   // 拾取回复（×最大生命）/ 低血阈值（任意血量拾取回 5%——2026-10-12 用户定稿取消 60 门槛；低于 40 改回 10%；水晶不算）
-      huiBossHealPct: 0.60,   // 与洄连携：击败 BOSS 立刻恢复 60% 生命（取代洄自身 35% 已损失口径）
-      brief: '拾取回血，可与洄联动',
-      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 5% 生命；<br>血量低于 40 时改为恢复 10% 生命<br>同时装备护甲「洄」时：<br>击败 BOSS 后立刻恢复 60% 生命（取代洄的 35% 已损失）<br>回血道具额外回复 5% 生命（与龚粥叠加为 25%）',
+      // 与护甲「洄」的一切联动已删除（2026-11-17 用户定稿：原 huiBossHealPct 0.60 BOSS 击坠取代口径 / 回血道具 +5% 均作废）
+      brief: '拾取回血',
+      desc: '小艺拥有森灵之力。拾取任意道具（水晶不算）恢复 5% 生命；<br>血量低于 40 时改为恢复 10% 生命',
     },
     king: {
       id: 'king', name: '大无垠之王', glyph: '♛', color: '#ffffff', slot: 'sub',   // ♛ 三尖王冠保留（⚔ 试行弃用），颜色 #ffd166 → 白色
@@ -715,6 +756,7 @@
       // 击杀计数条（左下角可见）：counterMax 上限；killGain 击杀 1/2/3/4/5 类敌人的计数增量（5 类 = BOSS，
       // 2026-10-10 用户定稿：击杀 BOSS 不再加计数）；
       // bossKillMul BOSS 战期间击杀计数倍率；eliteKillMul 击败黑暗之手四精英的倍率（替换 BOSS 战 ×2）；
+      // eliteFloorPct BOSS 战击杀四精英的充能置底比例（2026-11-17 用户定稿：≤80% 置于 80%）；
       // poemKillMul 诗篇难度击杀充能乘率；elites 四精英类型清单；bossTickGain BOSS 战每秒自然增加的计数；
       // 镰刀清扫（充满自动召唤，无需按键）：刀柄贴身绕转、刀刃扫至外圈——
       // scytheGripR 刀柄轨迹半径（刀柄绕机体公转的贴身距离，起扫时刀柄位于 scytheStart 方位 = 正左）/
@@ -728,16 +770,17 @@
       // （见 10-draw-world drawMeiScythes 锚点注释）：杆轴水平朝外、握把贴机体、刃尖达 scytheR 外圈，
       // 尺寸由锚点决定；素材 1199×1754 竖构图）/
       // scytheBaseDmg + scytheHpPct×目标最大生命（20% 部分封顶 scytheHpPctCap）——每个敌人被刀刃扫过时受击一次
-      counterMax: 122.1, killGain: { 1: 1, 2: 3, 3: 6, 4: 18, 5: 0 },   // 3/4 类 6/18、5 类 BOSS 归零（2026-10-10 用户定稿）；上限 122.1（2026-10-14 用户定稿，原 122）
+      counterMax: 1221, killGain: { 1: 10, 2: 30, 3: 70, 4: 200, 5: 0 },   // 2026-11-17 用户定稿：上限 1221（原 122.1）、增量 ×10 刻度（原 1/3/6/18）、5 类 BOSS 归零不计数不变
       bossKillMul: 2, eliteKillMul: 3, elites: ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'],   // BOSS 战击杀 ×2 / 四精英 ×3（2026-10-10 用户定稿，原 ×3/×4+30 废止）
+      eliteFloorPct: 0.8,   // BOSS 战击杀四精英的充能置底（2026-11-17 用户定稿）：充能 ≤80% 立刻置于 80%——对齐黑暗之手战，每击杀一只精英镰刀就绪度拉回高位、确保斩击对准下一只出场精英（>80% 不回置，07-player meiNoteKill 消费）
+      bossTickGain: 30,   // BOSS 战每秒自然增加的计数（2026-11-17 用户定稿 3→30，随 ×10 刻度同放；原 2026-09 诞生值 3）
       poemKillMul: 1.1,   // 诗篇难度击杀充能 +10%（2026-10-13 用户定稿回调，原 10-12 +20%；在 killGain / BOSS×2 / 精英×3 之上统一乘算，07-player meiNoteKill）
-      bossTickGain: 3,
       scytheR: 250, scytheGripR: 34, scytheDur: 0.55, scytheWidth: 220, scytheStart: Math.PI,
       scytheTilt: 0.75,
       scytheWind: 0.3, scytheWindAng: 0.35,
       scytheBaseDmg: 1500, scytheHpPct: 0.2, scytheHpPctCap: 2500,
       brief: '击杀积攒充能<br>召唤镰刀斩击',
-      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>122.1</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>1/3/6/18</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>；<br><b>诗篇难度</b>击杀充能 <b>+10%</b>；<br>BOSS 战期间每秒额外 <b>+3</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
+      desc: '混沌又清楚的美少女二次元死神！<br>左下角计数条：击杀敌人增加计数<br>（上限 <b>1221</b>）——击杀 <b>1/2/3/4</b> 类敌人<br>分别增加 <b>10/30/70/200</b> 点（BOSS 不计数）；<br>BOSS 战期间击杀计数 <b>×2</b>，<br>击败朴学峰、夏勇、韩希先、辛国栋时改为 <b>×3</b>，<br>且击杀四精英时充能 ≤80% 立刻置于 <b>80%</b><br>（超过 80% 则正常充能）；<br><b>诗篇难度</b>击杀充能 <b>+10%</b>；<br>BOSS 战期间每秒额外 <b>+30</b> 计数<br>充满后自动召唤镰刀<b>快速斩击一圈</b>：<br>刀柄贴着机体、刀刃扫至 <b>250px</b> 外圈，<br>被扫中的敌人受 <b>1500 + 20% 最大生命</b> 伤害<br>（20% 生命部分最多 2500，各受击一次），<br>被扫中的敌方子弹一并摧毁，<br>并可斩碎<b>虚化护盾</b>与敌方<b>金环</b>',
     },
     dingdongji: {
       id: 'dingdongji', name: '大狗', glyph: '♪', color: '#ffcf4d', slot: 'sub',   // ♪ 叮咚音符合计（无单色鸡形字符）
@@ -779,14 +822,42 @@
       desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
 
-    // ── 占位特殊驾驶员（2026-10-17 用户指定名称占位）：尚未实装——special: true（与天使璃同约定，实装后
-    //    使用期间无法获得挑战成就；选择页卡片右上角青粉三角角标）+ placeholder: true（选择页仅展示、
-    //    灰阶降透明、点击不选中；图鉴「驾驶员」页跳过）。current 永不指向占位条目，specialGearActive 不触发；
-    //    实装时按实际机制补全效果键并删除 placeholder。特殊驾驶员排序约定：登记于本表末尾（区头注释）
+    // ── 酒客之王（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃同约定——
+    //    使用期间无法获得挑战成就 + 卡片青粉三角角标）。开局立刻获得六对词条：
+    //    虚象/具象/真我/诗篇/长歌五档各随机一对（该档正面1+负面1，抽签/占用/保底口径见 03b-affix grantJiukePairs）
+    //    + 第六对=特殊对整体（sp0 纵逭灭 + sp1 澪叶同时授予）；开局覆盖层展示六对、确认后开战；
+    //    全部词条本局永久生效（击坠 BOSS 三选一照常，开局六对为额外赠礼）。
+    //    🍷 酒杯（用户定稿「一杯酒的样式」——emoji 自带色，偏离单色字形惯例属用户点名豁免，待定稿可改）
+    jiukewang: {
+      id: 'jiukewang', name: '酒客之王', glyph: '🍷', color: '#e0b060', slot: 'main', special: true,
+      brief: '开局获得六对词条',
+      desc: '酒客之王豪饮天下。开局立刻获得六对词条<br>五个等级（虚象/具象/真我/诗篇/长歌）<br>各随机一对（正面+负面）<br>第六对为特殊对整体（纵逭灭+澪叶）<br>开局会展示这六对词条，确认后出发<br>全部词条本局永久生效<br>（击坠 BOSS 后的三选一词条照常获得）<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
+    },
+
+    // ── 天秀混沌王子（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃同约定——
+    //    使用期间无法获得挑战成就 + 卡片青粉三角角标）。唯一机制：我方战机整体替换为上下 180° 翻转的
+    //    「我方风暴编织者」（与敌方 BOSS storm2 同形，攻击与技能朝上；绘制复用 11-draw-boss
+    //    drawStormBossII playerMode 分支）。全部机制参数单一来源 = 本文件 TXC 配置块（PRINCE_STORM 区后）；
+    //    运行态判定入口 txcActive()（仅主槽生效）。⚔ 电弧双刃（与风暴编织者同色系电蓝）
     tianxiuChaos: {
-      id: 'tianxiuChaos', name: '天秀混沌王子', glyph: '◇', color: '#8a97a8', slot: 'main', special: true, placeholder: true,
-      brief: '未实装',
-      desc: '未实装。',
+      id: 'tianxiuChaos', name: '天秀混沌王子', glyph: '◈', color: '#8fd4ff', slot: 'main', special: true,
+      brief: '风暴编织者上身',
+      desc: '天秀混沌王子降临，我方战机替换为<br><b>上下倒置的我方风暴编织者</b><br>（与敌方 BOSS 同形，攻击朝上）<br><b>血量 8000</b>，拾取回血道具恢复 2000<br>不受火力等级影响、被击中无受击无敌帧<br><b>战机 / 僚机 / 副武器选择全部失效</b><br>拾取升级或护盾组件（无护盾效果）：<br>随机一个技能冷却归零<br>拾取暴走组件：全部技能冷却归零<br>普通攻击：蛇形雷条+雷环 / 折线光束<br>（激光全部无限穿透——次数盾耗层<br>挡伤不拦停、圣杯转移后继续贯穿）<br>自动技能（不影响普通攻击）：<br>电弧激光 20s（12000，秒杀非长歌级）<br>四臂激涌 7s（4×2000）<br>雷霆打击 16s（5×4000+外扩雷环）<br>重现光束 9s（4×2000）<br>直击敌人麻痹 1s（无法移动、光环禁用、<br>攻击间隔翻倍；BOSS 免疫）<br>不受到常规碰撞：1 类接触直接击坠<br>非 1 类每 0.1s 敌 -400 / 自 -100<br>BOSS 接触每 0.1s 双方 -100<br>移动速度基础值 +40%<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
+    },
+
+    // ── 花礼（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃/酒客之王同约定——
+    //    使用期间无法获得挑战成就 + 卡片青粉三角角标 + specialGearActive 触发）。签名机制（唯一机制）：
+    //    ①核心与判定点均 1×1px——hitRadius 0.5（默认 4 的 1/8，受击面积 ≈ 原 1/80），全部受击结算
+    //    （弹体/激光/撞机/导弹/刃气/光环/BOSS 弹幕）经 playerHitRadius() 生效；②机体与僚机绘制尺寸
+    //    ×0.5（bodyScaleMul，缩放锚定核心渲染位 (0,-14)——核心/判定点位置不动；主炮/僚机出弹口同步
+    //    内移 pilotBodyScaleMul()，弹速/伤害/弹径全不变）；座舱白核由 drawPlayer 判定白点独占承担。
+    //    ✿ 花朵字形
+    huali: {
+      id: 'huali', name: '花礼', glyph: '✿', color: '#f78fb8', slot: 'main', special: true,
+      hitRadius: 0.5,     // 判定点半径：1×1px（机制键 1——playerHitRadius() 消费；判定白点尺寸同步）
+      bodyScaleMul: 0.5,  // 机体/僚机绘制尺寸倍率（机制键 2——09a 绘制缩放锚定核心位 + 07-player 出弹口内移消费）
+      brief: '核心 1×1 · 机体减半',
+      desc: '花礼轻盈起舞。核心与判定点均只有<br><b>1×1 px</b>（普通驾驶员 8px 判定圆）<br>子弹 / 敌机必须正中机头核心才判命中<br>掠过机身与近旁完全无伤<br>（弹体 / 激光 / 撞机 / 导弹 / 刃气 / BOSS 弹幕<br>全部受击结算同步缩小）<br>同时<b>机体与僚机尺寸减半</b>、<br>出弹口同步内移（弹体大小不变）<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
   };
   // ---------- 主/副驾驶员槽位 ----------
@@ -805,6 +876,13 @@
     if (currentPilotSub.id === id) return currentPilotSub;
     return null;
   }
+  // 花礼（2026-11-17 用户定稿）：核心与判定点均 1×1px —— 判定半径 0.5（默认 4 的 1/8，受击面积 ≈ 原 1/80）。
+  // 全部受击结算与绘制层统一走这两个入口，禁止直读 PLAYER_CFG.hitRadius（判定白点/座舱白核尺寸随驾驶员变化）
+  function playerHitRadius() { return (pilotEntry('huali') || {}).hitRadius ?? PLAYER_CFG.hitRadius; }
+  function pilotCoreTiny() { return !!pilotEntry('huali'); }
+  // 花礼：机体/僚机绘制尺寸倍率（装备时 ×0.5，非花礼恒 1）——09a 绘制缩放（锚定核心渲染位）与
+  // 07-player 出弹口内移统一走本入口；弹体大小/弹速/伤害不随缩放
+  function pilotBodyScaleMul() { return pilotCoreTiny() ? (PILOTS.huali.bodyScaleMul || 1) : 1; }
   // 可莉：绷绷炸弹伤害倍率 / 初始额外爆弹数
   function pilotBombDmgMul() { return (pilotEntry('keli') || {}).bombDmgMul || 1; }
   function pilotBombStartAdd() { return (pilotEntry('keli') || {}).bombStartAdd || 0; }
@@ -816,11 +894,14 @@
   // ---------- 特殊装备标记（special，简称 sp）与挑战成就门控（2026-10-08 用户定稿） ----------
   // 约定：各装备注册表（PILOTS / ARMORS / PLANES / WINGMEN_CFG / SUB_WEAPONS……后续扩展）的条目
   // 可带 special: true 标记 = 特殊装备——使用期间无法获得任何挑战成就（ACHIEVEMENTS[x].challenge，
-  // 02-achievements unlockAchievement 统一门控）。当前特殊装备：天使璃（tianshiLovely）。
+  // 02-achievements unlockAchievement 统一门控）。当前特殊装备：天使璃（tianshiLovely）/ 酒客之王（jiukewang）/ 花礼（huali）。
   function specialGearActive() {
     return !!(currentPilotMain.special || currentPilotSub.special ||
       currentArmor.special || currentPlane.special || currentWingman.special || currentSubWeapon.special);
   }
+  // 天秀混沌王子（2026-11-17 用户定稿）：仅主槽判定——战机/僚机/副武器整体替换语义是主驾驶员专属，
+  // 副槽不携带（与 hasPilot 的「任一槽位命中」口径不同，战斗逻辑一律走本入口）
+  function txcActive() { return currentPilotMain.id === 'tianxiuChaos'; }
 
   // 天秀忧郁王子：友方大风暴（大型龙卷（暴风之眼召唤物）同款风暴的我方版，按 Q 释放）
   //   风暴本体：dur 存留时长（s）/ riseSpd 向上推进速度 / r 判定与视觉半径
@@ -845,6 +926,37 @@
     stormFightDmgMul: 3, bulletAlphaStormFight: 0.35,
     poemNonBossMul: 3,   // 诗篇：对非 BOSS 敌人 ×3（2026-10-17 用户定稿；百分比削血部分不乘）
     dbgRiseSpdMul: 1.8,   // 按 8 连发模式期间发射的风暴：向上移速 ×1.8
+  };
+
+  // ---------- 天秀混沌王子（2026-11-17 用户定稿）：特殊主驾驶员机制参数（单一来源） ----------
+  // 玩家战机替换为上下 180° 翻转的我方风暴编织者（绘制复用 11-draw-boss drawStormBossII playerMode）；
+  // 战机/僚机/副武器选择失效（12-ui 卡片守卫）、装甲保留可选；血量固定 8000、不受火力等级影响。
+  const TXC = {
+    maxHp: 8000,           // 固定血量（无视装甲 maxHpAdd；12-ui resetGame / updateHUD 特判）
+    hpHeal: 2000,          // 拾取回血道具固定恢复量（08-entities applyPowerupPickup txc 分流）
+    speedMul: 1.4,         // 我方移速基础值乘区目标（07-player pspd 消费 + updateRewardFx 指数逼近）
+    speedApproach: 6,      // txcSpeedMul 指数逼近率（≈0.5s 平滑过渡到 1.4——速度曲线铁律，同 laodaMul 先例）
+    // ---- 普通攻击：蛇形雷条+雷环（照搬 BOSS 具象版参数，05-boss L1176-1202 镜像）+ 折线光束 ----
+    boltDmg: 200, ringDmg: 200,     // 每雷条/雷环射弹伤害（用户定稿定值）
+    boltSpdMul: 1.4,                // 除光束外子弹弹速 +40%（雷条 250→350；雷环爆开初速/减速同步折算）
+    boltIv: 0.08, boltNMin: 40, boltNMax: 70,   // 雷条发间 0.08s、每轮 40~70 发（BOSS 具象版）
+    boltRestMin: 0.5, boltRestMax: 1,           // 每轮射完后随机间隔（s，用户定稿）
+    ringN: 5, ringCountMin: 14, ringCountMax: 20, ringHold: 1,   // 雷环 5 圈 × 每圈 14~20 枚、停留 1s 后爆开
+    zigCd: 5,              // 折线光束就绪周期（s，用户定稿）；仅玩家接近中线时触发、发射点固定屏宽中央
+    zigBandF: 0.15,        // 折线光束中线触发带（×屏宽，用户定稿 ±15%）
+    zigDmg: 2000,          // 每道折线光束伤害（对同一敌人仅判一次——b.hits Set）
+    // ---- 四定时技能（自动释放、不影响普通攻击；带首轮冷却——resetGame 置满冷却）----
+    arcCd: 20, armsCd: 7, thunderCd: 16, replayCd: 9,
+    arcDmg: 12000,         // 电弧激光伤害 + 直接秒杀任何非长歌级敌人（BOSS 免疫秒杀，照常吃 12000）
+    armsDmg: 2000,         // 四臂激涌每道激光伤害（四喷口朝上）
+    thunderDmg: 4000,      // 雷霆打击每处轰击伤害（上 50% 屏高随机 5 处、预警 1.2s 错峰 0.9s）+ 外扩雷环
+    replayDmg: 2000,       // 重现光束每道伤害（左下/右下各 2 道朝上、仅发射一次）
+    paralyzeT: 1,          // 直击麻痹时长（s）：仅非 BOSS 且非 guiltGrail（愧悔魂灵圣杯豁免——用户定稿）
+    // ---- 接触规则（替代常规碰撞；06-enemy 接触块 txc 分流）----
+    crashTickIv: 0.1,      // 接触 tick 结算间隔（s）
+    crashDmgEnemy: 400, crashDmgSelf: 100,   // 非 1 类非 BOSS 接触：每 0.1s 敌 -400 / 自 -100
+    bossCrashDmg: 100,     // BOSS 接触：每 0.1s 双方各 -100
+    paraMoveRate: 8,       // 敌人麻痹移速归零/恢复指数逼近率（≈0.4s 过渡——速度曲线铁律，禁硬停）
   };
 
   // 群星守愿白盾几何：以僚机为圆心的圆弧屏障，覆盖“前方 + 侧前方”（随 side 镜像到外侧）
@@ -888,25 +1000,25 @@
   const MAX_BOMBS = 3;             // 高能爆弹代码基准上限（实际各难度经 mods.bombCap 定值：虚象/具象/真我 2、诗篇 1——2026-10-12 用户定稿；右上角以图标数量展示）
   const BOMB_DAMAGE_BASE = 4000;   // 高能爆弹基础伤害（真实伤害：无视御4防御光环等一切减伤）
   const BOMB_DAMAGE_RATIO = 0.10;  // + 目标最大血量的 10%
-  const WEAPON_DROP_HITS = 2;         // 统一：累计受击 2 次掉 1 级火力（全场景同规则；导弹命中不计入；2026-10-13 用户定稿 3→2）
+  const WEAPON_DROP_HITS_BY_LV = { 2: 3, 3: 3, 4: 2 };   // 2/3/4 级分别累计受击 3/3/2 次掉 1 级火力（升级重置计数；Lv1/Lv5 不在表内=不计数；导弹命中不计入计数且暴走免疫一切降级——2026-11-17 用户定稿；原统一 2 次=2026-10-13 用户定稿 3→2）
 
-  // 暴走时长统一入口（2026-10-17 东坤蝰实装）：基准 BERSERK.duration 4s + 东坤蝰 berserkDurAdd 0.8s。
+  // 暴走时长统一入口：基准 BERSERK.duration 4s（东坤蝰 0.8s 延长已随驾驶员删除——2026-11-18，效果由词条承接）。
   // 全部暴走触发 / 续时赋值统一走本函数（07-player：最终壁垒复活暴走 / 大狗 Q / 迪奥 Q 触发·续时 / pickupKit /
-  // pickupBerserk / 主菜单演示；14-main debugSetWeapon），暴走量表分母 12-ui 同步（否则东坤蝰 4.8s 时量表溢出）
+  // pickupBerserk / 主菜单演示；14-main debugSetWeapon），暴走量表分母 12-ui 同步
   function berserkDuration() {
-    return BERSERK.duration + (hasPilot('dongkun') ? PILOTS.dongkun.berserkDurAdd : 0);
+    return BERSERK.duration;   // 东坤蝰已删（2026-11-18）：暴走时长延长效果由词条承接
   }
 
   export {
     PLAYER_CFG, WEAPON_LEVELS, BERSERK, SHIELD_DURATION,
     PLANES, currentPlane, setPlane, setWingman,
-    ARMORS, currentArmor, setArmor, armorMaxHp, starsSeriesCount,
+    ARMORS, currentArmor, setArmor, armorMaxHp, starsSeriesCount, timeflowSeriesCount,
     ARMOR_SKILLS, crystalShieldDur, STARSLAYER, WINGMEN_CFG, currentWingman,
     WINGMAN, SUB_WEAPONS, currentSubWeapon, setSubWeapon,
     PILOTS, currentPilotMain, currentPilotSub, setPilotMain,
     setPilotSub, hasPilot, pilotEntry, pilotBombDmgMul,
-    pilotBombStartAdd, dagouWaveIv, specialGearActive, PRINCE_STORM,
-    berserkDuration,
+    pilotBombStartAdd, dagouWaveIv, specialGearActive, PRINCE_STORM, playerHitRadius, pilotCoreTiny, pilotBodyScaleMul,
+    berserkDuration, TXC, txcActive,
     BULWARK, WINGMAN_LEVELS, WINGMAN_SPREAD, MAX_BOMBS,
-    BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, WEAPON_DROP_HITS,
+    BOMB_DAMAGE_BASE, BOMB_DAMAGE_RATIO, WEAPON_DROP_HITS_BY_LV,
   };

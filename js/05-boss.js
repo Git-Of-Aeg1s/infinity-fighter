@@ -7,7 +7,7 @@
   //   state.{flash, stormVortex}
   //
   import { CANVAS_H, CANVAS_W, dhSampleSolid } from './01-config-core.js';
-  import { BULWARK, PLAYER_CFG, hasPilot } from './01-config-loadout.js';
+  import { BULWARK, PLAYER_CFG, hasPilot, playerHitRadius } from './01-config-loadout.js';
   import { ELITES, HARBINGER, HARBINGER_POLAR, JIAOXIANG, SHIP_BULLET_LEN } from './01-config-enemies.js';
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
   import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
@@ -16,13 +16,13 @@
   import { bulwarkActive, clipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
-  import { affixBossHpMul, affixHas } from './03b-affix.js';
+  import { affixBossHpMul, affixBossDmgMul, affixBossIvMul, takeAffixNextBossMods, affixHas } from './03b-affix.js';
 
   // BOSS 技能释放间隔难度倍率（2026-10-10 用户定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
   // 真我走 realme.mods.bossFireIntervalMul；诗篇 wip 走 isPoem 硬分支、实装时迁移 poem.mods，见《诗篇难度修正.md》#44）
   // ——覆盖四个 BOSS 的全部 skillCd 赋值点
   function bossSkillIv(base) {
-    return base * (isPoem() ? 0.5 : (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1));
+    return base * (isPoem() ? 0.5 : (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1)) * affixBossIvMul();   // 词条（下一个/所有 BOSS 增强）攻击间隔乘区（2026-11-17 用户定稿 -20%/-40%）
   }
 
 
@@ -44,6 +44,7 @@
     if (B.id === 'storm') {
       // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）；携带天秀 ×2——其余我方伤害削减机制已取消
       //（2026-10-02 用户定稿：非风暴伤害对暴风之眼不再有任何减少，血量翻倍作平衡代偿）
+      takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（1:bad:4/2:bad:1 消费即移除，见 03b-affix）
       const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1) * affixBossHpMul();   // 词条（下一个/所有 BOSS 增强乘区，见 03b-affix）
       enemies.push({
         type: 'boss', bossId: 'storm', name: B.name, lv: B.lv,
@@ -65,6 +66,7 @@
     // 风暴编织者：暴风之眼消散后电闪雷鸣中现身（入场：轰然消散 → 雷暴轰鸣 → 现身 → 战斗）
     if (B.id === 'storm2') {
       // 词条（长歌级 4:good:3）词条禁用：所有 S 类敌人血量 -95%（风暴编织者 = 5S；四精英/1S 见 04-spawn）
+      takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
       const hp = resolveBossHp(STORM2) * affixBossHpMul() * (affixHas('4:good:3') ? 0.05 : 1);
       enemies.push({
         type: 'boss', bossId: 'storm2', name: B.name, lv: B.lv,
@@ -91,6 +93,7 @@
     // 黑暗之手：四段式登场演出（2026-10-01 替换旧黑洞入场，见 updateBossDarkhand）；
     // lurk 期间潜伏不可见（警报背后），警报结束才现身
     if (B.id === 'darkhand') {
+      takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
       const hp = resolveBossHp(DARKHAND) * affixBossHpMul();   // 分难度血量表（hpByDiff）+ 词条增强乘区
       enemies.push({
         type: 'boss', bossId: 'darkhand', name: B.name, lv: B.lv,
@@ -145,6 +148,7 @@
         label: pd.label,
       });
     }
+    takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
     const hp = resolveBossHp(BOSS) * affixBossHpMul();   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）+ 词条增强乘区
     enemies.push({
       type: 'boss', bossId: B.id, name: B.name, lv: B.lv,
@@ -683,9 +687,9 @@
       }
       // 风旋机体碰撞（预警阶段尚无实体，不判定）
       if (state.stormVortex && v.phase !== 'warn' && player.alive && player.invuln <= 0 &&
-          Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + PLAYER_CFG.hitRadius) {
+          Math.hypot(v.x - player.x, v.y - (player.y + PLAYER_CFG.hitOffsetY)) < v.r * 0.9 + playerHitRadius()) {
         // src 'storm'：天秀忧郁王子暴风之眼伤害削减挂点；成就死因：就位前（fly 飞抵段）= vortexPre（哦呦）
-        damagePlayer((isPoem() ? STORM.vortexDmgPoem : STORM.vortexDmg) * bossDmgMul(), 1, false, false, 'storm', v.phase === 'fly' ? 'vortexPre' : 'vortex');
+        damagePlayer((isPoem() ? STORM.vortexDmgPoem : STORM.vortexDmg) * bossDmgMul() * affixBossDmgMul(), 1, false, false, 'storm', v.phase === 'fly' ? 'vortexPre' : 'vortex');
       }
     } else if (s.id === 7) {
       // 技能8「双子旋臂」：两个环上弹幕点持续喷射旋臂风弹
@@ -770,7 +774,7 @@
           f.hit = true;   // 无敌期间处于带内同样消耗本次判定：风波掠过，不结算也不补判——
           // （否则无敌结束时会被"迟到"的风波命中：出现时无敌跳过判定、静止玩家在无敌结束后被判中）
           if (player.invuln <= 0) {
-            damagePlayer((isPoem() ? STORM.windDmgPoem : STORM.windDmg) * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
+            damagePlayer((isPoem() ? STORM.windDmgPoem : STORM.windDmg) * bossDmgMul() * affixBossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             // 击退：竖直推离风波带（玩家在带下方则下推、上方则上推）+ 向入射侧回推的固定分量
             // （不能用 player - 采样点：c.x 恒等于 player.x，会导致 dx=0、方向退化）
             const vdir = ((player.y + PLAYER_CFG.hitOffsetY) - c.y) >= 0 ? 1 : -1;
@@ -785,10 +789,10 @@
       const p = pillarStrikes[i];
       p.t += dt;
       if (!p.hit && player.alive && strikeVis(p.t / p.dur, 0.25) >= 0.35) {
-        if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + PLAYER_CFG.hitRadius) {
+        if (Math.abs(player.x - p.x) < STORM.pillarW / 2 + playerHitRadius()) {
           p.hit = true;   // 无敌期间处于柱内同样消耗本次判定：光柱掠过，不结算也不补判
           if (player.invuln <= 0) {
-            damagePlayer((isPoem() ? STORM.pillarDmgPoem : STORM.pillarDmg) * bossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
+            damagePlayer((isPoem() ? STORM.pillarDmgPoem : STORM.pillarDmg) * bossDmgMul() * affixBossDmgMul(), 1, false, false, 'stormAoe');   // 瞬时区域打击：天秀 -50% / 可莉 -30% 挂点
             knockbackPlayer(player.x - p.x, 0, 420);
           }
         }
@@ -876,7 +880,7 @@
       decay: opts.decay || 0,    // 每秒线性减速绝对值（px/s²，黑暗之手技能2 涟漪环随机 0~30% 初速/s；方向不变、到 spdFloor 停）
       dhMissile: opts.dhMissile || null,   // 抛物导弹状态包 { T, A, vy0, ay }（技能5 真我/诗篇弹道：向上初速 + 向下重力 +
                                            // 水平 S 剖面 ax(t)=A(1-2t/T)——水平速度先增后减、T（=抵达 50% 屏高）时归 0；见 08-entities）
-      dmg: (opts.dmg != null ? opts.dmg : BOSS.bulletDmg) * bossDmgMul(),   // BOSS 弹幕伤害统一难度倍率（虚象 -40%）
+      dmg: (opts.dmg != null ? opts.dmg : BOSS.bulletDmg) * bossDmgMul() * affixBossDmgMul(),   // BOSS 弹幕伤害统一难度倍率（虚象 -40%）
       color: opts.color || BOSS_BULLET.long,
       streak: opts.streak || 0,    // 简化拖尾长度（px，沿速度方向渐隐线段；0 = 无。大子弹专用，见 10-draw-world）
       trail: opts.trail || null,   // 拖尾（轨迹残影系统，见 08-entities updateBullets；部件球弹幕 / 雷电子弹）
@@ -1246,11 +1250,13 @@
   }
 
   // 雷霆打击单次落雷（技能5 主释放与真我技能6 瞬发共用）：
-  //   sm：连发弹速倍率；dmgMul：伤害倍率（真我瞬发 0.5）；cntMul：外扩雷环子弹数倍率（真我瞬发 0.5）
-  function fireS2Strike(x, y, dmgMul, cntMul, sm = 1) {
+  //   sm：连发弹速倍率；dmgMul：伤害倍率（真我瞬发 0.5）；cntMul：外扩雷环子弹数倍率（真我瞬发 0.5）；
+  //   withParalyze：是否附带编织者麻痹（2026-11-17 用户定稿——其所有伤害附带 0.3s/真我 0.4s/诗篇 0.5s 麻痹，
+  //   见 07-player damagePlayer cause 'storm2' 消费；奔雷亡语 fireStormStrikeAt 复用本函数时传 false 关闭）
+  function fireS2Strike(x, y, dmgMul, cntMul, sm = 1, withParalyze = true) {
     if (player.alive && player.invuln <= 0 && player.shield <= 0 &&
         Math.hypot(player.x - x, (player.y + PLAYER_CFG.hitOffsetY) - y) < S2_STRIKE_R) {
-      damagePlayer(storm2Dmg('s5Dmg') * dmgMul * bossDmgMul(), 1, false, false, 'aoe');   // 雷霆轰击（瞬时区域伤害，具象 40 / 诗篇 60）：可莉 -30% 挂点
+      damagePlayer(storm2Dmg('s5Dmg') * dmgMul * bossDmgMul() * affixBossDmgMul(), 1, false, false, 'aoe', withParalyze ? 'storm2' : null);   // 雷霆轰击（瞬时区域伤害，具象 40 / 诗篇 60）：可莉 -30% 挂点（src 'aoe'）+ 编织者麻痹（cause）
     }
     const [rnMin, rnMax] = isPoem() ? STORM2.s5RingN.poem : isRealme() ? STORM2.s5RingN.realme : isIllusion() ? STORM2.s5RingN.illusion : STORM2.s5RingN.form;   // 外扩枚数四难度（2026-10-10 用户定稿）
     spawnStorm2Ring(x, y, 6, 0, sm, STORM2.s5RingDecelMul, 1, null, cntMul, rnMin, rnMax);
@@ -1263,7 +1269,7 @@
   // 口径：立即落雷（区域伤害 40/诗篇 60 + 中心外扩雷环 + 粒子 + 震屏，fireS2Strike 原样复用）——
   // 技能5 的 1.2s 雷电积聚预警为 BOSS 实体级演出（e.skill.strikes 状态机），击坠亡语为 1% 稀有事件
   // 不搭实体级预警；伤害走 bossDmgMul 难度乘区与「雷霆轰击」可莉减免挂点（同原生口径）
-  function fireStormStrikeAt(x, y) { fireS2Strike(x, y, 1, 1); }
+  function fireStormStrikeAt(x, y) { fireS2Strike(x, y, 1, 1, 1, false); }   // 奔雷亡语：立即落雷但不附带编织者麻痹（withParalyze=false，2026-11-17）
 
   // 技能3 一轮齐射：场地正中四道斜下电弧光束（左右镜像对称，角度随机、触壁反弹）
   function fireS3Volley(e, sm) {
@@ -1414,9 +1420,9 @@
             : Math.max(0, 1 - (s.pt - (C1.beamDur - C1.fade)) / C1.fade);
           if (vis >= 0.35 &&
               player.alive && player.invuln <= 0 && player.shield <= 0 &&
-              Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
+              Math.abs(player.x - ball.x) < STORM2.s1R + playerHitRadius() &&
               player.y + PLAYER_CFG.hitOffsetY > ball.y) {
-            damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
+            damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul() * affixBossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
           }
           if (s.pt >= C1.beamDur) {
             s.shot++;
@@ -1443,9 +1449,9 @@
         const py = player.y + PLAYER_CFG.hitOffsetY;
         if (player.alive && player.invuln <= 0 && player.shield <= 0 &&
             strikeVis(life / STORM2.s1BeamDur, 0.12) >= 0.35 &&
-            Math.abs(player.x - ball.x) < STORM2.s1R + PLAYER_CFG.hitRadius &&
+            Math.abs(player.x - ball.x) < STORM2.s1R + playerHitRadius() &&
             py > ball.y && py < ball.y + beamLen) {
-          damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
+          damagePlayer(storm2Dmg('s1Dmg') * bossDmgMul() * affixBossDmgMul(), 1, false, false, null, 'laser:storm2');   // 成就死因：极光陨落
         }
       }
     } else if (s.id === 1) {
@@ -1466,9 +1472,9 @@
         if (!b.hit && b.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0 &&
             strikeVis(b.t / b.dur, 0.10) >= 0.35) {
           const py = player.y + PLAYER_CFG.hitOffsetY;
-          if (Math.abs(player.x - b.x) < STORM2.s2R + PLAYER_CFG.hitRadius && py > b.y && py < b.y + fullLen) {
+          if (Math.abs(player.x - b.x) < STORM2.s2R + playerHitRadius() && py > b.y && py < b.y + fullLen) {
             b.hit = true;
-            damagePlayer(storm2Dmg('s2Dmg') * bossDmgMul());
+            damagePlayer(storm2Dmg('s2Dmg') * bossDmgMul() * affixBossDmgMul(), 1, false, false, null, 'storm2');   // 技能2 落雷柱（2026-11-17：附带编织者麻痹 cause 'storm2'）
           }
         }
       }
@@ -1616,9 +1622,9 @@
         if (!b.hit && b.len >= 30 && player.alive && player.invuln <= 0 && player.shield <= 0) {
           const py2 = player.y + PLAYER_CFG.hitOffsetY;
           const tproj = clamp((player.x - b.x) * ux0 + (py2 - b.y) * uy0, 0, effLen);
-          if (Math.hypot(player.x - (b.x + ux0 * tproj), py2 - (b.y + uy0 * tproj)) < STORM2.s6R + PLAYER_CFG.hitRadius) {
+          if (Math.hypot(player.x - (b.x + ux0 * tproj), py2 - (b.y + uy0 * tproj)) < STORM2.s6R + playerHitRadius()) {
             b.hit = true;
-            damagePlayer(storm2Dmg('s6Dmg') * bossDmgMul());
+            damagePlayer(storm2Dmg('s6Dmg') * bossDmgMul() * affixBossDmgMul(), 1, false, false, null, 'storm2');   // 技能6 连接光束（2026-11-17：附带编织者麻痹 cause 'storm2'）
           }
         }
       }
@@ -2069,10 +2075,10 @@
         // 命中一次 / 枚，沿身体逐段距离判定（dhSegDist 同旧口径）
         if (!tar.hit && tar.t >= 0.05 && player.alive && player.invuln <= 0 && player.shield <= 0) {
           const px = player.x, py = player.y + PLAYER_CFG.hitOffsetY;
-          const R = c.tartW / 2 + PLAYER_CFG.hitRadius;
+          const R = c.tartW / 2 + playerHitRadius();
           for (let k = 0; k + 1 < tar.pts.length; k++) {
             if (dhSegDist(px, py, { x1: tar.pts[k].x, y1: tar.pts[k].y, x2: tar.pts[k + 1].x, y2: tar.pts[k + 1].y }) < R) {
-              tar.hit = true; damagePlayer((isPoem() ? c.poemDmg : c.dmg) * bossDmgMul()); break;
+              tar.hit = true; damagePlayer((isPoem() ? c.poemDmg : c.dmg) * bossDmgMul() * affixBossDmgMul()); break;
             }
           }
         }
@@ -2243,8 +2249,8 @@
             spawnParticles(b.x, b.y, '#6fe3ff', 10, 200); b.done = true; continue;
           }
           if (player.alive && b.hitT <= 0 && player.invuln <= 0 &&
-              Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < xc.bladeR + PLAYER_CFG.hitRadius) {
-            damagePlayer((isPoem() ? xc.poemBladeDmg : xc.bladeDmg) * bossDmgMul(), 1, false, false, null);
+              Math.hypot(b.x - player.x, b.y - (player.y + PLAYER_CFG.hitOffsetY)) < xc.bladeR + playerHitRadius()) {
+            damagePlayer((isPoem() ? xc.poemBladeDmg : xc.bladeDmg) * bossDmgMul() * affixBossDmgMul(), 1, false, false, null);
             b.hitT = 0.6;
           }
         }
@@ -2340,7 +2346,7 @@
         b.t += dt;
         if (b.t >= warnT) {
           if (player.alive && Math.hypot(b.x - player.x, b.y - player.y) <= blastR) {
-            damagePlayer((isPoem() ? xc.poemBombDmg : xc.bombDmg) * bossDmgMul(), 1, false, false, null);
+            damagePlayer((isPoem() ? xc.poemBombDmg : xc.bombDmg) * bossDmgMul() * affixBossDmgMul(), 1, false, false, null);
           }
           spawnParticles(b.x, b.y, '#ff4652', 20, 300);
           spawnBlastRing(b.x, b.y, blastR, '#ff5a6a', 0.3);
@@ -2683,22 +2689,32 @@
     // 真我连携：与主技能并行的技能1（由 startBossSkill 概率挂载）
     if (e.link) runBossSkill(e, e.link, dt);
 
-    // 血量首次低于 70% / 40%：召唤炮火先兆者（2026-10-17 用户定稿改版）——
+    // 血量首次低于 70% / 40%：召唤炮火先兆者（2026-10-17 用户定稿改版；2026-11-17 用户三条改版）——
     //   虚象：不召唤；具象：仅 70% 血在随机一侧召唤 1 位炮火先兆者（3A，固定靠边不巡航）；
     //   真我：70% 血随机一侧 1 位 3A、40% 血在另一侧再 1 位（合计两侧各一）；
-    //   诗篇：召唤位置 = 25% / 75% 屏宽两点——70% 血两位置各 1 位极夜炮火先兆者（3D）、40% 血两位置
-    //   各 1 位中枢炮火先兆者（3C），四台攻击间隔显式错开（cycleJit 0.1/0.5/0.3/0.7）；召唤体不做入场
-    //   初速保持（entryT 预置 0——06-enemy 衰减段懒初始化仅 null 时生效，预置即跳过），速度自生成起
-    //   恒为常态巡航速度的 35%（speedMul 0.35：3C ≈ 63px/s、3D ≈ 100.8px/s；2026-10-18 用户定稿改版，
-    //   原「入场初速不变 + 100px/s 归一修正」作废）恒速下移直到离场（hoverY 置屏外不停留），
-    //   正常掉落分数与水晶
+    //   诗篇（2026-11-17 用户定稿）：召唤位置 = 25% / 75% 屏宽两点——70% 血两位置各 1 位极夜炮火先兆者（3D）、
+    //   40% 血两位置各 1 位中枢炮火先兆者（3C）——四台**出生间隔错开 1s**（阈值触发改排入 e.poemHarbQ 队列，
+    //   由下方每帧消费点逐台延迟出生；两血量线同帧跨过时四台仍按队列顺序 1s 错开）；四台攻击周期 ×0.8
+    //   （attackMul 0.8——06-enemy 周期公式消费，cycleJit 错峰加算量 0.1/0.5/0.3/0.7 不缩放）；召唤体不做入场
+    //   初速保持（entryT 预置 0——06-enemy 衰减段懒初始化仅 null 时生效，预置即跳过）；**速度分段**（2026-11-17
+    //   用户定稿）：40% 屏高以上恒为常态巡航速度的 30%（speedMul 0.30——生成参数即 0.30，出生速度无跳变）、
+    //   40%→50% 屏高线性过渡到 20%（每帧写 speedMulBase——06-enemy updateEnemies 以它为基底重算 e.speedMul，
+    //   与黑日强化/寒冷区域等乘算链兼容；速度随位置连续变化无档位跳变，铁律 ✓），50% 屏高以下恒 0.20 恒速
+    //   下移直到离场（hoverY 置屏外不停留），正常掉落分数与水晶
     const POEM_HARB_X = [CANVAS_W * 0.25, CANVAS_W * 0.75];
     const POEM_HARB_SINK = { hoverY: CANVAS_H + 300 };   // 悬停点置屏外 → 恒速下移不停留、出屏底自然移除
+    const POEM_HARB_SPEED_TOP = 0.30, POEM_HARB_SPEED_BOT = 0.20, POEM_HARB_ATK_MUL = 0.8;   // 分段速度与攻击周期倍率（2026-11-17 用户定稿）
+    const poemHarbOpts = jit => ({ staticX: true, speedMul: POEM_HARB_SPEED_TOP, cycleJit: jit, attackMul: POEM_HARB_ATK_MUL, ...POEM_HARB_SINK });
+    if (!e.poemHarbs) e.poemHarbs = [];
+    if (!e.poemHarbQ) e.poemHarbQ = [];
     if (!e.summonHarbL && e.hp <= e.maxHp * 0.70) {
       e.summonHarbL = true;
       if (isPoem()) {
-        spawnHarbingerPolar(POEM_HARB_X[0], { staticX: true, cycleJit: 0.1, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
-        spawnHarbingerPolar(POEM_HARB_X[1], { staticX: true, cycleJit: 0.5, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+        // 70% 线：两台 3D 极夜炮火先兆者，出生间隔 1s
+        e.poemHarbQ.push(
+          { t: 0, spawn: () => spawnHarbingerPolar(POEM_HARB_X[0], poemHarbOpts(0.1)) },
+          { t: 1, spawn: () => spawnHarbingerPolar(POEM_HARB_X[1], poemHarbOpts(0.5)) },
+        );
       } else if (isRealme()) {
         e.songHarb70Side = Math.random() < 0.5 ? 40 : CANVAS_W - 40;   // 记录 70% 召唤侧（40% 线在另一侧）
         spawnHarbinger(e.songHarb70Side, { staticX: true });
@@ -2709,12 +2725,36 @@
     if (!e.summonHarbR && e.hp <= e.maxHp * 0.40) {
       e.summonHarbR = true;
       if (isPoem()) {
-        spawnHarbingerHub(POEM_HARB_X[0], { staticX: true, cycleJit: 0.3, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
-        spawnHarbingerHub(POEM_HARB_X[1], { staticX: true, cycleJit: 0.7, speedMul: 0.35, ...POEM_HARB_SINK }).entryT = 0;
+        // 40% 线：两台 3C 中枢炮火先兆者，出生间隔 1s
+        e.poemHarbQ.push(
+          { t: 0, spawn: () => spawnHarbingerHub(POEM_HARB_X[0], poemHarbOpts(0.3)) },
+          { t: 1, spawn: () => spawnHarbingerHub(POEM_HARB_X[1], poemHarbOpts(0.7)) },
+        );
       } else if (isRealme()) {
         const other = e.songHarb70Side === 40 ? CANVAS_W - 40 : 40;   // 另一侧
         spawnHarbinger(other, { staticX: true });
       }   // 具象 / 虚象：40% 线不召唤
+    }
+
+    // 诗篇召唤队列逐台出生（出生间隔 1s，2026-11-17 用户定稿）
+    if (e.poemHarbQ.length) {
+      for (const q of e.poemHarbQ) q.t -= dt;
+      while (e.poemHarbQ.length && e.poemHarbQ[0].t <= 0) {
+        const h = e.poemHarbQ.shift().spawn();
+        h.entryT = 0;   // 召唤体不做入场初速保持（06-enemy 衰减段懒初始化仅 null 时生效，预置即跳过）
+        e.poemHarbs.push(h);
+      }
+    }
+    // 诗篇召唤体速度分段（2026-11-17 用户定稿）：40% 屏高以上恒 TOP、40%→50% 屏高线性过渡到 BOT、以下恒 BOT
+    //——写 speedMulBase（06-enemy updateEnemies 每帧以它为基底重算 e.speedMul，与黑日强化/寒冷区域等乘算链
+    // 兼容），速度随位置连续变化、无档位跳变（铁律 ✓）；剔除已击坠 / 出屏底体（游离引用不再写入）
+    if (e.poemHarbs.length) {
+      const y40 = CANVAS_H * 0.40, span = CANVAS_H * 0.10;
+      e.poemHarbs = e.poemHarbs.filter(h => h.hp > 0 && h.y < CANVAS_H + 120);
+      for (const h of e.poemHarbs) {
+        const t = Math.max(0, Math.min(1, (h.y - y40) / span));
+        h.speedMulBase = POEM_HARB_SPEED_TOP + (POEM_HARB_SPEED_BOT - POEM_HARB_SPEED_TOP) * t;
+      }
     }
     
     // 血量 70%：掉落一个暴走道具（一次性）

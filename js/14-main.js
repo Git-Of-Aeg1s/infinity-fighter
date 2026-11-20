@@ -18,7 +18,7 @@
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
   import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugSetWeapon, noteDdjLevelUp, playerFireLocked, startGacha, triggerArmorSkill, triggerPilotSkill, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
-  import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, spawnPowerup, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
+  import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, spawnPowerup, tisuRings, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, toggleDebugMenu, togglePause, updateHUD } from './12-ui.js';
   import { achvEvaluateVictory, renderResultAchievements } from './02-achievements.js';
@@ -217,13 +217,14 @@
   }
 
   // ---------- 触控输入（手机模式，docs/手机模式设计.md §4；键盘/手柄之外的第三路输入） ----------
-  // 拖动跟指：主指（游戏区首个触下）负责移动——目标点映射方案（§4.2）：pointerdown 记录「机体−指尖」初始偏移
-  // （钳制 ≤90px），此后 07-player 以「指尖 + 偏移」为目标点指数逼近；桌面鼠标不启用（§4.5，只认 pointerType==='touch'）。
+  // 拖动跟指：主指（游戏区首个触下）负责移动——**相对拖动 1:1 跟手**（2026-11-16 用户定稿改版，
+  // 原「目标点映射 + 90px 视距钳制 + 指数逼近」方案作废）：pointerdown 定格「机体−指尖」初始间距
+  // （不钳制），此后 07-player 使战机 = 指尖 + 该间距——手指移动多少战机移动多少、与按下时保持同一
+  // 相对站位，无逼近无滞后；桌面鼠标不启用（§4.5，只认 pointerType==='touch'）。
   // 副指不抢占移动（多点触控：主指拖动 + 副指按按钮互不干扰），按钮走各自的 pointerdown 监听（见下）
   // 舞台元素名取 stageEl（不取 stage）：01-config-spawn / 09b-draw-enemies 存在同名局部变量，
   // check-names 完整性检查按词匹配会误判为跨模块引用（同 gamepad 不取 pad 的先例）
   const stageEl = document.querySelector('.stage');
-  const TOUCH_OFFSET_MAX = 90;   // 拖动跟指初始偏移上限（px，画布逻辑坐标）：机体与指尖的最远视距
   // 指针事件 → 画布逻辑坐标：.stage 被 fitStage 整体 transform 缩放，rect 尺寸 / 画布逻辑尺寸 = 当前缩放比 k
   function touchStagePoint(e) {
     const r = stageEl.getBoundingClientRect();
@@ -241,13 +242,10 @@
     const p = touchStagePoint(e);
     touch.pointerId = e.pointerId;
     touch.fx = p.x; touch.fy = p.y;
-    // 初始偏移 = 机体 − 指尖，向量钳制 ≤90px：按下帧只换目标点、不改位置（位置严格连续，无瞬跳——速度曲线铁律；
-    // 超视距按下时机体先平滑追赶至 90px 视距圈最近点，再转入跟随）
-    const ddx = player.x - p.x, ddy = player.y - p.y;
-    const dd = Math.hypot(ddx, ddy);
-    const clampK = dd > TOUCH_OFFSET_MAX ? TOUCH_OFFSET_MAX / dd : 1;
-    touch.ox = ddx * clampK;
-    touch.oy = ddy * clampK;
+    // 初始间距 = 机体 − 指尖，定格不钳制（相对拖动 1:1：按下帧目标点 = 当前机体位置，位置严格连续
+    // 无瞬跳——速度曲线铁律；此后手指位移多少战机位移多少，与按下时保持同一相对站位）
+    touch.ox = player.x - p.x;
+    touch.oy = player.y - p.y;
     touch.active = true;
     try { stageEl.setPointerCapture(e.pointerId); } catch (err) { /* 桩环境无此 API：跳过 */ }
   });
@@ -924,6 +922,11 @@
         const bb = bombBursts[i];
         bb.t += dt;
         if (bb.t >= bb.duration) bombBursts.splice(i, 1);
+      }
+      for (let i = tisuRings.length - 1; i >= 0; i--) {   // 时流天梭发射环：0.28s 原地扩散变淡后移除
+        const rg = tisuRings[i];
+        rg.t += dt;
+        if (rg.t >= 0.28) tisuRings.splice(i, 1);
       }
     }
 

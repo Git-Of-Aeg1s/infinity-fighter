@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(6 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(42 名) 07-player(54 名) 08-entities(25 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(30 名) 11-draw-boss(9 名) 12-ui(99 名) 13-encyclopedia(19 名) 14-main(43 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(7 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(42 名) 07-player(54 名) 08-entities(25 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(30 名) 11-draw-boss(10 名) 12-ui(99 名) 13-encyclopedia(19 名) 14-main(43 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -114,7 +114,7 @@
   //  跨域读写需在《并行任务认领.md》声明。分区如下——声明顺序为历史累加，不与本分区一一对应）：
   //   · 流程与全局：mode / paused / time / score / lives / victoryOverlay / demo
   //   · 战斗资源与战术：bombs / shake* / flash / hurt / hasteT / orangeBombUsed / hpKit* / crystalMagnetMul / maxinSpeedMul / cheatInvuln
-  //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / lingluoCdT / king* / hajimi* /
+  //   · 玩家装备与驾驶员技能：armorSkillGauge / pilotDashT / prince* / tianxiu* / txc* / lingluoCdT / king* / hajimi* /
   //     dagou* / rain* / lanceVolleySeq / meiCounter / ddj* / gachaStones / gachaReady
   //   · 奖励道具效果：laoda* / magnetBonus / swordStorm* / frostField / bombCapAdd / bengbagGot / jiuke* / itemPickFx / honghongT
   //   · 技能演出与特效：gachaFx / xinFuryRings / aiyiWaves / aiyiWaveSeq
@@ -135,6 +135,8 @@
     hurt: 0,           // 受击红晕强度（命中玩家时叠加：14-main 衰减 / 10-draw-world 绘制屏幕边缘红晕）
     hasteT: 0,         // 斗志昂扬增益：我方攻速 / 弹道飞行速度翻倍的剩余时间（击毁斗志昂扬后 8s）
     timeflowT: 0,      // 时流状态（超越艇·时流绿环命中我方，2026-11-13）：我方射速/弹速 +50% 剩余时间（s，2s 刷新制；07-player 递减、12-ui 右下角读条）
+    paralyzeT: 0,      // 麻痹状态（雷霆之怒雷电光环，2026-11-16）：无法移动、无法释放主动技能（自动释放也算，爆弹除外）、攻击间隔翻倍的剩余时间（s；06-enemy 光环 tick 0.1s / 电光弹命中 0.5s 置位、07-player 递减与消费）
+    blackSunStacks: 0, // 黑日诛星舰强化层数缓存（2026-11-16）：场上每台黑日 1 层、至多 2（STARS_SLAYER.darkSunStacksMax）——白色/黑色敌人（enemyColorTags 含 white/black）速度/加速度 +20%、攻击力 +25% 每层；06-enemy updateEnemies 每帧重算、blackSunMoveMul/blackSunDmgMul 消费
     orangeBombUsed: false, // 本场战斗橙色敌人爆弹是否已触发（整场最多一次；不影响 4类/BOSS 掉落）
     poemBombDropped: 0,    // 诗篇爆弹掉落计数：本局已掉出的高能爆弹颗数（上限 2；02-core bombDropGate 读写、resetGame 归零——绷绷背包补弹不走 gate 不计数）
     hpKitLastLv: -999,     // 加血套件等级窗口节流（2026-10-10）：上次普通敌人实际掉落加血套件的关卡等级（-999 = 未登记；06-enemy rollItemDrops 读写，resetGame 归位）
@@ -151,6 +153,9 @@
     tianxiuDebugSpamT: 0,     // 天秀：连发风暴发射倒计时（s）
     princeScoreBase: 0,    // 天秀忧郁王子：上一帧分数快照（逐帧差分 = 非水晶得分增量）
     princeCrystalGain: 0,  // 天秀忧郁王子：本帧水晶得分累计（08-entities 水晶拾取写入，差分时扣除 → 只计非水晶得分）
+    txcSpeedMul: 1,        // 天秀混沌王子：我方移速乘区当前值（1 基准 → 目标 TXC.speedMul 1.4；07-player updateRewardFx 指数逼近、pspd 消费、12-ui resetGame 复位、07-player handlePlayerDeath 清零回 1）
+    txcSkillCd: null,      // 天秀混沌王子：四定时技能剩余冷却 {arc,arms,thunder,replay}（s；resetGame 经 07-player txcResetRuntime 置首轮冷却 TXC.*Cd、07-player updateTxcSkills 递减与触发、08-entities 拾取归零——跨域读写已在认领表声明）
+    txcBeams: [],          // 天秀混沌王子：技能光束演出+飞行判定 {kind:'arc'|'arm'|'replay',...}（07-player 写与推进 updateTxcBeams、10-draw-world drawTxcBeams 读绘制）
     aiyiSelfDestruct: false,  // 埃逸：自爆结算中（killEnemy 得分按 20% 结算；扩散波扫完全场后复位）
     sweepKill: false,         // 秒杀类技能结算中（金色陨石；与 aiyiSelfDestruct 同为「秒杀类通道」门控：
                               // killEnemy 据此禁非 BOSS 敌人的召唤型亡语——增生分裂 / 法术矩阵爆发。
@@ -182,8 +187,8 @@
     ddjUseMax: PILOTS.dingdongji.useMax,   // 大狗：Q 释放上限（击败 BOSS 掷骰 +1——25%/第 5、6 轮 100%，见 06-enemy killEnemy；重开复位）
     ddjBerserkUps: 0,      // 大狗：已消耗的暴走升级机会（全局 3 次；4/5 级按技能均消耗）
     // ---- 奖励道具效果状态（2026-10-01 改版：道具槽已取消——击坠赞助无人舰立即生效，07-player applyRewardItem 置位与推进，resetGame 归位）----
-    laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +40%
-    laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.40/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
+    laodaT: 0,             // 牢大特饮：剩余时长（s；0 = 无效）——移速 +50%
+    laodaMul: 1,           // 牢大特饮：当前移速乘数（目标 1.50/1 指数逼近 ≈0.5s 过渡，禁瞬变——速度曲线铁律）
     magnetBonus: 0,        // 磁力菇：水晶拾取半径加成（px；一整局、可叠加，08-entities 水晶吸附读取）
     swordStormT: 0,        // 不再陵落：飞剑风暴剩余时长（s；0 = 无效）
     swordStormAcc: 0,      // 不再陵落：轮发射累加器（0.12s/轮 × 每轮 4 发，07-player 推进）
@@ -191,7 +196,8 @@
     blackhole: null,       // 群星之扉黑洞区域：{ t, growT, dur, r, tickT }（单槽覆盖语义；中心持续跟随玩家——判定半径 rEff=r×min(1,t/growT) 与视觉同源；07-player 触发/推进/伤害 tick，04-spawn enemyBlackholeMoveMul 减速、08-entities 吞弹、10-draw-world 绘制读；归域：装备效果域，主要读写 07-player）
     bombCapAdd: 0,         // 绷绷背包：爆弹携带上限加成（+1；一整局；拾取 08-entities / HUD 12-ui 共同读取）
     bengbagGot: false,     // 绷绷背包：本局已获得标记（一局限一次，06-enemy grantRewardItem 过滤——效果直接生效，见 applyRewardItem）
-    jiukeT: 0,             // 酒客之影：透明化 + 闪避窗口剩余时长（s；0 = 未激活；30s 内 100% 闪避起步、每成功闪避一次 -20%，07-player damagePlayer 判定）
+    jiukeDodgePct: 0,        // 酒客之影当前闪避概率（%，激活置 100；>0 即激活——2026-11-17 用户定稿改版：无持续时长限制，
+                             // 每秒 -1%（updateRewardFx）/ 成功闪避 -20% / 受击 -20%（damagePlayer），耗尽（归零）后效果结束——07-player 消费）
     gachaFx: null,         // 哦哦！抽卡！：全套演出状态机 { phase, t, stones[], color, meteor, shock } （07-player updateGachaFx 驱动，10-draw-world 绘制）
     xinFuryRings: [],      // 辛国栋大怒：固定扩散怒意之环列表（元素 { x, y, r, rMax, t, expandDur, burnDur, dps, tick, tickT, alpha }）——可多道并存：重复拾取不清除此前火环与效果（2026-10-11 用户定稿；不移动、半径扩张 6s→全屏、环带持续灼烧扫过的敌人每 0.1s 一跳（dps 对齐辛国栋之怒 Lv4 = 200，2026-10-12 用户定稿）、6s 后停留 6s 渐隐）
     honghongT: 0,          // 轰轰炸弹：连锁爆炸持续时长（s；0 = 未激活，06-enemy killEnemy 读取）
@@ -199,7 +205,6 @@
     gachaReady: false,       // 萧杨专属技能「哦哦！抽卡！」充能就绪（16 颗原石转换；Q 键释放 triggerPilotSkill，释放后 gachaStones 清零重计；已充能时捡原石不计数）
     gachaHaltT: 0,           // 萧杨抽卡停火窗口（s，>0 生效）：全场敌我停火 + 场地 50% 线下敌机减速（07-player startGacha 置位、14-main 无条件递减、updateGachaFx shock 结束归零）
     gachaStonesTotal: 0,     // 原石（巨型水晶）当局收集总数（不随 Q 释放清零——结算页「原石收集」读数；07-player noteGachaStone 写入、12-ui resetGame 归零，2026-10-13）
-    jiukeDodgePct: 0,        // 酒客之影当前闪避概率（%，激活置 100；每成功闪避一次 -20，归零后必受伤；30s 到期清 0——07-player damagePlayer 消耗 / updateRewardFx 推进）
     itemPickFx: [],          // 道具获得特效队列（{x, y, glyph, rare, t, max}：机体前方道具图标 + 扩散波渐隐；07-player pushItemPickFx 推入 / updateRewardFx 推进 / 09-draw-ships drawItemPickFx 绘制）
     xgLooseBombs: [],        // 辛国栋击毁后残留的地毯轰炸落点预警（{x, y, t}：killEnemy 从 e.xgBombs 转存；06-enemy updateXgLooseBombs 独立推进爆炸 / 10-draw-world drawXgWarnCircles 绘制；resetGame 清空）
     achvBulwarkLowBoss: null, // 成就「最后一搏」：最终壁垒不死触发瞬间的低血量(<10%) BOSS id（tryBulwarkCheatDeath 写入，02-achievements 消费）
@@ -283,13 +288,13 @@
     bulwarkFxT: 0,     // 最终壁垒：免死菱形环绕演出剩余时间（tryBulwarkCheatDeath 置位，updatePlayer 衰减，drawPlayer 读取）
     bulwarkEndT: 0,    // 最终壁垒：无敌结束后的菱形收尾演出剩余时间（0.35s 微微扩大渐隐，updatePlayer 置位/衰减，drawPlayer 读取）
     chixinBurnT: 0,    // 炽心：火环灼烧计时（每 0.125s 一跳）
-    regenT: 0,         // 洄：回血计时（每 2s +1 HP）
+    regenT: 0,         // 时流之洄：回血计时（每 3s +2 HP，见 07-player）
     tianshuCycleT: 0,  // 天枢圣卫：圣守周期计时（无敌结束后起算，满 guardCycle=20s 展开圣守窗口，见 07-player）
     tianshuArmedT: 0,  // 天枢圣卫：圣守窗口剩余时间（>0 期间受击在结算前免除；窗口与无敌期间周期均不计时）
     respawnTimer: 0,   // 掉命后重生倒计时
     enterT: 0,         // 主菜单开局飞入剩余时长（>0 时操控锁定、y 由飞入缓动驱动；resetGame 自主菜单开局置位）
     enterFromY: 0,     // 开局飞入出发 y（主菜单演示屏站位）
-    hitCount: 0,       // 受击计数：统一累计 2 次掉一层火力（导弹命中不计入）
+    hitCount: 0,       // 受击计数：2/3/4 级分别累计 3/3/2 次掉一层火力（升级重置；导弹命中不计入；暴走免疫——2026-11-17 用户定稿）
     hitFxT: 0,         // 受击闪白计时（damagePlayer 置位，updatePlayer 衰减，drawPlayer 读取）
     // 群星之杀（斩击武器）运行态：
     slashCd: 0,        // 距下次斩击的冷却（s）

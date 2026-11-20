@@ -1,12 +1,12 @@
 // 09a-draw-loadout.js：玩家 / 僚机 / 装甲形体与玩家武器·拾取特效绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(9 名) 12-ui(6 名) 13-encyclopedia(6 名)
+  // 被依赖：10-draw-world(9 名) 12-ui(7 名) 13-encyclopedia(7 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { armorGlyphFx, bossFlow, clamp, ctx, dagouMissiles, frostZones, missileWarns, missiles, player, playerHitFx, state, wingmen } from './02-core.js';
   import { CANVAS_H, CANVAS_W, DEMO_TOP } from './01-config-core.js';
-  import { BULWARK, PILOTS, STARSLAYER, currentArmor, currentPlane, currentWingman } from './01-config-loadout.js';
+  import { BULWARK, PILOTS, PLAYER_CFG, STARSLAYER, currentArmor, currentPlane, currentWingman, pilotCoreTiny } from './01-config-loadout.js';
 
   // 装载层渐变缓存（2026-10-12 性能）：渐变对象按 key 复用、消除每帧 createXxxGradient 分配；
   // 仅限本模块走主画布 ctx 的状态绘制路径（drawWingmen/drawPlayer）——图鉴预览走 paintXxx(g) 独立上下文，不经过此缓存
@@ -33,9 +33,11 @@
     const isCheyue = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'lance');   // 彻月：紫色电磁发射舱（lance 贯穿弹模型）
     const isJiye = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'beam');   // 极夜千星：激光发射装置 + 光球环绕（beam kind）
     const isJinxiao = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'droplet');   // 今宵：双反应装置边架 + 中央能量球（droplet 追踪水滴模型）
+    const isTianSuo = !!(currentWingman && currentWingman.weapon && currentWingman.weapon.kind === 'shuttle');   // 时流天梭：时计环发射座（shuttle 贯穿弹模型）
     for (const w of wingmen) {
       ctx.save();
       ctx.translate(w.x, w.y);
+      if (pilotCoreTiny()) ctx.scale(PILOTS.huali.bodyScaleMul || 1, PILOTS.huali.bodyScaleMul || 1);   // 花礼：僚机绘制尺寸减半（出弹口由 07-player 同步内移；站位距离不变）
       if (isBulwark) ctx.scale(BULWARK.scale, BULWARK.scale);   // 群星守愿整体（尾焰/机体/盾板/辉光/脉冲环）统一尺寸系数
       else if (currentWingman.scale != null && currentWingman.scale !== 1) ctx.scale(currentWingman.scale, currentWingman.scale);   // 时空允诺整体尺寸系数（尾焰/机体/辉光/暴走机翼统一 ×1.045，纯视觉）
       // 星焰尾：三角焰体，多频正弦叠加飘动模拟星焰；暴走时更长更亮（时空允诺暴走 12 / 群星守愿过载焰最盛；壁垒常态焰 +60%）
@@ -46,7 +48,7 @@
       // 尾焰渐变（2026-10-12 性能）：跨度随焰长逐帧波动 → 按 0.5px 量化缓存复用（终点偏差 ≤0.25px 不可辨），
       // 消除每帧 createLinearGradient；焰体路径仍用真实焰长，飘动不变
       const flameH = fl + flameExt;
-      const fg = cachedLoadoutGrad(((isBulwark ? 1 : 0) | (wkBerserk ? 2 : 0) | (isJiye ? 4 : 0)) * 512 + Math.round(flameH * 2), () => {
+      const fg = cachedLoadoutGrad(((isBulwark ? 1 : 0) | (wkBerserk ? 2 : 0) | (isJiye ? 4 : 0) | (isTianSuo ? 8 : 0)) * 512 + Math.round(flameH * 2), () => {
         const g0 = ctx.createLinearGradient(0, flameY0, 0, flameY0 + Math.round(flameH * 2) / 2);
         if (isBulwark) {
           if (wkBerserk) {
@@ -68,6 +70,17 @@
             g0.addColorStop(0, 'rgba(200, 230, 255, 0.9)');
             g0.addColorStop(0.5, 'rgba(160, 200, 240, 0.5)');
             g0.addColorStop(1, 'rgba(110, 160, 220, 0)');
+          }
+        } else if (isTianSuo) {
+          // 时流天梭：天蓝尾焰（与能量脊 #7ecbff 同族——时计环座排焰）
+          if (wkBerserk) {
+            g0.addColorStop(0, 'rgba(224, 242, 255, 0.95)');
+            g0.addColorStop(0.5, 'rgba(140, 200, 255, 0.65)');
+            g0.addColorStop(1, 'rgba(80, 150, 235, 0)');
+          } else {
+            g0.addColorStop(0, 'rgba(158, 216, 255, 0.9)');
+            g0.addColorStop(0.5, 'rgba(105, 180, 250, 0.5)');
+            g0.addColorStop(1, 'rgba(60, 130, 220, 0)');
           }
         } else if (wkBerserk) {
           g0.addColorStop(0, 'rgba(238, 228, 255, 0.95)');
@@ -106,7 +119,7 @@
       if (!isBulwark && wkBerserk) {
         // 暴走内芯：时空允诺焰体中央淡金内焰（取暴走弹中段同款 barMid #ffd9a0，读作星核过载金芯）；
         // 彻月改白紫内焰（电磁过载白芯）、极夜千星改淡蓝白内焰（激光过载色——与 beamGlow #b8d6ff 同族）
-        ctx.fillStyle = isCheyue ? 'rgba(238, 230, 255, 0.95)' : isJiye ? 'rgba(220,240,255,0.95)' : isJinxiao ? 'rgba(236,227,255,0.95)' : 'rgba(255, 217, 160, 0.95)';
+        ctx.fillStyle = isCheyue ? 'rgba(238, 230, 255, 0.95)' : isJiye ? 'rgba(220,240,255,0.95)' : isJinxiao ? 'rgba(236,227,255,0.95)' : isTianSuo ? 'rgba(224, 244, 255, 0.95)' : 'rgba(255, 217, 160, 0.95)';
         ctx.beginPath();
         ctx.moveTo(flameX - 2, flameY0);
         ctx.lineTo(flameX, flameY0 + fl * 0.66);
@@ -158,16 +171,22 @@
       if (isJiye) paintWingmanJiye(ctx, w.side, wkBerserk, w.flameT);   // 极夜千星：激光发射装置 + 光球环绕（beam 激光炮模型）
       else if (isCheyue) paintWingmanCheyue(ctx, w.side, wkBerserk, false, player.berserkSpread);   // 彻月：紫色电磁发射舱
       else if (isJinxiao) paintWingmanJinxiao(ctx, w.side, wkBerserk, false);   // 今宵：双反应装置边架 + 中央能量球（暴走边架紫化 + 能量球过载增亮）
+      else if (isTianSuo) paintWingmanTianSuo(ctx, w.side, wkBerserk, w.flameT);   // 时流天梭：时计环发射座（环体缓转 + 时标光珠环游；暴走速转金白化）
       else paintWingman(ctx, w.side, wkBerserk, false, player.berserkSpread);   // 时空允诺：蓝紫星焰机翼
       // 暴走：机体辉光脉动（两型共用紫系星核过载光晕）；翼尖微光为时空允诺造型专属（彻月晶体闪烁在 paintWingmanCheyue 内）
       if (wkBerserk) {
         const pulse = 0.35 + Math.sin(state.time * 14) * 0.15;
         // 机体辉光：以星核为中心的脉动光晕（2026-10-12 性能：渐变按 pulse 峰值(0.5)烘焙 + globalAlpha 缩放，
         // 内档亮度与逐帧重建严格成比例，消除每帧 createRadialGradient）
-        const aura = cachedLoadoutGrad('wk-aura', () => {
+        const aura = cachedLoadoutGrad(isTianSuo ? 'wk-tiansuo-aura' : 'wk-aura', () => {
           const g0 = ctx.createRadialGradient(0, -1, 2, 0, -1, 17);
-          g0.addColorStop(0, 'rgba(186, 160, 255, 0.425)');
-          g0.addColorStop(1, 'rgba(186, 160, 255, 0)');
+          if (isTianSuo) {
+            g0.addColorStop(0, 'rgba(180, 220, 255, 0.42)');   // 时流天梭专属过载光晕：白蓝系（紫系通用辉光与蓝白机身撞色）
+            g0.addColorStop(1, 'rgba(180, 220, 255, 0)');
+          } else {
+            g0.addColorStop(0, 'rgba(186, 160, 255, 0.425)');
+            g0.addColorStop(1, 'rgba(186, 160, 255, 0)');
+          }
           return g0;
         });
         ctx.globalAlpha = (0.30 + pulse * 0.25) / 0.425;
@@ -509,6 +528,113 @@
     g.beginPath(); g.ellipse(0, 9, 3.3, 1.5, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(238, 230, 255, 0.92)';
     g.beginPath(); g.ellipse(0, 9, 1.7, 0.8, 0, 0, Math.PI * 2); g.fill();
+  }
+
+  // 时流天梭僚机造型（2026-11-17 实装）：时计环发射座——竖置靛蓝纺锤梭体（中央天蓝能量脊 + 顶端发射口辉光）
+  // 套黄铜刻度环（12 刻度整体缓转，环绘于梭体下层——上下两段被梭体压住，读作环从机身中段穿过），
+  // 环上两颗蓝白时标光珠对置环游；暴走：环体速转 + 光珠金白化 + 能量脊过载白芯 + 白蓝专属辉光。
+  // side：-1=左僚机（尾鳍镜像在左）/ +1=右僚机；缩略图默认 +1；flameT：动画时钟（游戏内 w.flameT 累加——
+  // 预览 still 传 0 冻结相位确定性；「穿梭时隙」主题呼应贯穿天梭弹的停止-转向-再射节奏）
+  function paintWingmanTianSuo(g, side = 1, berserk = false, flameT = 0, still = false) {
+    const out = side < 0 ? -1 : 1;
+    const t = still ? 1.7 : flameT;         // still：冻结相位（预览确定性——任取固定值）
+    const ringR = 11.5;
+    const ringA = t * (berserk ? 2.6 : 0.9);   // 环体转速（rad/s）：常态缓转 / 暴走速转
+
+    // (0) 外侧尾鳍（先于环/舱体绘制——翼根被压住）：小型后掠鳍（靛蓝系，收敛版鳍片语言）
+    g.save();
+    g.rotate(out * 0.28);
+    const finG = g.createLinearGradient(out * 2, 0, out * 11, 0);
+    finG.addColorStop(0, 'rgba(74, 106, 190, 0.97)');
+    finG.addColorStop(0.55, 'rgba(110, 148, 226, 0.92)');
+    finG.addColorStop(1, 'rgba(158, 196, 255, 0.55)');
+    g.fillStyle = finG;
+    g.beginPath();
+    g.moveTo(out * 1.5, -1);
+    g.lineTo(out * 11, 5);
+    g.lineTo(out * 2, 5.5);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(24, 38, 84, 0.5)';
+    g.lineWidth = 0.9;
+    g.beginPath(); g.moveTo(out * 11, 5); g.lineTo(out * 2, 5.5); g.stroke();
+    g.restore();
+
+    // (1) 黄铜刻度环（下层）：内暗铜 / 外亮铜双圈 + 12 刻度短线（相位 = ringA——刻度随环缓转）
+    g.strokeStyle = 'rgba(122, 92, 48, 0.9)';    // 内圈暗铜
+    g.lineWidth = 2.2;
+    g.beginPath(); g.arc(0, 0, ringR - 1.1, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(216, 184, 120, 0.95)'; // 外圈亮铜
+    g.lineWidth = 1.1;
+    g.beginPath(); g.arc(0, 0, ringR, 0, Math.PI * 2); g.stroke();
+    g.save();
+    g.rotate(ringA);
+    g.strokeStyle = 'rgba(240, 220, 170, 0.8)';  // 刻度（随环转动）
+    g.lineWidth = 1;
+    for (let k = 0; k < 12; k++) {
+      const a = k * Math.PI / 6;
+      const c = Math.cos(a), s = Math.sin(a);
+      g.beginPath();
+      g.moveTo(c * (ringR - 2.6), s * (ringR - 2.6));
+      g.lineTo(c * (ringR + 0.6), s * (ringR + 0.6));
+      g.stroke();
+    }
+    g.restore();
+
+    // (2) 时标光珠（环上对置两颗、随环公转）：蓝白发光 / 暴走金白（绘于梭体之前——穿过机身段被梭体压住）
+    for (let i = 0; i < 2; i++) {
+      const a = ringA + i * Math.PI;
+      const ox = Math.cos(a) * ringR, oy = Math.sin(a) * ringR;
+      g.save();
+      g.shadowColor = berserk ? 'rgba(255, 236, 180, 0.95)' : 'rgba(158, 216, 255, 0.9)';
+      g.shadowBlur = 6;
+      g.fillStyle = berserk ? 'rgba(255, 244, 210, 0.98)' : 'rgba(191, 230, 255, 0.98)';
+      g.beginPath(); g.arc(ox, oy, 1.7, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+
+    // (3) 纺锤梭体（竖置——发射口朝上）：靛蓝纵渐变 + 淡天蓝描边（贝塞尔纺锤轮廓：尖顶→鼓腹→收底）
+    const hullG = g.createLinearGradient(0, -13, 0, 12);
+    hullG.addColorStop(0, '#b8d4ff');
+    hullG.addColorStop(0.42, '#4a6ac0');
+    hullG.addColorStop(0.75, '#2a3f7e');
+    hullG.addColorStop(1, '#16244c');
+    g.fillStyle = hullG;
+    g.strokeStyle = 'rgba(158, 198, 255, 0.75)';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(0, -13);                       // 尖顶（发射口）
+    g.quadraticCurveTo(5.5, -6, 6.2, 1);    // 右上腹
+    g.quadraticCurveTo(4.5, 9, 0, 12);      // 下端收拢
+    g.quadraticCurveTo(-4.5, 9, -6.2, 1);   // 左下腹
+    g.quadraticCurveTo(-5.5, -6, 0, -13);   // 左上腹
+    g.closePath();
+    g.fill();
+    g.stroke();
+
+    // (4) 中央能量脊（天蓝发光竖条——暴走过载白芯）
+    g.save();
+    g.shadowColor = berserk ? 'rgba(220, 242, 255, 0.95)' : 'rgba(126, 203, 255, 0.8)';
+    g.shadowBlur = 5;
+    g.fillStyle = berserk ? 'rgba(235, 248, 255, 0.98)' : 'rgba(126, 203, 255, 0.9)';
+    g.beginPath();
+    g.moveTo(0, -10.5);
+    g.lineTo(1.3, -2);
+    g.lineTo(0.9, 8.5);
+    g.lineTo(0, 10.5);
+    g.lineTo(-0.9, 8.5);
+    g.lineTo(-1.3, -2);
+    g.closePath();
+    g.fill();
+    g.restore();
+
+    // (5) 发射口辉光（顶端——贯穿天梭弹出舱口）
+    g.save();
+    g.shadowColor = berserk ? 'rgba(220, 242, 255, 0.95)' : 'rgba(158, 216, 255, 0.9)';
+    g.shadowBlur = 7;
+    g.fillStyle = 'rgba(224, 244, 255, 0.95)';
+    g.beginPath(); g.arc(0, -13, 1.6, 0, Math.PI * 2); g.fill();
+    g.restore();
   }
 
   // 今宵僚机造型：双反应装置边架 + 中央能量球（悬浮能量容器语言——两侧斜边架为反应装置导轨，
@@ -892,7 +1018,7 @@
   // 攻击特效：doSlashLine 置位 player.bladeFlashT → 双刃白金过载 + 刃前弯曲斩动波 + 刃上方金色动效。
   // 暴走（berserkT 0→1）：双刃顶点插值形变为巨大橙金帆翼（紫骨架），结束时收回。
   // spreadT 0→1：双刃沿连接臂向外滑出至全展位（开局展开动画 / 标题页预览=1）。
-  function paintStarslayer(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false) {
+  function paintStarslayer(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false, tinyCore = false) {
     const T = still ? 2.2 : (typeof state !== 'undefined' && state.time) || 0;   // still：静态帧冻结相位（预览图确定性）
     const sp = clamp(spreadT, 0, 1);   // 0=双刃收拢 1=全展开
     const slide = (1 - sp) * 4;        // 收拢位：双刃向机身平移 4
@@ -1285,16 +1411,19 @@
     // ---- (3b) 机头核心（样式与混乱将至座舱一致：白核径向渐变 + 深色外圈 + 反光点）----
     // 核心已落在统一核心位 (0, -14)（全机型核心世界坐标约定，见 paintShip 顶部 SHIP_CORE_Y 注释）
     // 置于裁剪之外绘制，避免被机身渐变吃掉亮度
-    const coreGrd = g.createRadialGradient(0, -14, 0.5, 0, -14, 5);
-    coreGrd.addColorStop(0, '#ffffff');
-    coreGrd.addColorStop(0.45, '#ffffff');
-    coreGrd.addColorStop(0.7, 'rgba(210,200,255,0.9)');
-    coreGrd.addColorStop(1, 'rgba(30,16,60,0.95)');
-    g.fillStyle = coreGrd;
-    g.beginPath(); g.arc(0, -14, 3.6, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = 'rgba(20,10,30,0.8)'; g.lineWidth = 1; g.stroke();
-    g.fillStyle = 'rgba(255,255,255,0.95)';
-    g.beginPath(); g.ellipse(-0.9, -15.9, 0.9, 1.4, -0.2, 0, Math.PI * 2); g.fill();
+    // 花礼（tinyCore）：常规机头核心跳过——机体减半后核心视觉由 drawPlayer 判定白点独占承担（1×1 @ 判定点=核心位）
+    if (!tinyCore) {
+      const coreGrd = g.createRadialGradient(0, -14, 0.5, 0, -14, 5);
+      coreGrd.addColorStop(0, '#ffffff');
+      coreGrd.addColorStop(0.45, '#ffffff');
+      coreGrd.addColorStop(0.7, 'rgba(210,200,255,0.9)');
+      coreGrd.addColorStop(1, 'rgba(30,16,60,0.95)');
+      g.fillStyle = coreGrd;
+      g.beginPath(); g.arc(0, -14, 3.6, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(20,10,30,0.8)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      g.beginPath(); g.ellipse(-0.9, -15.9, 0.9, 1.4, -0.2, 0, Math.PI * 2); g.fill();
+    }
 
     // ---- (4) 引擎（双腿之间：圆舱 + 短颈）+ 中央尾焰 ----
     g.fillStyle = '#1b1440';
@@ -1326,10 +1455,17 @@
   const SHIP_CORE_Y = -14;         // 统一核心世界 y
   const CHAOS_CORE_LOCAL_Y = -7;   // 混乱将至座舱核心局部 y（机体局部坐标）
 
-  function paintShip(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false) {
-    if (plane && plane.id === 'starslayer') { paintStarslayer(g, spreadT, plane, berserkT, still); return; }
+  function paintShip(g, spreadT = 0, plane = currentPlane, berserkT = 0, still = false, tinyCore = false) {
+    const tinyMul = tinyCore ? (PILOTS.huali.bodyScaleMul || 1) : 1;   // 花礼：机体/僚机绘制尺寸倍率（2026-11-17 用户定稿——缩放锚定核心渲染位，核心/判定点位置不动）
+    if (plane && plane.id === 'starslayer') {
+      if (tinyMul !== 1) { g.save(); g.translate(0, SHIP_CORE_Y); g.scale(tinyMul, tinyMul); g.translate(0, -SHIP_CORE_Y); }
+      paintStarslayer(g, spreadT, plane, berserkT, still, tinyCore);
+      if (tinyMul !== 1) g.restore();
+      return;
+    }
     const DS = (plane && plane.drawScale) || 1;   // 机体整体绘制缩放（混乱将至 ×1.15；座舱核心逆向补偿保持原尺寸）
     g.save();
+    if (tinyMul !== 1) { g.translate(0, SHIP_CORE_Y); g.scale(tinyMul, tinyMul); g.translate(0, -SHIP_CORE_Y); }   // 花礼：机体整体缩放锚定核心渲染位 (0, -14)
     g.translate(0, SHIP_CORE_Y - CHAOS_CORE_LOCAL_Y);   // 整体平移（先于缩放 = 世界坐标位移）：核心落位到 (0, -14)
     if (DS !== 1) g.scale(DS, DS);
     // 尾焰（仅静态预览 still：游戏内由 drawPlayer 绘制动画尾焰，这里补画否则预览图缺尾焰）
@@ -1522,27 +1658,31 @@
 
     // 座舱：白色核心 + 微黑外圈（核心不随机体放大：逆向缩放补偿，保持原尺寸与原位置——
     // 核心在机体上的构图不变，对齐全机型核心位靠上面的整体平移完成）
-    g.save();
-    if (DS !== 1) g.scale(1 / DS, 1 / DS);
-    const cockGrd = g.createRadialGradient(0, -7, 0.5, 0, -7, 5);
-    cockGrd.addColorStop(0, '#ffffff');
-    cockGrd.addColorStop(0.45, '#ffffff');
-    cockGrd.addColorStop(0.7, 'rgba(200, 200, 210, 0.9)');
-    cockGrd.addColorStop(1, 'rgba(30, 20, 40, 0.95)');
-    g.fillStyle = cockGrd;
-    g.beginPath();
-    g.arc(0, -7, 3.5, 0, Math.PI * 2);
-    g.fill();
-    // 座舱外圈黑色描边
-    g.strokeStyle = 'rgba(20, 10, 30, 0.8)';
-    g.lineWidth = 1;
-    g.stroke();
-    // 座舱玻璃反光点
-    g.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    g.beginPath();
-    g.ellipse(-0.8, -9, 0.9, 1.4, -0.2, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
+    // 花礼（tinyCore）：常规座舱白核跳过——机体减半后核心视觉由 drawPlayer 判定白点独占承担
+    //（1×1 白点画在判定点=核心位 (0, -14)，尺寸随 pilotCoreTiny() 缩放）
+    if (!tinyCore) {
+      g.save();
+      if (DS !== 1) g.scale(1 / DS, 1 / DS);
+      const cockGrd = g.createRadialGradient(0, -7, 0.5, 0, -7, 5);
+      cockGrd.addColorStop(0, '#ffffff');
+      cockGrd.addColorStop(0.45, '#ffffff');
+      cockGrd.addColorStop(0.7, 'rgba(200, 200, 210, 0.9)');
+      cockGrd.addColorStop(1, 'rgba(30, 20, 40, 0.95)');
+      g.fillStyle = cockGrd;
+      g.beginPath();
+      g.arc(0, -7, 3.5, 0, Math.PI * 2);
+      g.fill();
+      // 座舱外圈黑色描边
+      g.strokeStyle = 'rgba(20, 10, 30, 0.8)';
+      g.lineWidth = 1;
+      g.stroke();
+      // 座舱玻璃反光点
+      g.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      g.beginPath();
+      g.ellipse(-0.8, -9, 0.9, 1.4, -0.2, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
 
     // 粉色机身装饰线（两侧对称，从机身向翼尖延伸）
     g.strokeStyle = 'rgba(255, 192, 203, 0.6)';
@@ -1716,9 +1856,9 @@
         sc = 0.8 + p * 0.55;                        // 明显放大（0.8 → 1.35）
       }
       ctx.save();
-      // hex（天枢圣卫）对准战机视觉核心（coreY 逐机型定义：混乱将至 -7 / 群星之杀 -14），其余装甲对准判定点；
+      // hex（天枢圣卫）对准战机视觉核心（coreY 逐机型定义：混乱将至 -7 / 群星之杀 -14），其余装甲对准判定点（hitOffsetY，2026-11-17 起与核心同位）；
       // dy 为可选纵向偏移（澄月 ◉ -38 → 图标悬于机头上方，同测试2 卡3/卡4 布局）
-      ctx.translate(x, y + (f.hex ? (currentPlane.coreY || 0) : 4) + (f.dy || 0));
+      ctx.translate(x, y + (f.hex ? (currentPlane.coreY || 0) : PLAYER_CFG.hitOffsetY) + (f.dy || 0));
       // 同色径向光晕（大而亮，保证在震屏/白闪中仍可读）
       const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 28 * sc);
       glow.addColorStop(0, hexToRgba(f.color, a * 0.55));
@@ -1767,6 +1907,7 @@
   function drawPlayer() {
     if (!player.alive) return;
     const { x, y } = player;
+    const hualiMul = pilotCoreTiny() ? (PILOTS.huali.bodyScaleMul || 1) : 1;   // 花礼：机体附着绘制（尾焰/翼尖光/电弧）随尺寸减半缩放（核心锚，见 paintShip 同款变换）
 
     // 许凯狗冲刺：机体前方强烈白色特效（覆盖约 80% 屏宽 + 加法混合 + 持续流动）——
     // 风幕光晕 + 向前推移的弧形风波 + 两侧横掠高速流线 + 向上奔涌的纵向风线
@@ -1908,6 +2049,7 @@
       ctx.save();
       const wds = currentPlane.drawScale || 1;   // 翼尖光随机体缩放贴住翼尖
       ctx.translate(x, y);
+      if (hualiMul !== 1) { ctx.translate(0, SHIP_CORE_Y); ctx.scale(hualiMul, hualiMul); ctx.translate(0, -SHIP_CORE_Y); }   // 花礼：随核心锚缩放
       ctx.translate(0, SHIP_CORE_Y - CHAOS_CORE_LOCAL_Y);   // 随机体整体平移（核心落位对齐）同步位移
       if (wds !== 1) ctx.scale(wds, wds);
       ctx.globalAlpha = pulse;
@@ -1942,13 +2084,14 @@
       ctx.rotate(player.spinDir * Math.PI * 2 * (1 - Math.pow(1 - sp, 3)));
     }
     // 奖励道具·酒客之影：机体透明化加深（闪避窗口内整机体半透明；剩余 <1.5s 逐渐恢复以便读剩余时间）
-    if (state.jiukeT > 0) ctx.globalAlpha = state.jiukeT < 1.5 ? 0.45 + 0.35 * (1 - state.jiukeT / 1.5) : 0.45;
+    if (state.jiukeDodgePct > 0) ctx.globalAlpha = state.jiukeDodgePct <= 10 ? 0.45 + 0.35 * (1 - state.jiukeDodgePct / 10) : 0.45;   // 酒客之影（2026-11-17 改版）：>0 即激活——临近耗尽（≤10%）线性淡出，耗尽即解除
 
     // 尾焰：粉(#FFC0CB) → 橙渐变（对称，动画）；群星之杀改为蓝→紫能量尾焰
     // 混乱将至机体放大（drawScale）：尾焰随同缩放保持贴住机尾；并随机体整体平移（核心落位对齐）同步位移
     const flame = 9 + Math.sin(state.time * 30) * 3;
     const pds = currentPlane.drawScale || 1;
     ctx.save();
+    if (hualiMul !== 1) { ctx.translate(0, SHIP_CORE_Y); ctx.scale(hualiMul, hualiMul); ctx.translate(0, -SHIP_CORE_Y); }   // 花礼：尾焰随机体减半（核心锚缩放，混乱将至与群星之杀尾焰同口径）
     if (!currentPlane.slashWeapon) ctx.translate(0, SHIP_CORE_Y - CHAOS_CORE_LOCAL_Y);
     if (pds !== 1) ctx.scale(pds, pds);
     // 尾焰渐变（2026-10-12 性能）：跨度随焰长逐帧波动 → 按 0.5px 量化缓存复用（终点偏差 ≤0.25px 不可辨），
@@ -1981,9 +2124,50 @@
     const spreadPulse = player.wingSpread > 0.9
       ? 1 + Math.sin(state.time * 10) * 0.02 : 1;   // 完全展开后微微脉动
     ctx.scale(spreadPulse, spreadPulse);
-    paintShip(ctx, player.wingSpread, currentPlane, player.berserkSpread || 0);
+    paintShip(ctx, player.wingSpread, currentPlane, player.berserkSpread || 0, false, pilotCoreTiny());
 
     ctx.restore();
+
+    // 麻痹电流（雷霆之怒雷电光环 tick / 风暴编织者全伤害附带麻痹，2026-11-17）：机体表面流动电弧——
+    // 2~3 条随机锯齿折线（青蓝主光 + 白芯复描）+ 加法混合辉光，逐帧重掷端点与折点 = 流动感；
+    // 单条随机缺席 + 偶发少一条 = 电弧断续闪烁感；端点范围随 drawScale 贴住机体轮廓；
+    // paralyzeT 递减归零后本层随帧停止（消失即停，无渐出过渡——麻痹本身为短时状态）
+    if ((state.paralyzeT || 0) > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      const parD = (currentPlane.drawScale || 1) * hualiMul;   // 花礼：电弧端点随机体减半贴住轮廓
+      const parN = Math.random() < 0.15 ? 2 : 3;
+      for (let pi = 0; pi < parN; pi++) {
+        if (Math.random() < 0.12) continue;   // 单条随机缺席：断续电击感
+        const segN = 3 + (pi % 2);
+        const ax = (Math.random() * 2 - 1) * 15 * parD;
+        const ay = (Math.random() * 2 - 1) * 12 * parD;
+        const bx = (Math.random() * 2 - 1) * 15 * parD;
+        const by = (Math.random() * 2 - 1) * 12 * parD;
+        const parGlow = 0.55 + Math.random() * 0.35;
+        ctx.shadowColor = '#58c8ff';
+        ctx.shadowBlur = 9;
+        ctx.strokeStyle = `rgba(124, 231, 255, ${parGlow.toFixed(2)})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(x + ax, y + ay);
+        for (let pk = 1; pk < segN; pk++) {
+          const pt = pk / segN;
+          ctx.lineTo(
+            x + ax + (bx - ax) * pt + (Math.random() * 2 - 1) * 7,
+            y + ay + (by - ay) * pt + (Math.random() * 2 - 1) * 7,
+          );
+        }
+        ctx.lineTo(x + bx, y + by);
+        ctx.stroke();
+        ctx.shadowBlur = 0;   // 白芯复描同一路径：更细更亮的电弧芯
+        ctx.strokeStyle = `rgba(240, 252, 255, ${(parGlow * 0.8).toFixed(2)})`;
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // 受击闪白：机体泛白 + 红缘光晕（damagePlayer 置位 hitFxT，updatePlayer 衰减）
     if (player.hitFxT > 0) {
@@ -2034,14 +2218,15 @@
       ctx.restore();
     }
 
-    // 判定点：机身中心发光白点（下移 4px，真实反映判定范围）
+    // 判定点：发光白点（与座舱视觉核心同位——hitOffsetY = 核心统一落位 (0, -14)，2026-11-17 用户定稿；白点真实反映判定范围）
+    // 花礼（pilotCoreTiny）：核心与判定点均 1×1px——白点同步缩至 1×1
     ctx.save();
-    ctx.translate(x, y + 4);
+    ctx.translate(x, y + PLAYER_CFG.hitOffsetY);
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur = 5;
+    ctx.shadowBlur = pilotCoreTiny() ? 3 : 5;
     ctx.beginPath();
-    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+    ctx.arc(0, 0, pilotCoreTiny() ? 0.5 : 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -2769,7 +2954,7 @@
   }
 
   export {
-    drawWingmen, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark, paintStarslayer,
+    drawWingmen, paintWingman, paintWingmanCheyue, paintWingmanJiye, paintWingmanJinxiao, paintWingmanBulwark, paintWingmanTianSuo, paintStarslayer,
     paintShip, drawPlayer, drawStarslayerBeam, drawFrostZones,
     drawPlayerHitFx, drawMissileWarns, drawMissiles, drawDagouMissiles,
     drawItemPickFx,

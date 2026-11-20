@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>大无垠战机 · Big Infinity Fighter</title>
-  <link rel="stylesheet" href="./style.css?v=20261113a" />
+  <link rel="stylesheet" href="./style.css?v=20261116a" />
   <!-- 曾尝试 modulepreload 并行预取 14 个 ES modules（v0.3.7）：实测刷新后 JS 就绪时间几乎不变
        （本机 http 瀑布式加载仅 ~90ms），反而把 1.5MB JS 的编译+顶层执行集中到同一帧，
        造成刷新后 ~69ms 长任务 + 主菜单零点几秒可感掉帧。已回滚，勿再加。 -->
@@ -146,7 +146,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.5.1</span>
+          <span class="menu-version">v0.5.2</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
         <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；
@@ -181,7 +181,7 @@
               <p class="help-note">上下左右移动战机<br>战机会自动攻击敌人</p>
             </div>
             <div class="help-quadrant help-quadrant-img">
-              <img class="help-shot" src="assets/tutorial_attack.png" alt="攻击演示">
+              <img class="help-shot" src="assets/tutorial_attack.webp" alt="攻击演示">
               <p class="help-note">移动战机攻击敌人</p>
             </div>
             <div class="help-quadrant help-quadrant-bl">
@@ -190,7 +190,7 @@
               <div class="help-row"><span class="help-keys"><kbd>F</kbd>/<kbd>Q</kbd></span><span class="help-desc">装甲/驾驶员技能</span></div>
             </div>
             <div class="help-quadrant help-quadrant-img">
-              <img class="help-shot" src="assets/tutorial_dodge.png" alt="躲避演示">
+              <img class="help-shot" src="assets/tutorial_dodge.webp" alt="躲避演示">
               <p class="help-note">注意躲避敌机子弹<br>通常为橙色或红色</p>
             </div>
           </div>
@@ -208,7 +208,7 @@
               <p class="help-note">左摇杆或十字键移动战机<br>战机会自动攻击敌人</p>
             </div>
             <div class="help-quadrant help-quadrant-img">
-              <img class="help-shot" src="assets/tutorial_attack.png" alt="攻击演示">
+              <img class="help-shot" src="assets/tutorial_attack.webp" alt="攻击演示">
               <p class="help-note">移动战机攻击敌人</p>
             </div>
             <div class="help-quadrant help-quadrant-bl">
@@ -219,7 +219,7 @@
               <div class="help-row"><span class="help-keys"><kbd>RT</kbd>/<kbd>LT</kbd></span><span class="help-desc">马兴犬 加速/减速</span></div>
             </div>
             <div class="help-quadrant help-quadrant-img">
-              <img class="help-shot" src="assets/tutorial_dodge.png" alt="躲避演示">
+              <img class="help-shot" src="assets/tutorial_dodge.webp" alt="躲避演示">
               <p class="help-note">注意躲避敌机子弹<br>通常为橙色或红色</p>
             </div>
           </div>

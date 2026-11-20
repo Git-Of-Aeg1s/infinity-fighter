@@ -9,6 +9,15 @@
   // 闩（起播 / 续播前检查 bgmUnlocked），禁止裸调 play()**——否则会出现"AI/手柄操控时新音效独响、
   // BGM/警报不响"的门槛不一致（历史 bug：警报未接闩，不点击页面时警报独响）。
   //
+  // ⚠ 手机端静音预热 + 手势栈内起播（2026-11-16 用户反馈 Android App 内置 WebView 全程无声）：
+  // ① muted 预热——未解锁期间当前曲 / 警报以 `muted = true` 照常起播（浏览器允许静音自动播放，
+  //    播放管线与解码提前建立），解锁瞬间仅取消 muted 即刻出声（用户感知"一碰就响"）；无任何
+  //    触摸前物理上不可能出声（浏览器铁律），这是能做到的最接近"进入页面立刻有声音"的形态。
+  //    audioMuted（用户静音开关）语义不变：静音 = 暂停，不参与预热。
+  // ② 手势栈内同步起播——部分严格 WebView（QQ / 抖音等 App 内置）要求 play() 必须在手势事件
+  //    回调调用栈内执行，手势后 rAF 帧里调用会被永久拒绝；unlockBGM 现于手势回调内同步调用
+  //    updateBGM()，起播 / unmute 都落在手势栈内。
+  //
   import { bossFlow, musicToggle, state } from './02-core.js';
 
 
@@ -143,7 +152,8 @@
     bgmCurrent = p.to;
     if (RESULT_TRACKS.includes(p.to)) { resultDone = false; resultSession = p.to; }
     const ta = bgmAudios[p.to];
-    if (ta && bgmUnlocked && !state.paused && !audioMuted) {
+    if (ta && !state.paused && !audioMuted) {
+      ta.muted = !bgmUnlocked;   // 未解锁：静音预热起播（解锁瞬间 unmute 即响）；audioMuted 走暂停语义不进来
       ta.volume = trackVol(p.to);
       ta.play().catch(() => {});
     }
@@ -162,7 +172,10 @@
     bgmCurrent = key;
     if (RESULT_TRACKS.includes(key)) { resultDone = false; resultSession = key; }
     const a = bgmAudios[key];
-    if (a && bgmUnlocked && !state.paused && !audioMuted) a.play().catch(() => {});
+    if (a && !state.paused && !audioMuted) {
+      a.muted = !bgmUnlocked;   // 未解锁：静音预热起播（muted 预热纪律，见模块头 2026-11-16 条目）
+      a.play().catch(() => {});
+    }
   }
 
   // 警报演出期间不播放任何 BGM（静默 + 警报音效营造紧张感）
@@ -283,15 +296,17 @@
     }
     if (!bgmCurrent) {
       // 静默期（警报演出）不播放任何曲目，但警报音效需跟随暂停 / 静音
+      alarmAudio.muted = !bgmUnlocked;   // 未解锁：静音预热同步（解锁后此帧即解除静音）
       if (state.paused || audioMuted) {
         if (!alarmAudio.paused) alarmAudio.pause();
-      } else if (bgmUnlocked && alarmAudio.src && bossFlow.stage === 'warn' && alarmAudio.paused && alarmAudio.currentTime > 0) {
+      } else if (bossFlow.stage === 'warn' && alarmAudio.src && alarmAudio.paused && alarmAudio.currentTime > 0) {
         alarmAudio.play().catch(() => {});
       }
       return;
     }
     const a = bgmAudios[bgmCurrent];
-    if (!a || !bgmUnlocked) return;
+    if (!a) return;
+    a.muted = !bgmUnlocked;   // 每帧同步静音预热状态：未解锁期间曲目静播预热，解锁后此帧即出声（muted 预热纪律）
     if (state.paused || audioMuted) {
       if (!a.paused) a.pause();
     } else if (a.paused && !a.ended && !bgmRestart) {
@@ -307,7 +322,8 @@
   alarmAudio.preload = 'auto';
 
   function startAlarm() {
-    if (audioMuted || !bgmUnlocked) return;   // 静音 / 未解锁（浏览器自动播放限制）不播放警报——与 BGM 同门槛，见模块头「音频解锁纪律」
+    alarmAudio.muted = !bgmUnlocked;   // 未解锁：静音预热起播（与 BGM 同预热口径，见模块头 2026-11-16 条目）；解锁后 updateBGM 静默段每帧同步 unmute
+    if (audioMuted) return;            // 用户静音开关：暂停语义，不播放——与 BGM 同门槛，见模块头「音频解锁纪律」
     alarmAudio.currentTime = 0;
     alarmAudio.play().catch(() => {});
   }
@@ -320,11 +336,10 @@
   function unlockBGM() {
     if (bgmUnlocked) return;
     bgmUnlocked = true;
-    const a = bgmCurrent ? bgmAudios[bgmCurrent] : null;
-    if (a && !state.paused && !audioMuted) a.play().catch(() => {});
-    // 解锁瞬间若正处警报演出（此前被解锁闩挡住从未起播）则补响——与 BGM「解锁即起播」语义对齐；
-    // 曾起播后中途暂停的（currentTime > 0）由 updateBGM 警报续播分支接管
-    if (bossFlow.stage === 'warn' && !state.paused && !audioMuted && alarmAudio.paused && alarmAudio.currentTime === 0) startAlarm();
+    // 手势回调栈内同步推进一帧音频状态（2026-11-16 严格 WebView 兼容，见模块头「手势栈内起播」）：
+    // 当前曲 / 警报的起播与 unmute 都落在本手势事件调用栈内——部分 App 内置 WebView（QQ / 抖音等）
+    // 要求 play() 必须在手势事件内调用，此前"手势只记标志、rAF 帧里 play()"的延迟路径会被永久拒绝
+    updateBGM();
   }
   window.addEventListener('keydown', unlockBGM, { once: true });
   window.addEventListener('pointerdown', unlockBGM, { once: true });

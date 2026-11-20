@@ -1,7 +1,7 @@
 // 01-config-boss：BOSS 注册表与序列（旧日之歌 / 暴风之眼 / 风暴编织者 / 黑暗之手）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(3 名) 05-boss(13 名) 06-enemy(9 名) 07-player(1 名) 08-entities(5 名) 10-draw-world(1 名) 11-draw-boss(7 名) 13-encyclopedia(4 名) 14-main(4 名)
+  // 被依赖：04-spawn(3 名) 05-boss(13 名) 06-enemy(9 名) 07-player(2 名) 08-entities(5 名) 10-draw-world(1 名) 11-draw-boss(7 名) 13-encyclopedia(4 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { JIAOXIANG } from './01-config-enemies.js';
@@ -158,6 +158,10 @@
     hp: 36000,                 // 基准血量（具象；各难度见 hpByDiff）
     hpByDiff: { illusion: 28000, form: 36000, realme: 45000, poem: 54000 },   // 分难度血量表（虚象 / 具象 / 真我 / 诗篇；诗篇 54000 = 2026-10-10 用户定稿，总表待同步）
     score: 5000,               // 击杀分数 5000 + 击杀掉落 400 颗水晶（2026-10-10 按怪物属性总表同步：原 0 分 + 900 水晶）
+    // 麻痹三档（2026-11-17 用户定稿）：风暴编织者造成的所有伤害附带麻痹——具象/虚象 0.3s / 真我 0.4s / 诗篇 0.5s；
+    // 消费点见 07-player damagePlayer（cause 'storm2' / 'laser:storm2' / 'crash:storm2'）与 08-entities 弹幕弹命中（bossOwned 分支）；
+    // 奔雷亡语复用 fireS2Strike 时显式关闭（fireStormStrikeAt 传 withParalyze=false——亡语弹不带编织者麻痹）
+    paralyzeBase: 0.3, paralyzeRealme: 0.4, paralyzePoem: 0.5,
     hoverY: 150,               // 悬停高度（较风暴中心 205 更靠下，凸显机体形态）
     // 航点扫动移动（与旧日之歌同一系统，见 05-boss；基准速度更快以保持其高机动定位）
     move: {

@@ -1,7 +1,7 @@
 // 03b-affix：BOSS 击坠三选一词条系统（2026-11-09 实装）
 
   // 模块契约（并行修改请先读；node tools/check-names.js 静态强制校验 import/export）
-  // 被依赖：04-spawn(1 名) 05-boss(2 名) 06-enemy(4 名) 07-player(13 名) 08-entities(6 名) 12-ui(9 名) 13-encyclopedia(3 名) 14-main(7 名)
+  // 被依赖：04-spawn(1 名) 05-boss(5 名) 06-enemy(5 名) 07-player(13 名) 08-entities(6 名) 12-ui(11 名) 13-encyclopedia(3 名) 14-main(7 名)
   // 依赖：01-config-core 01-config-difficulty 01-config-loadout 02-core
   // 本文件写共享状态：state.paused（词条选择期间暂停主循环，12-ui togglePause 受 affixModalOpen 门控）
   // 加载序：本文件在 03-audio 之后、04-spawn 之前——下游 04/05/06/07/08/12/13/14 单向引用本模块；
@@ -10,7 +10,7 @@
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { isPoem } from './01-config-difficulty.js';
   import { SUB_WEAPONS, PLANES, WINGMEN_CFG, berserkDuration, crystalShieldDur, currentPlane, currentWingman } from './01-config-loadout.js';
-  import { player, rand, spawnParticles, state, xinRings, bossFlow } from './02-core.js';
+  import { player, rand, spawnParticles, state, xinRings, bossFlow, TOUCH_DEVICE } from './02-core.js';
 
 
   // ---------- 词条数据（2026-11-09 自 13-encyclopedia 迁入为运行时单一来源，文案逐字保留） ----------
@@ -23,6 +23,8 @@
   //   · 长歌级正面「升级道具」词条替换为「15~35s 掉落暴走道具」（同上）；
   //   · 新增特殊类绑定词条（AFFIX_SPECIAL，见数组后注释）。
   // 2026-11-09：诗篇级负面三处替换词条概率 75%→65%（用户改稿）；词条页版式改为逐词条独立条目卡。
+  // 2026-11-17 改版（用户定稿）：诗篇难度不再每选项内嵌两对词条——改为分两次选择（每次一对），
+  //   第一次选择后**仅被选选项位**换新的一对（另两个选项不动），再选一次；刷新次数不重置。
   // 配套设计：删除驾驶员 东坤蝰 / 龚粥，其技能移入词条池（见 13-encyclopedia 页尾注）。
   // 文案纪律：以下正负面条目为用户逐字口述定稿，照录不得改写措辞（同图鉴 desc/lore 纪律）。
   // 2026-11-09 二轮改版：词条加 name 字段（**当前全部为占位名，待用户逐条定稿**，定稿后直接改 name 即可，
@@ -140,7 +142,7 @@
   const AFFIX_SPECIAL = [
     { name: '纵逭灭',
       good: { icon: '♾️', text: '战机可以永久保持暴走状态（此时右下角不再显示读条）。' },
-      bad: { icon: '🌀', text: '所有敌人的攻击间隔减少50%。' } },
+      bad: { icon: '🌀', text: '所有敌人的攻击间隔减少75%。' } },
     { name: '澪叶',
       good: { icon: '🏎️', text: '战机的移动速度提高50%。' },
       bad: { icon: '🐌', text: '所有敌方子弹的弹速降低50%。' } },
@@ -154,19 +156,15 @@
   // 3:bad:5 叶星凡（破茧替换）/ 3:bad:6 杉蔚硙（静滞替换）已于 2026-11-11 随占位敌人破茧之梦 / 静滞虚幻实装移出
   //（65% 生成替换见 04-spawn spawnPopian/spawnVoyager/spawnBaoling 系入口，移速 +30% 见 spawnCocoonDream/spawnStasisUnreal speedMul）；
   // 4:bad:3 嬴乾（高危频发）已于 2026-11-11 效果定稿实装移出（波次 tier 权重修正见 01-config-spawn waveAffixTierW，
-  // 侧翼触发概率与额外波次追加见 pickPoemFlankCard / 14-main affixExtraWaveBurst；原 affixDangerWaveMul ×5 占位退役）
-  const AFFIX_UNIMPLEMENTED = new Set([
-    // —— B：已实装、设计未定稿（2026-11-09 用户定稿暂缓放出；实现保留，移出即恢复入池）——
-    // BOSS 增强类
-    '1:bad:4',    // 下一个BOSS小幅增强（affixBossHpMul ×1.25 一次性）
-    '2:bad:1',    // 下一个BOSS大幅增强（affixBossHpMul ×1.5 一次性）
-    '3:bad:1',    // 所有BOSS小幅增强（affixBossHpMul ×1.25 持续）
-    '4:bad:0',    // 所有BOSS大幅增强（affixBossHpMul ×1.5 持续）
-    // 敌人颜色类（enemyColorTags 域）
-    '2:bad:2',    // 红色狂潮：红色敌人攻击间隔 -30%（enemyFireIvMul ×10/7）
-    '2:bad:3',    // 黄金壁垒：黄色敌人登场 200 屏障（updateEnemies 懒施加 + 黄色护罩渲染）
-    '3:bad:0',    // 紫色亡语：紫色敌人击坠朝下放弹（killEnemy 钩子）
-  ]);
+  // 侧翼触发概率与额外波次追加见 pickPoemFlankCard / 14-main affixExtraWaveBurst；原 affixDangerWaveMul ×5 占位退役）；
+  // 敌人颜色类三条（2:bad:2 红色狂潮 / 2:bad:3 黄金壁垒 / 3:bad:0 帝千邪紫色亡语）已于 2026-11-17 随
+  // enemyColorTags 九色体系定稿实装移出（实现早已就位：enemyFireIvMul ×10/7 / updateEnemies 懒施加 200 屏障 +
+  // 通用护罩渲染 / killEnemy 紫色亡语钩子，移出即恢复入池；战争矩阵裸 dt 与 4S 精英 eliteSkillGap 两处
+  // 红色覆盖缺口同日补接，见 06-enemy；S 类/长歌级敌人颜色修正减半见 06-enemy affixColorHalf）；
+  // BOSS 增强类四条（1:bad:4 / 2:bad:1 / 3:bad:1 / 4:bad:0）已于 2026-11-17 随用户数值定稿
+  //（小幅 HP+20%/伤害+20%/间隔-20%，大幅 HP+40%/伤害+50%/间隔-40%）实装移出——见上方 affixNextBoss 快照体系。
+  // 此后暂缓表常空（新暂缓项随批次在此登记）。
+  const AFFIX_UNIMPLEMENTED = new Set([]);
 
   // 绑定词条出场条件（0:good:7/8 文案括注定稿「仅在选择时空允诺/混乱将至时会出现这个词条」——
   // 2026-11-11 僚机「群星允诺」更名「时空允诺」，括注装备名随更名同步；绑定判定按 id 不变）：
@@ -225,6 +223,9 @@
     // 本次抽取会话的档位权重覆盖（null = 用默认 AFFIX_DRAW_WEIGHTS；open 时算一次，close 时清空——
     // 会话内刷新沿用同一覆盖，同一次抽取规则一致）
     sessionTierW: null,
+    // 诗篇两段式选择计数（2026-11-17）：本会话已选择次数——第 1 次选择后仅重建被选选项位（poemPickCount<2），
+    // 第 2 次选择后关闭界面；open/close/reset 三处归零
+    poemPickCount: 0,
   };
 
   // 本局已选词条 id 列表（affixHas 全局查询的唯一真源）
@@ -334,16 +335,43 @@
     return mul;
   }
 
-  // BOSS 血量乘区（05-boss spawnBoss 四处 hp 计算调用）：
-  //   「下一个 BOSS 小幅/大幅增强」= 一次性乘区（1:bad:4 ×1.25 / 2:bad:1 ×1.50，消费即耗尽）
-  //   「所有 BOSS 小幅/大幅增强」= 常驻乘区（3:bad:1 ×1.25 / 4:bad:0 ×1.50）
-  //   数值口径：小幅 +25%、大幅 +50%（设计稿未给定值，实装定档；调整只改本处）
+  // BOSS 增强乘区（2026-11-17 用户数值定稿：小幅 = HP+20% / 伤害+20% / 攻击间隔-20%；大幅 = HP+40% / 伤害+50% / 攻击间隔-40%）：
+  //   「下一个 BOSS 小幅/大幅增强」（1:bad:4 / 2:bad:1）= 一次性——05-boss 每个 BOSS 登场块开头调
+  //   takeAffixNextBossMods() 快照三通道乘数并移除词条，本次登场的 BOSS 生效至其离场（下一次 spawn
+  //   重新快照：无一次性词条在身 → 自动回 1，上一个 BOSS 的加成自然失效）；「所有 BOSS 小幅/大幅增强」
+  //  （3:bad:1 / 4:bad:0）= 常驻 affixHas 实时判定。
+  //   三通道消费：affixBossHpMul（血量，spawn 块 hp 行）/ affixBossDmgMul（伤害，bossDmgMul() 全部
+  //   消费点旁乘——弹幕走 pushBossBullet 统一乘区、接触/区域走各 damagePlayer 挂点）/ affixBossIvMul
+  //  （技能间隔，05-boss bossSkillIv 统一入口——覆盖四 BOSS 全部 skillCd）。
+  const affixNextBoss = { hp: 1, dmg: 1, iv: 1 };
+  function takeAffixNextBossMods() {
+    affixNextBoss.hp = 1; affixNextBoss.dmg = 1; affixNextBoss.iv = 1;
+    if (affixHas('1:bad:4')) {
+      affixNextBoss.hp *= 1.2; affixNextBoss.dmg *= 1.2; affixNextBoss.iv *= 0.8;
+      affixIds.splice(affixIds.indexOf('1:bad:4'), 1);   // 一次性：消费即移除（下一次 spawn 不再生效）
+    }
+    if (affixHas('2:bad:1')) {
+      affixNextBoss.hp *= 1.4; affixNextBoss.dmg *= 1.5; affixNextBoss.iv *= 0.6;
+      affixIds.splice(affixIds.indexOf('2:bad:1'), 1);
+    }
+    return affixNextBoss;
+  }
   function affixBossHpMul() {
-    let mul = 1;
-    if (affixHas('3:bad:1')) mul *= 1.25;
+    let mul = affixNextBoss.hp;
+    if (affixHas('3:bad:1')) mul *= 1.2;
+    if (affixHas('4:bad:0')) mul *= 1.4;
+    return mul;
+  }
+  function affixBossDmgMul() {
+    let mul = affixNextBoss.dmg;
+    if (affixHas('3:bad:1')) mul *= 1.2;
     if (affixHas('4:bad:0')) mul *= 1.5;
-    if (affixHas('1:bad:4')) { mul *= 1.25; affixIds.splice(affixIds.indexOf('1:bad:4'), 1); }   // 一次性：消费即移除
-    if (affixHas('2:bad:1')) { mul *= 1.5; affixIds.splice(affixIds.indexOf('2:bad:1'), 1); }
+    return mul;
+  }
+  function affixBossIvMul() {
+    let mul = affixNextBoss.iv;
+    if (affixHas('3:bad:1')) mul *= 0.8;
+    if (affixHas('4:bad:0')) mul *= 0.6;
     return mul;
   }
 
@@ -439,10 +467,13 @@
     };
   }
 
-  // 特殊对抽取：从已实装特殊对中等权选一（是否出特殊对由 drawAffixCategory 的权重通道决定）
+  // 特殊对抽取：从已实装特殊对中等权选一（是否出特殊对由 drawAffixCategory 的权重通道决定）；
+  // 澪叶（sp1 疾速航行）手机模式不出现（2026-11-17 用户定稿）：触屏相对拖动 1:1 跟手、无速度上限概念，
+  // 移速加成无意义——同牢大特饮平台门控口径（docs/手机模式设计.md §7.1）；掷中特殊对但池空自动回退常规档位（buildOption）
   function rollSpecial() {
     const sp = [];
     AFFIX_SPECIAL.forEach((_, i) => {
+      if (TOUCH_DEVICE && i === 1) return;
       const key = 'sp' + i;
       if (!AFFIX_UNIMPLEMENTED.has(key) && !affixUsedIds.has(key)) sp.push(i);   // 一次性占用制：选过的特殊对不再出现
     });
@@ -462,7 +493,8 @@
 
   // 构建一个选项：类别加权抽取（档位 22/34/16/12/3 + 特殊对 3，等级全占用 ×0.4）；
   // 槽位池空 → 保底项顶上（rollPair 返回 null 槽；双槽皆空 = 双保底选项）——保底无限供应，
-  // 不再需要池空顺延。诗篇难度每选项两对（同档位）；特殊对为附加行（不替换常规对，诗篇下同样至多一对）
+  // 不再需要池空顺延。诗篇难度不再内嵌两对（2026-11-17 用户定稿：分两次选择，每次一对——
+  // 见 chooseOption 两段式）；特殊对为附加行（不替换常规对）
   function buildOption() {
     let cat = drawAffixCategory();
     let sp = null;
@@ -472,8 +504,7 @@
     }
     const gi = cat === AFFIX_DESIGN.length ? 0 : cat;
     const pair = rollPair(gi) || { gi, good: null, bad: null };   // 双槽皆空 → 双保底选项
-    const pairs = isPoem() ? [pair, rollPair(pair.gi) || { gi: pair.gi, good: null, bad: null }] : [pair];
-    return { pairs, sp, refreshed: false };
+    return { pairs: [pair], sp, refreshed: false };
   }
 
   // BOSS 击坠后延迟开选项（06-enemy killEnemy BOSS 分支调用；延迟给击坠演出/道具吸收留窗口）
@@ -553,6 +584,16 @@
         }
       }
     }
+    // 诗篇难度两段式选择（2026-11-17 用户定稿+纠正）：不再每选项内嵌两对——第一次选择登记后该对消失，
+    // **仅重建被选择的选项位**（buildOption 重新独立抽取：稀有度各自掷、已选词条被占用表自动排除、
+    // 特殊对池延续一次性占用制），**另外两个选项原样保留**（仍可刷新/选择）；保底阶梯、会话门控
+    // sessionTierW、refreshed 刷新状态均延续（不经过 close）——再选一次后关闭界面
+    affixFlow.poemPickCount++;
+    if (isPoem() && affixFlow.poemPickCount < 2) {
+      affixFlow.options[oi] = buildOption();   // 仅被选位换新一对（refreshed[oi] 原位继承，不重置）
+      renderAffixModal();
+      return;
+    }
     closeAffixSelection();
   }
 
@@ -595,7 +636,7 @@
     title.textContent = '击败 BOSS · 选择词条';
     Object.assign(title.style, { fontSize: '20px', fontWeight: '700', letterSpacing: '2px', marginBottom: '6px' });
     const sub = document.createElement('div');
-    sub.textContent = '必须且只能选择一个选项（诗篇难度每选项两对词条）· 选择后本局生效';
+    sub.textContent = '必须且只能选择一个选项 · 选择后本局生效（诗篇难度需连续选择两次，选过的选项位换新）';
     Object.assign(sub.style, { fontSize: '12px', color: '#93a4c6', marginBottom: '14px' });
     affixOptionBox = document.createElement('div');
     Object.assign(affixOptionBox.style, { display: 'flex', gap: '12px', alignItems: 'stretch', flexWrap: 'wrap', justifyContent: 'center' });
@@ -671,6 +712,7 @@
     // 档位权重门控（affixTierWOverride）：命中 storm2 / 第五轮击坠 → 虚象/具象权重归零的会话覆盖
     //（含本会话内的选项刷新，同一次抽取规则一致；close 时清空）
     affixFlow.sessionTierW = affixTierWOverride() ? [0, 0, ...AFFIX_DRAW_WEIGHTS.slice(2)] : null;
+    affixFlow.poemPickCount = 0;   // 诗篇两段式：新会话选择计数归零（两次选择：1→重建选项 / 2→关闭）
     affixFlow.options = [buildOption(), buildOption(), buildOption()];
     affixFlow.refreshed = [false, false, false];
     state.paused = true;   // 选择期间冻结主循环（14-main 战斗块停走、渲染保留最后一帧）
@@ -681,6 +723,7 @@
   function closeAffixSelection() {
     affixFlow.open = false;
     affixFlow.sessionTierW = null;   // 会话级档位门控覆盖用毕即清（下次抽取按最近击坠重新判定）
+    affixFlow.poemPickCount = 0;     // 诗篇两段式计数归零（保险，open 时也重置）
     if (affixModal) affixModal.style.display = 'none';
     state.paused = false;
   }
@@ -695,6 +738,7 @@
     wjkDraws.length = 0;
     wjkTwinKilled.storm = false;
     wjkTwinKilled.storm2 = false;
+    jiukeDraws.length = 0;   // 酒客之王开局抽签记录（2026-11-17 新增）
     affixFlow.pendingT = 0;
     affixFlow.open = false;
     affixFlow.options = null;
@@ -706,8 +750,10 @@
     affixFlow.lastBossKillId = null;
     affixFlow.lastBossKillPhase = -1;
     affixFlow.sessionTierW = null;
+    affixFlow.poemPickCount = 0;
     if (affixModal) affixModal.style.display = 'none';
     if (wjkModal) wjkModal.style.display = 'none';
+    if (jkModal) jkModal.style.display = 'none';
     // 注意：不动 state.paused——resetGame 自身会重置暂停态，且本函数可能在其前后被调
   }
 
@@ -852,12 +898,183 @@
     }).filter(Boolean);
   }
 
+  // ---------- 酒客之王开局词条（2026-11-17 用户定稿：特殊主驾驶员 01-config-loadout PILOTS.jiukewang） ----------
+  // 开局立刻获得六对词条：虚象/具象/真我/诗篇/长歌五档各随机一对（该档正面1+负面1）
+  // + 第六对=特殊对整体（sp0 纵逭灭 + sp1 澪叶同时授予）。与温酒客的差异：
+  //   ①抽「对」（正负各一）而非只抽负面，抽取顺序=档位序 0→4（若诗篇对抽中令雨汐 4:good:3，
+  //     其后长歌负面经 affixBadDisabled 过滤不登记，先前已登记的虚象/真我负面由 affixHas 回溯失效——全局收口语义自然覆盖）；
+  //   ②词条永久生效（无失效引擎）：直接登记进 affixIds（affixHas / 暂停页「当前词条」/ 图鉴快照自动跟随），
+  //     同时进占用表（后续三选一不再出现同 id，同 chooseOption 口径）；
+  //   ③特殊对整体授予为开局赠礼、非三选一抽取——不做 rollSpecial 的手机模式澪叶过滤（sp0+sp1 恒两枚）。
+  // 抽签口径同 rollWenjiukeDebuffs：占用过滤（offerableGood/Bad）+ 等级全占用降权不适用（此处逐档必抽一对，
+  // 槽空直接走保底阶梯——与 rollPair 保底语义一致：good 空出保底正面 / bad 空出保底负面，无限叠加不封顶）。
+  const jiukeDraws = [];   // 六对抽签展示记录（与 affixIds 分离：保底槽/被禁负面不错位，开局模态按此渲染）
+
+  function rollJiukePairs() {
+    jiukeDraws.length = 0;
+    for (let gi = 0; gi < AFFIX_DESIGN.length; gi++) {
+      const gs = offerableGood(gi), bs = offerableBad(gi);
+      jiukeDraws.push({
+        gi,
+        good: gs.length ? gs[(Math.random() * gs.length) | 0] : null,   // null = 保底正面
+        bad: bs.length ? bs[(Math.random() * bs.length) | 0] : null,    // null = 保底负面
+      });
+    }
+    jiukeDraws.push({ sp: true });   // 第六对：特殊对整体（sp0+sp1 恒两枚，见区头注释③）
+  }
+
+  // 抽签 + 登记 + 立即生效（12-ui resetGame 开局钩子 openJiukeOpening 调用）。
+  // 登记完成后统一回填每对负面的 off 划掉标记——按最终状态判定（令雨汐已入 affixIds 后，
+  // 虚象/真我/长歌负面无论登记先后均真实失效，展示与 affixHas 一致）
+  function grantJiukePairs() {
+    rollJiukePairs();
+    for (const d of jiukeDraws) {
+      if (d.sp) {
+        for (const key of ['sp0', 'sp1']) {
+          affixIds.push(key);
+          affixUsedIds.add(key);   // 一次性占用制：特殊对选过即占（同 chooseOption）
+          applyInstant(key);
+        }
+        continue;
+      }
+      if (d.good == null) {   // 保底正面阶梯（档位递进、无限叠加，同 chooseOption）
+        affixFallbackPosMul *= fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount);
+        affixFallbackPosCount++;
+      } else {
+        const gid = d.gi + ':good:' + d.good;
+        affixIds.push(gid);
+        affixUsedIds.add(gid);
+        applyInstant(gid);
+      }
+      if (d.bad == null) {   // 保底负面阶梯（与温酒客 5 连抽池空共用同一条阶梯）
+        affixFallbackNegMul *= fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount);
+        affixFallbackNegCount++;
+      } else {
+        const bid = d.gi + ':bad:' + d.bad;
+        affixUsedIds.add(bid);   // 占用先于禁用判定（同 chooseOption——被令雨汐禁用的负面同样算占用）
+        if (!affixBadDisabled(bid)) {   // 令雨汐已登记（诗篇对先于长歌对抽取）：被禁负面不登记不结算
+          affixIds.push(bid);
+          applyInstant(bid);
+        }
+      }
+    }
+    for (const d of jiukeDraws) {
+      if (!d.sp && d.bad != null) d.off = affixBadDisabled(d.gi + ':bad:' + d.bad);   // 最终状态回填（含令雨汐回溯失效）
+    }
+  }
+
+  // 酒客之王开局确认模态（懒创建，同 affixModal / wenjiukeModal 套路避开无头环境顶层 DOM 依赖）：
+  // 开局展示六对词条（正绿负红同暂停菜单当前词条配色、被禁负面划掉），确认后关闭并恢复游戏
+  let jkModal = null;
+  const JK_COLOR = '#e0b060';   // 模态边框/标题色 = PILOTS.jiukewang.color 琥珀酒金（01-config 注释待定稿可改，此处同步改）
+
+  function ensureJkModal() {
+    if (jkModal) return;
+    jkModal = document.createElement('div');
+    jkModal.id = 'jiukeModal';
+    Object.assign(jkModal.style, {
+      position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+      zIndex: 900, display: 'none', flexDirection: 'column', alignItems: 'center',
+      background: 'rgba(6, 10, 18, 0.94)', border: '1px solid rgba(224, 176, 96, 0.45)',
+      borderRadius: '14px', padding: '22px 26px', maxWidth: '640px', width: '92%',
+      color: '#dfe6f5', fontFamily: 'inherit', boxShadow: '0 10px 44px rgba(0,0,0,0.55)',
+      maxHeight: '86vh', overflowY: 'auto',
+    });
+    const title = document.createElement('div');
+    title.textContent = '酒客之王 · 开局赠礼';
+    Object.assign(title.style, { fontSize: '20px', fontWeight: '700', letterSpacing: '2px', marginBottom: '6px', color: JK_COLOR });
+    jkModal.appendChild(title);
+    const sub = document.createElement('div');
+    sub.textContent = '开局获得六对词条 · 五个等级各一对 + 特殊对整体 · 全部本局永久生效';
+    Object.assign(sub.style, { fontSize: '12px', color: '#93a4c6', marginBottom: '14px' });
+    jkModal.appendChild(sub);
+    const list = document.createElement('div');
+    list.id = 'jiukeModalList';
+    Object.assign(list.style, { width: '100%' });
+    jkModal.appendChild(list);
+    const ok = document.createElement('button');
+    ok.textContent = '确认出发';
+    Object.assign(ok.style, {
+      marginTop: '16px', fontSize: '14px', padding: '8px 28px', cursor: 'pointer',
+      background: 'linear-gradient(180deg, rgba(224,176,96,0.25), rgba(224,176,96,0.08))',
+      color: '#dfe6f5', border: '1px solid rgba(224,176,96,0.55)', borderRadius: '6px', letterSpacing: '4px',
+    });
+    ok.addEventListener('click', closeJiukeOpening);
+    jkModal.appendChild(ok);
+    document.body.appendChild(jkModal);
+  }
+
+  function appendJkLine(parent, text, color, strike) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    Object.assign(p.style, { margin: '4px 0', fontSize: '12.5px', lineHeight: '1.6', color });
+    if (strike) { p.style.textDecoration = 'line-through'; p.style.opacity = '0.55'; }
+    parent.appendChild(p);
+  }
+
+  // 开局流程（12-ui resetGame 末尾调用，同温酒客 openWenjiukeOpening 口径）：非酒客之王直接放行；
+  // 酒客之王先抽六对（grantJiukePairs 登记生效）并弹确认模态。BOSS 试炼 / 图鉴挑战不豁免（同温酒客无难度口径）
+  function openJiukeOpening(hasPilotJk) {
+    if (!hasPilotJk) return false;
+    grantJiukePairs();
+    ensureJkModal();
+    const list = document.getElementById('jiukeModalList');
+    list.innerHTML = '';
+    for (const d of jiukeDraws) {
+      if (d.sp) {   // 第六对：特殊对整体——两小节（纵逭灭 / 澪叶），各对名 + 正/负文案
+        appendJkHead(list, '特殊对 · 整体授予', JK_COLOR);
+        for (const key of ['sp0', 'sp1']) {
+          const sp = AFFIX_SPECIAL[Number(key.slice(2))];
+          if (!sp) continue;
+          appendJkLine(list, '【' + sp.name + '】', '#ffffff');
+          appendJkLine(list, sp.good.icon + ' 正面 · ' + sp.good.text, '#4ade80');
+          appendJkLine(list, sp.bad.icon + ' 负面 · ' + sp.bad.text, '#ff5a5a');
+        }
+        continue;
+      }
+      const g = AFFIX_DESIGN[d.gi];
+      appendJkHead(list, g.grade, g.color);
+      if (d.good == null) {
+        const pct = Math.round((fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount) - 1) * 100);
+        appendJkLine(list, '⬆️ 正面 · 保底强化：我方战机本体伤害增加 ' + pct + '%', '#4ade80');
+      } else {
+        const gd = g.good[d.good];
+        appendJkLine(list, gd.icon + ' 正面 · ' + gd.name + '：' + gd.text, '#4ade80');
+      }
+      if (d.bad == null) {
+        const pct = Math.round((fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount) - 1) * 100);
+        appendJkLine(list, '⬇️ 负面 · 保底代价：我方战机受到的伤害增加 ' + pct + '%', '#ff5a5a');
+      } else {
+        const bd = g.bad[d.bad];
+        appendJkLine(list, bd.icon + ' 负面 · ' + bd.name + '：' + bd.text, d.off ? '#9c6b74' : '#ff5a5a', d.off);
+      }
+    }
+    jkModal.style.display = 'flex';
+    state.paused = true;   // 确认前冻结主循环
+    return true;
+  }
+
+  function appendJkHead(parent, text, color) {
+    const h = document.createElement('div');
+    h.textContent = text;
+    Object.assign(h.style, { margin: '8px 0 2px', fontSize: '13px', fontWeight: '700', color });
+    parent.appendChild(h);
+    return h;
+  }
+
+  function closeJiukeOpening() {
+    if (jkModal) jkModal.style.display = 'none';
+    state.paused = false;
+  }
+
+  function jiukeOpeningOpen() { return !!jkModal && jkModal.style.display === 'flex'; }
+
 
   export {
     AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_UNIMPLEMENTED,
     affixHas, affixModalOpen, affixPlayerDamageMul, affixDamageClamp, affixDodgeRoll, affixMaxHpDelta,
     affixMainGunDamageMul,
-    affixNoteBossKill, affixBossShieldMul, affixBossHpMul,
+    affixNoteBossKill, affixBossShieldMul, affixBossHpMul, affixBossDmgMul, affixBossIvMul, takeAffixNextBossMods,
     affixFireIv, affixSubIv, affixWingIv, affixBerserkDur, affixBerserkDurView,
     affixCrystalShieldDur, affixCrystalExtend, affixResetShieldExt,
     affixXinguodongRings,
@@ -866,4 +1083,5 @@
     affixOwnedEntries,
     openWenjiukeOpening, closeWenjiukeOpening, wenjiukeOpeningOpen, wenjiukeBossRoundKill,
     registerWenjiukeRemoved, wenjiukeDebuffEntries,
+    openJiukeOpening, closeJiukeOpening, jiukeOpeningOpen,
   };

@@ -151,7 +151,7 @@
   const REWARD_ITEMS = {
     // ---- 普通（白色）----
     laodaDrink:   { id: 'laodaDrink',   rarity: 'normal', name: '牢大特饮', glyph: '🥤',
-                    desc: '移速 +40%，持续 15s。' },
+                    desc: '移速 +50%，持续 60s。' },
     magnetShroom: { id: 'magnetShroom', rarity: 'normal', name: '磁力菇', glyph: '🍄',
                     desc: '水晶拾取半径 +75，持续一整局，可叠加。' },
     noLingluo:    { id: 'noLingluo',    rarity: 'normal', name: '不再陵落', glyph: '🗡',
@@ -166,7 +166,7 @@
     bengbag:      { id: 'bengbag',      rarity: 'rare', name: '绷绷背包', glyph: '🎒',
                     desc: '高能爆弹 / 绷绷炸弹携带上限 +1 并立刻补充 1 枚，持续一整局；该道具一局限掉落一次。' },
     jiukeShadow:  { id: 'jiukeShadow',  rarity: 'rare', name: '酒客之影', glyph: '🍶',
-                    desc: '获得 100% 闪避，机体透明化加深，持续30s。但每成功闪避一次，闪避概率就减少 20%，直到归零或持续时间结束。' },
+                    desc: '获得 100% 闪避，机体透明化加深。无持续时长限制：每秒闪避概率自行减少 1%，每成功闪避一次减少 20%，受击（判定未挡下的攻击）再减少 20%；概率归零后效果结束。' },
     gacha:        { id: 'gacha',        rarity: 'rare', name: '哦哦！抽卡！', glyph: '🎲', noDrop: true,
                     desc: '不入赞助无人舰掉落池——原石（巨型水晶）为萧杨专属：萧杨每收集 16 颗原石充满一次该技能（击坠无人机获得的道具直接生效，无槽位概念），充满后按副驾驶员技能键 <b>Q</b> 释放（其他驾驶员不收集原石、无法使用）。<br>释放效果：16 颗原石自四面八方随机先后汇集机体（约 2.5s，期间无敌、我方输出 -60%），收束后清除周身 300px 敌弹并抽卡：70% 蓝 / 25% 紫 / 5% 金——场中巨影闪现，同色陨石轰击场心（蓝 <b>16000</b> / 紫 <b>32000</b> 全场伤害；金秒杀全场敌方单位——与埃逸殉爆同款：禁用增生分裂 / 法术矩阵爆发等召唤型亡语、无法秒杀二阶段风暴编织者）；陨石同时清除全场敌我弹幕与预警（暴风之眼风波/风柱、风暴编织者雷霆/激光预警、战争幽灵登场——登场的战争幽灵直接被砸死）。' },
     bottleSpirit: { id: 'bottleSpirit', rarity: 'rare', name: '瓶中精灵', glyph: '🧪',

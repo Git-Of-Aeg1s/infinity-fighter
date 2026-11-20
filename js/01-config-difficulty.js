@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(3 名) 03b-affix(1 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(14 名) 07-player(7 名) 08-entities(9 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(3 名) 03b-affix(1 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(14 名) 07-player(8 名) 08-entities(9 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg, CANVAS_H } from './01-config-core.js';
@@ -229,6 +229,8 @@
     fashiA2: 2400, fashiArray: 7000, warGhost: 7000, pulseMatrix: 4000,
     warMatrix: 8000,   // 战争矩阵（诗篇级 4B，2026-10-17 用户定稿 10000→8000；基准 4000）
     guiltGrail: 27000,   // 愧悔魂灵圣杯（诗篇级 4D，2026-11-10 用户定稿；基准 9000）
+    starSlayer_darkSun: 10500, starSlayer_whiteNight: 10500, starSlayer_violetMoon: 10500,   // 诛星舰三变体（4C，2026-11-16 用户定稿；基准 5000）
+    thunderWrath: 7000,   // 雷霆之怒（4C，2026-11-16 用户定稿；基准 3000）
     tornado: 6800,   // 大型龙卷（暴风之眼技能2 召唤物）：基准 3600 / 真我 6000 不覆写其余难度，诗篇 6800（2026-10-10 用户二次定稿 4800→6800）
   };
   // 诗篇血量取值入口：key 优先 变体 → 行为 → 类型
@@ -272,16 +274,16 @@
     return (Math.abs(u) >= c.hornU && v >= c.hornV0 && v <= c.hornV1) ? mul : 1;
   }
 
-  // 铜皮夏勇·屏障吸收（技能3，2026-10-03 用户定稿）：xyBarOn 且 xyBarHp > 0 时先吸收伤害，
-  // 返回吸收后剩余伤害（0 = 完全抵挡）。适用于常规直击类伤害（弹幕 / 导弹直击 / 灼烧 / 镰刀 / 溅射）；
-  // 秒杀类与全屏瞬发真实伤害（爆弹 / 陨石 / 埃逸 / 许凯狗冲刺秒杀）按统一伤害规则惯例不经过本函数。
-  // 吸收至 0 的破盾检测与红色迸散特效在 06-enemy advanceEliteMinions（xyBarOn 复位 + 移速系数缓回 1）
+  // 屏障吸收（2026-11-17 用户定稿通道合并）：夏勇技能屏障 / 黄金壁垒词条 / 青时支援屏障统一走 e.barrier
+  // 单通道——barrier > 0 时先吸收伤害，返回吸收后剩余伤害（0 = 完全抵挡）。适用于常规直击类伤害
+  //（弹幕 / 导弹直击 / 灼烧 / 镰刀 / 溅射）；秒杀类与全屏瞬发真实伤害（爆弹 / 陨石 / 埃逸 / 许凯狗冲刺秒杀）
+  // 按统一伤害规则惯例不经过本函数。夏勇碎盾检测与红色迸散特效在 06-enemy advanceEliteMinions
+  //（xyBarOn 降级为视觉/碎盾状态标记，余量耗尽复位 + 移速系数缓回 1）
   function xiayongBarAbsorb(e, dmg) {
-    // 类型门已移除（2026-11-09 词条 2:bad:3 黄金壁垒通用化）：xyBar 通道现同时服务夏勇技能屏障与
-    // 黄金壁垒词条懒施加（06-enemy updateEnemies），凡带 xyBarOn 且余量 >0 的敌人一律先吸收
-    if (!e || !e.xyBarOn || !(e.xyBarHp > 0)) return dmg;
-    const absorbed = Math.min(e.xyBarHp, dmg);
-    e.xyBarHp -= absorbed;
+    // 历史函数名保留（11 个结算调用点零改动）；幂等——通用命中区先行内联吸收 e.barrier 后再次调用不重复扣
+    if (!e || !(e.barrier > 0)) return dmg;
+    const absorbed = Math.min(e.barrier, dmg);
+    e.barrier -= absorbed;
     return dmg - absorbed;
   }
 

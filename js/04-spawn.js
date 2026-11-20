@@ -1,13 +1,13 @@
   // 2类变体出现权重：按关卡分档直接取值（Lv1~10 / Lv11~20，与「数值与机制图鉴-怪物权重」单一数据源同步）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：05-boss(7 名) 06-enemy(11 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(28 名)
+  // 被依赖：05-boss(7 名) 06-enemy(12 名) 07-player(3 名) 08-entities(1 名) 12-ui(1 名) 13-encyclopedia(14 名) 14-main(28 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   levelFlow.{poemWaveIdx, waveSeq, hpKitWaveCd}  bossFlow.{stage, warnT}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STARS_SLAYER, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, THUNDER, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
@@ -1266,14 +1266,15 @@
 
   // 特殊4类：战争幽灵（诗篇新敌实装 2026-09-29）—— 白色风波预警 → 极速入场冲撞 → 抵达演出 →
   // 驻留中场技能循环 → 直线预警加速斩出离场（挑战模式传 forever 永驻不离场）。
-  // 停留点（屏高 50%~65% / 屏宽 15%~85% 随机）与来向在此抽取——2026-11-13 用户定稿：来向 360° 任意角度
-  //（entrySpreadDeg 180 = ±180° 全角）；预警期间本体静驻屏外起点（预警流带/冲刺/机头朝向全按 wgDir 向量化），
+  // 停留点（屏高 50%~65% / 屏宽 15%~85% 随机）与来向在此抽取——来向 2026-11-13 用户定稿 360° 任意角度
+  //（entrySpreadDeg 180 = ±180° 全角）；停留高度 2026-11-16 用户定稿统一 50%~65%（原诗篇「w*1」前波
+  // 指定 50%~70% 的 stayYPct 参数随之删除）；预警期间本体静驻屏外起点（预警流带/冲刺/机头朝向全按 wgDir 向量化），
   // 预警结束沿来向冲刺、临近停留点指数减速（v = min(entrySpeed, k×剩余距离)，位置逐帧连续无 snap）；
   // 屏下来向的底部出界移除豁免见 06-enemy 通用移除（wgPhase ≤ 1 入场期豁免）；
   // 移动/技能/光环/半血召唤状态机见 06-enemy warGhost 分支
-  function spawnWarGhost(forever, stayYPct) {
+  function spawnWarGhost(forever) {
     const stayX = CANVAS_W * rand(WAR_GHOST.stayXPctMin, WAR_GHOST.stayXPctMax);
-    const stayY = CANVAS_H * (stayYPct != null ? stayYPct : rand(WAR_GHOST.stayYPctMin, WAR_GHOST.stayYPctMax));   // stayYPct：波次指定目标高度比例（波次示意「w*1」50%~70%，2026-10-11）
+    const stayY = CANVAS_H * rand(WAR_GHOST.stayYPctMin, WAR_GHOST.stayYPctMax);
     // 来向：以停留点正上方为轴 ±entrySpreadDeg 扇区内随机取一方向（upAng 相对竖直向上的偏角；180 = 全角 360°）
     const upAng = -Math.PI / 2 + rand(-1, 1) * WAR_GHOST.entrySpreadDeg * Math.PI / 180;
     const dir = { x: -Math.cos(upAng), y: -Math.sin(upAng) };   // 飞行方向（单位向量）：从来向指向停留点
@@ -1334,8 +1335,7 @@
     e.elRemnant = null;        // 朴学峰残像 { x, y, t }（绘制 + 爆开弹幕）
     e.xyStep = 0;              // 夏勇固定五步循环游标（[屏障, 大子弹, 回旋刃, 大子弹, 回旋刃]，见 06-enemy startEliteSkill）
     e.xyTrackV = 0;            // 夏勇驻留水平追踪当前速度（低通状态，速度曲线铁律）
-    e.xyBarOn = false;         // 夏勇屏障开关（技能3）
-    e.xyBarHp = 0; e.xyBarMax = 0;   // 夏勇屏障吸收量当前/上限
+    e.xyBarOn = false;         // 夏勇屏障视觉/碎盾状态标记（技能3；数据通道已并入 e.barrier——2026-11-17 合并）
     e.xyBlades = null;         // 夏勇碎翼回旋刃挂载（双刃数组，见 06-enemy startEliteSkill/advanceEliteMinions）
     e.xyOrbs = null;           // 夏勇核心膨胀能量球 ×3（数组，见 06-enemy startEliteSkill/advanceEliteMinions）
     e.xgBombs = [];            // 辛国栋地毯轰炸落点 { x, y, t }（预警 → 爆炸）
@@ -1551,10 +1551,11 @@
       hoverY: o.hoverY != null ? o.hoverY : rand(75, 110),
       holdTimer: HARBINGER.hold,
       staticX: o.staticX || false,
-      speedMul: o.speedMul,   // 旧日之歌诗篇召唤体：移动速度 = 常态巡航 × speedMul（05-boss 传 0.35；hoverY 置屏外恒速下移不停留）
+      speedMul: o.speedMul,   // 移动速度倍率（旧日之歌诗篇召唤体传 0.30 = 分段上段初值，40% 屏高往下由 05-boss 每帧写 speedMulBase 分段过渡到 0.20，2026-11-17 用户定稿；hoverY 置屏外恒速下移不停留）
     });
     e.chargeFirstDur = rand(HARBINGER_HUB.chargeFirstMin, HARBINGER_HUB.chargeFirstMax);
     e.cycleJit = o.cycleJit != null ? o.cycleJit : rand(0, 0.9);   // 诗篇召唤体显式错开攻击间隔
+    e.attackMul = o.attackMul != null ? o.attackMul : 1;   // 攻击周期倍率（06-enemy 周期公式消费；旧日之歌诗篇召唤体传 0.8 = 间隔 -20%，2026-11-17 用户定稿）
     return e;
   }
 
@@ -1567,10 +1568,11 @@
       hoverY: o.hoverY != null ? o.hoverY : rand(HARBINGER_POLAR.hoverYMin, HARBINGER_POLAR.hoverYMax),
       holdTimer: HARBINGER.hold,
       staticX: o.staticX || false,
-      speedMul: o.speedMul,   // 旧日之歌诗篇召唤体：移动速度 = 常态巡航 × speedMul（05-boss 传 0.35；hoverY 置屏外恒速下移不停留）
+      speedMul: o.speedMul,   // 移动速度倍率（旧日之歌诗篇召唤体传 0.30 = 分段上段初值，40% 屏高往下由 05-boss 每帧写 speedMulBase 分段过渡到 0.20，2026-11-17 用户定稿；hoverY 置屏外恒速下移不停留）
     });
     e.chargeFirstDur = rand(HARBINGER_POLAR.chargeFirstMin, HARBINGER_POLAR.chargeFirstMax);
     e.cycleJit = o.cycleJit != null ? o.cycleJit : rand(0, 0.9);   // 诗篇召唤体显式错开攻击间隔
+    e.attackMul = o.attackMul != null ? o.attackMul : 1;   // 攻击周期倍率（06-enemy 周期公式消费；旧日之歌诗篇召唤体传 0.8 = 间隔 -20%，2026-11-17 用户定稿）
     return e;
   }
 
@@ -1632,6 +1634,65 @@
     spawnSideGroup();
     spawnStrikerGroup();
     shake(6, 0.4);
+  }
+
+  // 4C 诛星舰三变体召唤入口（2026-11-16 用户定稿实装；图鉴挑战 / 波次测试经 spawnChallengeTargetOne）：
+  // 同主力舰骨架（顶部居中入位 → hoverY 140 停留——挑战口径 holdTimer 1e9 永驻场），
+  // 速度 = 主力舰 ×1.2（opts.speedMul 统一乘算，见 06-enemy 舰家族移动分支）；不发射（攻击方式待定，
+  // updateEnemyFire 占位分支；fireTimer 取注册表首攻区间框架留档）
+  function spawnStarSlayer(type) {
+    const ff = ENEMY_TYPES[type].firstFire;
+    makeEnemy(type, CANVAS_W / 2, -110, {
+      hoverY: 140,
+      holdTimer: 1e9,
+      fireTimer: rand(ff[0], ff[1]),
+      speedMul: STARS_SLAYER.speedMul,
+    });
+    shake(6, 0.4);
+  }
+
+  // 4C 雷霆之怒召唤入口（2026-11-16 用户定稿实装；图鉴挑战 / 波次测试经 spawnChallengeTargetOne）：
+  // 顶部居中入场 → 停留位 50% 屏高（THUNDER.holdYPct，水平居中主力舰同款小幅摆动——挑战口径永驻场），
+  // 速度 = 主力舰 ×1.6（opts.speedMul 统一乘算）；不发射（攻击方式待定，updateEnemyFire 占位分支）
+  function spawnThunderWrath() {
+    const ff = ENEMY_TYPES.thunderWrath.firstFire;
+    makeEnemy('thunderWrath', CANVAS_W / 2, -110, {
+      hoverY: CANVAS_H * THUNDER.holdYPct,
+      holdTimer: 1e9,
+      fireTimer: rand(ff[0], ff[1]),
+      speedMul: THUNDER.speedMul,
+    });
+    shake(5, 0.35);
+  }
+
+  // 4C 白夜诛星舰亡语（2026-11-16 用户定稿）：被击坠瞬间召唤 3 个白影侧翼艇——360° 任意边界入场
+  // （可从底部）、朝自身坠落位置直飞直至离场（1类 pass 直线穿越不停留）；有先后顺序快速接连入场
+  // （STARS_SLAYER.whiteNightGap 0.18s 间隔，非同时）；50% 在同一位置入场 / 50% 不同位置（召唤时掷一次）。
+  // 入场点 = 随机角度方向上屏幕矩形边界屏外 40px 处；飞行方向 = 入场点 → 坠落位置（速度模长
+  // STARS_SLAYER.whiteNightSpeed 200 快速档，_sideVel 归一写入——1类两速体系）。wnEscort 标记 +
+  // 未入屏期豁免出界移除（屏下入场点与战争幽灵 360° 入场同款不对称问题，见 06-enemy 出界判定）。
+  // 秒杀类通道（aiyiSelfDestruct / sweepKill）与爆弹窗口（bombSweep）内不召唤——统一规则见
+  // 07-player gachaMeteorImpact 注释（killEnemy 调用端门控，同增生分裂亡语口径）
+  function spawnWhiteNightMinions(ex, ey) {
+    const sameSpot = Math.random() < 0.5;   // 50% 三艇同一位置入场 / 50% 各自随机位置
+    const baseAng = Math.random() * Math.PI * 2;
+    for (let n = 0; n < STARS_SLAYER.whiteNightMinions; n++) {
+      queueDelayedSpawn(STARS_SLAYER.whiteNightGap * n, () => {
+        const ang = sameSpot ? baseAng : Math.random() * Math.PI * 2;
+        const dx = Math.cos(ang), dy = Math.sin(ang);
+        // 屏幕矩形边界交点（自场心沿 ang 方向），再沿同向外推 40px 得屏外入场点
+        const tHalf = Math.min(
+          dx !== 0 ? (CANVAS_W / 2 + 40) / Math.abs(dx) : Infinity,
+          dy !== 0 ? (CANVAS_H / 2 + 40) / Math.abs(dy) : Infinity,
+        );
+        const px = CANVAS_W / 2 + dx * tHalf, py = CANVAS_H / 2 + dy * tHalf;
+        const ddx = ex - px, ddy = ey - py;
+        const dl = Math.hypot(ddx, ddy) || 1;
+        const m = makeEnemy('side', px, py, { behavior: 'pass', fireTimer: 1e9 });
+        m.wnEscort = true;
+        m._sideVel = { vx: ddx / dl * STARS_SLAYER.whiteNightSpeed, vy: ddy / dl * STARS_SLAYER.whiteNightSpeed };
+      });
+    }
   }
 
   // 威龙蛇形巡航路径（航点序列）：从偏左/偏右半场出场，方向镜像
@@ -1727,9 +1788,9 @@
   function playerFrostSlowMul() {
     if (currentArmor.id === 'chixin') return 1;
     for (const e of enemies) {
-      const hs = e.type === 'hanshuang' && e.auraT >= HANSHUANG.auraDelay;
+      const hs = e.type === 'hanshuang' && e.auraT >= HANSHUANG.auraDelay && (e.paralyzT || 0) <= 0;   // 麻痹期光环禁用（天秀混沌王子，2026-11-17）
       const jx = affixHas('1:bad:9') && e.type === 'jiaoxiang' &&
-        (e.frozenT || 0) <= 0 && !e.jxAuraLost &&   // 词条（3:good:2）冰封：焦香冻结期间光环暂消；复原后永久失效
+        (e.frozenT || 0) <= 0 && !e.jxAuraLost && (e.paralyzT || 0) <= 0 &&   // 词条（3:good:2）冰封：焦香冻结期间光环暂消；复原后永久失效；麻痹期光环禁用（2026-11-17）
         e.auraT >= (e.jxFlank ? JIAOXIANG.auraDelayFlank : JIAOXIANG.auraDelay);
       if (!hs && !jx) continue;
       if (Math.hypot(player.x - e.x, player.y + PLAYER_CFG.hitOffsetY - e.y) <= (hs ? e.hsAuraR : JIAOXIANG.auraR))
@@ -1753,9 +1814,9 @@
     let mul = 1;
     if (!chixin) {
       for (const e of enemies) {
-        const hs = e.type === 'hanshuang' && e.auraT >= HANSHUANG.auraDelay;
+        const hs = e.type === 'hanshuang' && e.auraT >= HANSHUANG.auraDelay && (e.paralyzT || 0) <= 0;   // 麻痹期光环禁用（天秀混沌王子，2026-11-17）
         const jx = affixHas('1:bad:9') && e.type === 'jiaoxiang' &&
-          (e.frozenT || 0) <= 0 && !e.jxAuraLost &&   // 词条（3:good:2）冰封：焦香冻结期间光环暂消；复原后永久失效
+          (e.frozenT || 0) <= 0 && !e.jxAuraLost && (e.paralyzT || 0) <= 0 &&   // 词条（3:good:2）冰封：焦香冻结期间光环暂消；复原后永久失效；麻痹期光环禁用（2026-11-17）
           e.auraT >= (e.jxFlank ? JIAOXIANG.auraDelayFlank : JIAOXIANG.auraDelay);
         if (!hs && !jx) continue;
         if (Math.hypot(player.x - e.x, player.y + PLAYER_CFG.hitOffsetY - e.y) <= (hs ? e.hsAuraR : JIAOXIANG.auraR))
@@ -1925,7 +1986,7 @@
   function yu4AuraMul(target) {
     const cross = affixHas('1:bad:8');
     for (const g of enemies) {
-      if ((g.frozenT || 0) > 0) continue;   // 词条（诗篇级 3:good:2）冰封：御4/铁砧冻结期间光环暂消（御4复原恢复，文案「暂时消失」）
+      if ((g.frozenT || 0) > 0 || (g.paralyzT || 0) > 0) continue;   // 词条（诗篇级 3:good:2）冰封：御4/铁砧冻结期间光环暂消（御4复原恢复，文案「暂时消失」）；麻痹期光环禁用（天秀混沌王子，2026-11-17）
       if (g.type === 'yu4') {
         if (g.auraT < YU4.auraDelay) continue;
         if (Math.hypot(target.x - g.x, target.y - g.y) <= YU4.auraR)
@@ -2097,6 +2158,14 @@
       case 'capital':
         makeEnemy('capital', cx, -110, { hoverY: 140, holdTimer: 1e9, fireTimer: 1.8, variant: ch.variant });
         break;
+      case 'starSlayer_darkSun':
+      case 'starSlayer_whiteNight':
+      case 'starSlayer_violetMoon':
+        spawnStarSlayer(ch.type);   // 诛星舰三变体（4C，2026-11-16）：同主力舰骨架 ×1.2 速；挑战口径永驻场
+        break;
+      case 'thunderWrath':
+        spawnThunderWrath();   // 雷霆之怒（4C，2026-11-16）：停 50% 屏高 ×1.6 速 + 雷电光环；挑战口径永驻场
+        break;
       default:
         // 诗篇占位敌人（wip，见 01-config ENEMY_TYPES 占位批次）等无专属生成入口的类型：
         // 通用入场——随机水平位置下降到悬停带停留（挑战模式永驻场、不攻击）
@@ -2267,8 +2336,8 @@
           }
           break;
         case 'warGhost':
-          // 战争幽灵（诗篇「w*1」前波）：目标点 50%~70% 高度随机，风波预警极速入场（挑战口径永驻场）
-          spawnWarGhost(true, rand(0.5, 0.7));
+          // 战争幽灵（诗篇「w*1」前波）：停留高度统一走默认 50%~65%（2026-11-16 用户定稿，原 50%~70% 指定删除），风波预警极速入场（挑战口径永驻场）
+          spawnWarGhost(true);
           break;
         case 'gunship':
           makeEnemy('gunship', tx, -60 - row * 64, { hoverY: holdY, holdTimer: 1e9, variant: p.variant });
@@ -2474,6 +2543,7 @@
     spawnVoyager, spawnCollapseConstruct,
     spawnHarbingerLead, spawnHarbingerHub, spawnHarbingerPolar, queueHarbingerLead, updateHarbLeadQueue,
     spawnFashiArray, spawnWarMatrix, spawnCapitalSlot,
+    spawnStarSlayer, spawnThunderWrath, spawnWhiteNightMinions,
     spawnCapital, buildWeilongPath, spawnWeilong, spawnHanshuang, playerFrostSlowMul, playerFrostMoveMul,
     spawnUnreal, spawnStasisUnreal, spawnCocoonDream, enemyFrostZoneMoveMul, gachaBottomSlowMul, enemyBlackholeMoveMul,
     spawnYu4, spawnAnvil, spawnJiaoxiang, yu4AuraMul, spawnDouzhi, spawnChallengeTarget, challengeTargets,

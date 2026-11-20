@@ -1,7 +1,7 @@
 // 11-draw-boss：双 BOSS 视觉（暴风之眼区域标记/涡流/风暴/血条 + 旧日之歌黑洞/组装/血条）+ 警报演出 + 大型龙卷绘制
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(7 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(9 名) 13-encyclopedia(1 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{stormVortex}
   //
@@ -9,7 +9,7 @@
   import { BOSSES, BOSS_BULLET, BOSS_WARN, DARKHAND, STORM, STORM2, STORM2_SHIP } from './01-config-boss.js';
   import { ELITES } from './01-config-enemies.js';
   import { isPoem, isRealme } from './01-config-difficulty.js';
-  import { bossFlow, clamp, ctx, enemies, pillarStrikes, rand, state, windFlows, zoneMarks } from './02-core.js';
+  import { bossFlow, clamp, ctx, enemies, pillarStrikes, player, rand, state, windFlows, zoneMarks } from './02-core.js';
   import { stormWaveBand, stormWavePoint, storm2BallPos, storm2Nozzle, S2_STRIKE_R } from './05-boss.js';
 
 
@@ -984,7 +984,7 @@
   // 四臂末端为加宽的发射端头（蓝色辉光缝隙），臂干穿出机体处两侧带核心延伸连接件；
   // 机体凹槽内的电弧能量球整体颜色快速流动（白核→白蓝→亮蓝→深蓝 + 等离子斑块旋转），
   // 球面/球外电弧使用闪电素材图（assets/lightning-bolt.png，未加载回退程序化弧线），能量沿导管泵向四臂。
-  function drawStormBossII(e) {
+  function drawStormBossII(e, playerMode) {
     const T = state.time;
     const ex = e.x || 0, ey = e.y || 0;
 
@@ -993,6 +993,10 @@
     // 视觉尺寸与判定箱解耦：固有臂展 206 × 1.008 ≈ 208（约 43% 屏宽；基础 36% ×1.2 整体扩大）
     const S = 1.008;
     ctx.scale((e.scale || 1) * S, (e.scale || 1) * S);
+    // 天秀混沌王子（2026-11-17 用户定稿实装）：playerMode=true 时整体上下 180° 翻转——
+    // 我方风暴编织者与敌方 BOSS 同形、攻击朝上；钩形尾镜像语义随翻转自动反向（钩垂向上方），
+    // 技能演出段 (6)/(7) 经 ency 门控自动跳过（伪实体 ency:true），世界坐标粒子不入玩家绘制
+    if (playerMode) ctx.scale(1, -1);
     // 登场显形窗口：电球出现后不久（雷暴开始 0.3s 后）即开始渐显，贯穿雷暴段与现身段（长渐显）
     let bodyA = 1;
     if (e.phase === 'entrance' && !e.ency) {
@@ -2172,6 +2176,69 @@
       const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
       const len = b.effLen != null ? b.effLen : (b.len || 0);
       drawS2Beam(b.x, b.y, b.ang, len, STORM2.s6R, clamp(b.faint ? vis * 0.45 : vis, 0, 1), false, true);   // tailCap：尾端圆帽，消除悬空光束两端的平截感
+    }
+  }
+
+  // ---------- 天秀混沌王子技能光束演出（2026-11-19 用户定稿：全部改用 BOSS 风暴编织者现成画法）----------
+  // state.txcBeams 三类（07-player updateTxcSkills 写入 / updateTxcBeams 推进）：
+  //   arc=电弧激光 → BOSS 技能1 firing 段同款（drawS2Beam root 收束 + lightningImgThin 边缘电流 10 枚 +
+  //                 lightningImgBig 大贴片 2 枚——朝上发射，长度打满至屏顶）
+  //   arm=四臂激涌 → BOSS 技能2 beams 同款（drawS2Beam 四喷口位、STORM2.s2R 半宽）
+  //   replay=重现光束 → BOSS 技能6 drawS6Beams 同款（drawS2Beam tailCap 尾圆帽、STORM2.s6R 半宽、
+  //                 0.08s 渐入 / 末 0.2s 渐出——len 由 07-player updateTxcBeams 维护自 0 增长）
+  // 10-draw-world render 管线 drawJiyeBeamFx 同层调用（敌机之上、粒子之下）——旧自制白蓝光柱已弃用
+  function drawTxcBeamsStormStyle() {
+    if (!state.txcBeams.length) return;
+    const up = -Math.PI / 2, T = state.time;
+    for (const b of state.txcBeams) {
+      if (b.kind === 'arc') {
+        // BOSS 技能1 firing 口径：亮起 0.12s → 保持 → 末段线性渐隐（dur 为演出总长）
+        const life = b.t;
+        const a = clamp(life < 0.12 ? life / 0.12 : 1 - (life - 0.12) / Math.max(0.01, b.dur - 0.12), 0, 1) * 0.95;
+        drawS2Beam(b.x, b.y, up, b.y + 24, STORM2.s1R, a, true);   // root：自机体核心收束发出（同 BOSS s1）
+        // 周身狂乱电流（lightning-2 细流光弧）：10 枚沿光束左右边缘高速环绕游走、剧烈明灭（BOSS s1 同款）
+        if (lightningImgThin) {
+          const asp = (lightningImgThin.naturalWidth / lightningImgThin.naturalHeight) || 0.2;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let k = 0; k < 10; k++) {
+            const side = k % 2 === 0 ? -1 : 1;
+            const ph = T * 2.6 + k * 1.9;
+            const yy = b.y + 26 + ((ph * 130) % Math.max(60, (b.y + 24) - 52));
+            const wob = Math.sin(ph * 3.1);
+            const xx = b.x + side * (STORM2.s1R + 8 + 7 * wob);
+            const sl = 46 + 16 * Math.sin(ph * 2.3);
+            ctx.save();
+            ctx.translate(xx, yy);
+            ctx.rotate(side * (0.6 + 0.5 * wob));
+            ctx.globalAlpha = 0.5 + 0.35 * Math.sin(ph * 3.7);
+            ctx.drawImage(lightningImgThin, -sl * asp / 2, -sl / 2, sl * asp, sl);
+            ctx.restore();
+          }
+          ctx.restore();
+        }
+        if (lightningImgBig) {
+          const asp = (lightningImgBig.naturalWidth / lightningImgBig.naturalHeight) || 0.3;
+          const rnd = s2Seeded(Math.floor(T * 11) * 13 + 3);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let k = 0; k < 2; k++) {
+            const w2 = STORM2.s1R * (2.4 + rnd() * 1.2) * asp * 2;
+            const yOff = Math.max(0, rnd() * 30 - 15) * 0.5;
+            ctx.globalAlpha = a * (0.4 + 0.4 * rnd());
+            ctx.drawImage(lightningImgBig, b.x - w2 / 2, b.y + yOff, w2, b.y + 50 - yOff);
+          }
+          ctx.restore();
+        }
+      } else if (b.kind === 'arm') {
+        // BOSS 技能2 beams 口径：0.10s 亮起 → 线性渐隐（s2Beam 竖直带、STORM2.s2R 半宽）
+        const vis = b.t < 0.10 ? b.t / 0.10 : 1 - (b.t - 0.10) / Math.max(0.01, b.dur - 0.10);
+        drawS2Beam(b.x, b.y, up, b.y + 24, STORM2.s2R, clamp(vis, 0, 1));
+      } else {
+        // BOSS 技能6 口径：0.08s 渐入 → 末 0.2s 渐出，tailCap 尾端圆帽（悬空光束去平截感）
+        const vis = b.t < 0.08 ? b.t / 0.08 : (b.t > b.dur - 0.2 ? Math.max(0, (b.dur - b.t) / 0.2) : 1);
+        drawS2Beam(b.x, b.y, b.ang, b.len || 0, STORM2.s6R, clamp(vis, 0, 1), false, true);
+      }
     }
   }
 
@@ -3921,9 +3988,28 @@
   // 判定的是「当前指定字体是否已存在」（document.fonts.check；华文行楷加查英文 PS 名 STXingkai，
   // 结果按字体名缓存只查一次）——之后其他 BOSS 换用其他字体时传入 family 复用同一判定，不写死字体名。
   // 检测不可用（桩环境 / 异常）一律按缺失回退楷体链，canvas 字体串仍保留多级回退兜底
+  //
+  // ⚠ 2026-11-16 字体改版（用户定稿）：华文行楷为商业字体不可嵌入分发，且手机端普遍缺失（Android 连
+  // 楷体链都没有，警报掉到 serif 系统字体完全失去书法风格）。改用 **志莽行书**（Google Fonts OFL 开源，
+  // 笔势最接近行楷）警报专用子集（30 字符 26.7KB woff2：警告/WARNING/Lv.数字/八大 BOSS 名，
+  // assets/fonts/zhi-mang-xing-alarm.woff2 + style.css @font-face）。canvas 不触发 CSS 字体自动加载，
+  // 顶层 document.fonts.load 显式预载（守卫桩环境），加载完成置 alarmWebfontReady 闩——警报每帧重画，
+  // 下一帧即用书法字体，无需手动失效 alarmFontAvail 缓存。判定优先级：webfont 就绪 > 系统华文行楷 > 楷体链
+  let alarmWebfontReady = false;
+  try {
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
+      document.fonts.load('50px "Zhi Mang Xing"',
+        '警告WARNINGLv.0123456789旧日之歌暴风之眼风暴编织者黑暗之手晨星归星颂歌月亮领主')
+        .then(() => { alarmWebfontReady = true; })
+        .catch(() => {});
+    }
+  } catch (err) { /* 桩环境 / 无 fonts API：跳过，走系统字体链 */ }
   const alarmFontAvail = {};
   function alarmFont(px, family) {
     family = family || '华文行楷';
+    if (family === '华文行楷' && alarmWebfontReady) {
+      return px + 'px "Zhi Mang Xing", "华文行楷", "楷体", "KaiTi", "STKaiti", serif';
+    }
     if (alarmFontAvail[family] == null) {
       let ok = false;
       try {
@@ -4154,7 +4240,15 @@
     ctx.restore();
   }
 
+  // 天秀混沌王子：我方风暴编织者绘制包装（10-draw-world 在 txcActive() 时替代 drawPlayer 调用）——
+  // 伪实体喂参（位置=玩家 / 时间驱动电弧球嗡振 / phase 'combat' 跳过登场渐显），playerMode 翻转 180°；
+  // 死亡期间不绘制（重生计时由 updatePlayer 收口，重生后照常现身）
+  function drawPlayerStormWeaver() {
+    if (!player.alive) return;
+    drawStormBossII({ x: player.x, y: player.y, phase: 'combat', ency: true }, true);
+  }
+
   export {
     drawZoneMarks, drawStormVortex, drawStormBoss, drawStormBar, drawTornado, drawBoss,
-    drawWarnBar, drawBossWarning, drawBossBars, drawDarkhandTarts,
+    drawWarnBar, drawBossWarning, drawBossBars, drawDarkhandTarts, drawPlayerStormWeaver, drawTxcBeamsStormStyle,
   };

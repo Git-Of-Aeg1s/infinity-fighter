@@ -57,7 +57,7 @@
     chengyueDry: 0,      // 澄月：连续暴走未触发护盾的判定次数（非非 ≥6；触发护盾即清零）
     maxinSlowT: 0,       // 马兴犬低速模式连续时长（s；鳖爬 ≥30）
     maxinFastT: 0,       // 马兴犬高速模式连续时长（s；冲刺冲刺 ≥120）
-    huiHealTotal: 0,     // 洄累计治疗量（时流回溯 ≥100；含每 2s 回复与击败 BOSS 回复）
+    huiHealTotal: 0,     // 时流之洄累计治疗量（时流回溯 ≥100；含每 3s 回复与击败 BOSS 套装满血回复）
     lanxinShieldBoss: false, // 当前结晶护盾开启于 BOSS 战（云心）
     lanxinShieldAbsorb: 0,   // 当前结晶护盾存续期间气泡消解的敌弹数（云心）
     dagouChain3N: 0,     // 叮咚鸡：完成「连射 3 轮」的链序列数（欧欧欧 ≥2）
@@ -366,7 +366,7 @@
     }
   }
 
-  // 洄治疗量上报（07-player 每 2s 回复 / 06-enemy 击败 BOSS 回复，均按实际结算量；时流回溯 ≥100）
+  // 时流之洄治疗量上报（07-player 每 3s 回复 / 06-enemy 击败 BOSS 套装满血回复，均按实际结算量；时流回溯 ≥100）
   function achvNoteHuiHeal(amount) {
     if (!achvGateOk() || !(amount > 0)) return;
     achv.huiHealTotal += amount;

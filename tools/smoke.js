@@ -279,19 +279,59 @@ async function sceneCoreFlow() {
 
 async function scenePilots() {
   // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
-  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 迪奥 Q 技能），
+  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 迪奥 Q 技能 / 酒客之王开局六对词条覆盖层），
   // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 Q → 暂停返回主界面
-  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'diao', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang']) {
+  for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'diao', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang', 'jiukewang', 'huali']) {
     const allCards = [...elements.pilotGridMain.children, ...elements.pilotGridSub.children];
     const card = allCards.find(c => c.dataset && c.dataset.pilot === pid);
     if (!card) { errors.push({ key: '驾驶员卡片缺失', stack: 'pilotGrid 中未找到卡片 ' + pid }); continue; }
     card.click();
     elements.startBtn.click();                  // 以该驾驶员开局
+    // 酒客之王特判（2026-11-17 用户定稿）：开局覆盖层立刻弹出（确认前 state.paused 冻结主循环）+
+    // 六对词条已登记生效（affixOwnedEntries 12 名 = 5 对×2 + sp0 + sp1）→ 点「确认出发」恢复
+    if (pid === 'jiukewang' && isModules) {
+      const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+      const jm = document.getElementById('jiukeModal');
+      if (!jm || jm.style.display !== 'flex') {
+        errors.push({ key: '酒客之王开局覆盖层未弹出', stack: 'startBtn 后 jiukeModal display=' + (jm ? jm.style.display : 'null') });
+      } else {
+        if (!core.state.paused) errors.push({ key: '酒客之王覆盖层未冻结主循环', stack: 'paused=' + core.state.paused });
+        const affix3 = await import(pathToFileURL(join(jsDir, '03b-affix.js')).href);
+        const owned = affix3.affixOwnedEntries();
+        const kinds = owned.map(e => e.kind);
+        const spCount = kinds.filter(k => k === 'special').length;
+        // 合法区间 11~12：诗篇对正面抽中令雨汐（4 选 1 = 25%）时，长歌负面被禁不登记 → 11；
+        // 其余 12。特殊对恒 2 名（sp0+sp1 整体授予，不做手机模式过滤）
+        const entryCount = owned.length - spCount;
+        if (owned.length < 11 || owned.length > 12 || spCount !== 2 || entryCount < 9 || entryCount > 10) {
+          errors.push({ key: '酒客之王开局词条数异常', stack: 'affixOwnedEntries.length=' + owned.length + ' special对=' + spCount + '（应 11~12 名 = 5 对×2 + sp0 + sp1；11 = 诗篇抽中令雨汐长歌负面被禁）' });
+        }
+        // smoke 桩元素 querySelector 恒返回 null（无法模拟点击模态内确认按钮）——直调导出的
+        // closeJiukeOpening（与「确认出发」按钮 click 绑定同一回调，语义一致）
+        affix3.closeJiukeOpening();
+        if (core.state.paused) errors.push({ key: '酒客之王确认后未恢复主循环', stack: 'paused=' + core.state.paused });
+      }
+    }
+    // 花礼特判（2026-11-17 用户定稿）：核心与判定点均 1×1px + 机体/僚机绘制尺寸减半——选中后
+    // playerHitRadius()=0.5 / pilotCoreTiny()=true / pilotBodyScaleMul()=0.5
+    if (pid === 'huali' && isModules) {
+      const cfgLH = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+      if (cfgLH.playerHitRadius() !== 0.5 || cfgLH.pilotCoreTiny() !== true || cfgLH.pilotBodyScaleMul() !== 0.5) {
+        errors.push({ key: '花礼 1×1 判定/机体减半未生效', stack: 'playerHitRadius=' + cfgLH.playerHitRadius() + ' pilotCoreTiny=' + cfgLH.pilotCoreTiny() + ' pilotBodyScaleMul=' + cfgLH.pilotBodyScaleMul() + '（应 0.5 / true / 0.5）' });
+      }
+    }
     frames(200);                                // ≈3.3s：出怪 / 冲刺秒杀 / 开火 / 拾取 / HUD
     key('q'); frames(5); key('q', false);       // 驾驶员技能键 Q（天秀忧郁王子量表未满 / 迪奥冷却未结束时为空操作）
     key('p'); frames(5);                        // 暂停
     elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
     sample('驾驶员 ' + pid + ' 主路径');
+  }
+  // 场景隔离收尾：酒客之王为开局钩子驾驶员（2026-11-17 实装）——选中后跨场景残留，此后任何场景
+  // startBtn 开局都会弹开局词条覆盖层（state.paused=true 冻结主循环），全量后续场景行为断言全灭
+  //（手柄 / touch 场景 paused=true 即此残留）——末位复位回默认主驾驶员叮咚鸡（sceneSubWeapons 收尾先例）
+  if (isModules) {
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    cfgL.setPilotMain(cfgL.PILOTS.dagou);
   }
 }
 
@@ -447,6 +487,7 @@ async function sceneJiyeBeam() {
       const prevWm = cfgL.currentWingman;
       cfgL.setWingman(cfgL.WINGMEN_CFG.jiyeQianxing);
       pl.initWingmen();                             // smoke 直调 setWingman 不走选卡点击——手动重建僚机对
+      core.player.weapon = 1;                       // 火力等级复位（前序场景可能遗留 Lv2+——断言基准 normDmg 按 Lv1 额定）
       const px = isFinite(core.player.x) ? core.player.x : cfgCore.CANVAS_W / 2;
       const tickDmg = cfgL.WINGMEN_CFG.jiyeQianxing.weapon.levels[5].dmgTick;
       const normDmg = cfgL.WINGMEN_CFG.jiyeQianxing.weapon.levels[1].dmg;
@@ -525,6 +566,39 @@ async function sceneJiyeBeam() {
           } else {
             errors.push({ key: '极夜千星 高血靶生成失败', stack: 'makeEnemy capital 未返回预期实体' });
           }
+        }
+      }
+      // ③c 次数盾破盾（2026-11-16 用户改版，2026-11-17 消耗改 65%）：耗 1 层破盾——消耗当前剩余伤害的 65%，35% 作为剩余伤害**继续结算该敌本体**
+      //（按本体血量截断：hp50 盾靶 → 本体吃 50 死亡、光束剩 额定×0.35-50 继续穿透——本体血量不可漏算）
+      // 单低血带盾靶（hp 钉 50、chargeShield=1）：断言盾 1→0、敌死、存在 remain=额定×0.35-50 的穿透光束
+      core.enemies.length = 0; core.pBullets.length = 0; clearBeams();
+      const e3 = spawn.makeEnemy('capital', wR.x, -110, { hoverY: 200, holdTimer: 1000 });
+      if (!e3 || e3.type !== 'capital') {
+        errors.push({ key: '极夜千星 盾靶生成失败', stack: 'makeEnemy capital 未返回预期实体' });
+      } else {
+        e3.hp = 50; e3.chargeShield = 1;   // 低血盾靶：破盾后剩余（额定×shieldKeep）先吃掉本体 50 → 死亡、光束继续穿透
+        let e3ready = false;
+        for (let f = 0; f < 480 && !e3ready; f++) {
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e3) core.enemies.splice(i, 1);
+          e3.x = wR.x;
+          e3.y = f < 240 ? -500 : 200;   // 前 240 帧钉屏外——防就位期光束提前破盾；之后钉靶位等就位
+          isolate(); clearBeams(); frames(1);
+          if (f >= 240 && (e3.arrived || Math.abs(e3.y - 200) < 12)) e3ready = true;
+        }
+        if (e3.chargeShield !== 1) errors.push({ key: '极夜千星 盾靶就位期被破盾', stack: 'chargeShield=' + e3.chargeShield + '（就位期不应被光束命中——屏外钉位失效？）' });
+        let fired3 = false;
+        for (let f = 0; f < 280 && !fired3; f++) {
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e3) core.enemies.splice(i, 1);
+          e3.x = wR.x; e3.y = 200;   // 钉位先于 frames(1)（同前）
+          isolate(); clearBeams(); frames(1);
+          if (core.beamFx.length > 0) fired3 = true;
+        }
+        if (!fired3) errors.push({ key: '极夜千星 盾靶轮未发射', stack: '280 帧内无激光光束生成' });
+        else {
+          if (e3.chargeShield !== 0) errors.push({ key: '极夜千星 未破盾', stack: 'chargeShield=' + e3.chargeShield + '（命中次数盾应耗 1 层）' });
+          if (core.enemies.indexOf(e3) >= 0 && e3.hp > 0) errors.push({ key: '极夜千星 盾靶本体未扣血', stack: 'hp50 盾靶存活——破盾后剩余伤害应继续结算本体血量（本体吃 50 死亡）' });
+          const keep = core.beamFx.find(fx => Math.abs(fx.remain - (normDmg * cfgL.WINGMEN_CFG.jiyeQianxing.weapon.shieldKeep - 50)) <= 1.5);
+          if (!keep) errors.push({ key: '极夜千星 破盾剩余伤害异常', stack: '光束[' + core.beamFx.map(fx => fx.remain.toFixed(0)).join(',') + ']（应存在 ' + (normDmg * cfgL.WINGMEN_CFG.jiyeQianxing.weapon.shieldKeep - 50).toFixed(0) + ' = 额定×shieldKeep 破盾消耗后、本体血量 50 再截减）' });
         }
       }
       // ⑤ 暴走持续：Lv5 → 每 0.1s 判定一次（×1.5 全局射速 ≈15 次/s/侧）；同侧光束寿命持续重置 → 单条常驻
@@ -666,6 +740,229 @@ async function sceneJinxiao() {
       pl.initWingmen();
       core.enemies.length = 0; core.pBullets.length = 0;
       sample('今宵 距离权重分配 3:2:1 + 同距均分 + 弧线折返连续性 + 追踪承伤 + 暴走 8 发');
+    }
+  }
+}
+
+async function sceneTisu() {
+  // 时流天梭僚机（2026-11-17 实装）：① 目标选择直调（「伤害最高」=当前血量最高 / 密度最高 110px 邻居最多 /
+  // 1 类敌人低权重 0.15 抽样）② 常规弹生命周期（fly→hold→turn→exit：悬停武装解除静止 / 停止点距缘 ≥36 屏内钳制 /
+  // 首段贯穿承伤 / 末段出屏移除 / 逐帧位移无瞬跳）③ 屏障无视（次数盾不耗层 / 夏勇 xyBar 直扣机体 +
+  // 带屏障敌每颗弹首次伤害 ×2——单靶 192+96=288 精确断言）④ 暴走 4 次停止-再射（tsStopsDone 达 4 后末段直出离场）
+  // ⑤ 装备联动（wingSubPenaltyMul 装备时 0.5 / 复位后 1）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);   // 场景坐标一律用游戏逻辑 CANVAS_W/H（smoke 桩 canvas 尺寸是渲染分辨率）
+    const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+    const pl = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    if (spawn.makeEnemy && core.enemies && core.player && core.pBullets && core.state && pl.initWingmen && pl.pickTisuHeaviest) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);    // 从上一场景干净返回
+      elements.startBtn.click(); frames(60);
+      const prevWm = cfgL.currentWingman;
+      cfgL.setWingman(cfgL.WINGMEN_CFG.tianSuo);
+      pl.initWingmen();                             // smoke 直调 setWingman 不走选卡点击——手动重建僚机对
+      const px = isFinite(core.player.x) ? core.player.x : cfgCore.CANVAS_W / 2;
+      const py = isFinite(core.player.y) ? core.player.y : cfgCore.CANVAS_H - 90;
+      const isolate = (keepSet) => {   // 场景隔离：清非保留弹（主炮干扰）/ 敌弹 / 导弹残留
+        for (let i = core.pBullets.length - 1; i >= 0; i--) if (!(keepSet && keepSet.has(core.pBullets[i]))) core.pBullets.splice(i, 1);
+        if (core.eBullets) core.eBullets.length = 0;
+        if (core.dagouMissiles) core.dagouMissiles.length = 0;
+      };
+      const pinField = (target) => {   // 敌场钉定：刷怪波/BOSS 推进会向 enemies 持续塞入干扰单位（BOSS 血量会抢走「血量最高」索敌）——逐帧把敌场钉为仅测试靶
+        core.enemies.length = 0;
+        core.enemies.push(target);
+      };
+      // ① 目标选择直调（敌机刚生成未跑帧、位置精确——与开火同一代码路径）
+      core.enemies.length = 0; core.pBullets.length = 0;
+      const sA = spawn.makeEnemy('striker', px, py - 200);
+      const big = spawn.makeEnemy('capital', px, py - 420, { hoverY: py - 420, holdTimer: 1000 });
+      for (const s of [sA, big]) { s.phase = 0; s.shielded = false; }   // 清幽蓝虚化 roll（保证候选有效）
+      if (pl.pickTisuHeaviest(core.enemies.slice()) !== big) errors.push({ key: '时流天梭 血量最高选择异常', stack: '双敌（striker+capital）应选 capital（当前血量最高口径）' });
+      const c1 = spawn.makeEnemy('striker', px + 200, py - 260);
+      const c2 = spawn.makeEnemy('striker', px + 240, py - 260);
+      const c3 = spawn.makeEnemy('striker', px + 220, py - 300);
+      const far = spawn.makeEnemy('striker', px - 300, py - 520);
+      for (const s of [c1, c2, c3, far]) { s.phase = 0; s.shielded = false; }
+      const dst = pl.pickTisuDensest(core.enemies.slice(), 110);
+      if (!dst || Math.hypot(dst.x - (px + 213), dst.y - (py - 273)) > 130) errors.push({ key: '时流天梭 密度最高选择异常', stack: '选中 ' + (dst ? '(' + dst.x.toFixed(0) + ',' + dst.y.toFixed(0) + ') 变体 ' + dst.variant + ' hp ' + dst.hp.toFixed(0) : 'null') + '——聚集三连（110px 内互为邻居）+ 远处单体，应选聚集组之一' });
+      core.enemies.length = 0;
+      const s1 = spawn.makeEnemy('side', px, py - 300, { behavior: 'pass', fireTimer: 1e9 });   // 1 类（权重 0.15）
+      s1.phase = 0; s1.shielded = false;
+      const many = [];
+      for (let k = 0; k < 10; k++) {
+        const st = spawn.makeEnemy('striker', px - 180 + k * 40, py - 400 - (k % 2) * 30);   // 2 类（权重 1）×10
+        st.phase = 0; st.shielded = false;
+        many.push(st);
+      }
+      let sideN = 0;
+      for (let k = 0; k < 200; k++) { if (pl.pickTisuRandom(0.15) === s1) sideN++; }
+      if (sideN > 30) errors.push({ key: '时流天梭 1 类低权重异常', stack: '1 类×1 + 2 类×10 抽样 200 次命中 1 类 ' + sideN + ' 次（期望 ≈3——权重 0.15:1，>30 即低权重失效）' });
+      core.enemies.length = 0; core.pBullets.length = 0;
+      // ② 常规弹生命周期：capital 钉位（唯一目标——承伤按差值；主炮弹逐帧隔离清零不承伤）
+      const eCap = spawn.makeEnemy('capital', px, py - 350, { hoverY: py - 350, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（zhuixing 教训——随机变体自带虚化/护盾污染承伤）
+      eCap.phase = 0; eCap.shielded = false;
+      eCap.hp += 8000; eCap.maxHp = eCap.hp;   // 血量垫高防意外击杀（断言按差值）
+      for (let f = 0; f < 480 && !(eCap.arrived || Math.abs(eCap.y - eCap.hoverY) < 12); f++) { isolate(null); pinField(eCap); frames(1); }   // 等就位（≤8s；期间弹全清、敌场钉定）
+      core.pBullets.length = 0;
+      let bolt = null;
+      for (let f = 0; f < 300 && !bolt; f++) {
+        isolate(null); pinField(eCap); frames(1);
+        eCap.x = px; eCap.y = py - 350; eCap.phase = 0;
+        bolt = core.pBullets.find(b => b.tisu) || null;
+      }
+      if (!bolt) errors.push({ key: '时流天梭 未发射', stack: '300 帧内无 tisu 弹（interval 2s + 双僚机应有数轮窗口）' });
+      else {
+        const hp0 = eCap.hp;
+        const keep = new Set([bolt]);
+        let sawHold = false, sawTurn = false, holdStatic = true, stopInBounds = true, maxJump = 0, flaw = null;
+        for (let f = 0; f < 600 && core.pBullets.includes(bolt); f++) {
+          const pre = { x: bolt.x, y: bolt.y, ph: bolt.tsPhase };
+          isolate(keep); pinField(eCap); frames(1);
+          eCap.x = px; eCap.y = py - 350; eCap.phase = 0;
+          const jump = Math.hypot(bolt.x - pre.x, bolt.y - pre.y);
+          if (jump > maxJump) maxJump = jump;
+          if (jump > 42) flaw = flaw || ('帧 ' + f + ' 单帧位移 ' + jump.toFixed(1) + 'px（全速 25/帧——超 42 即瞬跳）');
+          if (pre.ph === 1) {   // 悬停段（上一帧相位）：武装解除静止 + 停止点屏内钳制
+            sawHold = true;
+            if (jump > 0.6) holdStatic = false;
+            if (pre.x < 36 || pre.x > cfgCore.CANVAS_W - 36 || pre.y < 36 || pre.y > cfgCore.CANVAS_H - 36) stopInBounds = false;
+          }
+          if (pre.ph === 2) sawTurn = true;
+        }
+        if (flaw) errors.push({ key: '时流天梭 弹道瞬跳', stack: flaw + '（速度曲线铁律——全速段 25px/帧 + 刹车段指数逼近，无档位跳变）' });
+        if (!sawHold) errors.push({ key: '时流天梭 悬停段缺失', stack: '观察期内未见 tsPhase 1（飞抵停止点应刹停 0.8s）' });
+        if (sawHold && !holdStatic) errors.push({ key: '时流天梭 悬停期位移', stack: '悬停（武装解除）期出现 >0.6px 位移——应完全静止' });
+        if (sawHold && !stopInBounds) errors.push({ key: '时流天梭 停止点越界', stack: '停止点距屏缘应 ≥36px（「不会离场或者太靠近边缘」全向钳制）' });
+        if (!sawTurn) errors.push({ key: '时流天梭 转向段缺失', stack: '观察期内未见 tsPhase 2（悬停结束应快速转向随机敌人）' });
+        const loss = hp0 - eCap.hp;
+        if (loss < bolt.dmg * 1.35) errors.push({ key: '时流天梭 贯穿承伤不足', stack: 'capital 承伤 ' + loss + '（首段贯穿 b.dmg×1.5=' + (bolt.dmg * 1.5).toFixed(1) + '；按弹体 dmg 快照下限——火力等级升级污染免疫）' });
+        if (core.pBullets.includes(bolt)) errors.push({ key: '时流天梭 弹体未离场', stack: '常规弹（stops=1）末段应贯穿直出离场移除' });
+      }
+      // ③ 次数盾挡伤 + 弹体贯穿 + xyBar 穿透翻倍（2026-11-17 三次定稿口径）：
+      // 次数盾靶=耗 1 层挡本次伤害（本体不受伤）、弹体继续贯穿不销毁、最终正常离场；
+      // xyBar 靶=仍穿透（首段 ×2 翻倍 + 末段不翻倍：288×kingDmg 精确）。靶用 capital
+      //（2 类前锋有「越线即回拉」吸附——钉位与 AI 瞬移打架会让再瞄读走吸附位导致末段脱靶；
+      // capital 悬停无吸附、逐帧钉位漂移 ≤3px，弹道窗口内必命中）
+      core.enemies.length = 0; core.pBullets.length = 0;
+      const eBar = spawn.makeEnemy('capital', px, py - 320, { hoverY: py - 320, holdTimer: 1000, variant: 'crimson' });
+      eBar.phase = 0; eBar.shielded = false;
+      eBar.chargeShield = 2;                       // 次数盾（青时通道）：2026-11-17 三次定稿——耗 1 层挡本次伤害、弹体继续贯穿
+      eBar.hp += 4000; eBar.maxHp = eBar.hp;
+      let bolt2 = null;
+      for (let f = 0; f < 400 && !bolt2; f++) { isolate(null); pinField(eBar); frames(1); eBar.phase = 0; eBar.x = px; eBar.y = py - 320; bolt2 = core.pBullets.find(b => b.tisu) || null; }   // 捕获期同步钉位（悬停巡航会漂移——弹瞄准发射瞬间位置，靶漂移即脱靶）
+      if (!bolt2) errors.push({ key: '时流天梭 屏障测试未发射', stack: '400 帧内无 tisu 弹' });
+      else {
+        const hp0Bar = eBar.hp;
+        const keep2 = new Set([bolt2]);
+        let exitF = -1;
+        for (let f = 0; f < 700 && core.pBullets.includes(bolt2); f++) {
+          exitF = f;
+          isolate(keep2); pinField(eBar); frames(1);
+          eBar.phase = 0; eBar.x = px; eBar.y = py - 320;
+        }
+        // 常规弹首段+末段各撞盾一次（每段独立命中集——每段一次伤害尝试各耗一张券）：2 层盾全耗、本体始终不受伤
+        if (eBar.chargeShield !== 0) errors.push({ key: '时流天梭 次数盾耗层异常', stack: 'chargeShield 2 → ' + eBar.chargeShield + '（应 0——首段/末段各耗 1 层：每段冲刺一次伤害尝试各耗一张吸收券）' });
+        const lossBar = hp0Bar - eBar.hp;
+        if (lossBar !== 0) errors.push({ key: '时流天梭 次数盾未挡伤', stack: '带盾靶承伤 ' + lossBar + '（应 0——两次撞盾时均有剩余盾层、伤害全被挡）' });
+        if (exitF < 60) errors.push({ key: '时流天梭 次数盾销毁了贯穿弹', stack: '弹在 ' + exitF + ' 帧消失（应贯穿继续飞完整生命周期 ≈100 帧——2026-11-17 三次定稿：盾挡伤不挡弹）' });
+      }
+      core.enemies.length = 0; core.pBullets.length = 0;
+      const eXy = spawn.makeEnemy('capital', px, py - 320, { hoverY: py - 320, holdTimer: 1000, variant: 'crimson' });
+      eXy.phase = 0; eXy.shielded = false;
+      eXy.barrier = 500; eXy.barrierMax = 500;   // 屏障通道（夏勇/黄金壁垒已并入 e.barrier 单通道）：tisu 直扣机体不吸收
+      eXy.hp += 4000; eXy.maxHp = eXy.hp;
+      let bolt3 = null;
+      for (let f = 0; f < 400 && !bolt3; f++) { isolate(null); pinField(eXy); frames(1); eXy.phase = 0; eXy.x = px; eXy.y = py - 320; bolt3 = core.pBullets.find(b => b.tisu) || null; }   // 捕获期同步钉位（同 eBar）
+      if (!bolt3) errors.push({ key: '时流天梭 xyBar 测试未发射', stack: '400 帧内无 tisu 弹' });
+      else {
+        const hp0Xy = eXy.hp;
+        const keep3 = new Set([bolt3]);
+        for (let f = 0; f < 700 && core.pBullets.includes(bolt3); f++) {
+          isolate(keep3); pinField(eXy); frames(1);
+          eXy.phase = 0; eXy.x = px; eXy.y = py - 320;
+        }
+        if (eXy.barrier !== 500) errors.push({ key: '时流天梭 屏障被吸收', stack: 'barrier 500 → ' + eXy.barrier + '（应无视屏障直扣机体——屏障单通道不吸收）' });
+        const lossXy = hp0Xy - eXy.hp;
+        // 承伤 = 3×b.dmg×1.5×全局乘区（首段翻倍 2 份 + 末段 1 份）——b.dmg 为发射瞬间 lv 定格快照，
+        // 玩家火力等级会被场景内升级污染（捣蛋击杀/拾取），硬编码 Lv 口径必漂——按弹体快照计算
+        const expXy = 3 * bolt3.dmg * 1.5 * pl.kingDmgBonusMul();
+        if (Math.abs(lossXy - expXy) > 2) errors.push({ key: '时流天梭 xyBar 承伤异常', stack: '承伤 ' + lossXy + '（应 ' + expXy.toFixed(1) + '=288×实时全局乘区——同次数盾靶口径）' });
+      }
+      // ④ 暴走：停止-再射 ×4 + 末段直出离场（弹体字段发射瞬间定格——观察窗可超暴走 4s 时限）
+      key('5'); frames(2); key('5', false);
+      core.enemies.length = 0; core.pBullets.length = 0;
+      const eB = spawn.makeEnemy('capital', px, py - 380, { hoverY: py - 380, holdTimer: 1000, variant: 'crimson' });
+      eB.phase = 0; eB.shielded = false;
+      for (let f = 0; f < 480 && !(eB.arrived || Math.abs(eB.y - eB.hoverY) < 12); f++) { isolate(null); pinField(eB); frames(1); }
+      core.pBullets.length = 0;
+      let bzBolt = null;
+      for (let f = 0; f < 400 && !bzBolt; f++) {
+        isolate(null); pinField(eB); frames(1);
+        eB.x = px; eB.y = py - 380; eB.phase = 0;
+        const cands = core.pBullets.filter(b => b.tisu && b.berserkFire);
+        if (cands.length) bzBolt = cands[0];
+      }
+      if (!bzBolt) errors.push({ key: '时流天梭 暴走未发射', stack: '暴走期内未捕获 berserkFire tisu 弹（间隔 2s÷1.5≈1.33s 应有窗口）' });
+      else {
+        const keep4 = new Set([bzBolt]);
+        let maxStops = 0, sawFinal = false, removed = false, maxJump = 0, flaw = null;
+        for (let f = 0; f < 900; f++) {
+          if (!core.pBullets.includes(bzBolt)) { removed = true; break; }
+          const pre = { x: bzBolt.x, y: bzBolt.y, fin: isNaN(bzBolt.tsStopX) };
+          isolate(keep4); pinField(eB); frames(1);
+          eB.x = px; eB.y = py - 380; eB.phase = 0;
+          maxStops = Math.max(maxStops, bzBolt.tsStopsDone);
+          if (pre.fin) sawFinal = true;
+          const jump = Math.hypot(bzBolt.x - pre.x, bzBolt.y - pre.y);
+          if (jump > maxJump) maxJump = jump;
+          if (jump > 45) flaw = flaw || ('帧 ' + f + ' 单帧位移 ' + jump.toFixed(1) + 'px（暴走全速 37.5/帧）');
+        }
+        if (flaw) errors.push({ key: '时流天梭 暴走弹道瞬跳', stack: flaw + '（速度曲线铁律）' });
+        if (maxStops !== 4) errors.push({ key: '时流天梭 暴走停止次数异常', stack: 'tsStopsDone 峰值 ' + maxStops + '（应 4——停止-再射 ×4）' });
+        if (!sawFinal) errors.push({ key: '时流天梭 暴走末段缺失', stack: '未见末段直出（tsStop 置 NaN——第 4 次停止-再射后应贯穿离场）' });
+        if (!removed) errors.push({ key: '时流天梭 暴走弹未离场', stack: '900 帧内未移除（暴走生命周期 ≈4s=240 帧）' });
+      }
+      // ⑤ 装备联动直调（收尾复位前后对照）
+      if (pl.wingSubPenaltyMul() !== 0.5) errors.push({ key: '时流天梭 副武器惩罚缺失', stack: '装备时 wingSubPenaltyMul()=' + pl.wingSubPenaltyMul() + '（应 0.5——副武器所有伤害 ×0.5）' });
+      // ⑥ 无敌人兜底 + 发射环（2026-11-18 用户定稿，复位前——仍装备天梭时验证）：清场后发射——
+      //    竖直向上 ±20° 朝外（按出膛僚机侧）、末段化直飞离场；出膛生成三环并过期清空。
+      //    竞态防御：压力刷新/波次推进会在窗口内注入敌人（注入帧的开火是瞄准弹、带停止点）——
+      //    逐帧清场 + 只捕获无停止点的兜底弹（tsStopX=NaN），污染帧跳过等下一轮（interval 2s）
+      const e8 = await import(pathToFileURL(join(jsDir, '08-entities.js')).href);
+      core.enemies.length = 0; core.pBullets.length = 0; core.eBullets.length = 0;
+      if (core.dagouMissiles) core.dagouMissiles.length = 0;
+      let b8 = null;
+      for (let f = 0; f < 600 && !b8; f++) {
+        for (let i = core.pBullets.length - 1; i >= 0; i--) if (!core.pBullets[i].tisu) core.pBullets.splice(i, 1);
+        core.enemies.length = 0;
+        frames(1);
+        b8 = core.pBullets.find(x => x.tisu && isNaN(x.tsStopX)) || null;   // 只认兜底弹（无停止点=末段化直飞）
+      }
+      if (!b8) errors.push({ key: '时流天梭 兜底发射未捕获', stack: '清场后 600 帧内无兜底天梭弹（interval 2s 应有数轮窗口）' });
+      else {
+        const side8 = b8.tsSide;
+        if (!(b8.vy < 0)) errors.push({ key: '时流天梭 兜底非向上', stack: 'vy=' + b8.vy.toFixed(1) + '（应竖直向上偏外）' });
+        if (!(Math.sign(b8.vx) === side8 && Math.abs(b8.vx) > 1)) errors.push({ key: '时流天梭 兜底未朝外', stack: 'side=' + side8 + ' vx=' + b8.vx.toFixed(1) + '（应竖直向上 ±20° 朝僚机外侧）' });
+        if (!isNaN(b8.tsStopX) || !isNaN(b8.tsStopY)) errors.push({ key: '时流天梭 兜底仍设停止点', stack: '应末段化直飞离场' });
+        if (e8.tisuRings.length < 3) errors.push({ key: '时流天梭 发射环未生成', stack: 'tisuRings=' + e8.tisuRings.length + '（出膛应 ≥3 环）' });
+        for (let f = 0; f < 60 && core.pBullets.includes(b8); f++) {   // 直飞离场（弹速 1500px/s，<0.6s）
+          for (let i = core.pBullets.length - 1; i >= 0; i--) if (core.pBullets[i] !== b8) core.pBullets.splice(i, 1);   // 隔离：注入帧瞄准弹/同步另一侧弹不干扰 b8 离场判定
+          core.enemies.length = 0;
+          frames(1);
+        }
+        if (core.pBullets.includes(b8)) errors.push({ key: '时流天梭 兜底未离场', stack: '直飞 60 帧后天梭弹仍在场' });
+        for (let f = 0; f < 40 && e8.tisuRings.length; f++) { core.enemies.length = 0; frames(1); }   // 环寿命 0.28s（逐帧清场防窗口内新开火再生成环）
+        if (e8.tisuRings.length) errors.push({ key: '时流天梭 发射环未过期', stack: '残留 ' + e8.tisuRings.length + ' 环' });
+      }
+      core.pBullets.length = 0; e8.tisuRings.length = 0;
+      // 收尾复位：默认僚机（时空允诺）——僚机切换跨场景残留同副武器场景约定
+      cfgL.setWingman(prevWm);
+      pl.initWingmen();
+      core.enemies.length = 0; core.pBullets.length = 0;
+      if (pl.wingSubPenaltyMul() !== 1) errors.push({ key: '时流天梭 副武器惩罚残留', stack: '复位后 wingSubPenaltyMul()=' + pl.wingSubPenaltyMul() + '（应 1——默认僚机无惩罚）' });
+      sample('时流天梭 目标选择（血量最高/密度最高/1类低权重）/ fly-hold-turn-exit / 屏障无视+首击翻倍 288 / 暴走 4 次停止-再射 / 副武器 ×0.5');
     }
   }
 }
@@ -1658,7 +1955,7 @@ async function sceneElites() {
         //    0.9s 预警轨迹 → 中心迸出（首帧=本体位置）→ 反向绕行至第二次相撞湮灭（≈1.575s，
         //    逐帧步长 ≤13px + trail 拖尾 + 收口）→ 强制 xyStep=1 跑核心膨胀
         if (type === 'xiayong') {
-          if (e.xyBarMax !== barExpect) errors.push({ key: '夏勇屏障数值错误', stack: 'xyBarMax=' + e.xyBarMax + '（当前难度应为 ' + barExpect + '）' });
+          if (e.barrier !== barExpect) errors.push({ key: '夏勇屏障数值错误', stack: 'barrier=' + e.barrier + '（当前难度应为 ' + barExpect + '——屏障数据已并入 e.barrier 单通道）' });
           // 强制下一技能为回旋刃（五步表 [3,2,1,2,1] 游标：xyStep=2 → idx 1）
           e.xyStep = 2;
           let bladesSeen = false, bladeCenter = false, trailSeen = false, maxBladeStep = 0, prevB = null, merged = false;
@@ -1819,6 +2116,156 @@ async function sceneGrailHalo() {
       core.enemies.length = 0;
       if (core.pBullets) core.pBullets.length = 0;
       sample('愧悔魂灵圣杯 入场连续性 / 活动带夹取 / 光环转移判定 / 击坠掉 1 水晶');
+    }
+  }
+}
+
+async function sceneStarSlayer() {
+  // 4C 诛星舰三变体（2026-11-16 实装）：① 黑日入场连续性（主力舰 ×1.2 速 ≈300px/s）+ 黑日层缓存
+  // ② 黑日强化（幽暮=黑色：speedMul 重算链 ×1.2）③ 白夜亡语（3 白影 wnEscort 360° 接连入场、朝坠落点模长 200）
+  // ④ 紫月亡语（125px 内敌含自身各发一枚紫电同款亡语弹、远距不发）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    const enemyMod = await import(pathToFileURL(join(jsDir, '06-enemy.js')).href);
+    if (spawn.makeEnemy && enemyMod.killEnemy && core.enemies && core.state && core.eBullets) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);
+      elements.startBtn.click(); frames(10);
+      core.enemies.length = 0;
+      core.eBullets.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      const W = cfgCore.CANVAS_W;
+      // ① 黑日入场：主力舰骨架 ×1.2（巡航 250×1.2=300px/s ≈5px/帧，阈值 12——速度曲线铁律）
+      const sun = spawn.makeEnemy('starSlayer_darkSun', W / 2, -110, { hoverY: 140, holdTimer: 1000, fireTimer: 1e9, speedMul: 1.2 });
+      if (!sun || sun.type !== 'starSlayer_darkSun') errors.push({ key: '黑日 生成失败', stack: 'makeEnemy starSlayer_darkSun 未返回预期实体' });
+      else {
+        let arrived = false, maxStep = 0, prevY = sun.y;
+        for (let f = 0; f < 300 && !arrived; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          frames(1);
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== sun) core.enemies.splice(i, 1);
+          maxStep = Math.max(maxStep, Math.abs(sun.y - prevY));
+          prevY = sun.y;
+          arrived = !!sun.arrived;
+        }
+        if (!arrived) errors.push({ key: '黑日 未到位', stack: '300 帧内 arrived=false' });
+        else {
+          if (Math.abs(sun.y - sun.hoverY) > 0.5) errors.push({ key: '黑日 到位纵向不连续', stack: '到位瞬间 dy=' + (sun.y - sun.hoverY).toFixed(2) + 'px' });
+          if (maxStep > 12) errors.push({ key: '黑日 入场位移瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（×1.2 巡航 ≈5px/帧）——速度曲线铁律' });
+          if (core.state.blackSunStacks !== 1) errors.push({ key: '黑日 层数缓存错误', stack: 'blackSunStacks=' + core.state.blackSunStacks + '（黑日在场应为 1）' });
+        }
+      }
+      // ② 黑日强化：幽暮突击艇（黑色标签，variant='dusk'——enemyColorTags 按 variant 判定）speedMul 重算链 ×1.2
+      const dusk = spawn.makeEnemy('striker', 100, 400, { variant: 'dusk' });
+      frames(2);
+      for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== dusk && core.enemies[i] !== sun) core.enemies.splice(i, 1);
+      if (Math.abs((dusk.speedMul || 1) - 1.2) > 0.01) errors.push({ key: '黑日 强化未生效', stack: '幽暮 speedMul=' + (dusk.speedMul || 1).toFixed(3) + '（黑色敌人 ×1.2 应 1.2）' });
+      // ③ 白夜亡语：击坠 → 3 白影 wnEscort 接连入场（0.36s ≈22 帧内全部落地），_sideVel 朝坠落点模长 200
+      const wn = spawn.makeEnemy('starSlayer_whiteNight', W / 2, 260, { hoverY: 140, holdTimer: 1000, fireTimer: 1e9, speedMul: 1.2 });
+      core.enemies.length = 0; core.enemies.push(wn);
+      const ex0 = wn.x, ey0 = wn.y;
+      enemyMod.killEnemy(0);
+      frames(30);
+      const escorts = core.enemies.filter(x => x.wnEscort);
+      if (escorts.length !== 3) errors.push({ key: '白夜 亡语数量错误', stack: 'wnEscort 白影 ' + escorts.length + ' 个（应 3——360° 边界接连入场）' });
+      else {
+        const bad = escorts.find(x => Math.abs(Math.hypot(x._sideVel.vx, x._sideVel.vy) - 200) > 1);
+        if (bad) errors.push({ key: '白影 速度档错误', stack: '模长 ' + Math.hypot(bad._sideVel.vx, bad._sideVel.vy).toFixed(1) + '（应 200 快速档朝坠落位置）' });
+        // 朝向断言：速度向量与「入场点→坠落点」同向（点积 > 0）
+        const wrongDir = escorts.find(x => (x._sideVel.vx * (ex0 - x.x) + x._sideVel.vy * (ey0 - x.y)) <= 0);
+        if (wrongDir) errors.push({ key: '白影 方向错误', stack: '速度未指向坠落位置（点积 ≤0）' });
+      }
+      // ④ 紫月亡语：125px 内 2 近敌 + 自身各发 1 弹（共 3），300px 外远敌不发
+      const vm = spawn.makeEnemy('starSlayer_violetMoon', W / 2, 300, { hoverY: 140, holdTimer: 1000, fireTimer: 1e9, speedMul: 1.2 });
+      const n1 = spawn.makeEnemy('side', vm.x + 40, vm.y + 30, { behavior: 'pass' });
+      const n2 = spawn.makeEnemy('side', vm.x - 50, vm.y - 20, { behavior: 'pass' });
+      const far = spawn.makeEnemy('side', Math.max(30, vm.x - 300), vm.y, { behavior: 'pass' });
+      core.enemies.length = 0;
+      core.enemies.push(vm, n1, n2, far);
+      core.eBullets.length = 0;
+      enemyMod.killEnemy(0);   // 击坠紫月（自身仍在数组、亡语区内「包括自身」发射）
+      const vmShots = core.eBullets.length;
+      if (vmShots !== 3) errors.push({ key: '紫月 亡语弹数错误', stack: 'eBullets=' + vmShots + '（应 3：125px 内 2 近敌 + 自身；远距不发）' });
+      core.enemies.length = 0; core.eBullets.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      sample('4C 诛星舰 入场连续性 / 黑日强化 / 白夜亡语召唤 / 紫月亡语射弹');
+    }
+  }
+}
+
+async function sceneThunderWrath() {
+  // 4C 雷霆之怒（2026-11-16 实装）：① 入场连续性（主力舰 ×1.6 速 ≈400px/s）+ 停留位 50% 屏高
+  // ② 光环敌弹过境加成（125px 内：弹速 ×1.2 / 伤害 +2 / thundered 标记；光环外不变）
+  // ③ 光环对我方 tick（进入光环立即 20 伤 + 麻痹 0.1s；麻痹期移动锁定；解除后恢复）
+  if (isModules) {
+    const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+    const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);
+    const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+    if (spawn.makeEnemy && core.enemies && core.state && core.eBullets && core.player) {
+      key('p'); frames(5); key('p', false);
+      elements.pauseHomeBtn.click(); frames(10);
+      elements.startBtn.click(); frames(10);
+      core.enemies.length = 0; core.eBullets.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      const W = cfgCore.CANVAS_W, H = cfgCore.CANVAS_H;
+      const tw = spawn.makeEnemy('thunderWrath', W / 2, -110, { hoverY: H * 0.5, holdTimer: 1000, fireTimer: 1e9, speedMul: 1.6 });
+      if (!tw || tw.type !== 'thunderWrath') errors.push({ key: '雷霆之怒 生成失败', stack: 'makeEnemy thunderWrath 未返回预期实体' });
+      else {
+        // ① 入场：×1.6 巡航 400px/s ≈6.4px/帧，阈值 14
+        let arrived = false, maxStep = 0, prevY = tw.y;
+        for (let f = 0; f < 400 && !arrived; f++) {
+          if (core.pBullets) core.pBullets.length = 0;
+          frames(1);
+          for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== tw) core.enemies.splice(i, 1);
+          maxStep = Math.max(maxStep, Math.abs(tw.y - prevY));
+          prevY = tw.y;
+          arrived = !!tw.arrived;
+        }
+        if (!arrived) errors.push({ key: '雷霆之怒 未到位', stack: '400 帧内 arrived=false' });
+        else {
+          if (Math.abs(tw.y - H * 0.5) > 0.5) errors.push({ key: '雷霆之怒 停留位错误', stack: '到位 y=' + tw.y.toFixed(1) + '（应 50% 屏高 ' + (H * 0.5).toFixed(1) + '）' });
+          if (maxStep > 14) errors.push({ key: '雷霆之怒 入场位移瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（×1.6 巡航 ≈6.4px/帧）——速度曲线铁律' });
+        }
+        // ② 光环敌弹加成：光环内弹 ×1.2 速 +2 伤 + thundered；光环外弹不变
+        const sp0 = 150;
+        const inB = { x: tw.x + 60, y: tw.y - 60, vx: 0, vy: sp0, r: 5, dmg: 6, color: '#ffd166', len: 0, traveled: 0 };
+        const outB = { x: 30, y: 30, vx: 0, vy: sp0, r: 5, dmg: 6, color: '#ffd166', len: 0, traveled: 0 };
+        core.eBullets.push(inB, outB);
+        frames(1);
+        if (!inB.thundered) errors.push({ key: '光环 弹加成未触发', stack: '125px 内敌弹过境未获得加成标记' });
+        else {
+          const sp1 = Math.hypot(inB.vx, inB.vy);
+          if (Math.abs(sp1 - sp0 * 1.2) > 1) errors.push({ key: '光环 弹速错误', stack: '过境后弹速 ' + sp1.toFixed(1) + '（应 ' + (sp0 * 1.2).toFixed(1) + ' = +20%）' });
+          if (Math.abs(inB.dmg - 8) > 0.01) errors.push({ key: '光环 弹伤错误', stack: '过境后伤害 ' + inB.dmg + '（应 8 = 6+2）' });
+        }
+        if (outB.thundered || outB.dmg !== 6) errors.push({ key: '光环 越界加成', stack: '光环外敌弹被误加成' });
+        core.eBullets.length = 0;
+        // ③ 光环 tick + 麻痹：玩家置于光环内 → 立即 20 伤 + 麻痹 0.1s；麻痹期按住 d 移动锁定；解除后恢复
+        core.player.x = tw.x + 60; core.player.y = tw.y + 40;   // 距核心 ≈72 ≤ 125 光环内
+        core.player.hp = 9999; core.player.maxHp = Math.max(core.player.maxHp, 9999);   // 血量拉满：光环 tick（20/0.4s）+ 光环弹叠加会击杀普通血量玩家致后续位移断言假红（alive=false）
+        const hp0 = core.player.hp;   // 基准在拉满后采样（tick 断言比差值）
+        key('d'); frames(2); key('d', false);
+        if (!((core.state.paralyzeT || 0) > 0)) errors.push({ key: '光环 麻痹未置位', stack: '光环 tick 后 paralyzeT=' + (core.state.paralyzeT || 0) + '（应 >0）' });
+        else {
+          if (core.player.hp >= hp0) errors.push({ key: '光环 tick 伤害未结算', stack: '玩家血量未下降（光环内应每 0.4s 受 20）' });
+          const x1 = core.player.x;
+          key('d'); frames(4); key('d', false);
+          if (Math.abs(core.player.x - x1) > 0.5) errors.push({ key: '麻痹 移动未锁定', stack: '麻痹期按住 d 机体位移 ' + Math.abs(core.player.x - x1).toFixed(1) + 'px（应 0）' });
+          frames(30);   // ≈0.5s：0.1s 麻痹应已消退（期间每帧清敌弹防光环弹叠加击杀）
+          for (let f = 0; f < 30; f++) { if (core.eBullets) core.eBullets.length = 0; frames(1); }
+          if ((core.state.paralyzeT || 0) > 0) errors.push({ key: '麻痹 未消退', stack: 'paralyzeT=' + core.state.paralyzeT + '（0.1s 后应归 0）' });
+          core.player.x = tw.x + 320; core.player.y = tw.y;   // 先移出光环：0.4s tick 重麻痹会与解除检测竞态（偶发假红——光环内每 0.4s 重新置位 0.1s）
+          const x2 = core.player.x;
+          core.player.hp = 9999;   // 出光环瞬间血量回满（前段 tick 已验证过伤害结算）
+          key('d'); frames(3); key('d', false);
+          if (Math.abs(core.player.x - x2) < 1) errors.push({ key: '麻痹 解除后未恢复移动', stack: '解除后按住 d 机体未位移——诊断: paralyzeT=' + (core.state.paralyzeT || 0) + ' txcSpeedMul=' + (core.state.txcSpeedMul == null ? 'null' : core.state.txcSpeedMul.toFixed(3)) + ' alive=' + core.player.alive + ' hp=' + (core.player.hp || 0).toFixed(0) });
+        }
+      }
+      core.enemies.length = 0; core.eBullets.length = 0;
+      if (core.pBullets) core.pBullets.length = 0;
+      sample('4C 雷霆之怒 入场连续性 / 停留 50% 屏高 / 光环弹加成 / 光环 tick 麻痹与解除');
     }
   }
 }
@@ -2286,6 +2733,7 @@ async function sceneHoverBob() {
           errors.push({ key: label + ' 生成失败', stack: label + ' spawn 未返回预期实体' });
           continue;
         }
+        e.hp = 999999; e.maxHp = 999999;   // 生成即血量拉满：波次暴鸰殉爆等友军伤害会击杀靶机（入场期致死→arrived 永假假红/摆动期致死→bob 冻结假红）
         // 出生横位挪到玩家侧方（±200px）：避开玩家主炮竖直弹道，防止到位前被击毁导致摆程采样不全
         const Wb = core.canvas.width;
         e.x = Math.max(46, Math.min(Wb - 46, core.player.x + (label === '御4' ? -200 : 200)));
@@ -2301,13 +2749,14 @@ async function sceneHoverBob() {
           frames(1); isolate(); arrived = e.arrived;
         }
         if (!arrived) {
-          errors.push({ key: label + ' 未到位', stack: '240 帧内 arrived=false（入场减速分支异常？）' });
+          errors.push({ key: label + ' 未到位', stack: '240 帧内 arrived=false（入场减速分支异常？）——诊断: hp=' + (e.hp || 0).toFixed(0) + ' inArr=' + core.enemies.includes(e) + ' y=' + (e.y || 0).toFixed(1) + ' hoverY=' + (e.hoverY || 0).toFixed(1) + ' vy=' + (e.vy == null ? 'null' : e.vy.toFixed(2)) + ' paralyzMul=' + (e.paralyzMul == null ? 'null' : e.paralyzMul.toFixed(3)) + ' frozenT=' + (e.frozenT || 0).toFixed(2) });
           continue;
         }
         if (!core.enemies.includes(e) || e.hp <= 0) {
           errors.push({ key: label + ' 到位前损失', stack: '入场途中被击毁/移除（hp=' + e.hp + '），场景隔离不足' });
           continue;
         }
+        e.hp = 999999; e.maxHp = 999999;   // 摆动窗口防误杀：波次暴鸰殉爆等友军伤害会击杀靶机致 bob 冻结（inArr=false 假红）——血量拉满隔离
         arriveDy = e.y - e.hoverY;
         if (Math.abs(arriveDy) > 0.5) {
           errors.push({ key: label + ' 到位纵向不连续', stack: '到位瞬间 dy=' + arriveDy.toFixed(2) + 'px（应为 0）——位置连续性铁律' });
@@ -2332,7 +2781,7 @@ async function sceneHoverBob() {
           errors.push({ key: label + ' 纵向公式被改写', stack: '600 帧内 ' + mismatch + ' 帧 dy 偏离位置公式（有其他力抢写 e.y？）' });
         }
         if (maxDy < 8 || minDy > -8) {
-          errors.push({ key: label + ' 纵向未上下往复', stack: '到位 10s 内 dy 区间 [' + minDy.toFixed(1) + ', ' + maxDy.toFixed(1) + ']（应达 ≈ ±10px）' });
+          errors.push({ key: label + ' 纵向未上下往复', stack: '到位 10s 内 dy 区间 [' + minDy.toFixed(1) + ', ' + maxDy.toFixed(1) + ']（应达 ≈ ±10px）——诊断: bobT=' + (e.bobT || 0).toFixed(3) + ' swayT=' + (e.swayT || 0).toFixed(3) + ' paralyzT=' + (e.paralyzT || 0).toFixed(3) + ' paralyzMul=' + (e.paralyzMul == null ? 'null' : e.paralyzMul.toFixed(4)) + ' frozenT=' + (e.frozenT || 0).toFixed(3) + ' arrived=' + e.arrived + ' inArr=' + core.enemies.includes(e) + ' hp=' + (e.hp || 0).toFixed(0) + ' hoverY=' + (e.hoverY || 0).toFixed(1) + ' y=' + (e.y || 0).toFixed(1) });
         }
         if (Math.max(Math.abs(minDy), Math.abs(maxDy)) > 14) {
           errors.push({ key: label + ' 纵向摆幅过大', stack: 'dy 极值 |' + minDy.toFixed(1) + '/' + maxDy.toFixed(1) + '|（设计 ≈ 10px）' });
@@ -2580,9 +3029,9 @@ async function sceneHelpPad() {
 
 async function sceneTouch() {
   // 手机模式触控输入（modules 模式）：经 14-main 真实监听桩驱动——舞台 pointerdown/move/up（pointerType 'touch'）
-  // 写 02-core touch 状态、07-player 目标点映射移动合流：鼠标不认领主指 / 初始偏移钳制 ≤90px / 按下帧位置连续 /
-  // 指数逼近限幅无瞬跳 / 副指不抢占 / 收敛停稳 / 爆弹·技能·暂停按钮 pointerdown 触发 / 抬指静止。
-  // 断言按速度曲线铁律逐帧位移上限（speed/60 + 余量）
+  // 写 02-core touch 状态、07-player 相对拖动 1:1 跟手移动合流：鼠标不认领主指 / 初始间距定格不钳制 /
+  // 按下帧位置零位移 / 手指位移=战机位移（无逼近无滞后）/ 指针异常跳变钳制 90px/帧 / 副指不抢占 /
+  // 爆弹·技能·暂停按钮 pointerdown 触发 / 抬指静止（2026-11-16 相对拖动改版同步）
   if (isModules) {
     const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
     const cfgT = await importConfig();
@@ -2605,54 +3054,52 @@ async function sceneTouch() {
       return;
     }
     const T = core.touch;
-    const stepCap = cfgT.PLAYER_CFG.speed / 60 + 1.5;   // 满速单帧 6.5px + 浮点/钳位余量
+    const touchStepCap = 90 + 0.5;   // 07-player 相对拖动 1:1 跟手每帧位移上限 90px（防指针异常跳变）+ 浮点余量
     // ① 桌面鼠标不认领主指（pointerType !== 'touch' 直接忽略）
     fire(stageEl.listeners, 'pointerdown', { pointerType: 'mouse', pointerId: 1, clientX: 240, clientY: 700 });
     frames(1);
     if (T.active) {
       errors.push({ key: '桌面鼠标误认领主指', stack: 'pointerType=mouse 的 pointerdown 后 touch.active=true（应仅 touch 指针生效，docs/手机模式设计.md §4.5）' });
     }
-    // ② 超视距按下（指尖在机体右 150px > 偏移上限 90px）：主指认领 + 偏移钳制 + 按下帧位置连续
+    // ② 远距按下（指尖在机体左 150px）：主指认领 + 初始间距定格不钳制（1:1 相对拖动）+ 按下帧零位移
     const x0 = core.player.x, y0 = core.player.y;
-    fire(stageEl.listeners, 'pointerdown', { pointerType: 'touch', pointerId: 7, clientX: x0 + 150, clientY: y0 });
+    fire(stageEl.listeners, 'pointerdown', { pointerType: 'touch', pointerId: 7, clientX: x0 - 150, clientY: y0 });
     frames(1);
     if (!T.active || T.pointerId !== 7) {
       errors.push({ key: '触控主指未认领', stack: 'pointerdown 后 touch.active=' + T.active + ' pointerId=' + T.pointerId + '（应 active=true / id=7）' });
     }
-    const offLen = Math.hypot(T.ox, T.oy);
-    if (Math.abs(offLen - 90) > 0.5) {
-      errors.push({ key: '触控偏移钳制失效', stack: '距指尖 150px 按下后 |offset|=' + offLen.toFixed(1) + '（应钳制 ≤90px 指向机体原位）' });
+    if (Math.abs(T.ox - 150) > 0.5 || Math.abs(T.oy) > 0.5) {
+      errors.push({ key: '触控初始间距未定格', stack: '机体左 150px 按下后 ox=' + T.ox.toFixed(1) + ' oy=' + T.oy.toFixed(1) + '（应 ox=+150 / oy=0——机体−指尖 定格不钳制，1:1 相对拖动）' });
     }
     const snapX = Math.abs(core.player.x - x0);
-    if (snapX > stepCap) {
-      errors.push({ key: '触控按下帧瞬跳', stack: '按下 1 帧位移 ' + snapX.toFixed(2) + 'px（> ' + stepCap.toFixed(2) + ' = speed/60 + 余量）——按下帧位置必须严格连续' });
+    if (snapX > 0.5) {
+      errors.push({ key: '触控按下帧位移', stack: '按下 1 帧位移 ' + snapX.toFixed(2) + 'px（应 0——1:1 相对拖动下按下帧目标点=当前机体位，位置严格连续）' });
     }
     // ③ 副指不抢占：第二个手指按下不改主指标识（多点触控互不干扰）
     fire(stageEl.listeners, 'pointerdown', { pointerType: 'touch', pointerId: 8, clientX: 100, clientY: 100 });
     if (T.pointerId !== 7) {
       errors.push({ key: '副指抢占主指', stack: '第二指 pointerdown 后 pointerId=' + T.pointerId + '（应保持 7）' });
     }
-    // ④ 跟指移动：指尖右移 60px → 30 帧内走过剩余距离的 ≥80%（远距离段满速、近点指数减速），逐帧位移 ≤ 满速（无瞬跳）
-    fire(stageEl.listeners, 'pointermove', { pointerType: 'touch', pointerId: 7, clientX: x0 + 210, clientY: y0 });
-    const xf0 = core.player.x;
-    const remainX = (x0 + 210 + T.ox) - xf0;   // 新目标点（指尖 + 定格偏移）与当前机体的剩余距离
-    let maxStep = 0, prevX = core.player.x;
-    for (let f = 0; f < 30; f++) {
-      frames(1);
-      maxStep = Math.max(maxStep, Math.abs(core.player.x - prevX));
-      prevX = core.player.x;
+    // ④ 1:1 跟手：指尖右移 60px → 下一帧机体也右移 60px（手的移动量=战机移动量，无逼近无滞后），随后按住零漂移
+    fire(stageEl.listeners, 'pointermove', { pointerType: 'touch', pointerId: 7, clientX: x0 - 90, clientY: y0 });
+    frames(1);
+    if (Math.abs(core.player.x - (x0 + 60)) > 0.5) {
+      errors.push({ key: '触控 1:1 跟手失效', stack: '指尖右移 60px 后机体 x 位移 ' + (core.player.x - x0).toFixed(2) + 'px（应 +60——相对拖动 1:1，2026-11-16 用户定稿）' });
     }
-    if (remainX > 20 && core.player.x - xf0 < remainX * 0.8) {
-      errors.push({ key: '触控跟指未驱动移动', stack: '目标右移剩余 ' + remainX.toFixed(0) + 'px，30 帧仅位移 ' + (core.player.x - xf0).toFixed(1) + 'px（应 ≥80% 剩余距离——满速追赶+指数收敛）' });
+    frames(10);
+    if (Math.abs(core.player.x - (x0 + 60)) > 0.5) {
+      errors.push({ key: '触控跟手后漂移', stack: '按住 10 帧后机体距手指同步点 ' + Math.abs(core.player.x - (x0 + 60)).toFixed(2) + 'px（应 0——1:1 跟手无蠕动）' });
     }
-    if (maxStep > stepCap) {
-      errors.push({ key: '触控移动存在瞬跳', stack: '相邻帧最大位移 ' + maxStep.toFixed(2) + 'px（> ' + stepCap.toFixed(2) + '）——速度曲线铁律' });
+    // ⑤ 指针异常跳变钳制：指尖一次性跳变 +210px（目标点 = x0+60+150 = x0+210）→ 帧内位移钳在 90px，随后逐帧追平（90+60 两帧走完）
+    fire(stageEl.listeners, 'pointermove', { pointerType: 'touch', pointerId: 7, clientX: x0 + 60, clientY: y0 });
+    frames(1);
+    const jumpStep = Math.abs(core.player.x - (x0 + 60));
+    if (jumpStep > touchStepCap) {
+      errors.push({ key: '触控瞬移钳制失效', stack: '指尖跳变 210px 后单帧位移 ' + jumpStep.toFixed(2) + 'px（> 90px/帧 防异常上限）' });
     }
-    // ⑤ 停稳：保持按住 90 帧后收敛到目标点（fx+ox）附近，指数衰减停住、不蠕动不止
-    frames(90);
-    const settleErr = Math.abs(core.player.x - (T.fx + T.ox));
-    if (settleErr > 2) {
-      errors.push({ key: '触控跟指未收敛', stack: '按住 90 帧后距目标点 ' + settleErr.toFixed(1) + 'px（应 <2px 指数停稳）' });
+    frames(5);
+    if (Math.abs(core.player.x - (x0 + 210)) > 0.5) {
+      errors.push({ key: '触控跳变后未追平', stack: '跳变钳制 5 帧后距目标 ' + Math.abs(core.player.x - (x0 + 210)).toFixed(2) + 'px（应追平至 x0+210——cap 仅防瞬移不弃距）' });
     }
     // ⑥ 爆弹按钮：pointerdown 即触发（边沿一次耗弹）
     core.state.bombs = 1;
@@ -2686,7 +3133,7 @@ async function sceneTouch() {
     if (Math.abs(core.player.x - xs0) > 0.5) {
       errors.push({ key: '抬指后仍移动', stack: '抬指 20 帧位移 ' + Math.abs(core.player.x - xs0).toFixed(2) + 'px（应为 0）' });
     }
-    sample('触控 拖动跟指（鼠标不认领 / 偏移钳制 / 副指不抢占 / 指数逼近无瞬跳 / 收敛停稳 / 爆弹·技能·暂停按钮 / 抬指静止）');
+    sample('触控 相对拖动 1:1 跟手（鼠标不认领 / 初始间距定格 / 按下帧零位移 / 1:1 同步 / 瞬移钳制 90px/帧 / 副指不抢占 / 爆弹·技能·暂停按钮 / 抬指静止）');
     key('p'); frames(5); key('p', false);
     elements.pauseHomeBtn.click(); frames(10);    // 返回主界面
   }
@@ -2746,8 +3193,12 @@ async function sceneCrystalWave() {
         }
       }
     }
-    if (!failed && spawn.crystalWaveStats.spawned !== 40) {
-      errors.push({ key: '出场数≠40（' + names[k] + '）', stack: 'spawned=' + spawn.crystalWaveStats.spawned });
+    if (!failed) {
+      let w = 0;
+      while (spawn.crystalWaveSpawning() && w++ < 300) frames(2);   // 先等全部轮次落地（≤6s）：防「末位生成比采样点晚一帧」的边缘时序假红
+      if (spawn.crystalWaveStats.spawned !== 40) {
+        errors.push({ key: '出场数≠40（' + names[k] + '）', stack: 'spawned=' + spawn.crystalWaveStats.spawned });
+      }
     }
     if (!failed && spawn.crystalWaveSpawning()) {
       errors.push({ key: '特殊波次轮次未全部落地（' + names[k] + '）', stack: 'crystalWaveSpawning()=true（7s 后）' });
@@ -3016,15 +3467,258 @@ async function sceneHarb3() {
     }
   }
 
+async function sceneTxc() {
+  // 天秀混沌王子（2026-11-17 用户定稿实装）：① 血量 8000 / 战机·僚机·副武器选择失效 ② 移速 +40%
+  // 指数逼近无超调 ③ 普通攻击蛇形雷条+雷环（dmg 200、弹速 350）④ 折线光束非中线不触发/置中即发
+  // （发射点=屏宽中央）⑤ 四定时技能首轮冷却依次触发（cd 跳变检测）+ 臂向光束麻痹（paralyzMul 平滑
+  // 归零/恢复无瞬跳）+ 雷击外扩雷环 ⑥ 无受击无敌帧不闪烁（直调 damagePlayer）⑦ 拾取特化（回血
+  // +2000 / 护盾·升级→随机归零 / 暴走→全归零不暴走）⑧ 接触规则（1类秒杀无伤 / 非1类 tick 4:1）
+  if (!isModules) return;
+  const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
+  const cfgCore = await import(pathToFileURL(join(jsDir, '01-config-core.js')).href);
+  const cfgL = await import(pathToFileURL(join(jsDir, '01-config-loadout.js')).href);
+  const pl = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
+  const spawn = await import(pathToFileURL(join(jsDir, '04-spawn.js')).href);
+  const card = [...elements.pilotGridMain.children].find(c => c.dataset && c.dataset.pilot === 'tianxiuChaos');
+  if (!card) { errors.push({ key: 'txc 驾驶员卡片缺失', stack: 'pilotGridMain 未找到 tianxiuChaos 卡片（placeholder 已删？）' }); return; }
+  card.click();
+  elements.startBtn.click();
+  frames(1);
+  const player = core.player, state = core.state;
+  // ⓪ 首轮冷却（resetGame 置满 20/7/16/9——1 帧已消耗 ≈0.017s，容差 0.2）
+  {
+    const cd0 = state.txcSkillCd;
+    if (!(cd0 && cd0.arc > 19.8 && cd0.arms > 6.8 && cd0.thunder > 15.8 && cd0.replay > 8.8)) {
+      errors.push({ key: 'txc 首轮冷却异常', stack: 'arc=' + (cd0 && cd0.arc) + ' arms=' + (cd0 && cd0.arms) + ' thunder=' + (cd0 && cd0.thunder) + ' replay=' + (cd0 && cd0.replay) + '（应 ≈20/7/16/9——用户定稿带首轮冷却）' });
+    }
+  }
+  frames(59);   // 累计 60 帧：开局出场动画（enterDur 0.8s）完成
+  const isolate = () => {   // 场景隔离：清我方弹 / 敌弹 / 导弹 / 道具（蛇形雷条等会污染承伤与存在性断言）
+    core.pBullets.length = 0;
+    if (core.eBullets) core.eBullets.length = 0;
+    if (core.popianMissiles) core.popianMissiles.length = 0;
+    if (core.dagouMissiles) core.dagouMissiles.length = 0;
+    core.powerups.length = 0;
+  };
+  // ① 血量固定 8000
+  if (player.maxHp !== 8000 || player.hp !== 8000) {
+    errors.push({ key: 'txc 血量非 8000', stack: 'maxHp=' + player.maxHp + ' hp=' + player.hp + '（应 8000——用户定稿）' });
+  }
+  // ② 装备失效：点战机/副武器卡片（非当前项）后 currentPlane/currentSubWeapon 不变
+  const plane0 = cfgL.currentPlane.id, sub0 = cfgL.currentSubWeapon.id;
+  const pCard = [...elements.planeGrid.children].find(c => c.dataset && c.dataset.plane && c.dataset.plane !== plane0);
+  if (pCard) { pCard.click(); frames(2); if (cfgL.currentPlane.id !== plane0) errors.push({ key: 'txc 战机选择未失效', stack: '点击后 currentPlane=' + cfgL.currentPlane.id + '（应保持 ' + plane0 + '）' }); }
+  const sCard = [...elements.subGrid.children].find(c => c.dataset && c.dataset.sub && c.dataset.sub !== sub0);
+  if (sCard) { sCard.click(); frames(2); if (cfgL.currentSubWeapon.id !== sub0) errors.push({ key: 'txc 副武器选择未失效', stack: '点击后 currentSubWeapon=' + cfgL.currentSubWeapon.id + '（应保持 ' + sub0 + '）' }); }
+  // ③ 僚机为空
+  if (core.wingmen.length !== 0) errors.push({ key: 'txc 僚机未失效', stack: 'wingmen.length=' + core.wingmen.length + '（应 0）' });
+  // ② 移速 +40% 指数逼近（从基准 1 重放：装备失效测试的 4 帧已消耗部分逼近过程）——
+  // ≈0.25s 处于过渡段（1.2~1.399 不超调）、≈1s 收敛至 1.4
+  state.txcSpeedMul = 1;
+  frames(15);
+  if (!(state.txcSpeedMul > 1.2 && state.txcSpeedMul < 1.399)) {
+    errors.push({ key: 'txc 移速逼近曲线异常', stack: '重置后 15 帧 txcSpeedMul=' + state.txcSpeedMul.toFixed(4) + '（应处于 (1.2, 1.399) 过渡段——指数逼近无超调）' });
+  }
+  frames(60);
+  if (!(state.txcSpeedMul >= 1.399)) {
+    errors.push({ key: 'txc 移速未收敛 1.4', stack: '重置后 75 帧 txcSpeedMul=' + state.txcSpeedMul.toFixed(4) + '（应 ≥1.399）' });
+  }
+  // ③ 普通攻击：蛇形雷条（txcBolt，dmg 200、弹速 350）+ 雷环（txcRing）出场
+  let sawBolt = null, sawRing = false;
+  for (let f = 0; f < 300 && (!sawBolt || !sawRing); f++) {
+    isolate(); frames(1);
+    const bolt = core.pBullets.find(b => b.txcBolt);
+    if (bolt && !sawBolt) sawBolt = bolt;
+    if (core.pBullets.some(b => b.txcRing)) sawRing = true;
+  }
+  if (!sawBolt) errors.push({ key: 'txc 蛇形雷条未出场', stack: '300 帧内无 txcBolt（普通攻击状态机未启动？）' });
+  else {
+    if (sawBolt.dmg !== 200) errors.push({ key: 'txc 雷条伤害异常', stack: 'dmg=' + sawBolt.dmg + '（应 200）' });
+    const spd = Math.hypot(sawBolt.vx, sawBolt.vy);
+    if (Math.abs(spd - 350) > 3) errors.push({ key: 'txc 雷条弹速异常', stack: '弹速=' + spd.toFixed(1) + '（应 350 = s4Spd 250 ×1.4——用户定稿弹速+40%）' });
+  }
+  if (!sawRing) errors.push({ key: 'txc 雷环未出场', stack: '300 帧内无 txcRing（雷环排程 0.15s 首圈应已生成）' });
+  // ④ 折线光束：非中线不触发 → 置中线触发（发射点 x ≈ 屏宽中央、4 道）
+  player.x = 60; player.y = cfgCore.CANVAS_H - 200;
+  let zigEarly = false;
+  for (let f = 0; f < 120 && !zigEarly; f++) { isolate(); frames(1); if (core.pBullets.some(b => b.txcZig)) zigEarly = true; }
+  if (zigEarly) errors.push({ key: 'txc 折线光束非中线误触发', stack: '玩家 x=60（非 ±15% 中线带）时出现 txcZig' });
+  const zigSeen = [];
+  player.x = cfgCore.CANVAS_W / 2;
+  for (let f = 0; f < 360 && zigSeen.length < 4; f++) {
+    isolate(); frames(1);
+    for (const b of core.pBullets) if (b.txcZig && !zigSeen.includes(b)) zigSeen.push(b);
+  }
+  if (zigSeen.length < 4) errors.push({ key: 'txc 折线光束未触发', stack: '置中线后 360 帧内仅 ' + zigSeen.length + ' 道 txcZig（应 4 道）' });
+  else if (zigSeen.some(b => !b.path || !b.path[0] || Math.abs(b.path[0].x - cfgCore.CANVAS_W / 2) > 2)) {
+    errors.push({ key: 'txc 折线光束发射点偏移', stack: '发射 x=' + zigSeen.map(b => (b.path && b.path[0]) ? b.path[0].x.toFixed(1) : '?').join(',') + '（应 ≈ 屏宽中央——对称保证；path[0] = 出膛位置）' });
+  }
+  // ⑤ 四定时技能：重放首轮冷却（前面阶段已消耗真实首轮——手动重置后可确定性检测四技能依次触发）；
+  //   臂向光束麻痹（capital 钉在玩家正上方 220px：hp 拉满防蛇形弹击杀、arms 4×2000 打不死）——
+  //   paralyzT>0.9 → paralyzMul 单调降至 <0.5（平滑无瞬跳）→ 1s 后恢复 >0.99；雷击外扩雷环
+  //   （holdT 为空即雷霆打击外扩弹——普通攻击雷环带 holdT=1 区分）
+  core.enemies.length = 0; core.pBullets.length = 0;
+  const cap = spawn.makeEnemy('capital', player.x, player.y - 220, { variant: 'crimson', hoverY: player.y - 220, holdTimer: 1000 });   // variant 钉死 crimson：防 azure 变体 20% 掷中 5s 虚化护盾（phase=5 弹幕/接触不结算——zhuixing 教训）
+  if (cap) { cap.hp = 999999; cap.maxHp = 999999; }
+  state.txcSkillCd = { arc: 20, arms: 7, thunder: 16, replay: 9 };   // 重放首轮
+  const fired = { arc: false, arms: false, thunder: false, replay: false };
+  const prevCd = { ...state.txcSkillCd };
+  const kindsSeen = new Set();
+  let paraPeak = 0, paraMin = 1, paraRecovered = false, paraMonotonic = true, paraPrevMul = null, paraWindow = 0;
+  let thunderRingsMax = 0;
+  for (let f = 0; f < 1500; f++) {
+    isolate();
+    if (cap) { cap.x = player.x; cap.y = player.y - 220; }   // 钉靶（麻痹期本就几乎不动，防 AI 漂移）
+    frames(1);
+    const cd = state.txcSkillCd;
+    for (const k of ['arc', 'arms', 'thunder', 'replay']) {
+      if (!fired[k] && prevCd[k] <= 1 && cd[k] >= { arc: 20, arms: 7, thunder: 16, replay: 9 }[k] - 1) fired[k] = true;
+      prevCd[k] = cd[k];
+    }
+    for (const b of state.txcBeams) kindsSeen.add(b.kind);
+    // 麻痹轨迹采样（arms 触发后 1.5s 窗口内）
+    if (cap && cap.paralyzT > 0.9) {
+      paraWindow = 90;   // ≈1.5s 采样窗
+    }
+    if (paraWindow > 0) {
+      paraWindow--;
+      paraPeak = Math.max(paraPeak, cap.paralyzT);
+      if (paraPrevMul != null && cap.paralyzMul > paraPrevMul + 0.02 && cap.paralyzT > 0) paraMonotonic = false;
+      paraPrevMul = cap.paralyzMul;
+      if (cap.paralyzT > 0) paraMin = Math.min(paraMin, cap.paralyzMul);
+      if (cap.paralyzT <= 0 && cap.paralyzMul > 0.99) paraRecovered = true;
+    }
+    // 雷霆打击外扩雷环：txcRing 且无 holdT（普通攻击雷环 holdT=1）
+    const outer = core.pBullets.filter(b => b.txcRing && b.holdT == null).length;
+    thunderRingsMax = Math.max(thunderRingsMax, outer);
+  }
+  for (const k of ['arc', 'arms', 'thunder', 'replay']) {
+    if (!fired[k]) errors.push({ key: 'txc 技能未触发 ' + k, stack: '1500 帧（25s）内冷却未跳变（首轮冷却应依次触发）' });
+  }
+  if (!(kindsSeen.has('arc') && kindsSeen.has('arm') && kindsSeen.has('replay'))) {
+    errors.push({ key: 'txc 技能光束演出缺失', stack: 'kindsSeen=' + [...kindsSeen].join(',') + '（arc/arm/replay 应在 txcBeams 中出现过）' });
+  }
+  if (!cap) errors.push({ key: 'txc 麻痹靶生成失败', stack: 'makeEnemy capital 未返回实体' });
+  else if (paraPeak <= 0.9) errors.push({ key: 'txc 麻痹未生效', stack: 'arms 直击后 paralyzT 峰值=' + paraPeak.toFixed(2) + '（应 >0.9）' });
+  else {
+    if (!paraMonotonic) errors.push({ key: 'txc 麻痹移速恢复期瞬跳', stack: 'paralyzMul 采样窗内出现 >0.02 帧间回升（麻痹期应单调下降——速度曲线铁律）' });
+    if (paraMin >= 0.5) errors.push({ key: 'txc 麻痹移速未归零', stack: 'paralyzMul 最小值=' + paraMin.toFixed(3) + '（应 <0.5——指数逼近 ≈0.4s 过渡）' });
+    if (!paraRecovered) errors.push({ key: 'txc 麻痹移速未恢复', stack: 'paralyzT 到期后 paralyzMul 未回升 >0.99' });
+  }
+  if (thunderRingsMax < 14) errors.push({ key: 'txc 雷击外扩雷环缺失', stack: '外扩雷环峰值=' + thunderRingsMax + '（应 ≥14 枚——用户定稿外扩一圈）' });
+  // ⑥ 无受击无敌帧不闪烁（直调 damagePlayer 正常结算路径）——断言前清零受击态（波次敌弹可能在
+  // ⑤→⑥ 窗口命中玩家授予无敌帧/白闪——属场景噪声，不构成本断言对象）
+  player.invuln = 0; player.invulnBlink = false; player.hitFxT = 0;
+  const hpBeforeHit = player.hp;
+  pl.damagePlayer(50);
+  if (player.invuln > 0 || player.invulnBlink || player.hitFxT > 0) {
+    errors.push({ key: 'txc 受击无敌帧/闪烁未禁用', stack: 'invuln=' + player.invuln + ' blink=' + player.invulnBlink + ' hitFxT=' + player.hitFxT + '（应全 0/false——用户定稿）——诊断: txc=' + cfgL.txcActive() + ' pilot=' + cfgL.currentPilotMain.id });
+  }
+  if (player.hp !== hpBeforeHit - 50) errors.push({ key: 'txc damagePlayer 扣血异常', stack: 'hp ' + hpBeforeHit + '→' + player.hp + '（应 -50）——诊断: txc=' + cfgL.txcActive() + ' invuln=' + player.invuln });
+  // ⑥b 激光无限穿透（2026-11-17 用户定稿）：折线光束撞次数盾=耗 1 层挡本次伤害（本体不受伤）+继续贯穿；
+  // 撞圣杯转移圈=转移照常结算（圣杯掉血、圈目标不受伤）+继续贯穿不销毁。直推 txcZig 弹（路径竖直向上）
+  // 穿靶验证，gachaHaltT 冻结普通攻击/技能隔离噪声
+  state.gachaHaltT = 1000;
+  core.enemies.length = 0; core.pBullets.length = 0;
+  const H3 = cfgCore.CANVAS_H, W3 = cfgCore.CANVAS_W;
+  const pushZig = (x0, y0) => core.pBullets.push({ x: x0, y: y0, ang0: -Math.PI / 2, vx: 0, vy: -330 * 1.458, r: 6, dmg: 2000, len: 268.8, color: '#9fd8ff', bolt: true, beamTrail: true, bounceX: true, txcZig: true, path: [{ x: x0, y: y0 }], pathLen: 0, hits: new Set(), seed: 1 });
+  const shieldE = spawn.makeEnemy('gunship', W3 / 2, H3 * 0.35, { hoverY: H3 * 0.35, holdTimer: 1000 });
+  if (shieldE) { shieldE.hp = 999999; shieldE.maxHp = 999999; shieldE.chargeShield = 2; }
+  pushZig(W3 / 2, H3 - 120);
+  let zigAlive1 = false;
+  for (let f = 0; f < 60; f++) { frames(1); zigAlive1 = core.pBullets.some(b => b.txcZig); }
+  if (shieldE) {
+    if (shieldE.chargeShield !== 1) errors.push({ key: 'txc 折线光束次数盾耗层异常', stack: 'chargeShield=' + shieldE.chargeShield + '（应 1——耗 1 层挡本次伤害）' });
+    if (shieldE.hp !== 999999) errors.push({ key: 'txc 折线光束被次数盾拦停伤害', stack: '盾敌本体 hp=' + shieldE.hp + '（应不受伤——次数盾挡伤不结算本体）' });
+  }
+  if (!zigAlive1) errors.push({ key: 'txc 折线光束被次数盾销毁', stack: '60 帧后 txcZig 不在场（应继续穿透——激光无限穿透口径）' });
+  // 圣杯转移：圈目标伤害转圣杯、光束继续贯穿（enemies 全清重生成——Test A 盾敌残留会同位重叠污染；
+  // 靶机钉判定盒 60×60 消除变体几何差异；entered 置位规避屏内判定边缘）
+  core.enemies.length = 0; core.pBullets.length = 0;
+  const grailE = spawn.makeEnemy('guiltGrail', W3 / 2 + 120, H3 * 0.35, { hoverY: H3 * 0.35, holdTimer: 1000 });
+  const passE = spawn.makeEnemy('gunship', W3 / 2, H3 * 0.35, { hoverY: H3 * 0.35, holdTimer: 1000 });
+  if (grailE) { grailE.hp = 9000; grailE.maxHp = 9000; grailE.phase = 0; grailE.entered = true; }   // phase 强制归零：登场虚化会被 grailRedirect 过滤（phase<=0 才可承接转移）
+  if (passE) { passE.hp = 999999; passE.maxHp = 999999; passE.phase = 0; passE.entered = true; passE.w = 60; passE.h = 60; }
+  pushZig(W3 / 2, H3 - 120);
+  let zigAlive2 = false;
+  for (let f = 0; f < 60; f++) {
+    if (grailE) { grailE.x = W3 / 2 + 120; grailE.y = H3 * 0.35; }   // 逐帧钉位：圣杯/圈目标各自 AI 漂移会把间距拉出 150px 转移圈（>auraR 即不转移）
+    if (passE) { passE.x = W3 / 2; passE.y = H3 * 0.35; }
+    frames(1); zigAlive2 = core.pBullets.some(b => b.txcZig);
+  }
+  if (grailE && passE) {
+    if (passE.hp !== 999999) errors.push({ key: 'txc 折线光束转移圈目标本体受伤', stack: '圈目标 hp=' + passE.hp + '（应不受伤——伤害转移至圣杯）——诊断: grailInArr=' + core.enemies.includes(grailE) + ' grailPhase=' + (grailE.phase || 0) + ' grailHp=' + (grailE.hp || 0).toFixed(0) + ' grailDying=' + (grailE.dying ? 'y' : 'n') + ' grailPos=' + grailE.x.toFixed(0) + ',' + grailE.y.toFixed(0) + ' passPos=' + passE.x.toFixed(0) + ',' + passE.y.toFixed(0) + ' passW/H=' + passE.w + '/' + passE.h + ' passVariant=' + (passE.variant || '-') + ' enemies=' + core.enemies.map(x => x.type + (x.chargeShield ? '*' : '')).slice(0, 8).join(',') });
+    if (!(grailE.hp < 9000)) errors.push({ key: 'txc 折线光束转移未结算', stack: '圣杯 hp=' + grailE.hp + '（应 <9000——转移照常结算）——诊断: inArr=' + core.enemies.includes(grailE) + ' phase=' + (grailE.phase || 0) + ' leaving=' + (grailE.leaving ? 'y' : 'n') + ' passHp=' + passE.hp.toFixed(0) + ' passVariant=' + (passE.variant || '-') + ' zigAlive=' + zigAlive2 });
+  }
+  if (!zigAlive2) errors.push({ key: 'txc 折线光束被圣杯转移销毁', stack: '40 帧后 txcZig 不在场（应转移结算后继续贯穿——激光无限穿透口径）' });
+  core.enemies.length = 0; core.pBullets.length = 0;
+  state.gachaHaltT = 0;
+  // ⑦ 拾取特化：回血固定 +2000（小艺默认副驾驶员额外 +5%×8000=400 叠加——拾取链口径保留）；
+  // 护盾/升级 → 随机归零（不获得效果）；暴走 → 全归零不暴走。归零检测在拾取帧后立即采样
+  //（updatePowerups 在帧尾结算 cd=0，下一帧技能即触发重置——晚一帧就观察不到 0）
+  const put = (kind) => core.powerups.push({ x: player.x, y: player.y, kind, r: 12, vy: 0, vx: 0 });
+  const subHeal = (cfgL.currentPilotSub && cfgL.currentPilotSub.id === 'xiaoyi') ? 8000 * cfgL.PILOTS.xiaoyi.pickupHealPct : 0;
+  player.hp = 3000;
+  put('hp'); frames(1); isolate();
+  if (player.hp !== 3000 + 2000 + subHeal) errors.push({ key: 'txc 回血道具恢复量异常', stack: 'hp 3000→' + player.hp + '（应 ' + (3000 + 2000 + subHeal) + '——固定恢复 2000 + 小艺副驾驶员 ' + subHeal + '，非 40% 比例）' });
+  const cdBefore = { ...state.txcSkillCd };
+  core.powerups.length = 0;   // 清无关道具（同下方加固口径：掉落护盾被磁吸会假红「护盾组件获得了护盾」）
+  put('shield'); frames(1); isolate();
+  const zeroed = ['arc', 'arms', 'thunder', 'replay'].filter(k => state.txcSkillCd[k] === 0 && cdBefore[k] > 0).length;
+  if (player.shield > 0 || player.crystalShield > 0) errors.push({ key: 'txc 护盾组件获得了护盾', stack: 'shield=' + player.shield + ' crystalShield=' + player.crystalShield + '（应 0——无法获得任何护盾效果）' });
+  if (zeroed < 1) errors.push({ key: 'txc 护盾组件未随机归零', stack: '拾取前 ' + JSON.stringify(cdBefore) + ' → 后 ' + JSON.stringify(state.txcSkillCd) + '（应至少一项归零）' });
+  core.powerups.length = 0;   // 清无关道具：全量 RNG 下敌机掉落的护盾/暴走可能恰在磁吸半径内同帧被吸，污染下方特化断言（2026-11-20 全量偶红加固）
+  put('kit'); frames(1); isolate();
+  if (player.weapon !== 1) errors.push({ key: 'txc 升级套件改变了火力等级', stack: 'weapon=' + player.weapon + '（应恒 1——不受火力等级影响）' });
+  core.powerups.length = 0; player.berserk = 0;   // 同上清场 + 清暴走余量（断言本意=暴走组件不新增暴走）
+  put('berserk'); frames(1); isolate();
+  if (player.weapon !== 1 || player.berserk > 0) errors.push({ key: 'txc 暴走组件进入暴走', stack: 'weapon=' + player.weapon + ' berserk=' + player.berserk + '（应不暴走——仅冷却归零）' });
+  if (!(['arc', 'arms', 'thunder', 'replay'].every(k => state.txcSkillCd[k] === 0))) {
+    errors.push({ key: 'txc 暴走组件未全归零', stack: JSON.stringify(state.txcSkillCd) + '（四冷却应同时归零）' });
+  }
+  // ⑧ 接触规则（gachaHaltT 冻结 updateTxcCombat——隔离蛇形雷条对贴身靶的同帧命中污染）：
+  // 1 类直接击坠且玩家无伤；非 1 类（capital 悬停位=玩家位）tick 敌 -400 / 自 -100（比例 4:1）
+  if (player.invuln > 0) player.invuln = 0;
+  state.gachaHaltT = 1000;
+  core.enemies.length = 0; isolate();
+  const hpC1 = player.hp;
+  const sideE = spawn.makeEnemy('side', player.x, player.y, {});
+  let sideKilled = false;
+  for (let f = 0; f < 10 && !sideKilled; f++) { isolate(); if (sideE) { sideE.x = player.x; sideE.y = player.y; } frames(1); sideKilled = !core.enemies.includes(sideE); }
+  if (!sideKilled) errors.push({ key: 'txc 1类接触未秒杀', stack: '10 帧内 side 敌未被击坠（应直接击坠）——诊断: type=' + (sideE && sideE.type) + ' phase=' + (sideE && sideE.phase) + ' invuln=' + player.invuln + ' alive=' + player.alive + ' halt=' + state.gachaHaltT + ' inArr=' + core.enemies.includes(sideE) + ' pos=' + (sideE && sideE.x.toFixed(0) + ',' + sideE.y.toFixed(0)) + ' player=' + player.x.toFixed(0) + ',' + player.y.toFixed(0) + ' halfW=' + (sideE && (sideE.w / 2).toFixed(0)) });
+  if (player.hp < hpC1) errors.push({ key: 'txc 1类接触玩家掉血', stack: 'hp ' + hpC1 + '→' + player.hp + '（应无伤；仅豁免波次掉落的小艺治疗增益——掉血才判失败）' });
+  const cap2 = spawn.makeEnemy('capital', player.x, player.y, { variant: 'crimson', hoverY: player.y, holdTimer: 1000 });   // 悬停位=玩家位：入位后持续接触（hoverY 置玩家位防入场纵向逃逸）；variant 钉死 crimson 防虚化护盾（同上）
+  if (cap2) { cap2.hp = 999999; cap2.maxHp = 999999; }
+  const hpC2 = player.hp;
+  for (let f = 0; f < 36; f++) { isolate(); if (cap2) { cap2.x = player.x; cap2.y = player.y; } frames(1); }
+  state.gachaHaltT = 0;
+  const capLoss = cap2 ? 999999 - cap2.hp : 0;
+  const playerLoss = hpC2 - player.hp;
+  // tick 数按敌损反推（敌 -400/tick）：自损应 ≈ ticks×100（波次掉落的小艺治疗 +400/次会抬高读数——容差 800）
+  const estTicks = Math.max(1, Math.round(capLoss / 400));
+  if (!(capLoss > 0 && playerLoss >= estTicks * 100 && playerLoss <= estTicks * 100 + 800)) {
+    errors.push({ key: 'txc 接触 tick 比例异常', stack: '敌损 ' + capLoss.toFixed(0) + '（≈' + estTicks + ' ticks）/ 自损 ' + playerLoss.toFixed(0) + '（应 ' + estTicks * 100 + '~' + (estTicks * 100 + 800) + '，≈4:1——敌-400/自-100 每 0.1s，容差豁免波次治疗）——诊断: type=' + (cap2 && cap2.type) + ' arrived=' + (cap2 && cap2.arrived) + ' phase=' + (cap2 && cap2.phase) + ' invuln=' + player.invuln + ' pos=' + (cap2 && cap2.x.toFixed(0) + ',' + cap2.y.toFixed(0)) + ' player=' + player.x.toFixed(0) + ',' + player.y.toFixed(0) + ' hp=' + player.hp.toFixed(0) });
+  }
+  // 场景隔离收尾：天秀混沌王子跨场景残留会污染后续场景（战机替换/装备失效）——复位回默认叮咚鸡
+  core.enemies.length = 0; isolate();
+  key('p'); frames(5); key('p', false);
+  elements.pauseHomeBtn.click(); frames(10);
+  cfgL.setPilotMain(cfgL.PILOTS.dagou);
+  frames(5);
+  sample('txc 天秀混沌王子全链路');
+}
+
 // ---------------- SCENES 注册表（批次 2a 场景化）----------------
 // 速查：改动文件 → 建议场景（02-core / 01x 配置域 / 14-main 改动跑全量，共享层不省）
 const SCENES = [
   { name: 'core-flow', desc: '主界面空闲 / 开局战斗 / 移动爆弹 / 暂停恢复重开 / 二次开局', files: '14-main 07-player 08-entities 02-core', run: sceneCoreFlow },
-  { name: 'pilots', desc: '13 名驾驶员卡片选中主路径 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
+  { name: 'pilots', desc: '全部驾驶员卡片选中主路径（含花礼 1×1 判定断言）+ 酒客之王开局覆盖层 12 词条 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
+  { name: 'txc', desc: '天秀混沌王子（血量8000/装备失效/移速逼近/蛇形雷条+雷环/折线中线触发/四技能首轮冷却/麻痹平滑/雷击外扩/无敌帧禁用/拾取特化/接触秒杀与tick 4:1）', files: '01-config-loadout 02-core 06-enemy 07-player 08-entities 12-ui', run: sceneTxc },
   { name: 'sub-weapons', desc: '全部副武器卡片主路径（演示发射 / 战斗 / 重开冷却）', files: '07-player 12-ui', run: sceneSubWeapons },
   { name: 'zhuixing', desc: '坠星长枪（垂直直射 / 驻留减速 / 无限穿透 / 伤害结算 / 暴走错峰队列）', files: '07-player 08-entities 10-draw-world 01-config-loadout', run: sceneZhuixingSpear },
   { name: 'cheyue', desc: '彻月僚机（固定瞄准 +40% 屏高 / 无限穿透每敌一次 / 暴走三连射 +50/+40/+30% 屏高）', files: '07-player 08-entities 09a-draw-loadout 10-draw-world 01-config-loadout', run: sceneCheyue },
   { name: 'jinxiao', desc: '今宵僚机（距离权重锁定分配 3:2:1 / 同距均分 / 错序扇形出舱 / 弧线折返连续性 + 不出屏 / 追踪承伤 / 暴走 8 发）', files: '07-player 08-entities 09a-draw-loadout 10-draw-world 01-config-loadout', run: sceneJinxiao },
+  { name: 'tisu', desc: '时流天梭僚机（血量最高/密度最高/1类低权重选择 / fly-hold-turn-exit 生命周期 / 悬停武装解除 / 屏障无视+首击翻倍 / 暴走 4 次停止-再射 / 副武器 ×0.5）', files: '07-player 08-entities 09a-draw-loadout 10-draw-world 01-config-loadout', run: sceneTisu },
   { name: 'jiye-beam', desc: '极夜千星僚机（瞬时激光 hitscan：无飞行弹体同帧结算 / 无限射程 / 贯穿剩余伤害低血穿透·高血截断 / 消散无伤害 / 暴走持续 0.1s tick）', files: '07-player 08-entities 09a-draw-loadout 10-draw-world 01-config-loadout 02-core', run: sceneJiyeBeam },
   { name: 'encyclopedia', desc: '怪物图鉴预览渲染 + 数值与机制图鉴 DOM 构建', files: '12-ui 13-encyclopedia', run: sceneEncyclopedia },
   { name: 'wave-test', desc: '权重表「波次」子页试波挑战 + = 追加补波', files: '12-ui 13-encyclopedia 04-spawn 14-main', run: sceneWaveTest },
@@ -3040,6 +3734,8 @@ const SCENES = [
   { name: 'sweep-kill', desc: '秒杀类禁亡语召唤（增生 / 法术阵列）', files: '06-enemy 04-spawn', run: sceneSweepKill },
 
   { name: 'grail-halo', desc: '愧悔魂灵圣杯（入场连续性 / 活动带夹取 / 150px 光环转移判定 / 击坠掉 1 水晶）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneGrailHalo },
+  { name: 'starslayer', desc: '4C 诛星舰（黑日入场连续性/黑日强化/白夜亡语召唤/紫月亡语射弹）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneStarSlayer },
+  { name: 'thunder', desc: '4C 雷霆之怒（入场连续性/停 50% 屏高/光环弹加成/光环 tick 麻痹与解除）', files: '04-spawn 06-enemy 08-entities 07-player', run: sceneThunderWrath },
   { name: 'stasis-unreal', desc: '静滞虚幻（入场连续性 / 锁定即投弹 / 静滞区域生成与效果 / 子弹过境永久减益 / 殉爆分派）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneStasisUnreal },
   { name: 'beyond-wings', desc: '超越艇五变体（入场连续性 / 停留线+3% 屏高 / 逐机弹种 / 时流绿环命中我方置 buff）', files: '04-spawn 06-enemy 08-entities 01-config-enemies', run: sceneBeyondWings },
   { name: 'collapse-cc', desc: '坍缩构造体（双逻辑镜像重走 / 瞬移与连续性 / 刹停渐变弹 / 场高承伤乘区）', files: '04-spawn 06-enemy 01-config-enemies 01-config-difficulty', run: sceneCollapseConstruct },
@@ -3051,7 +3747,7 @@ const SCENES = [
   { name: 'crystal-wave', desc: 'BOSS 后特殊波次（水晶核芯艇四编成：数值 / 恒速 200 / 不重叠 / 出场 40 / 清场 0.6s 恢复）', files: '04-spawn 06-enemy 14-main 12-ui 01-config-enemies', run: sceneCrystalWave },
   { name: 'harb3', desc: '先兆者家族三变种（3B 先导判定即预警+延迟生成+浮现落位 / 3C 中枢齐召分档+多中枢 / 3D 极夜横弹+充满即召时序 + 家族数值档位）', files: '01-config-enemies 01-config-difficulty 01-config-spawn 04-spawn 06-enemy', run: sceneHarb3 },
   { name: 'help-pad', desc: '教程面板手柄页切换（切出 / 切回 / 收起）', files: '12-ui', run: sceneHelpPad },
-  { name: 'touch', desc: '手机模式触控（鼠标不认领 / 偏移钳制 90px / 目标点映射指数逼近无瞬跳 / 副指不抢占 / 爆弹·技能·暂停按钮 / 抬指静止）', files: '02-core 14-main 07-player 12-ui', run: sceneTouch },
+  { name: 'touch', desc: '手机模式触控（鼠标不认领 / 相对拖动 1:1 跟手 / 按下帧零位移 / 瞬移钳制 90px/帧 / 副指不抢占 / 爆弹·技能·暂停按钮 / 抬指静止）', files: '02-core 14-main 07-player 12-ui', run: sceneTouch },
   { name: 'finale', desc: '静音开关收尾', files: '03-audio', run: sceneFinale },
 ];
 
