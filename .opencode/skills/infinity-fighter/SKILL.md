@@ -113,8 +113,8 @@ node tools/smoke.js --scene=a,b  # 只跑指定场景；--list 列出全部场�
 | 改动文件 | 建议场景 |
 |---|---|
 | 05-boss / 11-draw-boss | darkhand |
-| 07-player / 08-entities | core-flow / pilots / sub-weapons / gacha / qunxing-gate |
-| 04-spawn / 06-enemy | poem / popian-u / war-ghost / pulse-matrix / elites / hover-bob / swarm |
+| 07-player / 08-entities | core-flow / pilots / sub-weapons / gacha / stars-gate |
+| 04-spawn / 06-enemy | poem / popian-u / war-ghost / pulse-matrix / elites / hover-bob |
 | 12-ui / 13-encyclopedia | encyclopedia / wave-test / help-pad |
 | 02-core / 01x 配置域 / 14-main | **全量** |
 
@@ -133,6 +133,7 @@ node tools/smoke.js --scene=a,b  # 只跑指定场景；--list 列出全部场�
 ## 9. 命名纪律
 
 - 编队标准名（以 `13-encyclopedia.js` 波次表为准）：**1类小队 / 22 / 1类长队 / 232232 / 双侧斜扫 / 2*7 / 紫自爆流 / 232111 / 32223**；禁用旧称（V字俯冲/对角奇袭/双炮艇压阵等）
+- **变量命名统一英文单词**（2026-11-23 用户定稿）：注册表键 / 装备与敌人 id / state 字段 / 函数名 / smoke 场景名等一律用英文单词，**禁止拼音混搭**（历史案例：群星之扉注册表键 `qunxingGate` → 已改 `starsGate`）；仅中文文案、注释、展示名（name/desc 等）保留中文。新增变量命名时自查：读出来的键名应当能让不懂拼音的人看懂
 - 难度名：**虚象 / 具象 / 真我 / 诗篇**（诗篇 = 真我之后的更高难度，wip 占位）；历史日志中 v0.3.5 更名前的「诗篇」指现「真我」
 - mods 键名：语义化 + 体系前缀（`striker*` / `boss*`），勿与 `enemyHpMul` / `spawnIntervalMul` 等现有键混淆
 - 改函数签名/新增顶层名必须同步该文件头部契约注释（check-names 强制）

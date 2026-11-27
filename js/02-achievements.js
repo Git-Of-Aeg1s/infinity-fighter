@@ -44,7 +44,7 @@
     douzhiKills: 0,      // 斗志昂扬击杀数（斗志非常昂扬 ≥2）
     killsTotal: 0,       // 敌机击坠总数（非 BOSS；狂暴开杀 ≥200）
     pickups: 0,          // 道具拾取数（水晶不算；UPUPUP ≥15）
-    watchClears: 0,      // 群星守望消除敌弹数（群星不灭 ≥100，2026-10-14 用户定稿 60→100）
+    watchClears: 0,      // 群星之歌消除敌弹数（群星不灭 ≥100，2026-10-14 用户定稿 60→100）
     chixinClass1Kills: 0,// 炽心灼烧击杀 1 类敌人数（飞蛾扑火 ≥20）
     lingluoSkillCount: 0,// 迪奥 Q 技能成功释放次数（疯狂杀戮 ≥3）
     armorSkillUsed: false, // 本局是否使用过装甲技能（F；忘了）
@@ -201,7 +201,7 @@
     if (achv.giantCrystals >= 16) unlockAchievement('goldLegend');
   }
 
-  // 群星守望消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥100，2026-10-14 用户定稿 60→100）
+  // 群星之歌消弹（06-enemy 击杀触发点上报实际消除数；群星不灭 ≥100，2026-10-14 用户定稿 60→100）
   function achvNoteWatchClear(n) {
     if (!achvGateOk() || !n) return;
     achv.watchClears += n;

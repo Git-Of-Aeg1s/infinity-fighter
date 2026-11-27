@@ -1,13 +1,13 @@
 // 01-config-enemies：敌机注册表与调色（含 4S 精英 / 战争幽灵 / 法术阵列 / 战舰变体 / 紫电系）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(2 名) 04-spawn(46 名) 05-boss(5 名) 06-enemy(46 名) 07-player(5 名) 08-entities(9 名) 09b-draw-enemies(25 名) 10-draw-world(9 名) 11-draw-boss(1 名) 12-ui(2 名) 13-encyclopedia(14 名) 14-main(2 名)
+  // 被依赖：01-config-boss(1 名) 01-config-difficulty(2 名) 02-achievements(1 名) 02-core(2 名) 04-spawn(47 名) 05-boss(5 名) 06-enemy(48 名) 07-player(6 名) 08-entities(10 名) 09b-draw-enemies(25 名) 10-draw-world(9 名) 11-draw-boss(1 名) 12-ui(2 名) 13-encyclopedia(14 名) 14-main(2 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H } from './01-config-core.js';
 
 
-  // 敌机类别映射（群星守望按击杀类别清除敌弹；未列出的类型——BOSS / 龙卷等——不触发）
+  // 敌机类别映射（群星之歌按击杀类别清除敌弹；未列出的类型——BOSS / 龙卷等——不触发）
   const ENEMY_CLASS = {
     side: 1, prolifera: 1, escort: 1, crystalCore: 1,
     striker: 2, fashiA1: 2, fashiMatrix: 2, popian: 2, douzhi: 2, voyager: 2,
@@ -24,6 +24,8 @@
     warGhost: 4, puxuefeng: 4, hanxixian: 4, xiayong: 4, xinguodong: 4,
     // 超越艇（2C 五色变体，2026-11-13 实装）：独立 type 归入 2 类
     beyondWing_red: 2, beyondWing_blue: 2, beyondWing_violet: 2, beyondWing_cyan: 2, beyondWing_pink: 2,
+    // 澜心舰（3C 五色变体，2026-11-27 实装）：独立 type 归入 3 类（战舰体格改形——六点箭镖轮廓）
+    lanxinShip_blue: 3, lanxinShip_white: 3, lanxinShip_black: 3, lanxinShip_violet: 3, lanxinShip_pink: 3,
   };
 
   // 怪物等级（类别 + 类内强度档 A~F，A 最弱）：为刷新波次重构打的元数据基础。
@@ -164,6 +166,37 @@
       w: 46, h: 40, hp: 60, score: 1, color: '#F9A8D4', drawScale: 1.4,
       bulletSpeed: 240, bulletR: 5, bulletDmg: 18, crashDmg: 34,
       fireInterval: [1, 2],
+    },
+    // 澜心舰（3C 五色变体，2026-11-27 用户定稿实装，方案G造型）：独立 type（非 gunship 变体，ENEMY_GRADES 按独立键登记）
+    // 通用口径：血 500 / 诗篇 2400（POEM_HP 绝对覆盖）；分数与水晶占位 1 待定；碰撞盒 76×62 同赤红战舰（drawScale 1.55 不变）；
+    // 碰撞 43（36×1.2 取整）；巡航 324（战舰 270×120%，06-enemy 消费）；入场初速/停留位置同战舰（SHIP_ENTRY.gunship / hoverY 115~160）；
+    // 首攻 0.7~1.5s / 攻击间隔 1.6~2.2s（弹数值暂沿战舰基准留档——弹幕内容待攻击批次，updateEnemyFire 占位不发射）；
+    // 不可侧翼入场（常规权重未入池；图鉴挑战/波次测试仅顶部入位，见 04-spawn spawnChallengeTargetOne）；
+    // 特殊能力四式（单一来源 LANXIN_SHIP 常量组，见 ENEMY_TYPES 后）：洪流蓝护盾链 / 终日黑召幽暮 / 洄星紫亡语攻击（钩子）/ 似幻粉次数盾
+    lanxinShip_blue: {   // 洪流（蓝）：登场 40% 携 0.5s 护盾，每次护盾结束前 20% 判定 +0.5s，至多累计 5s
+      w: 76, h: 62, hp: 500, score: 1, color: '#4D9FFF', drawScale: 1.55,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 43,
+      firstFire: [0.7, 1.5], fireInterval: [1.6, 2.2],
+    },
+    lanxinShip_white: {   // 白影（白）：无特殊能力
+      w: 76, h: 62, hp: 500, score: 1, color: '#EAF1F8', drawScale: 1.55,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 43,
+      firstFire: [0.7, 1.5], fireInterval: [1.6, 2.2],
+    },
+    lanxinShip_black: {   // 终日（黑）：被击坠时 20% 立召 1 个幽暮突击艇（召唤型亡语——秒杀通道禁用，见 06-enemy killEnemy）
+      w: 76, h: 62, hp: 500, score: 1, color: '#14161C', drawScale: 1.55,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 43,
+      firstFire: [0.7, 1.5], fireInterval: [1.6, 2.2],
+    },
+    lanxinShip_violet: {   // 洄星（深蓝紫）：被击坠前 10% 立刻攻击一次（攻击内容待攻击批次——06-enemy 仅挂钩子）
+      w: 76, h: 62, hp: 500, score: 1, color: '#6D5AE8', drawScale: 1.55,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 43,
+      firstFire: [0.7, 1.5], fireInterval: [1.6, 2.2],
+    },
+    lanxinShip_pink: {   // 似幻（淡粉）：登场 80% 携一层次数盾（chargeShield 通道——语义同浮梦超越艇，通用渲染/结算零改动）
+      w: 76, h: 62, hp: 500, score: 1, color: '#F9A8D4', drawScale: 1.55,
+      bulletSpeed: 250, bulletR: 4, bulletDmg: 14, crashDmg: 43,
+      firstFire: [0.7, 1.5], fireInterval: [1.6, 2.2],
     },
     // 特殊3类：炮火先兆者（后排炮兵，先兆者家族 3A）—— 灰黑形体 + 红色充能核心，充满后召唤垂直落下的导弹
     harbinger: {
@@ -469,6 +502,18 @@
       bulletSpeed: 230, bulletR: 5, bulletDmg: 10, crashDmg: 40,
       fireInterval: [1e9, 1e9],
     },
+  };
+
+  // 澜心舰（3C 五变体，2026-11-27 实装）专属参数单一来源：移动/特殊能力四式数值（06-enemy / 04-spawn 消费）
+  const LANXIN_SHIP = {
+    cruise: 324,              // 巡航速度（战舰 270×120% 用户定稿；入场初速/停留位置同战舰 SHIP_ENTRY.gunship）
+    shieldChance: 0.4,        // 洪流蓝：登场携带 0.5s 护盾概率
+    shieldDur: 0.5,           // 洪流蓝：单段护盾时长（s）
+    shieldChainChance: 0.2,   // 洪流蓝：每次护盾结束前判定延长概率
+    shieldTotalMax: 5,        // 洪流蓝：护盾累计时长封顶（s，含登场首段）
+    duskSummonChance: 0.2,    // 终日黑：被击坠时召唤幽暮突击艇概率（召唤型亡语——秒杀通道禁用）
+    deathAttackChance: 0.1,   // 洄星紫：被击坠前立刻攻击概率（攻击内容待攻击批次，本批仅钩子）
+    countShieldChance: 0.8,   // 似幻粉：登场携带一层次数盾概率（chargeShield 通道）
   };
 
   // 诗篇占位敌人类型清单（10-draw-world drawEnemy 用）：占位阶段统一渲染白色方块造型，
@@ -1557,9 +1602,9 @@
   // 4C 诛星舰三变体精细化配色（2026-11-16 实装；主力舰同规格五键——舰体暗→亮渐变 + 专属强调色/辉光；
   // 游戏内绘制消费见 10-draw-world starSlayer 分支，测试3 方案页同源取色）
   const STARS_SLAYER_PALETTE = {
-    darkSun:     { dark: '#141014', base: '#2e1c24', light: '#573038', accent: '#ff4632', glow: '#ff3355' },   // 黑日：黑曜舰体 + 炽红日环/日冕光弧
+    darkSun:     { dark: '#141014', base: '#2e1c24', light: '#573038', accent: '#ff4632', glow: '#ff3355', star: '#c22e1a' },   // 黑日：黑曜舰体 + 炽红日环/日冕光弧；star=四芒星填充暗红（2026-11-26 用户定稿「黑色的暗一些」）
     whiteNight:  { dark: '#39496b', base: '#c9d6ea', light: '#f4f8ff', accent: '#7ce7ff', glow: '#9fc4ff' },   // 白夜：月白银蓝舰体 + 冷光饰带/月白翼光
-    violetMoon:  { dark: '#241040', base: '#6d3fc0', light: '#c9a6ff', accent: '#b57bff', glow: '#8b5cf6' },   // 紫月：深紫舰体 + 紫月牙环/紫色电纹
+    violetMoon:  { dark: '#241040', base: '#6d3fc0', light: '#c9a6ff', accent: '#b57bff', glow: '#8b5cf6', star: '#dcc5ff' },   // 紫月：深紫舰体 + 紫月牙环/紫色电纹；star=四芒星填充浅紫偏白（2026-11-26 用户定稿「紫色的白一些」）
   };
 
   // 3类战舰精细化配色（按变体区分：舰体暗→亮渐变 + 专属强调色/辉光，与 4 类涂装同规格）
@@ -1620,8 +1665,94 @@
   // 故同值并列；改色需两处同步）。每艘生成时随机取一（makeEnemy，消费见 04-spawn / 10-draw-world）
   const CRYSTAL_CORE_COLORS = ['#39c5bb', '#46aaff', '#ffc0cb'];
 
+  // 敌人颜色标签（2026-11-16 九色定稿体系）：自 06-enemy 迁入（2026-11-23——08-entities 词条掷点等
+  // 上游模块也需要判定黑色标签，而 06 处下游（06→08 单向依赖），故下放配置域供全链 import；
+  // 06-enemy re-export 保持既有 import 契约不变）。纯派生函数：仅读敌人生成时不变的字段
+  //（type / behavior / variant / crystalColor / bossId）
+  function enemyColorTags(e) {
+    switch (e.type) {
+      case 'side':      // 1类按行为（2026-11-16 定稿五色齐备）：白影=pass 白 / 黄芒=shoot 黄 / 紫电=kamikaze 紫 /
+                        // 橙旋=swirl 橙（2026-11-16 定稿由沿用紫电的 purple 改橙）/ 赤月=moon 红
+        return e.behavior === 'shoot' ? ['yellow']
+          : e.behavior === 'kamikaze' ? ['purple']
+          : e.behavior === 'swirl' ? ['orange']
+          : e.behavior === 'moon' ? ['red']
+          : ['white'];   // pass = 白影
+      case 'prolifera': // 增生侧翼艇：青（青=green 标签，固定加血 4% 档）
+        return ['green'];
+      case 'crystalCore':   // 水晶核芯艇（1S）：按生成时随机的水晶色分色（CRYSTAL_CORE_COLORS 顺序 = 青/蓝/粉；
+                            // 2026-11-16 用户定稿「根据自身颜色分为青、蓝、粉」——青色实例接 green 固定加血增生档，
+                            // 蓝/粉纯分类；pink 为新标签、现无消费点）
+        return e.crystalColor === CRYSTAL_CORE_COLORS[0] ? ['green']
+          : e.crystalColor === CRYSTAL_CORE_COLORS[1] ? ['blue']
+          : ['pink'];
+      case 'striker':   // 赤红红 / 烈橙橙 / 幽蓝蓝 / 紫晶紫 / 坚垒黄 / 幽暮黑（不变）；霜白（variant id 'white'）白（2026-11-16 定稿「已标明」口径——进入黑日强化集）
+        return e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['orange'] : e.variant === 'azure' ? ['blue'] : e.variant === 'violet' ? ['purple'] : e.variant === 'fortress' ? ['yellow'] : e.variant === 'dusk' ? ['black'] : e.variant === 'white' ? ['white'] : [];
+      case 'gunship':   // 紫晶紫 / 赤红红 / 金曜黄 / 烈橙橙 / 青时青（不变）
+        return e.variant === 'violet' ? ['purple'] : e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['yellow'] : e.variant === 'orange' ? ['orange'] : e.variant === 'cyan' ? ['green'] : [];
+      case 'capital':   // 赤红红 / 苍蓝蓝（不变）
+        return e.variant === 'crimson' ? ['red'] : e.variant === 'azure' ? ['blue'] : [];
+      case 'harbinger': return ['black'];      // 炮火先兆者：黑（2026-11-16 定稿，原灰+红）
+      case 'harbingerLead': return ['black'];  // 先导炮火先兆者：黑（2026-11-16 定稿，原灰+红）
+      case 'harbingerHub': return ['black'];   // 中枢炮火先兆者：黑（2026-11-16 定稿，原灰+红）
+      case 'harbingerPolar': return ['blue'];  // 极夜炮火先兆者：蓝（2026-11-16 定稿，原灰+红）
+      case 'weilong':   return ['yellow'];     // 威龙：黄（2026-11-16 定稿，原橙+黄——不再吃橙 0.5% 爆弹掉落）
+      case 'hanshuang': return ['blue'];       // 寒霜：蓝（2026-11-16 定稿，原灰+蓝）
+      case 'yu4':       return ['yellow'];     // 御4：黄（2026-11-16 定稿，原灰+蓝——进入 2:bad:3 黄金壁垒屏障集）
+      case 'anvil':     return ['green'];      // 铁砧：青（2026-11-16 定稿，原灰+绿——固定加血 10% 档不变）
+      case 'baoling':   return ['red'];        // 暴鸰：红（2026-11-16 定稿，原灰+红）
+      case 'baolingG':  return ['red'];        // 暴鸰·G：红（2026-11-16 定稿，同暴鸰）
+      case 'unreal':    return ['blue'];       // 虚幻：蓝（2026-11-16 定稿，原灰+蓝）
+      case 'stasisUnreal': return ['yellow'];  // 静滞虚幻：黄（2026-11-16 定稿——进入 2:bad:3 黄金壁垒屏障集）
+      case 'jiaoxiang': return ['orange'];     // 焦香螺旋桨：橙（2026-11-16 定稿，原橙+红）
+      case 'pulseMatrix': return ['red'];      // 脉冲矩阵：红（2026-11-16 定稿，原橙+红——不再吃橙 0.5% 爆弹掉落）
+      case 'douzhi':    return ['blue'];       // 斗志昂扬：蓝（2026-11-16 定稿，原灰）
+      case 'sponsor':   return ['white'];      // 赞助无人舰：白（2026-11-16 定稿，原灰——进入黑日强化集）
+      case 'sponsorDeluxe': return ['yellow']; // 豪华赞助无人舰：黄（2026-11-16 定稿，原灰——进入 2:bad:3 黄金壁垒屏障集）
+      case 'fashiArray': return ['red'];       // 法术阵列：红（不变）
+      case 'fashiMatrix': return ['red'];      // 法术矩阵：红（2026-11-16 定稿，原无标记）
+      case 'warMatrix': return ['red'];        // 战争矩阵：红（2026-11-16 定稿，原无标记）
+      case 'warGhost': return ['yellow'];      // 战争幽灵：黄（2026-11-16 定稿，原无标记——进入 2:bad:3 黄金壁垒屏障集）
+      case 'popian':    return ['red'];        // 破片：红（2026-11-16 定稿，原无标记）
+      case 'popianU':   return ['red'];        // 破片U型：红（2026-11-16 定稿，原无标记）
+      case 'voyager':   return ['blue'];       // 浮海飘航者：蓝（2026-11-16 定稿，原无标记）
+      case 'fashiA1':   return ['purple'];     // 法术大师A1：紫（2026-11-16 定稿，原无标记）
+      case 'fashiA2':   return ['purple'];     // 法术大师A2：紫（2026-11-16 定稿，原无标记）
+      case 'collapseConstruct': return ['black'];   // 坍缩构造体：黑（2026-11-16 定稿——进入黑日强化集 + 灼烧增伤集）
+      case 'cocoonDream': return ['white'];    // 破茧之梦：白（2026-11-16 定稿，原白+蓝）
+      case 'guiltGrail': return ['yellow'];    // 愧悔魂灵圣杯：黄（不变；受 2:bad:3 黄金壁垒等黄色判定）
+      // 超越艇（2C 五色变体，2026-11-13 实装；2026-11-17 用户定稿补入色表）：炽翼红 / 奔雷蓝 /
+      // 织夜深蓝紫（#6D5AE8——用户定稿紫+蓝双标：紫进帝千邪亡语判定、蓝纯分类）/ 时流青（青=green，
+      // 接青档固定加血增生档）/ 浮梦淡粉（pink 纯分类）
+      case 'beyondWing_red': return ['red'];
+      case 'beyondWing_blue': return ['blue'];
+      case 'beyondWing_violet': return ['purple', 'blue'];
+      case 'beyondWing_cyan': return ['green'];
+      case 'beyondWing_pink': return ['pink'];
+      case 'puxuefeng':                       // 四精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋）：
+      case 'hanxixian':                       //   黑 + 红（2026-11-16 定稿，与黑红涂装一致——原无标记）
+      case 'xiayong':
+      case 'xinguodong':
+      case 'zhangzhang': return ['black', 'red'];   // 张华&张策（实体未实装，标记先行占位同四精英口径）
+      case 'starSlayer_darkSun': return ['black'];   // 黑日诛星舰（4C）：黑色（黑日强化判定含自身——黑白敌人清单标记由各敌人批次登记，见 STARS_SLAYER）
+      case 'starSlayer_whiteNight': return ['white']; // 白夜诛星舰（4C）：白色
+      case 'starSlayer_violetMoon': return ['purple']; // 紫月诛星舰（4C）：紫色（受 3:bad:0 紫色亡语词条判定——紫月亡语弹同口径）
+      case 'thunderWrath': return ['blue'];          // 雷霆之怒（4C）：蓝色
+      case 'boss':
+        // 5类 BOSS（2026-11-16 定稿）：暴风之眼 白 / 风暴编织者 蓝 / 黑暗之手 黑+红 /
+        // 旧日之歌 所有颜色（九色齐挂——purple 部分被帝千邪消费点的「不含任何 BOSS（长歌级敌人）」豁免，
+        // 其余颜色判定照常生效）；其余 BOSS（含 wip 占位）黑
+        return e.bossId === 'storm' ? ['white']
+          : e.bossId === 'storm2' ? ['blue']
+          : e.bossId === 'darkhand' ? ['black', 'red']
+          : e.bossId === 'song' ? ['red', 'orange', 'yellow', 'white', 'purple', 'green', 'blue', 'black', 'pink']
+          : ['black'];
+      default:          return [];
+    }
+  }
+
   export {
-    ENEMY_CLASS, ENEMY_GRADES, enemyGrade, ENEMY_TYPES,
+    ENEMY_CLASS, ENEMY_GRADES, enemyGrade, ENEMY_TYPES, enemyColorTags,
     WIP_PLACEHOLDER_TYPES, HARBINGER, HARBINGER_LEAD, HARBINGER_HUB, HARBINGER_POLAR, WEILONG, HANSHUANG,
     YU4, ANVIL, BAOLING, BAOLING_G,
     UNREAL, STASIS_UNREAL, COCOON_DREAM, JIAOXIANG, DOUZHI, SPONSOR,
@@ -1631,7 +1762,7 @@
     STARS_SLAYER, STARS_SLAYER_PALETTE, THUNDER,
     SHIP_ENTRY, STRIKER_ENTRY, STRIKER_POEM_ENTRY,
     DUSK, VARIANTS, STRIKER_SPEED_MUL, SIDE_SPEED_FAST,
-    BEYOND_WING,
+    BEYOND_WING, LANXIN_SHIP,
     SIDE_SPEED_SLOW, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SHIP_BULLET_COLOR,
     SHIP_BULLET_LEN, SPLIT_RED, PHASE_DURATION, PHASE_CHANCE,
     CAPITAL_PALETTE, GUNSHIP_PALETTE,

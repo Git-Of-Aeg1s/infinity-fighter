@@ -7,12 +7,12 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { PLAYER_CFG, currentArmor } from './01-config-loadout.js';
-  import { ANVIL, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STARS_SLAYER, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, THUNDER, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DUSK, ELITES, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, LANXIN_SHIP, PHASE_CHANCE, PHASE_DURATION, POPIAN, POPIAN_U, PULSE_MATRIX, SIDE_BEHAVIOR_COLORS, SIDE_KAMIKAZE_SCORE, SIDE_MOON, SIDE_SPAWN_W, SIDE_SCORE, SIDE_SHOOT_HP, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, STARS_SLAYER, STASIS_UNREAL, STRIKER_ENTRY, STRIKER_FORTRESS, STRIKER_POEM_ENTRY, THUNDER, UNREAL, VARIANTS, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, WIP_PLACEHOLDER_TYPES, YU4 } from './01-config-enemies.js';
   import { BOSS_SPAWN_EARLY, BOSS_WARN_TOTAL, STORM_SHIP } from './01-config-boss.js';
   import { eliteHpOf, isPoem, isRealme, poemHpOf, TEST_HP, WAVE_POEM, diffMods, strikerNoHoldSpdMul } from './01-config-difficulty.js';
   import { ELITE_REVIVE, PRESSURE_W } from './01-config-spawn.js';
   import { bossFlow, clamp, enemies, frostZones, levelFlow, missileWarns, player, rand, shake, state } from './02-core.js';
-  import { affixHas } from './03b-affix.js';
+  import { affixHas, affixEnemyFirstIvMul, affixEnemyHpAdd, affixEnemySpeedAdd } from './03b-affix.js';
   import { startAlarm, stopAlarm } from './03-audio.js';
   import { spawnBoss, spawnStormGhost } from './05-boss.js';
   import { clearMissiles } from './06-enemy.js';
@@ -144,9 +144,10 @@
     const diff = diffMods();
     // 血量难度倍率（虚象：所有非BOSS怪物血量 -20%）× 关卡血量修正（2026-10-13 用户定稿：
     // Lv1 刷新敌人 ×0.70、Lv2 ×0.85、Lv3+ 恒 1——诗篇波 N = 等级 N 同口径，波生成期等级由
-    // 14-main 诗篇分支预同步；挑战局多走 TEST_HP 覆盖、swarm 锁 Lv20 不受影响）
+    // 14-main 诗篇分支预同步；挑战局多走 TEST_HP 覆盖、循环刷怪测试页 infTest 等级锁定不受影响）
     const lvHpMul = levelFlow.level === 1 ? 0.70 : levelFlow.level === 2 ? 0.85 : 1;
-    const hpMul = (diff.enemyHpMul != null ? diff.enemyHpMul : 1) * lvHpMul;
+    // 保底池（2026-11-26）neg_hp：敌方生命值加算乘区（1+sum——两个+10%=+20% 加算口径；生成层单点覆盖全部敌人）
+    const hpMul = (diff.enemyHpMul != null ? diff.enemyHpMul : 1) * lvHpMul * (1 + affixEnemyHpAdd());
     // 首次攻击延迟难度加成（虚象：所有非BOSS怪物初始攻击间隔 +0~0.4s，2026-10-12 用户定稿，见 firstFireAdd）
     const ffa = firstFireAdd();
     // 2/3/4 类选取变体（不同颜色 + 不同技能）；opts.variant 可强制指定（图鉴挑战用）
@@ -163,6 +164,8 @@
     initFire += ffa;
     // 词条（具象级 1:bad:5）：赤红突击艇等1A级突击艇（有攻击行为的突击艇，不含坚垒/幽暮）首次攻击间隔减少 50%
     if (affixHas('1:bad:5') && type === 'striker' && variant && variant.id !== 'fortress' && variant.id !== 'dusk') initFire *= 0.5;
+    // 保底池（2026-11-26）neg_firstIv：敌方首次攻击间隔乘算累积（生成侧——仅新生成敌机，已在场敌机不受影响）
+    initFire *= affixEnemyFirstIvMul();
     const e = {
       type,
       x, y,
@@ -197,8 +200,10 @@
           : (type === 'striker' ? strikerHold() : 0),
       vNoHold: !!opts.vNoHold,             // 「2*7」无停留直通：越过前锋停留线后平滑衰减到入位速度 × vNoHoldSpdMul
       vNoHoldSpdMul: opts.vNoHoldSpdMul,   // 速度保留比例（基准 0.8 / 诗篇 0.6，取值见 strikerNoHoldSpdMul）
-      speedMul: opts.speedMul != null ? opts.speedMul : 1,   // 移动/下落速度倍率（特殊编队用）
-      speedMulBase: opts.speedMul != null ? opts.speedMul : 1,   // speedMul 出生基准（每帧重算用：寒冷区域减速乘回，见 updateEnemies）
+      // 保底池（2026-11-26）neg_speed：敌方速度加算乘区（1+sum——生成层乘入出生基准，已在场敌机不追溯；
+      // 乘区仅作用于速度——加速度为各移动分支内部逼近率、无统一乘区，登记不实装；生成层乘区杜绝中途速度瞬跳）
+      speedMul: (opts.speedMul != null ? opts.speedMul : 1) * (1 + affixEnemySpeedAdd()),   // 移动/下落速度倍率（特殊编队用）
+      speedMulBase: (opts.speedMul != null ? opts.speedMul : 1) * (1 + affixEnemySpeedAdd()),   // speedMul 出生基准（每帧重算用：寒冷区域减速乘回，见 updateEnemies）
       // 词条（虚象级 0:bad:6 方苟辟 / 具象级 1:bad:15 张丈天）：入场初速 ×1.2 / ×1.4（同持取强）标记——仅选择词条后新生成的敌机携带（已入场敌机不带，杜绝中途速度瞬跳）；
       // 各移动分支在「入场初速/入场加成幅值」消费点乘此值，衰减曲线仍平滑收敛到巡航速度（消费点见 06-enemy updateEnemyMovement）
       _affixEntryBoost: affixHas('0:bad:6') ? 1.2 : affixHas('1:bad:15') ? 1.4 : 0,
@@ -285,6 +290,17 @@
     if (type === 'striker' && variant && variant.id === 'azure') {
       if (Math.random() < 0.30) { e.shielded = true; e.phase = 0.5; }
     }
+    // 澜心舰（3C 五变体，2026-11-27 实装）登场特殊能力掷点：
+    //   洪流蓝：40% 携 0.5s 护盾链首段（护盾累计时长锚点 lxShieldTotal；链式续段判定在 06-enemy phase 递减处）；
+    //   似幻粉：80% 携一层次数盾（chargeShield 通道——结算/渲染通用，语义同浮梦超越艇 50% 口径）
+    if (type === 'lanxinShip_blue' && Math.random() < LANXIN_SHIP.shieldChance) {
+      e.shielded = true;
+      e.phase = LANXIN_SHIP.shieldDur;
+      e.lxShieldTotal = LANXIN_SHIP.shieldDur;
+    }
+    if (type === 'lanxinShip_pink' && Math.random() < LANXIN_SHIP.countShieldChance) {
+      e.chargeShield = 1; e.chargeShieldMax = 1;
+    }
     // 幽蓝(azure) / 霜白(silent) 的停留时长额外修正已取消：与普通 2类一致（走编队统一值）
     // 幽暮2类(striker dusk)：生命值 64；忽略编队入场点，改为在落点（场地 30%~80% 高度随机位置）正上方浮现，
     // 渐显后下移落点停驻、环射、渐隐离场 —— 状态机见 updateEnemyMovement 的 dusk 分支
@@ -353,10 +369,11 @@
       if (ph != null) e.hp = e.maxHp = ph * lvHpMul;   // ×关卡血量修正（Lv1/2 波同享 -30%/-15%，2026-10-13 用户定稿）
     }
     // 测试模式：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
-    // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）；置于诗篇血量之后以保证测试血量优先；
+    // 循环刷怪测试页（infTest，2026-11-24 用户定稿）除外——按注册表正常血量；
+    // 置于诗篇血量之后以保证测试血量优先；
     // BOSS 测试（kind 'boss'）中侧翼伴生的 1类强制波同样按正常血量（2026-10-10 用户定稿：不再 20000 测试血量，
     // 按当前难度注册表 / 诗篇 POEM_HP——本波经 spawnBossMinionWave 在 BOSS 测试中照常刷新）
-    if (state.challenge && state.challenge.kind !== 'swarm' && type !== 'boss'
+    if (state.challenge && state.challenge.kind !== 'infTest' && type !== 'boss'
         && !(state.challenge.kind === 'boss' && type === 'side')) {
       e.hp = e.maxHp = TEST_HP;
     }
@@ -582,7 +599,7 @@
     // Lv11 起 2.5% 概率：整支 V 字队替换为 7 架同排布的暴鸰（精英波——7 枚引导炸弹 + 潜在连锁殉爆，
     // 场面压力瞬时 +28，压力系统会自然放缓后续刷怪作为缓冲）
     if (levelFlow.level >= 11 && Math.random() < 0.025) {   // 词条（长歌级 4:bad:3 嬴乾）旧占位 ×5 退役（同上，见 01-config-spawn waveAffixTierW）
-      makeEnemy(stasisWave() ? 'stasisUnreal' : 'baoling', cx, -46, {});   // 词条（诗篇级 3:bad:6 杉蔚硙）：暴鸰生成时 65% 替换为静滞虚幻（逐机独立掷，编队流程同款可混编）
+      makeEnemy(stasisWave() ? 'stasisUnreal' : 'baoling', cx, -46, {});   // 词条（诗篇级 3:bad:6 杉蔚硙）：暴鸰生成时 75% 替换为静滞虚幻（逐机独立掷，编队流程同款可混编；2026-11-23 用户定稿 65%→75%）
       for (let k = 1; k <= 3; k++) {
         const dx = k * 56;
         const y = -46 - k * 42;
@@ -1079,11 +1096,11 @@
   // 同波复用）；水平位置不参与一致、仍按各自入场点随机横移；强制停留点（2*7 整队替换 o.tpX）不参与批次
   let popianBatch = { t: -9, tpY: 0 };
   // 词条（诗篇级 3:bad:6 杉蔚硙）静滞替换掷点 helper（编队直生成通道用——入口函数覆盖不到的 makeEnemy 直调处逐机掷）
-  function stasisWave() { return affixHas('3:bad:6') && Math.random() < 0.65; }
+  function stasisWave() { return affixHas('3:bad:6') && Math.random() < 0.75; }
   function spawnPopian(x, y, o, type) {
-    // 词条（诗篇级 3:bad:5 叶星凡）破茧替换：破片/破片U型生成时 65% 替换为破茧之梦
+    // 词条（诗篇级 3:bad:5 叶星凡）破茧替换：破片/破片U型生成时 75% 替换为破茧之梦（2026-11-23 用户定稿 65%→75%）
     //（强制停留点 o.tpX / 侧翼参数 o.flankFrom 一并忽略——破茧之梦仅侧翼七段路径入场，替换后走其自身路径）
-    if (affixHas('3:bad:5') && Math.random() < 0.65) return spawnCocoonDream();
+    if (affixHas('3:bad:5') && Math.random() < 0.75) return spawnCocoonDream();
     o = o || {};
     type = type || 'popian';
     const forced = o.tpX != null && o.tpY != null;
@@ -1174,8 +1191,8 @@
   // 机头朝向角约定：绘制本地 +y = 机头；α=faceAng，α=0 机头正下、α=-70° 机头右下（与水平夹角 20°）、
   // α=+70° 左下；下移段随机侧 ±20°（α=∓faceTilt）由 06-enemy 进入下移状态时抽取（e.faceSide 缓存）
   function spawnVoyager(x, y, o = {}) {
-    // 词条（诗篇级 3:bad:5 叶星凡）破茧替换：浮海飘航者生成时 65% 替换为破茧之梦（参数忽略同 spawnPopian 处注释）
-    if (affixHas('3:bad:5') && Math.random() < 0.65) return spawnCocoonDream();
+    // 词条（诗篇级 3:bad:5 叶星凡）破茧替换：浮海飘航者生成时 75% 替换为破茧之梦（参数忽略同 spawnPopian 处注释；2026-11-23 用户定稿 65%→75%）
+    if (affixHas('3:bad:5') && Math.random() < 0.75) return spawnCocoonDream();
     const forceFlank = o.flankFrom != null;
     const fromLeft = forceFlank ? o.flankFrom < 0 : Math.random() < 0.5;
     const useFlank = forceFlank || Math.random() < VOYAGER.flankChance;
@@ -1439,17 +1456,17 @@
   // 停车锁定（玩家位置浮现红色预警区）→ 炸弹向下脱离（火星四溅）→ 1s 后极速加速冲向预警区中心爆炸（仅伤玩家）；
   // 投弹后以战舰 110% 速度继续俯冲离场；被击毁时若炸弹尚未投出 → 原地爆炸（敌我通杀）
   function spawnBaoling(x) {
-    if (affixHas('3:bad:6') && Math.random() < 0.65) return spawnStasisUnreal(x);   // 词条（诗篇级 3:bad:6 杉蔚硙）静滞替换：65%
+    if (affixHas('3:bad:6') && Math.random() < 0.75) return spawnStasisUnreal(x);   // 词条（诗篇级 3:bad:6 杉蔚硙）静滞替换：75%（2026-11-23 用户定稿 65%→75%）
     return makeEnemy('baoling', x != null ? x : rand(110, CANVAS_W - 110), -60, {});
   }
   function spawnBaolingG(x) {
-    if (affixHas('3:bad:6') && Math.random() < 0.65) return spawnStasisUnreal(x);   // 同上
+    if (affixHas('3:bad:6') && Math.random() < 0.75) return spawnStasisUnreal(x);   // 同上
     return makeEnemy('baolingG', x != null ? x : rand(110, CANVAS_W - 110), -60, {});
   }
   // 特殊3类：虚幻 —— 暴鸰同型冰霜投弹机：移动/投弹流程与暴鸰完全一致（见 06-enemy 状态机），数值全部同暴鸰、伤害 70%；
   // 炸弹爆炸 / 殉爆留下寒冷区域（见 UNREAL 与 06-enemy updateFrostZones / 09-draw-ships drawFrostZones）
   function spawnUnreal(x) {
-    if (affixHas('3:bad:6') && Math.random() < 0.65) return spawnStasisUnreal(x);   // 词条（诗篇级 3:bad:6 杉蔚硙）静滞替换：65%
+    if (affixHas('3:bad:6') && Math.random() < 0.75) return spawnStasisUnreal(x);   // 词条（诗篇级 3:bad:6 杉蔚硙）静滞替换：75%（2026-11-23 用户定稿 65%→75%）
     return makeEnemy('unreal', x != null ? x : rand(110, CANVAS_W - 110), -60, {});
   }
   // 特殊3类：静滞虚幻 —— 虚幻增强版静滞投弹机（2026-11-11 用户定稿实装）：移动/投弹流程与暴鸰系完全一致；
@@ -1499,9 +1516,9 @@
   // 首波红相时长逐机随机 1.5~2.5s（opts.chargeFirstDur 可强制指定——诗篇 BOSS 双召唤 1.5s / 2.5s 各一）
   function spawnHarbinger(x, opts) {
     const o = opts || {};
-    // 词条（诗篇级 3:bad:2）：炮火先兆者生成时 65% 概率随机替换为中枢/极夜炮火先兆者（二选一均分；
-    // 含 BOSS 战经 spawnHarbinger 的召唤——「生成时」字面口径；参数透传两变体函数）
-    if (affixHas('3:bad:2') && Math.random() < 0.65) {
+    // 词条（诗篇级 3:bad:2）：炮火先兆者生成时 75% 概率随机替换为中枢/极夜炮火先兆者（二选一均分；
+    // 含 BOSS 战经 spawnHarbinger 的召唤——「生成时」字面口径；参数透传两变体函数；2026-11-23 用户定稿 65%→75%）
+    if (affixHas('3:bad:2') && Math.random() < 0.75) {
       return Math.random() < 0.5 ? spawnHarbingerHub(x, opts) : spawnHarbingerPolar(x, opts);
     }
     const e = makeEnemy('harbinger', x != null ? x : rand(120, CANVAS_W - 120), -50, {
@@ -1523,9 +1540,9 @@
   // 停留线 = 常规3类停留线（战舰 110~170）附近上下浮动区间；落位后充能循环与 3A 一致（连开场共 5 发）
   function spawnHarbingerLead(x, opts) {
     const o = opts || {};
-    // 词条（诗篇级 3:bad:2）：先导炮火先兆者生成时 65% 概率随机替换为中枢/极夜炮火先兆者（二选一均分；
-    // 预警队列已在玩家处立线——换型后走对应变体的落位/充能，hoverY 透传）
-    if (affixHas('3:bad:2') && Math.random() < 0.65) {
+    // 词条（诗篇级 3:bad:2）：先导炮火先兆者生成时 75% 概率随机替换为中枢/极夜炮火先兆者（二选一均分；
+    // 预警队列已在玩家处立线——换型后走对应变体的落位/充能，hoverY 透传；2026-11-23 用户定稿 65%→75%）
+    if (affixHas('3:bad:2') && Math.random() < 0.75) {
       return Math.random() < 0.5 ? spawnHarbingerHub(x, opts) : spawnHarbingerPolar(x, opts);
     }
     const hoverY = o.hoverY != null ? o.hoverY : rand(HARBINGER_LEAD.hoverYMin, HARBINGER_LEAD.hoverYMax);
@@ -1865,7 +1882,7 @@
   }
 
   // 群星之扉黑洞（state.blackhole，中心持续跟随玩家）：圈内非 BOSS 敌机移速 ×bhSlow（0.5，01-config-loadout
-  // qunxingGate 注册表键）——BOSS 不受减速（2026-11-11 用户定稿；BOSS 走 05-boss bossMoveUpdate，本函数不接入
+  // starsGate 注册表键）——BOSS 不受减速（2026-11-11 用户定稿；BOSS 走 05-boss bossMoveUpdate，本函数不接入
   // 其 mul 链）。覆盖判定半径 rEff = r × min(1, t/growT)（出现 0.15s 半径缓入，与吞弹/伤害 tick/视觉同源），
   // 敌机外接半尺寸计入（与黑洞伤害 tick / 炽心火环同口径）。
   // 调用点：06-enemy updateEnemies 每帧重算 e.speedMul 链尾
@@ -2127,6 +2144,15 @@
       case 'beyondWing_pink':
         // 超越艇（2C 五变体，2026-11-13）：2类前锋骨架（随机水平位置顶部入位）——挑战口径 holdTimer 1e9 永驻场停留攻击
         makeEnemy(ch.type, rand(70, CANVAS_W - 70), -50, { holdTimer: 1e9 });
+        break;
+      case 'lanxinShip_blue':
+      case 'lanxinShip_white':
+      case 'lanxinShip_black':
+      case 'lanxinShip_violet':
+      case 'lanxinShip_pink':
+        // 澜心舰（3C 五变体，2026-11-27）：战舰骨架（随机水平位置顶部入位，hoverY 140 同战舰挑战口径）——
+        // 不可侧翼入场，挑战口径 holdTimer 1e9 永驻场
+        makeEnemy(ch.type, rand(110, CANVAS_W - 110), -60, { hoverY: 140, holdTimer: 1e9 });
         break;
       case 'warGhost':
         spawnWarGhost(true);   // 战争幽灵：风波预警极速入场 → 驻留中场技能循环（技能1/2/3）；挑战模式永驻场（不离场、不触发离场斩）
@@ -2487,13 +2513,14 @@
       // 波次测试：场上清空后自动补刷一整波；按 = 额外刷出一整波（不清场，14-main）
       // delayedSpawns 非空 = z*8 单点排队尚有后续机未出场，不算清空，防提前重刷
       if (enemies.length === 0 && delayedSpawns.length === 0) spawnChallengeWave(ch);
-    } else if (ch.kind === 'swarm') {
-      // 持续刷怪测试（图鉴「数值与机制」发起）：不走单目标补刷——正常刷怪循环接管
-      //（14-main 锁 bossFlow.timer=0 / Lv20：stage 恒 'none' 持续出怪、永不进 BOSS；spawnTimer 驱动波次）
+    } else if (ch.kind === 'infTest') {
+      // 循环刷怪测试页（2026-11-24 用户定稿）：不走单目标补刷——诗篇波次循环 / 非诗篇常规通道由
+      // 14-main updateInfTest 驱动（此分支仅为兜底拦阻：否则落入下方 ch.type 分支会误刷单个挑战目标）
+      // （原持续刷怪测试 swarm 分支 2026-11-25 用户定稿删除——功能被本页覆盖）
     } else if (!enemies.some(e => e.type === ch.type)) {
       spawnChallengeTarget();
     }
-    // 测试模式改版：敌方测试血量统一 20000（非 BOSS，由 makeEnemy 在生成时覆盖；swarm 与 BOSS 测试伴生的 1类强制波除外——正常血量），
+    // 测试模式改版：敌方测试血量统一 20000（非 BOSS，由 makeEnemy 在生成时覆盖；循环刷怪测试页 infTest 与 BOSS 测试伴生的 1类强制波除外——正常血量），
     // 不再每帧回满、不再锁定 BOSS 测试血量；
     // 炮火先兆者家族（3A/3B/3C/3D）导引导弹满一轮后重置充能循环，便于持续观察
     for (const e of enemies) {

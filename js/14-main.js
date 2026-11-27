@@ -17,7 +17,7 @@
   import { CRYSTAL_WAVE, capitalMaxWait, challengeTargets, comboWaveChance, crystalWaveSpawning, fieldPressureW, flushPoemRearCards, queueHarbingerLead, spawnBossMinionWave, spawnCapitalSlot, spawnChallengeTarget, spawnChallengeWave, spawnDesignedWave, spawnDouzhi, spawnEliteMinion, spawnFashiArray, spawnJiaoxiang, spawnPoemExtraWave, spawnPostBossWave, spawnPressureThreshold, queuePoemRearCard, spawnRevivedElite, spawnWarGhost, spawnWave, updateChallenge, updateDelayedSpawns, updateHarbLeadQueue, updatePoemRearCards } from './04-spawn.js';
   import { spawnBoss, spawnStormGhost, updateZoneMarks } from './05-boss.js';
   import { clearMissiles, killEnemy, updateBaolingBombs, updateDouzhiFx, updateEnemies, updateFrostZones, updateMissiles, updatePopianMissiles, updateSpellCubes, updateWgSlashes, updateXgLooseBombs } from './06-enemy.js';
-  import { applyRewardItem, chargeAllGaugesOnDashEnd, clearEnemyBullets, debugSetWeapon, noteDdjLevelUp, playerFireLocked, startGacha, triggerArmorSkill, triggerPilotSkill, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
+  import { chargeAllGaugesOnDashEnd, clearEnemyBullets, debugSetWeapon, noteDdjLevelUp, playerFireLocked, startGacha, triggerArmorSkill, triggerPilotSkill, updateAiyiWaves, updateDagouMissiles, updateDemo, updateFriendStorms, updatePilotStatus, updatePlayer, updateSlashFx, updateWingmen, useBomb } from './07-player.js';
   import { berserkBursts, bombBursts, collectAllCrystals, collectAllItems, shieldBurst, spawnPowerup, tisuRings, updateBullets, updateCrystals, updateParticles, updatePowerups } from './08-entities.js';
   import { render } from './10-draw-world.js';
   import { buildArmorCards, buildDiffCards, buildPilotCards, buildPlaneCards, buildSubWeaponCards, buildWingmanCards, initMenuPanels, padMenuTick, resetGame, showOverlay, syncInfoEntryBtn, toggleDebugMenu, togglePause, updateHUD } from './12-ui.js';
@@ -85,25 +85,83 @@
   // 作弊键布局（2026-11-09 用户定稿「调试菜单」收编）：数字键 1~5 = 武器等级直设（debugSetWeapon，
   // 07-player）；0 = 调试菜单呼出/关闭（toggleDebugMenu，12-ui——无敌/风暴连发/导弹雨连发/召唤萧杨/
   // 立刻选择词条/攻击等级全部收进菜单，原 7/8/9/0 直按分支删除）；= / Shift+= 测试页刷怪（非作弊）。
-  // 持续刷怪测试（图鉴「数值与机制」页发起，challenge.kind==='swarm'）的数字键道具映射：
-  // 按 REWARD_ITEMS 注册表顺序（1~5 普通 / 6 轰轰炸弹 / 8~0 稀有；手持斗志昂扬已移除——2026-10-01；
-  // gacha 不在列——萧杨 16 颗原石专属技能）。直接生效（道具槽已取消，07-player applyRewardItem）
-  const SWARM_CHEAT_ITEMS = {
-    '1': 'laodaDrink',      // 牢大特饮
-    '2': 'magnetShroom',    // 磁力菇
-    '3': 'noLingluo',       // 不再陵落
-    '4': 'frostGen',        // 寒霜发生器
-    '5': 'xinguodongFury',  // 辛国栋大怒
-    '6': 'honghongBomb',    // 轰轰炸弹
-    '8': 'bengbag',         // 绷绷背包
-    '9': 'jiukeShadow',     // 酒客之影
-    '0': 'bottleSpirit',    // 瓶中精灵
-  };
+  // （SWARM_CHEAT_ITEMS 数字键道具映射已随「持续刷怪测试 Lv20」删除——2026-11-25 用户定稿，功能被循环刷怪测试覆盖）
+
+  // ---------- 循环刷怪测试页（2026-11-24 用户定稿：图鉴「数值与机制」顶部按钮发起，challenge.kind==='infTest'） ----------
+  // 刷怪循环：（诗篇）lv10 2波 → lv20 2波 → lv30 2波 → 循环（波 = 诗篇主战波同构：前波落地 + 后波延迟队列 + 额外三连）；
+  // （其他难度）每级按对应等级逻辑刷 10s（等级帧首锁定 ch.lv，常规 spawnTimer 压力通道照常）→ 循环。
+  // 免死回满血：challenge 模式 testDamagePlayer 天然生效（hp≤0 立即回满不掉命，07-player）；怪物正常血量：04-spawn makeEnemy infTest 排除；
+  // 击坠召唤 BOSS 不触发词条抽取（06-enemy killEnemy infTest 门控）。INF_TEST_MAX_LV=30：诗篇三阶段×10 波 = 30、
+  // 常规 SPAWN_PHASE_LEVEL 封顶 31 → 当前最高 10 的倍数等级 = 30。
+  const INF_TEST_MAX_LV = 30;
+
+  // 诗篇主战波（与下方诗篇波次制分支的 spawnPoemMainWave 同构——该函数为分支局部 const，测试页驱动独立成函数：
+  // 前波整波落地 + 后波 0.3~0.7s 延迟队列 + 额外生成三连 + 嬴乾追加；等级由调用方钉在 levelFlow.level）
+  function infTestSpawnPoemWave() {
+    flushPoemRearCards();
+    const lv = levelFlow.level;
+    const list = [];
+    for (const roles of [['前波', '前后均可'], ['后波', '前后均可']]) {
+      const card = pickDesignedWaveCard(state.time, lv, { roles, tierWAffix: affixHas('4:bad:3') });
+      const f3 = card && t3SpawnCardById(card.id);
+      if (f3) list.push({ f: f3, plan: buildT3SpawnPlan(f3) });
+    }
+    if (list.length === 2) {
+      spawnDesignedWave([list[0]]);
+      queuePoemRearCard(list[1], rand(0.3, 0.7));
+    } else if (list.length) {
+      spawnDesignedWave(list);
+    } else {
+      spawnWave();   // 兜底：旧编队路径（表全零/卡缺失；正常不可达）
+    }
+    const extras = [
+      state.pilotDashT > 0 ? null : pickPoemFlankCard(lv, { flankAffix: affixHas('4:bad:3') }),
+      pickPoemExtraCard(lv),
+      pickPoemTrueExtra(lv),
+    ];
+    for (const extra of extras) {
+      if (!extra) continue;
+      const f = t3SpawnCardById(extra.id);
+      if (f) spawnPoemExtraWave([{ f, plan: buildT3SpawnPlan(f) }]);
+    }
+    affixExtraWaveBurst(lv);
+  }
+
+  // 循环刷怪测试页驱动（challenge 分支每帧调用；kind!=='infTest' 直接返回）：
+  // 诗篇——每级 2 波：刷波 → 场上清空 → 0.8s 缓冲 → 下一波（第 2 波后推进等级并循环 10→20→30→10）；
+  // 非诗篇——每级 10s 计时推进等级（刷怪本体走常规 spawnTimer 通道，帧首锁定等级）。
+  // BOSS 召唤期间（bossFlow.stage !== 'none'）暂停刷怪（召唤即清场直召 stage='fight'，击败回归 'none' 自动续刷）。
+  function updateInfTest(dt) {
+    const ch = state.challenge;
+    if (!ch || ch.kind !== 'infTest' || bossFlow.stage !== 'none') return;
+    if (isPoem()) {
+      if (!ch.waveSpawned) {
+        levelFlow.level = ch.lv;   // 刷波前钉等级（波 N = 等级 N，血量/抽卡档位随钉值）
+        infTestSpawnPoemWave();
+        ch.waveSpawned = true;
+        ch.clearT = 0;
+      } else if (enemies.length === 0) {
+        ch.clearT += dt;
+        if (ch.clearT >= 0.8) {
+          ch.clearT = 0;
+          ch.waveSpawned = false;
+          if (ch.waveN < 1) ch.waveN++;   // 本级第 2 波
+          else { ch.waveN = 0; ch.lv = ch.lv >= INF_TEST_MAX_LV ? 10 : ch.lv + 10; }   // 下一级（lv30 后回卷 lv10）
+        }
+      } else {
+        ch.clearT = 0;
+      }
+    } else {
+      ch.lvT += dt;
+      if (ch.lvT >= 10) {
+        ch.lvT = 0;
+        ch.lv = ch.lv >= INF_TEST_MAX_LV ? 10 : ch.lv + 10;
+      }
+    }
+  }
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
     keys[k] = true;
-    // 持续刷怪测试页标志：此页禁用常规作弊键（1~5 / 8 / 9 / 0 / =），数字键改发奖励道具（SWARM_CHEAT_ITEMS）
-    const swarmTest = state.mode === 'playing' && state.challenge && state.challenge.kind === 'swarm';
     if (['w', 'a', 's', 'd', ' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
       e.preventDefault();
     }
@@ -118,8 +176,8 @@
     if (k === 'q' && state.mode === 'playing' && !state.paused) triggerPilotSkill('q');   // 驾驶员技能（迪奥：强行暴走，冷却结束方可触发 / 大狗：计数表满层齐射 / 萧杨：原石抽卡充能满时释放——天秀忧郁王子已改量表充满自动释放，不走按键）
     // 调试菜单（0 键，2026-11-09 用户定稿取代原 0 直切无敌 / 8 风暴 / 9 导弹雨 / 7 召唤萧杨四个直按
     // 作弊键——全部收进 12-ui 调试菜单面板）：playing 态呼出/关闭（暂停中亦可呼出，面板覆盖暂停页）；
-    // swarm 测试页让位（数字键发道具口径不变）；忽略按住连发防疯狂开关
-    if (k === '0' && !swarmTest && state.mode === 'playing' && !e.repeat) toggleDebugMenu();
+    // 忽略按住连发防疯狂开关
+    if (k === '0' && state.mode === 'playing' && !e.repeat) toggleDebugMenu();
     // 马兴犬：Shift 加速 / CapsLock 减速（同键再按恢复原速）——不再使用 Ctrl（按住 Ctrl 时按 W 会触发浏览器关闭标签页，无法拦截）
     if (k === 'shift' && state.mode === 'playing' && !state.paused && hasPilot('maxingquan')) {
       state.maxinSpeedMul = state.maxinSpeedMul === PILOTS.maxingquan.speedFast ? 1 : PILOTS.maxingquan.speedFast;
@@ -129,16 +187,8 @@
     }
     // "=" 立刻再召唤一个测试目标（非作弊，保持原样）
     if (state.mode === 'playing' && !state.paused) {
-      // 持续刷怪测试页：数字键直接获得对应道具（立即生效），常规作弊键全部让位
-      if (swarmTest && SWARM_CHEAT_ITEMS[k] && !e.repeat) {
-        const item = SWARM_CHEAT_ITEMS[k];
-        // 手机端不产出牢大特饮（docs/手机模式设计.md §7.1 移动端内容差异：触屏无移速键位意义，桌面端不受影响）
-        if (!(TOUCH_DEVICE && item === 'laodaDrink')) {
-          applyRewardItem(item);   // 直接生效（道具槽已取消）；获得特效见 07-player pushItemPickFx
-        }
-      }
       const lv = '12345'.indexOf(k);
-      if (lv >= 0 && !swarmTest) debugSetWeapon(lv + 1);   // 武器等级直设（07-player，菜单与键位共用入口）
+      if (lv >= 0) debugSetWeapon(lv + 1);   // 武器等级直设（07-player，菜单与键位共用入口）
       // = / Shift+=（Shift+= 在多数键盘布局上产生字符 '+'，两者都接受）；忽略按住不放的自动重复
       // 事件（keydown ~30Hz 连发会疯狂重复清场+群召）
       if ((k === '=' || k === '+') && !e.repeat && state.challenge) {
@@ -338,12 +388,12 @@
       const lvCfg = SPAWN_PHASE_LEVEL[bossFlow.phase] || SPAWN_PHASE_LEVEL[SPAWN_PHASE_LEVEL.length - 1];
       const lvPhaseTime = SPAWN_PHASE_TIMES[bossFlow.phase] ?? SPAWN_PHASE_TIMES[SPAWN_PHASE_TIMES.length - 1];
       levelFlow.level = lvCfg.base + Math.floor(Math.min(bossFlow.timer, lvPhaseTime) / lvCfg.step);
-      // 持续刷怪测试（图鉴「数值与机制」发起，challenge.kind==='swarm'）：锁定 Lv20 强度一直刷怪——
-      // bossFlow.timer 恒 0（BOSS 阶段推进同样由 timer 驱动，恒 0 即永不进警报/BOSS，stage 保持 'none' 持续出怪）、
-      // 等级覆盖为 20（编队权重取 Lv20 档），波次刷新照常由 spawnTimer 驱动，不会停止
-      if (state.challenge && state.challenge.kind === 'swarm') {
+      // 循环刷怪测试页（challenge.kind==='infTest'，2026-11-24 用户定稿）：非诗篇等级锁定当前循环档
+      //（10/20/30，10s/级，updateInfTest 推进）；诗篇等级由 updateInfTest 在刷波前钉住（波 N = 钉值）
+      // （原持续刷怪测试 swarm 锁级块 2026-11-25 用户定稿删除——功能被本页覆盖）
+      if (state.challenge && state.challenge.kind === 'infTest' && !isPoem()) {
         bossFlow.timer = 0;
-        levelFlow.level = 20;
+        levelFlow.level = state.challenge.lv;
       }
       // 波次测试局（图鉴「波次示意」发起，challenge.kind==='wave' + waveTest3）：锁 Lv30 强度（2026-10-12 用户定稿）——
       // bossFlow.timer 恒 0 永不进 BOSS、等级覆盖 30（职能池抽档 = Lv21 档、各卡生成端等级门控全开），
@@ -433,7 +483,7 @@
         if (affixLvWindow && affixHas('0:bad:4') && Math.random() < 0.05) queueHarbingerLead();   // 词条（虚象级 0:bad:4）：5% 概率召唤一个先导炮火先兆者（3s 预警队列，04-spawn）
         if (affixLvWindow && affixHas('0:good:2') && Math.random() < 0.10) affixXinguodongRings();   // 词条（虚象级 0:good:2）：10% 概率从场地下方朝上射出 5 个辛国栋之怒 Lv4 火环（03b）
         if (affixLvWindow && affixHas('2:good:1') && Math.random() < 0.04) spawnDouzhi('douzhi');   // 词条（真我级 2:good:1）：4% 概率额外生成一架斗志昂扬无人机（横穿）
-        if (affixLvWindow && affixHas('3:bad:3') && Math.random() < 0.05) enemies.push(spawnWarGhost(false));   // 词条（诗篇级 3:bad:3）：5% 概率召唤一个战争幽灵（驻留后自然离场，技能间隔固定 0.4s）
+        if (affixLvWindow && affixHas('3:bad:3') && Math.random() < 0.07) enemies.push(spawnWarGhost(false));   // 词条（诗篇级 3:bad:3）：7% 概率召唤一个战争幽灵（驻留后自然离场，技能间隔固定 0.4s；2026-11-23 用户定稿 5%→7%）
         if (affixLvWindow && affixHas('4:bad:4') && Math.random() < 0.08) {   // 词条（长歌级 4:bad:4）：8% 概率召唤一个随机的强化 4S 敌人（affixEnh4S 标记：技能间隔 ×0.8，「技能获得增强」口径待定稿）
           const enhTypes = ['puxuefeng', 'hanxixian', 'xiayong', 'xinguodong'];
           const enh = spawnEliteMinion(enhTypes[(Math.random() * 4) | 0]);
@@ -526,6 +576,7 @@
       if (state.challenge) {
         // 图鉴挑战模式：跳过常规出怪与 BOSS 计时，由 updateChallenge 单独驱动
         updateChallenge(dt);
+        updateInfTest(dt);   // 循环刷怪测试页驱动（诗篇波次循环 / 非诗篇等级循环——仅 kind==='infTest' 时生效）
       } else if (bossFlow.stage === 'none') {
         // BOSS 击败后的 2s 缓冲与特殊波次（水晶核芯艇）期不计入关卡推进（冻结 bossTimer，等级不增长）
         if (bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) bossFlow.timer += dt;
@@ -697,9 +748,10 @@
         }
       }
 
-      // 持续刷怪测试（challenge.kind==='swarm'）与正常战斗共用本通道：swarm 时等级已锁 Lv20（帧首），
+      // 循环刷怪测试页（challenge.kind==='infTest'）与正常战斗共用本通道：非诗篇等级帧首锁定 ch.lv、
       // spawnTimer 驱动一直刷怪；其余 challenge（BOSS 试炼 / 单敌 / 波次测试）仍跳过（各自由 updateChallenge 补刷）
-      if ((!state.challenge || state.challenge.kind === 'swarm') && !isPoem() && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
+      // （原持续刷怪测试 swarm 通道放行 2026-11-25 用户定稿删除——功能被 infTest 覆盖）
+      if ((!state.challenge || state.challenge.kind === 'infTest') && !isPoem() && bossFlow.stage === 'none' && bossFlow.victoryDelay <= 0 &&
           bossFlow.postDelay <= 0 && !bossFlow.postWaveClear) {
         // bossVictoryDelay > 0：最终 BOSS 已被击坠、正在等待胜利结算——冻结刷怪，避免结算前刷出新怪
         // ---------- 场面压力刷新系统（替代固定冷却） ----------
@@ -896,7 +948,7 @@
         bulwarkBurst.t += dt;
         if (bulwarkBurst.t >= bulwarkBurst.duration) bulwarkBurst.active = false;
       }
-      for (let i = watchClearFx.length - 1; i >= 0; i--) {   // 群星守望消弹光粒推进
+      for (let i = watchClearFx.length - 1; i >= 0; i--) {   // 群星之歌消弹光粒推进
         const p = watchClearFx[i];
         p.age += dt;
         if (p.age >= p.life) { watchClearFx.splice(i, 1); continue; }

@@ -1,21 +1,21 @@
 // 06-enemy：敌机更新（移动 / 开火 / 弹幕）+ 先兆者导弹 + 暴鸰炸弹 + 掉落 + killEnemy
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(1 名) 07-player(5 名) 08-entities(3 名) 14-main(11 名)
+  // 被依赖：04-spawn(1 名) 07-player(4 名) 08-entities(3 名) 14-main(11 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{crystalMagnetMul, hasteT, hpKitLastLv, hpKitLastPhase, lives, orangeBombUsed, rewardItem, score, stormVortex, xgLooseBombs}  bossFlow.{defeatedName, phase, postDelay, stage, timer, victoryDelay}  levelFlow.{douzhiSkipOnce, hpKitWaveCd, poemWaveIdx}
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, PILOTS, PLAYER_CFG, TXC, currentArmor, hasPilot, playerHitRadius, starsSeriesCount, txcActive, timeflowSeriesCount } from './01-config-loadout.js';
-  import { ANVIL, BAOLING, BAOLING_G, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SHIP_ENTRY, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, STARS_SLAYER, STASIS_UNREAL, THUNDER, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, YU4 } from './01-config-enemies.js';
+  import { ANVIL, BAOLING, BAOLING_G, BEYOND_WING, COLLAPSE, COCOON_DREAM, CRYSTAL_CORE_COLORS, DOUZHI, DUSK, ELITES, ENEMY_CLASS, ENEMY_TYPES, enemyColorTags, FASHI_A1, FASHI_A2, FASHI_ARRAY, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, HARBINGER, HARBINGER_HUB, HARBINGER_LEAD, HARBINGER_POLAR, JIAOXIANG, LANXIN_SHIP, POPIAN, POPIAN_U, PULSE_MATRIX, SHIP_BULLET_COLOR, SHIP_BULLET_LEN, SHIP_ENTRY, SIDE_ENTRY_BOOST, SIDE_ENTRY_DECAY, SIDE_MOON, SIDE_SPEED_FAST, SIDE_SPEED_SLOW, SIDE_SWIRL, SPLIT_RED, SPONSOR, STARS_SLAYER, STASIS_UNREAL, THUNDER, UNREAL, VOYAGER, WAR_GHOST, WAR_MATRIX, WEILONG, YU4 } from './01-config-enemies.js';
   import { BOSS, BOSS_BULLET, BOSS_ROUNDS, BOSS_SEQUENCE, DARKHAND, FIRST_ROUND_BOSSES, STORM, STORM2, STORM_WIND } from './01-config-boss.js';
-  import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul, constructAltHurtMul } from './01-config-difficulty.js';
+  import { WAVE_POEM, MISSILE_FLAT_DMG, bossDmgMul, currentDifficulty, diffMods, eliteHpOf, enemyDmgMul, hpKitLvWindow, isIllusion, isPoem, isRealme, invulnDiffMul, isHardTier, pxpfChargeHurtMul, constructAltHurtMul } from './01-config-difficulty.js';
   import { convertCrystalDrop, CRYSTAL_COLORS, CRYSTAL_COLORS_NORMAL, CRYSTAL_GIANT_COLORS, CRYSTAL_TIERS, DROP_BOMB_ORANGE, DROP_HP_BOSS, DROP_HP_BOSS2, DROP_HP_BY_CLASS, DROP_HP_CYAN, DROP_HP_ELITE, DROP_HP_GREEN, DROP_HP_PROLIFERA, DROP_KIT_BERSERK, DROP_KIT_RATE, DROP_SHIELD_RATE, DROP_SHIELD_STACK, REWARD_ITEMS, rollCrystalGiant, SPAWN_PHASE_LEVEL } from './01-config-spawn.js';
-  import { blBombs, bombDropGate, bossEntranceActive, bossPhantom, bossFlow, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, TOUCH_DEVICE, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
+  import { blBombs, bombDropGate, bossEntranceActive, bossPhantom, bossFlow, canClearBullet, clamp, clearEnemyBulletsByOwner, clearNearestEnemyBullet, clearRandomEnemyBullet, crystals, cubeHitFx, dagouMissiles, dhFleeLinkedElites, dhOnLinkedEliteKilled, douzhiFx, eBullets, enemies, enemyFieldFireMul, enemyFireIv, enemyOnScreen, frostZones, friendStorms, levelFlow, missileWarns, missiles, pBullets, pillarStrikes, phaseFx, player, pmWaves, popianMissiles, powerups, rand, shake, spawnBlastRing, spawnParticles, spellCubes, state, TOUCH_DEVICE, tryBulwarkCheatDeath, wgSlashes, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, enemyBlackholeMoveMul, gachaBottomSlowMul, makeEnemy, spawnAnvil, spawnFashiA1, spawnFashiMatrix, spawnPopianU, spawnSideGroup, spawnStrikerGroup, spawnWhiteNightMinions, yu4AuraMul } from './04-spawn.js';
   import { knockbackPlayer, pushBossBullet, spawnBoss, updateBoss, fireStormStrikeAt } from './05-boss.js';
   import { restartBGM } from './03-audio.js';
-  import { affixHas, affixBossDmgMul, affixNoteBossKill, queueAffixSelection, wenjiukeBossRoundKill } from './03b-affix.js';
+  import { affixHas, affixBossDmgMul, affixBulwarkOnTrigger, affixInvulnAdd, affixNoteBossKill, queueAffixSelection, wenjiukeBossRoundKill, affixEnemyIvMul, affixEnemyBulletSpdAdd, affixEnemyRushChance, affixEnemyUndyingChance, affixEnemyDeathAttackChance, affixDropRateAdd } from './03b-affix.js';
   import { accumulateWeaponDropHit, applyRewardItem, bulwarkActive, clearEnemyBullets, damagePlayer, handlePlayerDeath, meiNoteKill, pilotStormContactMul, shieldSweepHit, testDamagePlayer } from './07-player.js';
   import { updateAffixCrystalMark, updateBossLootMarks, updateLovelyShieldMark } from './05-boss.js';
   import { spawnPowerup } from './08-entities.js';
@@ -74,15 +74,17 @@
         continue;
       }
       e.rt = state.time;   // 战斗期冻结时钟快照（绘制端龙卷/金曜光环/赤金双环等旋转元素用）——结算页停更后旋转元素定格（2026-10-14 用户定稿）
-      // 词条（真我级 2:bad:3）黄金壁垒：所有黄色敌人登场时获得 200 屏障（不含BOSS）——懒施加（屏外生成的
-      // 敌人逐帧补挂）；复用夏勇屏障吸收通道 xyBarOn/xyBarHp/xyBarMax（xiayongBarAbsorb 已通用化去类型门），
+      // 词条（真我级 2:bad:3）黄金壁垒：所有黄色敌人登场时获得 200 屏障（对BOSS效果减半，2026-11-23 用户定稿
+      // 「不含BOSS」→ BOSS 也吃减半 100——黄标 BOSS 仅旧日之歌九色含黄，enemyColorTags boss 分支）——懒施加（屏外生成的
+      // 敌人逐帧补挂）；数据通道 e.barrier（2026-11-17 通道合并；吸收=通用结算 e.barrier 内联 + xiayongBarAbsorb 通用化），
       // 黄色判定走 enemyColorTags（1类黄芒 / 坚垒 / 金曜 / 威龙 / 御4 / 豪华赞助 / 战争幽灵 / 静滞虚幻 / 圣杯
       // ——2026-11-16 九色定稿新入集：御4/豪华赞助/战争幽灵/静滞虚幻）；夏勇自带技能屏障不受影响（本体非懒施加路径）；
-      // S 类敌人修正减半：屏障 200→100（2026-11-17 用户定稿，见 affixColorHalf——现役黄标 S 类暂无，规则先行）
-      if (affixHas('2:bad:3') && !e.affixBarGiven && e.type !== 'boss') {
+      // S 类敌人修正减半：屏障 200→100（2026-11-17 用户定稿，见 affixColorHalf——现役黄标 S 类暂无，规则先行）；
+      // BOSS 屏障视觉=黄色椭圆护罩（11-draw-boss drawBossBars 同款渲染，敌人侧见 10-draw-world）
+      if (affixHas('2:bad:3') && !e.affixBarGiven) {
         e.affixBarGiven = true;
         if (enemyColorTags(e).includes('yellow')) {
-          e.barrier = Math.max(e.barrier || 0, affixColorHalf(e) ? 100 : 200);   // 2026-11-17 用户定稿通道合并：黄金壁垒直接挂屏障通道（确保不低于自身满值——保留已有屏障不缩水）
+          e.barrier = Math.max(e.barrier || 0, affixColorHalf(e) ? 100 : 200);   // 2026-11-17 用户定稿通道合并：黄金壁垒直接挂屏障通道（确保不低于自身满值——保留已有屏障不缩水）；BOSS 走 affixColorHalf=true → 100 减半（2026-11-23）
         }
       }
       if (e.type === 'boss') {
@@ -125,7 +127,7 @@
                     shake(16, 0.6);
                     achvOnDeath('crash:' + e.bossId, state.lives <= 0);
                     handlePlayerDeath();
-                  }
+                  } else affixBulwarkOnTrigger();   // 词条（1:good:16）最终壁垒免死即暴走 +（1:good:17）免死无敌 +0.3s（澄月容缺不判——口径见 03b）
                 }
               }
               if (e.hp <= 0) { killEnemy(i); break; }   // BOSS 击杀走正常链（血条/胜利结算照常）
@@ -151,7 +153,7 @@
                   shake(16, 0.6);
                   achvOnDeath('crash:storm', state.lives <= 0);   // 成就：暴风陨落 / 至尊陨落等死因结算
                   handlePlayerDeath();
-                }
+                } else affixBulwarkOnTrigger();   // 词条（1:good:16）免死即暴走 +（1:good:17）免死无敌 +0.3s（澄月容缺不判）
               }
             }
           } else {
@@ -160,7 +162,7 @@
             const cDmg = (isPoem() ? crashCfg.crashDmgPoem : crashCfg.crashDmg) * bossDmgMul() * affixBossDmgMul();
             if (state.challenge) {
               testDamagePlayer(cDmg);
-              player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 接触后照常给受击无敌帧
+              player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() + affixInvulnAdd(); player.invulnBlink = true;   // 接触后照常给受击无敌帧；词条（1:good:17）无敌 +0.3s
             } else {
               damagePlayer(cDmg, 1, false, false, null, 'crash:' + e.bossId);   // 成就死因：BOSS 碰撞（冲锋！冲锋！/ 暴风陨落 / 往日梦魇）
             }
@@ -172,7 +174,18 @@
       // 头顶血条渐显渐隐（0.15s）与白色残量追踪（受伤出现、回满消失；绘制见 drawEnemy）
       e.barT = clamp((e.barT || 0) + (e.hp < e.maxHp ? dt : -dt) / 0.15, 0, 1);
       e.hpTrail = e.hpTrail == null ? e.hp : e.hpTrail + (e.hp - e.hpTrail) * Math.min(1, dt * 2.2);
-      if (e.phase > 0) e.phase -= dt;   // 虚化倒计时，归零后可被伤害
+      if (e.phase > 0) {
+        e.phase -= dt;   // 虚化倒计时，归零后可被伤害
+        // 洪流澜心舰护盾链（2026-11-27 用户定稿）：护盾归零瞬间 20% 判定 +0.5s 续盾（逐段掷点、判定成功即续段再掷），
+        // 护盾累计时长（含登场首段）封顶 5s——末段按剩余额度截断，总时长不超上限
+        if (e.type === 'lanxinShip_blue' && e.phase <= 0) {
+          const total = e.lxShieldTotal != null ? e.lxShieldTotal : LANXIN_SHIP.shieldDur;
+          if (total < LANXIN_SHIP.shieldTotalMax && Math.random() < LANXIN_SHIP.shieldChainChance) {
+            e.phase = Math.min(LANXIN_SHIP.shieldDur, LANXIN_SHIP.shieldTotalMax - total);
+            e.lxShieldTotal = total + e.phase;
+          }
+        }
+      }
       if (e.unfoldT > 0) e.unfoldT -= dt;   // 4类就位展开动画计时
       if (e.type === 'yu4') e.auraT += dt;   // 御4：登场计时（超过 auraDelay 后防御光环渐显）
       // 词条（具象级 1:bad:8）御铁双环：御4同时能释放铁砧光环——按铁砧同款节奏治疗光环内敌人
@@ -224,12 +237,37 @@
               }
               for (let i = eBullets.length - 1; i >= 0; i--) {
                 const eb = eBullets[i];
+                if (!canClearBullet(eb, 2)) continue;   // 赤金金环清除等级 2 级（2026-11-24 射弹清除等级体系）——不再消激光/折线光束/蛋挞
                 if (Math.abs(Math.hypot(eb.x - e.x, eb.y - e.y) - w.r) <= band) eBullets.splice(i, 1);
               }
               // 我方导弹一并消散（2026-10-12 用户定稿：捣蛋来袭/驾驶员召唤/连射链全员——dagouMissiles 均为玩家侧）
               for (let i = dagouMissiles.length - 1; i >= 0; i--) {
                 const dm = dagouMissiles[i];
                 if (Math.abs(Math.hypot(dm.x - e.x, dm.y - e.y) - w.r) <= band) dagouMissiles.splice(i, 1);
+              }
+              // 2 级及以下跨容器射弹一并消散（2026-11-24 射弹清除等级体系）：法术正方体(1)/战争幽灵斩击流(1)/
+              // 破片导弹(2)/暴鸰炸弹(2)/夏勇回旋刃(2)
+              for (let i = spellCubes.length - 1; i >= 0; i--) {
+                const c = spellCubes[i];
+                if (Math.abs(Math.hypot(c.x - e.x, c.y - e.y) - w.r) <= band) spellCubes.splice(i, 1);
+              }
+              for (let i = wgSlashes.length - 1; i >= 0; i--) {
+                const s = wgSlashes[i];
+                if (Math.abs(Math.hypot(s.x - e.x, s.y - e.y) - w.r) <= band) wgSlashes.splice(i, 1);
+              }
+              for (let i = popianMissiles.length - 1; i >= 0; i--) {
+                const m = popianMissiles[i];
+                if (Math.abs(Math.hypot(m.x - e.x, m.y - e.y) - w.r) <= band) popianMissiles.splice(i, 1);
+              }
+              for (let i = blBombs.length - 1; i >= 0; i--) {
+                const b = blBombs[i];
+                if (Math.abs(Math.hypot(b.x - e.x, b.y - e.y) - w.r) <= band) blBombs.splice(i, 1);
+              }
+              for (const bs of enemies) {
+                if (!bs || !bs.xyBlades) continue;
+                for (const bl of bs.xyBlades) {
+                  if (!bl.done && Math.abs(Math.hypot(bl.x - e.x, bl.y - e.y) - w.r) <= band) bl.done = true;
+                }
               }
             } else {
               e.ringWave = null;   // 到达最大范围即刻消散（无停顿）
@@ -307,7 +345,7 @@
                   shake(16, 0.6);
                   achvOnDeath(null, state.lives <= 0);
                   handlePlayerDeath();
-                }
+                } else affixBulwarkOnTrigger();   // 词条（1:good:16）免死即暴走 +（1:good:17）免死无敌 +0.3s（澄月容缺不判）
               }
             }
             if (e.hp <= 0) { killEnemy(i); break; }
@@ -354,7 +392,7 @@
                   shake(16, 0.6);
                   achvOnDeath(null, state.lives <= 0);   // 龙卷碰撞致死无专属死因成就（同原一次性伤害口径）
                   handlePlayerDeath();
-                }
+                } else affixBulwarkOnTrigger();   // 词条（1:good:16）免死即暴走 +（1:good:17）免死无敌 +0.3s（澄月容缺不判）
               }
             }
           }
@@ -2031,11 +2069,15 @@
     const anvilAura = e.type === 'anvil' ? warGhostAura() : 1;
     const anvilAuraAcc = e.type === 'anvil' ? warGhostAuraAcc() : 1;
     const isCapFamily = e.type === 'capital' || (e.type && e.type.startsWith('starSlayer_')) || e.type === 'thunderWrath';
+    // 澜心舰（3C 五变体，2026-11-27 实装）：战舰移动骨架复用——巡航 324（战舰 270×120% 用户定稿），
+    // 入场初速/停留位置/悬停摆/离场曲线与战舰完全一致（速度切换全部沿用骨架内既有缓动，无新增档位）
+    const isLanxin = !!(e.type && e.type.startsWith('lanxinShip_'));
     const cruise = (isCapFamily
         ? 250
         : isHarbFam ? HARBINGER.descend * (e.type === 'harbingerPolar' ? HARBINGER_POLAR.speedMul : 1)
         : e.type === 'yu4' ? YU4.speed
         : e.type === 'anvil' ? ANVIL.speed
+        : isLanxin ? LANXIN_SHIP.cruise
         : e.type === 'gunship' ? 270
         : 320) * e.speedMul * anvilAura;
     // 先导 3B：落位（smoothstep：起停速度均为 0，位置与前一帧严格连续；≈1.1s 平滑过渡）→
@@ -2053,7 +2095,7 @@
     if (!e.arrived) {
       // 入场初速衰减（战舰/主力舰/先兆者家族）
       let entryV0 = 0, entryDecay = SHIP_ENTRY.decay;
-      if (e.type === 'gunship') entryV0 = (isPoem() ? SHIP_ENTRY.gunship.poem : SHIP_ENTRY.gunship.v0) * (e._affixEntryBoost || 1);
+      if (e.type === 'gunship' || isLanxin) entryV0 = (isPoem() ? SHIP_ENTRY.gunship.poem : SHIP_ENTRY.gunship.v0) * (e._affixEntryBoost || 1);
       else if (isCapFamily) entryV0 = (isPoem() ? SHIP_ENTRY.capital.poem : SHIP_ENTRY.capital.v0) * (e._affixEntryBoost || 1);
       else if (isHarbFam) { entryV0 = HARBINGER.entrySpeed * (e.type === 'harbingerPolar' ? HARBINGER_POLAR.speedMul : 1) * (e._affixEntryBoost || 1); entryDecay = HARBINGER.entryDecay; }   // 词条（虚象级 0:bad:6）入场初速 ×1.4：线性衰减段初值抬高、加速度同比增大，曲线仍平滑
       let curCruise = cruise;
@@ -2207,15 +2249,21 @@
     // 词条（特殊对 sp0）敌方急速：所有敌人攻击间隔减少 75%（2026-11-17 用户定稿增强：原 50%）→ 计时流速 ×4（同上口径，乘算叠加）。
     // BOSS 技能独立状态机不在本乘区（同 2:good:1 先例口径）；战争幽灵/4S 精英/战争矩阵在各状态机内单独接入
     if (affixHas('sp0')) m *= 4;
-    // 词条（真我级 2:bad:2）红色狂潮：所有红色敌人的攻击间隔减少 30%（不含BOSS）→ 计时流速 ×10/7
-    // （间隔等效 ×0.7，乘算叠加在 sp0 之后；enemyFireIvMul 仅非 BOSS 调用故天然不含 BOSS；
+    // 词条（真我级 2:bad:2）红色狂潮：所有红色敌人的攻击间隔减少 30%（对BOSS效果减半）→ 计时流速 ×10/7
+    // （间隔等效 ×0.7，乘算叠加在 sp0 之后；enemyFireIvMul 仅非 BOSS 调用，BOSS 减半走 05-boss bossSkillIv 接线；
     // 战争矩阵已在本模块 warMatrix 分支接入 enemyFireIvMul、4S 精英经 eliteSkillGap 补接（黑+红含红，2026-11-17）；
     // 战争幽灵为黄标不涉本词条，其 wgGapT 走 warGhostNextGap 独立状态机；
-    // S 类敌人（四精英等）修正减半：-30%→-15%（×15/14，2026-11-17 用户定稿，见 affixColorHalf）
-    if (affixHas('2:bad:2') && enemyColorTags(e).includes('red')) m *= affixColorHalf(e) ? 15 / 14 : 10 / 7;
+    // S 类敌人（四精英等）修正减半：-30%→-15% → 流速 ×20/17（= 间隔 ×0.85，2026-11-23 用户定稿口径校正——
+    // 原 ×15/14 流速仅 -6.7% 与「减半」不符，本日统一为 -15% 口径，见 affixColorHalf）
+    if (affixHas('2:bad:2') && enemyColorTags(e).includes('red')) m *= affixColorHalf(e) ? 20 / 17 : 10 / 7;
     // 天秀混沌王子（2026-11-17 用户定稿）：麻痹敌人攻击间隔翻倍 → 计时流速 ×0.5（乘算叠加在本乘区尾部；
     // 战争幽灵 wgGapT / 4S 精英 elGapT 独立直减处另行同乘——见各自状态机）
     if ((e.paralyzT || 0) > 0) m *= 0.5;
+    // 保底池（2026-11-26）neg_iv：敌方攻击间隔乘算累积 → 计时流速 ×1/mul（间隔×0.94 等效流速 ×1/0.94）
+    const fbIvMul = affixEnemyIvMul();
+    if (fbIvMul !== 1) m *= 1 / fbIvMul;
+    // 保底池 neg_undying 附带：免死敌机攻击间隔永久减半（e.ivHalved 实体标记，killEnemy 置位）→ 流速 ×2
+    if (e.ivHalved) m *= 2;
     return m;
   }
 
@@ -2239,11 +2287,19 @@
   // 时流超越艇绿环弹命中敌机 → e.bwGapStacks +1（08-entities 结算，可叠加）；
   // 语义（2026-11-13 用户定稿）：叠 n 层 → 接下来 n 次攻击间隔各 -0.3s、每次消耗一层（不重复减免）。
   // 收口本 helper：通用开火出口与超越艇各攻击分支（含时流三档随机）统一走此重置；
-  // 不走 fireTimer 的技能状态机（A1/A2/战争矩阵/精英等）天然不受影响，与攻击延迟词条同口径
+  // 不走 fireTimer 的技能状态机（A1/A2/战争矩阵/精英等）天然不受影响，与攻击延迟词条同口径。
+  // 保底池（2026-11-26）neg_rushCd：每次重置掷点——命中则本次攻击间隔 ×0.2（下一次攻击极快）；
+  // 每敌独立 2 轮 CD（e.rushCd：触发轮置 2，随后 2 次攻击后重置各消耗 1 轮不掷点，第 4 轮起可再触发——
+  // 用户示例口径：第 1 轮触发 → 第 2/3 轮冷却 → 第 4 轮才可能再触发）
   function resetEnemyFireTimer(e, cfg) {
     let t = enemyFireIv(cfg);
     if (e.fireIv) t = rand(e.fireIv[0], e.fireIv[1]);   // 变体专属攻击间隔（烈橙 1.4~2.4s）
     if ((e.bwGapStacks || 0) > 0) { t -= BEYOND_WING.cyan.gapReduce; e.bwGapStacks--; }
+    const rp = affixEnemyRushChance();
+    if (rp > 0) {
+      if ((e.rushCd || 0) > 0) e.rushCd--;   // 冷却轮消耗（不掷点）
+      else if (Math.random() < rp) { t *= 0.2; e.rushCd = 2; }   // 掷点命中：本次间隔 ×0.2 + 进入 2 轮冷却
+    }
     e.fireTimer = t;
     return t;
   }
@@ -2267,6 +2323,9 @@
     // 4C 诛星舰三变体 / 雷霆之怒（2026-11-16 用户定稿实装）：攻击节奏框架已定（注册表 firstFire / fireInterval
     // 区间留档），弹幕内容待技能设计批次——占位不发射（同 fashiA1「不走通用开火」口径，fireTimer 不消费）
     if (e.type === 'thunderWrath' || (e.type && e.type.startsWith('starSlayer_'))) return;
+    // 澜心舰（3C 五变体，2026-11-27 实装）：攻击节奏框架已定（首攻 0.7~1.5s / 间隔 1.6~2.2s 留档），
+    // 弹幕内容待攻击批次——占位不发射（同上口径，fireTimer 不消费；洄星紫亡语攻击见 killEnemy 钩子）
+    if (e.type && e.type.startsWith('lanxinShip_')) return;
     // 战争矩阵技能状态机（2026-10-18 用户定稿五技能；2026-11-10 间隔改赤红主力舰同款）：冷却到点触发当前技能
     // e.wmSkill（初始随机、释放后按 S1→S5 循环），释放完毕重置冷却 rand(skillIv)（赤红主力舰 [2.4,2.8]）；
     // S2/S1 有施法/移位过程（过程期不倒数），S3/S4/S5 瞬发。攻击逻辑不走通用开火（注册表 fireInterval 天文数字占位）
@@ -3207,7 +3266,8 @@
   function pushEBullet(e, ang, speed, cfg, opts = {}) {
     // 词条（特殊对 sp1）弹速迟缓：所有敌方子弹弹速 -50%（初速/横向加速度/沿程加速度/加速上限同步折半，
     // 保持弹道形状不变仅整体放慢；生成时一次性缩放，不逐帧修改既有弹——平滑无突变）
-    const bs = affixHas('sp1') ? 0.5 : 1;
+    // 保底池（2026-11-26）neg_bulletSpd：敌方弹速加算乘区（1+sum——与 sp1 迟缓同点叠乘，生成时一次性缩放）
+    const bs = (affixHas('sp1') ? 0.5 : 1) * (1 + affixEnemyBulletSpdAdd());
     // 3/4 类舰常规子弹：橙红色长条弹（可被 opts 覆盖）；1/2 类维持黄色圆弹
     const isShip = e.type === 'gunship' || e.type === 'capital';
     eBullets.push({
@@ -3241,7 +3301,7 @@
       lenTarget: opts.lenTarget || 0, // 生长目标长度（激光逐渐增长）
       growRate: opts.growRate || 0,   // 每秒生长像素
       traveled: 0,
-      owner: e,                     // 发射者引用（群星守望 BOSS 战：击杀该敌人时清除其全部在场射弹）
+      owner: e,                     // 发射者引用（群星之歌 BOSS 战：击杀该敌人时清除其全部在场射弹）
     });
   }
 
@@ -3416,7 +3476,7 @@
     // 测试模式：导弹照常结算血量（不掉武器等级、不掉命；血量归零自动重置）
     if (state.challenge) {
       testDamagePlayer(dmg);
-      player.invuln = PLAYER_CFG.invulnTime; player.invulnBlink = true;   // 受击无敌：闪动提示
+      player.invuln = PLAYER_CFG.invulnTime + affixInvulnAdd(); player.invulnBlink = true;   // 受击无敌：闪动提示；词条（1:good:17）无敌 +0.3s
       shake(8, 0.35);
       spawnParticles(player.x, player.y, '#ff5a3c', 26, 320);
       return;
@@ -3506,7 +3566,7 @@
     m.vy = -(m.vy || 0);
     if (m.turn) m.turn = 0;
     m.affixReflected = true;
-    player.invuln = PLAYER_CFG.invulnTime;
+    player.invuln = PLAYER_CFG.invulnTime + affixInvulnAdd();   // 词条（1:good:17）无敌 +0.3s
     player.invulnBlink = true;
     spawnBlastRing(player.x, player.y, 46, '#6fb3ff');
     spawnParticles(player.x, player.y, '#6fb3ff', 22, 300);
@@ -3545,14 +3605,8 @@
       }
       m.x += (m.vx || 0) * dt;
       m.y += m.vy * dt;
-      // 护盾消解（词条生效且未反弹时改为直接反弹，见下）
-      if (!affixHas('3:good:1') && !m.affixReflected &&
-          player.shield > 0 && player.alive &&
-          Math.hypot(m.x - player.x, m.y - player.y) < 36 + m.r) {
-        spawnParticles(m.x, m.y, '#6fe3ff', 16, 220);
-        missiles.splice(i, 1);
-        continue;
-      }
+      // 敌方导弹 4 级（2026-11-24 射弹清除等级体系）> 量子/结晶护盾碰触 3 级——气泡不再消解导弹，
+      // 穿过气泡正常结算（伤害仍被护盾拦截，命中机体时自毁）；词条（诗篇级 3:good:1）反弹见下
       // 词条（诗篇级 3:good:1）：机身任意位置碰到敌方导弹 → 反弹（先于受击判定，持盾/无敌期间同样生效）
       if (affixHas('3:good:1') && !m.affixReflected && !m.dk && player.alive &&
           Math.hypot(m.x - player.x, m.y - player.y) < 36 + m.r) {
@@ -3628,8 +3682,8 @@
     for (let i = popianMissiles.length - 1; i >= 0; i--) {
       const m = popianMissiles[i];
       const step = m.spd * dt;
-      // 护盾消解（导弹不可被击毁，但护盾仍免疫）——词条（诗篇级 3:good:1）生效时改为反弹（见下）
-      if (!affixHas('3:good:1') && player.shield > 0 && player.alive &&
+      // 护盾消解（清除等级 3 级——2026-11-24 射弹清除等级体系：量子/结晶护盾气泡碰触均可消解）——词条（诗篇级 3:good:1）生效时改为反弹（见下）
+      if (!affixHas('3:good:1') && (player.shield > 0 || player.crystalShield > 0) && player.alive &&
           Math.hypot(m.x - player.x, m.y - player.y) < 36 + m.r) {
         spawnParticles(m.x, m.y, '#6fe3ff', 12, 200);
         popianMissiles.splice(i, 1);
@@ -3826,10 +3880,11 @@
     const base = (ec && ec.skillGap) || ELITES.skillGap;
     // 词条（真我级 2:bad:12）：所有 4S 敌人攻击间隔 -20%（×0.8）；词条（长歌级 4:bad:4）强化 4S 召唤体再 -20%（可叠乘 ×0.64）；
     // 词条（特殊对 sp0）敌方急速：所有敌人攻击间隔 ×0.25（2026-11-17 增强：原 ×0.5；「技能获得增强」口径未定稿，用户 2026-11-09 已确认先只实装攻击间隔）；
-    // 词条（真我级 2:bad:2）红色狂潮：四精英黑+红含红标（2026-11-16 九色定稿）→ 技能间隔 ×10/7（2026-11-17 补接）；
-    // S 类敌人修正减半 → ×15/14（-15%，2026-11-17 用户定稿，见 affixColorHalf）
+    // 词条（真我级 2:bad:2）红色狂潮：四精英黑+红含红标（2026-11-16 九色定稿）——本函数为间隔域直乘
+    //（elGapT 每帧裸 dt 递减、无流速乘区），2026-11-23 口径校正：原 ×10/7/×15/14 系把流速域系数误用于
+    // 间隔域致效果反向（间隔 +43%/+7%），修正为 ×0.7（-30%）/ ×0.85（S 类减半 -15%，同 enemyFireIvMul 口径）
     const mul = (affixHas('2:bad:12') ? 0.8 : 1) * (e.affixEnh4S ? 0.8 : 1) * (affixHas('sp0') ? 0.25 : 1)
-      * (affixHas('2:bad:2') && enemyColorTags(e).includes('red') ? (affixColorHalf(e) ? 15 / 14 : 10 / 7) : 1);
+      * (affixHas('2:bad:2') && enemyColorTags(e).includes('red') ? (affixColorHalf(e) ? 0.85 : 0.7) : 1);
     return base * mul;
   }
   function startEliteSkill(e) {
@@ -4533,8 +4588,8 @@
           spawnParticles(hit.x, hit.y, '#eaf6ff', 4, 110);
         }
       }
-      // 护盾消解（正方体不可被击毁，但护盾仍免疫）
-      if (player.shield > 0 && player.alive && Math.hypot(c.x - player.x, c.y - player.y) < 36 + c.r) {
+      // 护盾消解（清除等级 3 级——2026-11-24 射弹清除等级体系：量子/结晶护盾气泡碰触均可消解）
+      if ((player.shield > 0 || player.crystalShield > 0) && player.alive && Math.hypot(c.x - player.x, c.y - player.y) < 36 + c.r) {
         spawnParticles(c.x, c.y, '#6fe3ff', 10, 180);
         spellCubes.splice(i, 1);
         continue;
@@ -4874,97 +4929,19 @@
   //   orange=爆弹 0.5%（整场一次）、purple=帝千邪紫色亡语（文案口径另含卫护飞船特判；BOSS 豁免）、
   //   yellow=2:bad:3 黄金壁垒登场屏障（不含 BOSS）、white/black=黑日诛星舰强化、red=2:bad:2 增伤 ×10/7、
   //   gray/black=炽心火环灼烧增伤 ×1.5、blue/pink 现阶段纯分类。
-  // 颜色词条修正减半判定（2026-11-17 用户定稿）：长歌级敌人（BOSS）与 S 类敌人受颜色词条数值修正减半——
-  // S 类范围与 4:good:3 血量钩子同口径（1S 水晶核芯艇 / 4S 四精英与张华&张策 / 5S 风暴编织者=BOSS 已含）。
-  // 当前生效面：红色狂潮 -30%→-15%（用户示例：朴学峰 ×15/14）、黄金壁垒屏障 200→100；
-  // 帝千邪亡语为二元效果无数值可减（不变）；BOSS 对三条颜色词条本就整体豁免（文案「不含BOSS/长歌级敌人」），
-  // 此处纳入判定仅为未来批次扩展兜底
+  // 颜色词条修正减半判定（2026-11-17 用户定稿；2026-11-23 扩展 BOSS）：长歌级敌人（BOSS）与 S 类敌人受颜色词条
+  // 数值修正减半——S 类范围与 4:good:3 血量钩子同口径（1S 水晶核芯艇 / 4S 四精英与张华&张策 / 5S 风暴编织者=BOSS 已含）。
+  // 当前生效面：红色狂潮 -30%→-15%（流速 ×20/17 / 间隔 ×0.85，2026-11-23 口径校正）、黄金壁垒屏障 200→100（含 BOSS）；
+  // BOSS 减半接线（2026-11-23 用户定稿「对BOSS效果减半」）：黄金壁垒=BOSS 登场屏障 100（updateEnemies 懒施加同块），
+  // 红色狂潮=BOSS 技能间隔 ×0.85（05-boss bossSkillIv 挂钩，红标 BOSS=旧日之歌九色/黑暗之手黑+红）；
+  // 帝千邪亡语为二元效果无数值可减（不变）
   function affixColorHalf(e) {
     if (e.type === 'boss') return true;
     return e.type === 'crystalCore' || e.type === 'zhangzhang' || !!ELITES[e.type];
   }
 
-  function enemyColorTags(e) {
-    switch (e.type) {
-      case 'side':      // 1类按行为（2026-11-16 定稿五色齐备）：白影=pass 白 / 黄芒=shoot 黄 / 紫电=kamikaze 紫 /
-                        // 橙旋=swirl 橙（2026-11-16 定稿由沿用紫电的 purple 改橙）/ 赤月=moon 红
-        return e.behavior === 'shoot' ? ['yellow']
-          : e.behavior === 'kamikaze' ? ['purple']
-          : e.behavior === 'swirl' ? ['orange']
-          : e.behavior === 'moon' ? ['red']
-          : ['white'];   // pass = 白影
-      case 'prolifera': // 增生侧翼艇：青（青=green 标签，固定加血 4% 档）
-        return ['green'];
-      case 'crystalCore':   // 水晶核芯艇（1S）：按生成时随机的水晶色分色（CRYSTAL_CORE_COLORS 顺序 = 青/蓝/粉；
-                            // 2026-11-16 用户定稿「根据自身颜色分为青、蓝、粉」——青色实例接 green 固定加血增生档，
-                            // 蓝/粉纯分类；pink 为新标签、现无消费点）
-        return e.crystalColor === CRYSTAL_CORE_COLORS[0] ? ['green']
-          : e.crystalColor === CRYSTAL_CORE_COLORS[1] ? ['blue']
-          : ['pink'];
-      case 'striker':   // 赤红红 / 烈橙橙 / 幽蓝蓝 / 紫晶紫 / 坚垒黄 / 幽暮黑（不变）；霜白（variant id 'white'）白（2026-11-16 定稿「已标明」口径——进入黑日强化集）
-        return e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['orange'] : e.variant === 'azure' ? ['blue'] : e.variant === 'violet' ? ['purple'] : e.variant === 'fortress' ? ['yellow'] : e.variant === 'dusk' ? ['black'] : e.variant === 'white' ? ['white'] : [];
-      case 'gunship':   // 紫晶紫 / 赤红红 / 金曜黄 / 烈橙橙 / 青时青（不变）
-        return e.variant === 'violet' ? ['purple'] : e.variant === 'crimson' ? ['red'] : e.variant === 'amber' ? ['yellow'] : e.variant === 'orange' ? ['orange'] : e.variant === 'cyan' ? ['green'] : [];
-      case 'capital':   // 赤红红 / 苍蓝蓝（不变）
-        return e.variant === 'crimson' ? ['red'] : e.variant === 'azure' ? ['blue'] : [];
-      case 'harbinger': return ['black'];      // 炮火先兆者：黑（2026-11-16 定稿，原灰+红）
-      case 'harbingerLead': return ['black'];  // 先导炮火先兆者：黑（2026-11-16 定稿，原灰+红）
-      case 'harbingerHub': return ['black'];   // 中枢炮火先兆者：黑（2026-11-16 定稿，原灰+红）
-      case 'harbingerPolar': return ['blue'];  // 极夜炮火先兆者：蓝（2026-11-16 定稿，原灰+红）
-      case 'weilong':   return ['yellow'];     // 威龙：黄（2026-11-16 定稿，原橙+黄——不再吃橙 0.5% 爆弹掉落）
-      case 'hanshuang': return ['blue'];       // 寒霜：蓝（2026-11-16 定稿，原灰+蓝）
-      case 'yu4':       return ['yellow'];     // 御4：黄（2026-11-16 定稿，原灰+蓝——进入 2:bad:3 黄金壁垒屏障集）
-      case 'anvil':     return ['green'];      // 铁砧：青（2026-11-16 定稿，原灰+绿——固定加血 10% 档不变）
-      case 'baoling':   return ['red'];        // 暴鸰：红（2026-11-16 定稿，原灰+红）
-      case 'baolingG':  return ['red'];        // 暴鸰·G：红（2026-11-16 定稿，同暴鸰）
-      case 'unreal':    return ['blue'];       // 虚幻：蓝（2026-11-16 定稿，原灰+蓝）
-      case 'stasisUnreal': return ['yellow'];  // 静滞虚幻：黄（2026-11-16 定稿——进入 2:bad:3 黄金壁垒屏障集）
-      case 'jiaoxiang': return ['orange'];     // 焦香螺旋桨：橙（2026-11-16 定稿，原橙+红）
-      case 'pulseMatrix': return ['red'];      // 脉冲矩阵：红（2026-11-16 定稿，原橙+红——不再吃橙 0.5% 爆弹掉落）
-      case 'douzhi':    return ['blue'];       // 斗志昂扬：蓝（2026-11-16 定稿，原灰）
-      case 'sponsor':   return ['white'];      // 赞助无人舰：白（2026-11-16 定稿，原灰——进入黑日强化集）
-      case 'sponsorDeluxe': return ['yellow']; // 豪华赞助无人舰：黄（2026-11-16 定稿，原灰——进入 2:bad:3 黄金壁垒屏障集）
-      case 'fashiArray': return ['red'];       // 法术阵列：红（不变）
-      case 'fashiMatrix': return ['red'];      // 法术矩阵：红（2026-11-16 定稿，原无标记）
-      case 'warMatrix': return ['red'];        // 战争矩阵：红（2026-11-16 定稿，原无标记）
-      case 'warGhost': return ['yellow'];      // 战争幽灵：黄（2026-11-16 定稿，原无标记——进入 2:bad:3 黄金壁垒屏障集）
-      case 'popian':    return ['red'];        // 破片：红（2026-11-16 定稿，原无标记）
-      case 'popianU':   return ['red'];        // 破片U型：红（2026-11-16 定稿，原无标记）
-      case 'voyager':   return ['blue'];       // 浮海飘航者：蓝（2026-11-16 定稿，原无标记）
-      case 'fashiA1':   return ['purple'];     // 法术大师A1：紫（2026-11-16 定稿，原无标记）
-      case 'fashiA2':   return ['purple'];     // 法术大师A2：紫（2026-11-16 定稿，原无标记）
-      case 'collapseConstruct': return ['black'];   // 坍缩构造体：黑（2026-11-16 定稿——进入黑日强化集 + 灼烧增伤集）
-      case 'cocoonDream': return ['white'];    // 破茧之梦：白（2026-11-16 定稿，原白+蓝）
-      case 'guiltGrail': return ['yellow'];    // 愧悔魂灵圣杯：黄（不变；受 2:bad:3 黄金壁垒等黄色判定）
-      // 超越艇（2C 五色变体，2026-11-13 实装；2026-11-17 用户定稿补入色表）：炽翼红 / 奔雷蓝 /
-      // 织夜深蓝紫（#6D5AE8——用户定稿紫+蓝双标：紫进帝千邪亡语判定、蓝纯分类）/ 时流青（青=green，
-      // 接青档固定加血增生档）/ 浮梦淡粉（pink 纯分类）
-      case 'beyondWing_red': return ['red'];
-      case 'beyondWing_blue': return ['blue'];
-      case 'beyondWing_violet': return ['purple', 'blue'];
-      case 'beyondWing_cyan': return ['green'];
-      case 'beyondWing_pink': return ['pink'];
-      case 'puxuefeng':                       // 四精英（狞笑朴学峰 / 猩红韩希先 / 铜皮夏勇 / 暴怒辛国栋）：
-      case 'hanxixian':                       //   黑 + 红（2026-11-16 定稿，与黑红涂装一致——原无标记）
-      case 'xiayong':
-      case 'xinguodong':
-      case 'zhangzhang': return ['black', 'red'];   // 张华&张策（实体未实装，标记先行占位同四精英口径）
-      case 'starSlayer_darkSun': return ['black'];   // 黑日诛星舰（4C）：黑色（黑日强化判定含自身——黑白敌人清单标记由各敌人批次登记，见 STARS_SLAYER）
-      case 'starSlayer_whiteNight': return ['white']; // 白夜诛星舰（4C）：白色
-      case 'starSlayer_violetMoon': return ['purple']; // 紫月诛星舰（4C）：紫色（受 3:bad:0 紫色亡语词条判定——紫月亡语弹同口径）
-      case 'thunderWrath': return ['blue'];          // 雷霆之怒（4C）：蓝色
-      case 'boss':
-        // 5类 BOSS（2026-11-16 定稿）：暴风之眼 白 / 风暴编织者 蓝 / 黑暗之手 黑+红 /
-        // 旧日之歌 所有颜色（九色齐挂——purple 部分被帝千邪消费点的「不含任何 BOSS（长歌级敌人）」豁免，
-        // 其余颜色判定照常生效）；其余 BOSS（含 wip 占位）黑
-        return e.bossId === 'storm' ? ['white']
-          : e.bossId === 'storm2' ? ['blue']
-          : e.bossId === 'darkhand' ? ['black', 'red']
-          : e.bossId === 'song' ? ['red', 'orange', 'yellow', 'white', 'purple', 'green', 'blue', 'black', 'pink']
-          : ['black'];
-      default:          return [];
-    }
-  }
+  // enemyColorTags 已迁至 01-config-enemies.js（2026-11-23——08-entities 词条掷点等上游模块也需要
+  // 黑色标签判定，06 处下游不能被反向 import，故下放配置域；本文件经 import + 既有 export 行 re-export）
 
   // ── 黑日诛星舰强化乘区（4C，2026-11-16 用户定稿实装）──
   // 场上每台黑日诛星舰 1 层、至多 STARS_SLAYER.darkSunStacksMax 2 层（state.blackSunStacks 每帧缓存，
@@ -5080,6 +5057,8 @@
     //   判定等级 ≥3（含场上有暴走道具的任意情形）不减免。
     // 高能爆弹为橙色标记的独立判定（见函数末尾），不在此修正范围内
     const dMods = diffMods();
+    // 保底池（2026-11-26）pos_dropRate：所有道具的掉落概率加算乘区（1+sum——kit/shield/hp/BOSS 加血/爆弹全掉率）
+    const fbDropMul = 1 + affixDropRateAdd();
     let dropMul = 1;
     if (!dMods.dropClassNoReduce) {
       let clsMul = 1;
@@ -5104,11 +5083,11 @@
     const kitLoad = powerups.reduce((n, p) => n + (p.kind === 'kit' ? 1 : 0), 0) + player.weapon;
     if (kitLoad >= 5) kitRate *= 0.3;
     else if (kitLoad === 4) kitRate *= 0.5;
-    kitRate *= dropMul;
+    kitRate *= dropMul * fbDropMul;   // 保底池 pos_dropRate（道具掉落 +sum%）
     // 量子护盾：基础 2%（全敌人统一——蓝色 6% 专属 2026-10-12 用户定稿取消）；场上已有护盾道具或我方已带盾时 ×0.35
     let shieldRate = DROP_SHIELD_RATE;
     if (powerups.some(p => p.kind === 'shield') || player.shield > 0) shieldRate *= DROP_SHIELD_STACK;
-    shieldRate *= dropMul;
+    shieldRate *= dropMul * fbDropMul;
     // 加血套件：普通敌人走互斥链（按敌机类别 1类 0.5% / 2类 1% / 3类 2% / 4类 6%；绿标记固定值不吃类别表——
     //   增生侧翼艇 4% / 青时战舰 8% / 铁砧 10%，2026-10-08 用户定稿，不再吃类型削减/判定等级减免乘区；
     //   4S 精英固定 10%——2026-10-10 用户定稿，取代类别表 4类 6%）；BOSS 在链外独立判定（40% 掉 1 / 另有 10% 一次掉 2）
@@ -5126,11 +5105,11 @@
     const hpLvBlocked = !hpLvExempt && hpLvW !== Infinity
       && bossFlow.phase === state.hpKitLastPhase
       && levelFlow.level < state.hpKitLastLv + hpLvW;
-    const hpRate = isBoss ? 0 : ELITES[e.type] || e.type === 'zhangzhang'
+    const hpRate = (isBoss ? 0 : ELITES[e.type] || e.type === 'zhangzhang'
         ? DROP_HP_ELITE   // 4S 精英：10%（黑暗之手四连携精英 + 张华&张策，2026-10-10 用户定稿）
         : tags.includes('green')
         ? (e.type === 'gunship' ? DROP_HP_CYAN : e.type === 'anvil' ? DROP_HP_GREEN : DROP_HP_PROLIFERA)   // 青(green)标记固定值：青时战舰 8% / 铁砧 10% / 增生侧翼艇 4%（水晶核芯艇青色实例也走增生档——2026-11-16 九色定稿）
-        : (DROP_HP_BY_CLASS[ENEMY_CLASS[e.type]] || 0);
+        : (DROP_HP_BY_CLASS[ENEMY_CLASS[e.type]] || 0)) * fbDropMul;   // 保底池 pos_dropRate
     const pr = Math.random();
     if (pr < kitRate) {
       // 升级套件；其中 5% 变为暴走道具（红橙大 S，吃到攻击等级立刻满级）
@@ -5145,7 +5124,7 @@
       if (!hpLvExempt) { state.hpKitLastLv = levelFlow.level; state.hpKitLastPhase = bossFlow.phase; }   // 等级窗口登记（BOSS 轮掉落不登记——不跨轮）
     }
     if (isBoss) {
-      const hr = Math.random();
+      const hr = Math.random() / fbDropMul;   // BOSS 加血掉率同受保底池 pos_dropRate（等价于阈值 ×(1+sum)）
       if (hr < DROP_HP_BOSS) spawnPowerup(x, y, 'hp', 12);
       else if (hr < DROP_HP_BOSS + DROP_HP_BOSS2) { spawnPowerup(x, y, 'hp', 12); spawnPowerup(x, y, 'hp', 12); }
       if (hr < DROP_HP_BOSS + DROP_HP_BOSS2 && hpKitWaveGap !== Infinity) levelFlow.hpKitWaveCd = hpKitWaveGap;   // 诗篇：BOSS 加血后同样进入波次节流
@@ -5153,7 +5132,7 @@
     // 橙色敌人（烈橙突击艇 / 橙焰战舰 / 橙旋侧翼艇 / 焦香螺旋桨——2026-11-16 九色定稿后威龙/脉冲矩阵已退出橙档）：
     // 0.5% 掉爆弹——整场战斗最多触发一次（不影响 4类 5% 与 BOSS 20%）
     // 诗篇经 bombDropGate 限流（每局 2 颗 / 未使用不掉第 2 / 离手后 ×0.35——可莉免乘区，见 02-core）
-    if (tags.includes('orange') && !state.orangeBombUsed && bombDropGate(DROP_BOMB_ORANGE)) {
+    if (tags.includes('orange') && !state.orangeBombUsed && bombDropGate(DROP_BOMB_ORANGE * fbDropMul)) {
       state.orangeBombUsed = true;
       spawnPowerup(x, y, 'bomb', 12);
     }
@@ -5283,7 +5262,7 @@
   // 脉冲矩阵震荡波孤儿波推进（2026-10-10 用户定稿）：本体被击坠后残留的波继续扩散至自然结束，
   // 扩散/命中判定与本体在世时完全同款（波前半径 18 → waveR 二次缓出，扫到玩家即结算，每波至多一次，
   // 伤害走常规 damagePlayer：护盾 / 无敌帧 / 难度修正照常）；波与暗红烟雾计时均结束后移除。
-  // 孤儿波不经 eBullets——不可被群星守望套装效果等任何消弹效果消除
+  // 孤儿波不经 eBullets——不可被群星之歌套装效果等任何消弹效果消除
   function updateOrphanPmWaves(dt) {
     for (let i = pmWaves.length - 1; i >= 0; i--) {
       const w = pmWaves[i];
@@ -5312,10 +5291,28 @@
     // 其它暴鸰的殉爆波及会再次调用 killEnemy——不拦截会造成两只暴鸰互相重入引爆（无限递归、海量爆炸卡死）
     if (e._deathSettled) return;
     e._deathSettled = true;
+    // 保底池（2026-11-26）neg_undying：敌方首次受到致命伤掷点——不被击坠：hp=1、攻击间隔永久减半
+    //（e.ivHalved 实体标记——enemyFireIvMul 流速 ×2；BOSS 豁免——「敌方」口径不含 BOSS，且 boss 生命链独立）+
+    // 3s 虚化护盾（e.phase=3 复用全游戏相位免疫通道：碰撞/伤害/索敌全过滤，倒计时见 updateEnemies L177）。
+    // e.undyingRolled 单实体一次（「首次」口径——无论是否触发不再重掷）；多形态敌人：形态转化/返场均为
+    // 新对象自然重掷——天然满足「无法影响下一形态」
+    const up = affixEnemyUndyingChance();
+    if (up > 0 && e.type !== 'boss' && !testMode && !e.undyingRolled) {
+      e.undyingRolled = true;
+      if (Math.random() < up) {
+        e.hp = 1;
+        e.ivHalved = true;
+        e.phase = 3;
+        e._deathSettled = false;   // 未被击坠：撤销死亡登记，敌机继续存活
+        spawnParticles(e.x, e.y, '#b8a6ff', 18, 220);
+        return;
+      }
+    }
     // 词条（真我级 2:good:1）：斗志昂扬增益期间（state.hasteT>0）击坠敌人 → 立刻清除其发射的在场上所有弹幕
-    //（pushEBullet 记录 owner=e，逐发过滤；仅清除该敌自己的射弹，其他敌机弹幕不动）
+    //（pushEBullet 记录 owner=e，逐发过滤；仅清除该敌自己的射弹，其他敌机弹幕不动；清除等级 10 级——
+    // 2026-11-24 射弹清除等级体系；友方蛋挞任何功能不清除）
     if (affixHas('2:good:1') && state.hasteT > 0) {
-      for (let i = eBullets.length - 1; i >= 0; i--) if (eBullets[i].owner === e) eBullets.splice(i, 1);
+      for (let i = eBullets.length - 1; i >= 0; i--) if (eBullets[i].owner === e && !eBullets[i].affixTart) eBullets.splice(i, 1);
     }
     // 套件保底两连（均置于通用掉落链之前，覆盖 escort / noReward 等无掉落体提前 return 的路径）：
     // ① 诗篇 Lv1~4 每波保底（2026-10-12 用户定稿，判定门槛见 poemKitGuaranteeActive）：本波尚无套件掉落时，
@@ -5331,7 +5328,7 @@
     }
     // 脉冲矩阵震荡波孤儿化（2026-10-10 用户定稿）：本体被击坠时若波仍在扩散，波脱离本体继续扩散至
     // 自然结束且仍可造成伤害（每波至多命中一次，逻辑见 updateOrphanPmWaves）；孤儿波存于 02-core pmWaves
-    //（不经 eBullets——不可被群星守望套装效果 / 爆弹波等任何消弹效果消除）。
+    //（不经 eBullets——不可被群星之歌套装效果 / 爆弹波等任何消弹效果消除）。
     // 注意：若本体处于自爆模式，击坠已截断其「波扩完爆散 + 分裂三矩阵」链路——孤儿波只扩散与伤害，到时自然消散
     if (e.type === 'pulseMatrix' && (e.pmWaveT || 0) > 0) {
       pmWaves.push({
@@ -5547,7 +5544,7 @@
         } else {
           bossFlow.victoryDelay = 0;
           bossFlow.postDelay = 2;   // 击败 BOSS 后 2s 再刷新（不计入关卡推进；到时刷新特殊波次——水晶核芯艇四选一，见 04-spawn）
-          queueAffixSelection(1.2);   // 词条系统：1.2s 后暂停并弹出三选一（给击坠演出 / 道具强制吸收留窗口；14-main tickAffixPending 消费）
+          if (!isIllusion() && !(state.challenge && state.challenge.kind === 'infTest')) queueAffixSelection(1.2);   // 词条系统：1.2s 后暂停并弹出三选一（给击坠演出 / 道具强制吸收留窗口；14-main tickAffixPending 消费）。虚象难度无词条机制（2026-11-23 用户定稿）：正常流程不弹出三选一、不获得任何词条——调试菜单「立刻选择词条」作弊与特殊驾驶员（九克之王开局抽签）不受影响。循环刷怪测试页（infTest，2026-11-24 用户定稿）击坠召唤 BOSS 同样不触发词条抽取（测试环境无词条流程）
           // 许凯狗：击坠 BOSS 后概率再冲刺（2026-10-14 用户定稿）——20% 冲撞 2s / 15% 冲撞 3s（互斥单掷），
           // 冲掉 BOSS 后的特殊波次与后续等级的敌人（冲刺期敌机进场 60%~80% 强制击杀，见 14-main 冲刺块）：
           // 特殊波次提前至冲撞窗口内落地（postDelay 收窄至 0.4s）、被强杀/穿越离场后快速清场 → 0.6s 恢复刷怪
@@ -5644,7 +5641,7 @@
     spawnParticles(e.x, e.y, e.color, 22, 260);
     // BOSS 战强制波 1类（minionDrop）：击杀不加分（水晶不掉见下；道具掉率走通用 1类修正链——×0.3 削减已取消）
     if (!testMode && !e.minionDrop) state.score += Math.round(e.score * diffMods().scoreMul * sdScoreMul);
-    // 群星守望：击杀 1/2/3/4 类敌人时按概率消弹——
+    // 群星之歌：击杀 1/2/3/4 类敌人时按概率消弹——
     // 常规战斗 5%/8%/15%/50% 清除离自身最近的一颗敌弹（无内置冷却）；
     // BOSS 战期间改用统一 40% 概率表，且改为清除该敌人发出的所有在场射弹
     // （每颗都带淡黄连线+迸粒演出，多弹齐清时视觉上如同一次射出多束粒子光束）；
@@ -5658,9 +5655,22 @@
     if (watchChance && Math.random() < watchChance) {
       if (bossFight) achvNoteWatchClear(clearEnemyBulletsByOwner(e));
       else achvNoteWatchClear(clearNearestEnemyBullet(player.x, player.y));   // 成就：群星不灭——按实际消除数计数
+      // 词条（具象级 1:good:12）群星之歌：消除子弹时，额外随机消除一颗敌方射弹（tart 豁免同 02-core 口径；
+      // affixHas 前置——无词条不进 clearRandomEnemyBullet，不消耗 RNG 平移全局随机序列）
+      if (affixHas('1:good:12')) achvNoteWatchClear(clearRandomEnemyBullet(player.x, player.y));
     }
-    // 群星系列套装额外效果（2026-10-10 用户定稿；守望独有门槛 2026-11-11 用户定稿）：装备群星守望
-    // （效果归属守望本体——必须穿着）且至少 3 件群星系列装备（群星之杀 / 群星守望 / 群星守愿 / 群星之扉
+    // 词条（具象级 1:good:14）时流之洄：击坠曾对自身造成过伤害的敌人时，10% 概率恢复其对自身造成的所有伤害
+    //（伤害累计在 07-player damagePlayer 的 pDmgToPlayer——cause 为敌人实体或带 owner 的弹体；
+    // 恢复量以当前缺失血量为上限，青色迸粒为时流之洄装甲色 #39C5BB）
+    if (!testMode && affixHas('1:good:14') && (e.pDmgToPlayer || 0) > 0 && Math.random() < 0.10) {
+      const huiHeal = Math.min(e.pDmgToPlayer, (player.maxHp || 1) - player.hp);
+      if (huiHeal > 0) {
+        player.hp += huiHeal;
+        spawnParticles(player.x, player.y, '#39C5BB', 14, 180);
+      }
+    }
+    // 群星系列套装额外效果（2026-10-10 用户定稿；群星之歌独有门槛 2026-11-11 用户定稿）：装备群星之歌
+    // （效果归属群星之歌本体——必须穿着）且至少 3 件群星系列装备（群星之杀 / 群星之歌 / 群星守愿 / 群星之扉
     // 均计入，计数见 01-config-loadout starsSeriesCount）时，暴走（火力 Lv5）状态击坠敌机 →
     // 无概率立刻清除该敌机残留在场的所有弹幕（常规战斗与 BOSS 战均生效）。
     // 覆盖面 = eBullets 内该敌机全部射弹（含法术大师 A1/A2 的 laser 激光）；
@@ -5670,11 +5680,21 @@
       achvNoteWatchClear(clearEnemyBulletsByOwner(e));
     }
     // 1类亡语 variants：阵亡时向下垂直射击（弹速 230，与常规 1类子弹一致）——
-    // 【2026-10-12 移序】置于守望消弹 / 套装清弹之后：亡语弹带 owner 标记，原先在消弹前入场，
+    // 【2026-10-12 移序】置于群星之歌消弹 / 套装清弹之后：亡语弹带 owner 标记，原先在消弹前入场，
     // 会被同一次击杀的 clearEnemyBulletsByOwner(e)（BOSS 战 40% / 群星三件套+暴走 100% 无概率）
     // 或 clearNearestEnemyBullet（常规按最近）当场吞掉——表现为「部分紫电没有亡语」（概率性）。
-    // 移后天然豁免同击消弹；后续其他击杀触发的消弹仍可正常消除该弹（彼时它已是普通在场弹，符合守望设计）；
+    // 移后天然豁免同击消弹；后续其他击杀触发的消弹仍可正常消除该弹（彼时它已是普通在场弹，符合群星之歌设计）；
     // 词条（长歌级 4:good:3）词条禁用：所有敌人亡语效果一律停发
+    // 保底池（2026-11-26）neg_deathAttack：敌方被击坠前掷点——立刻进行一次攻击（朝玩家当前位置直射一发
+    // 通用射弹，同超越艇织夜亡语发射通道；置于消弹之后防被同击消弹吞掉——同 deathShot 移序口径；
+    // 「被击坠前攻击」非亡语，不受 4:good:3 禁用；BOSS 豁免——死亡结算走 BOSS 分支，弹幕体系独立）
+    if (e.type !== 'boss' && !testMode && affixEnemyDeathAttackChance() > 0 && Math.random() < affixEnemyDeathAttackChance()) {
+      const cfg = ENEMY_TYPES[e.type];
+      if (cfg && cfg.bulletSpeed) {
+        pushEBullet(e, Math.atan2(player.y - e.y, player.x - e.x), cfg.bulletSpeed, cfg);
+        spawnParticles(e.x, e.y, '#ff7a18', 8, 140);
+      }
+    }
     if (e.deathShot && !affixHas('4:good:3')) {
       const cfg = ENEMY_TYPES[e.type];
       pushEBullet(e, Math.PI / 2, cfg.bulletSpeed, cfg);
@@ -5702,6 +5722,19 @@
         }
       } else if (e.type === 'beyondWing_blue') {
         if (Math.random() < 0.01) fireStormStrikeAt(e.x, e.y);
+      }
+    }
+    // 澜心舰亡语（3C 五变体，2026-11-27 用户定稿实装；置于消弹之后同移序口径、词条禁用 4:good:3 下停发）：
+    //   终日黑：被击坠时 20% 立召 1 个幽暮突击艇（召唤型亡语——秒杀类通道与爆弹窗口内禁用，同增生分裂口径：
+    //   秒杀不留残党）；幽暮落点/浮现点由 makeEnemy dusk 分支随机生成（与常规登场一致），奖励待遇同常规敌人；
+    //   洄星紫：被击坠前 10% 立刻攻击一次——射弹型亡语不限秒杀通道（同紫电 deathShot 口径）
+    if (e.type && e.type.startsWith('lanxinShip_') && !affixHas('4:good:3')) {
+      if (e.type === 'lanxinShip_black') {
+        if (!(state.aiyiSelfDestruct || state.sweepKill || state.bombSweep) && Math.random() < LANXIN_SHIP.duskSummonChance) {
+          makeEnemy('striker', e.x, e.y, { variant: 'dusk' });   // 幽暮：落点随机浮现（dusk 分支覆写传入坐标）
+        }
+      } else if (e.type === 'lanxinShip_violet' && Math.random() < LANXIN_SHIP.deathAttackChance) {
+        // TODO（攻击批次）：洄星亡语攻击内容——攻击方式批次定稿后在此发射（当前仅占位掷点，不产生任何射弹）
       }
     }
     // 4C 诛星舰亡语（2026-11-16 用户定稿实装；置于消弹之后同移序口径、词条禁用 4:good:3 下停发）：
@@ -6006,6 +6039,6 @@
     fireTriVolley, fireCrossLances, fireHyperbolaFan, fireStroke, fireBarrageWide, fireBarrageNarrow,
     summonMissile, missileHitPlayer, updateMissiles, clearMissiles, spawnPopianMissile, updatePopianMissiles,
     popianMissileHit, fireMatrixCube, updateSpellCubes, updateBaolingBombs, explodeBaolingBomb, throwBaolingBomb,
-    detonateBaoling, updateFrostZones, updateDouzhiFx, enemyColorTags, grailRedirect, rollItemDrops, anvilHealTick, jiaoxiangBurn,
+    detonateBaoling, updateFrostZones, updateDouzhiFx, grailRedirect, rollItemDrops, anvilHealTick, jiaoxiangBurn,
     updateWgSlashes, updateXgLooseBombs, killEnemy, cancelBossWarns, applyRainAttackDelay,
   };

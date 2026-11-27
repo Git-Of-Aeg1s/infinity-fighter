@@ -953,7 +953,7 @@ canvas#game {
   width: calc(50% - 10px);
   height: 82px;
   /* 文字行与战机/僚机高框同款顶对齐：标签「护甲/副武器」同「僚机」一行、
-     名称「群星守望」等同「群星守愿」一行（同 padding-top + 同 flex 流，天然逐像素对齐） */
+     名称「群星之歌」等同「群星守愿」一行（同 padding-top + 同 flex 流，天然逐像素对齐） */
   justify-content: flex-start;
   padding-top: 8px;   /* 与战机/僚机高框同步：12→8 略微上移 */
 }
@@ -1716,6 +1716,7 @@ kbd {
 #pauseRetryBtn,
 #pauseBackBtn,
 #pauseDebugBtn,
+#pauseBossBtn,
 #retrialBtn {
   display: block;
   margin: 10px auto 0;
@@ -1733,6 +1734,7 @@ kbd {
 #pauseRetryBtn:hover,
 #pauseBackBtn:hover,
 #pauseDebugBtn:hover,
+#pauseBossBtn:hover,
 #retrialBtn:hover {
   box-shadow: 0 0 20px rgba(124, 231, 255, 0.45);
   transform: translateY(-1px);
@@ -1741,11 +1743,13 @@ kbd {
 #pauseRetryBtn:active,
 #pauseBackBtn:active,
 #pauseDebugBtn:active,
+#pauseBossBtn:active,
 #retrialBtn:active { transform: translateY(0); }
 
 #pauseRetryBtn.hidden,
 #pauseBackBtn.hidden,
 #pauseDebugBtn.hidden,
+#pauseBossBtn.hidden,
 #retrialBtn.hidden { display: none; }
 
 /* ---------- 调试菜单面板（2026-11-09 调试菜单窗口）：风格对齐暂停页按钮（青色系） ---------- */
@@ -2568,6 +2572,65 @@ kbd {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+
+/* ---------- 循环刷怪测试页（2026-11-24 用户定稿） ---------- */
+/* 图鉴入口按钮复用 .ency-challenge-btn（2026-11-25 用户反馈顶部页签样式丑 → 移至「编队权重」页与持续刷怪测试并排） */
+
+/* 左上角当前刷怪波次等级（仅测试页显示，diff-label 同排风格） */
+.inftest-level {
+  margin-top: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 左侧武器 DPS 面板：主武器 / 副武器 / 僚机小型预览 + 最近 8s DPS（自有伤害统计） */
+.inftest-dps {
+  position: absolute;
+  left: 10px;
+  top: 34%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(10, 14, 22, 0.55);
+  border: 1px solid rgba(120, 180, 255, 0.22);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 5;
+}
+.inftest-dps-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.inftest-dps-icon { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; }
+.inftest-dps-icon svg { width: 16px; height: 16px; }
+.inftest-dps-name { min-width: 86px; }
+.inftest-dps-val { color: var(--text); font-size: 12px; }
+
+/* 暂停页 BOSS 召唤选择行（仅循环刷怪测试页显示；hidden 规则必须有——无它则 display:flex 常显） */
+.boss-pick-row.hidden { display: none; }
+.boss-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.boss-pick-row button {
+  background: rgba(120, 180, 255, 0.12);
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.boss-pick-row button:hover { background: rgba(120, 180, 255, 0.25); }
 
 .info-body {
   flex: 1;

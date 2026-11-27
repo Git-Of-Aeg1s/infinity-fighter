@@ -1,7 +1,7 @@
 // 01-config-loadout：玩家装备四件套（战机/装甲/驾驶员/僚机）+ 武器等级与爆弹参数（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 03b-affix(7 名) 04-spawn(2 名) 05-boss(4 名) 06-enemy(10 名) 07-player(29 名) 08-entities(14 名) 09a-draw-loadout(8 名) 10-draw-world(4 名) 12-ui(30 名) 13-encyclopedia(13 名) 14-main(5 名)
+  // 被依赖：01-config-difficulty(1 名) 01-config-spawn(1 名) 02-achievements(8 名) 02-core(4 名) 03b-affix(11 名) 04-spawn(2 名) 05-boss(4 名) 06-enemy(10 名) 07-player(29 名) 08-entities(14 名) 09a-draw-loadout(8 名) 10-draw-world(4 名) 12-ui(30 名) 13-encyclopedia(13 名) 14-main(5 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { CANVAS_H, dogMissileSvg, flameRingSvg, higanbanaSvg, huiRingsSvg, polarStarSvg, rainDropSvg, swordSvg } from './01-config-core.js';
@@ -86,6 +86,7 @@
     finalJudgment: { id: 'finalJudgment', name: '最终审判', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
     daybreak: { id: 'daybreak', name: '拂晓', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
     nadir: { id: 'nadir', name: '天底', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },
+    moonfallOath: { id: 'moonfallOath', name: '月陨之誓', glyph: '◇', color: '#8a97a8', placeholder: true, desc: '未实装' },   // 特殊战机占位（2026-11-25 用户指定名称占位）
   };
   let currentPlane = PLANES.chaos;   // 默认机型：混乱将至（2026-10-10 用户定稿，原群星之杀）
   // 选机写入入口：currentPlane / currentWingman 是被全仓库读取的顶层 let，
@@ -101,14 +102,14 @@
   // 主界面选择、整场战斗生效的机体装甲。效果键位（按需扩展）：
   //   maxHpAdd     每条命 HP 加成（PLAYER_CFG.maxHp = 100 基准；resetGame / 重生结算）
   //   invulnMul    受击 / 重生无敌时间倍率（并入 invulnDiffMul，与难度倍率乘算——天枢圣卫）
-  //   clearChance  击杀 1/2/3/4 类敌人时清除最近一颗敌弹的概率（群星守望；
+  //   clearChance  击杀 1/2/3/4 类敌人时清除最近一颗敌弹的概率（群星之歌；
   //                低难度概率 ×1.5 上限 100%，见 06-enemy killEnemy；无内置冷却）
   // 其余装甲效果（最终壁垒免死 / 祈星减伤 / 澄月暴走护盾 / 七日澜心量表技能）为行为型逻辑，
   // 分别挂钩 07-player（damagePlayer / pickupKit / pickupBerserk / updatePlayer）与 06-enemy（killEnemy / BOSS 接触）。
   // 新增装甲只需在注册表加条目：主界面卡片自动生成（12-ui buildArmorCards）。
   // brief  = 主菜单卡片的简短文案（玩家向）；desc = 数值与机制图鉴「护甲」页的详细数值文案
   // 条目顺序 = 展示顺序（主菜单卡片与图鉴护甲页均按注册表键序生成）：
-  //   第一排：铜皮夏勇（默认，血量加成最直白）/ 群星守望 / 祈星 / 洄
+  //   第一排：铜皮夏勇（默认，血量加成最直白）/ 群星之歌 / 祈星 / 洄
   //   第二排：七日澜心 / 最终壁垒 / 天枢圣卫 / 澄月；第三排：炽心
   const ARMORS = {
     tongpi:   { id: 'tongpi', name: '铜皮夏勇', glyph: '❖', color: '#66e39a',
@@ -116,11 +117,11 @@
       maxHpAdd: 40, brief: '夏勇皮糙肉厚战机血量提升',
       shieldDur: 6,   // 死亡复活赠送的量子护盾时长（s）：与通用量子护盾一致（2026-10-12 用户定稿，取代原「复活即暴走」）
       desc: '血量提高 40<br>（100 → 140）<br>死亡复活时获得量子护盾（6s）' },
-    watch:    { id: 'watch', name: '群星守望', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（见 starsSeriesCount；套装暴走清弹效果为守望独有）
+    watch:    { id: 'watch', name: '群星之歌', glyph: '◈', color: '#7ce7ff', starsSeries: true,   // 群星系列装备（见 starsSeriesCount；套装暴走清弹效果为群星之歌独有；2026-11-25 用户定稿更名「群星守望」→「群星之歌」）
       clearChance: { 1: 0.05, 2: 0.08, 3: 0.15, 4: 0.50 },
       clearChanceBoss: { 1: 0.40, 2: 0.40, 3: 0.40, 4: 0.40 },   // BOSS 战期间的概率表，且改为清除该敌人发出的全部在场射弹
       brief: '击毁敌机时概率消除弹幕',
-      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件——<br>群星之杀 / 群星守望 / 群星守愿 /<br>群星之扉 均计入；效果为守望独有）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
+      desc: '击杀 1/2/3/4 类敌人时<br>5%/8%/15%/50% 立刻清除<br>一颗离自身最近的敌方子弹<br>BOSS 战期间：统一 40%，<br>且改为清除该敌人发出的全部在场射弹<br>真我以下难度：清除概率 ×1.5（上限 100%）<hr>群星系列套装（≥3 件——<br>群星之杀 / 群星之歌 / 群星守愿 /<br>群星之扉 均计入；效果为群星之歌独有）：<br>暴走状态击坠敌机时立刻清除<br>该敌机残留在场的所有弹幕<br>（含法术大师的激光；铁砧导弹 /<br>暴鸰·虚幻炸弹等范围伤害体<br>与寒冷区域不受影响）' },
     qixing:   { id: 'qixing', name: '祈星', glyph: '✧', color: '#b49bff',
       halveChance: 0.3, halveChanceBig: 0.6,   // 伤害减半判定概率（单次伤害 &gt;40 时用后者）
       brief: '受伤时概率使该次伤害减半',
@@ -160,10 +161,10 @@
 
     // ── 群星之扉（2026-10-17 名称占位批次 → 2026-11-11 用户定稿实装）：特殊装备（special 同天使璃约定——
     //    图鉴页特殊角色，使用期间无法获得挑战成就）；群星系列装备（starsSeries 计入 starsSeriesCount——
-    //    供本甲免伤概率/黑洞尺寸加成与群星守望三件套计数）。黑洞运行时对象 state.blackhole（02-core 归域，
+    //    供本甲免伤概率/黑洞尺寸加成与群星之歌三件套计数）。黑洞运行时对象 state.blackhole（02-core 归域，
     //    单槽覆盖语义：免伤成功即刷新）——触发/推进/伤害 tick 07-player、吞弹 08-entities、
     //    减速 04-spawn enemyBlackholeMoveMul、绘制 10-draw-world drawPlayerBlackhole
-    qunxingGate: { id: 'qunxingGate', name: '群星之扉', glyph: '◇', color: '#8a97a8', special: true, starsSeries: true,
+    starsGate: { id: 'starsGate', name: '群星之扉', glyph: '◇', color: '#8a97a8', special: true, starsSeries: true,   // 注册表键 2026-11-23 用户定稿改英文（原 qunxingGate 拼音混搭——命名规范见 SKILL.md §9，中文展示名不变）
       dodgeChanceBase: 0.55, dodgeChancePer: 0.05,   // 免伤概率 = 55% + 5%/件群星系列（count 含自身——单独装备即 60%）
       bhDurBase: 0.5, bhDurPer: 0.1,   // 黑洞持续 = 0.5s + 0.1s/件
       bhRBase: 100, bhRPer: 10,        // 黑洞半径 = 100px + 10px/件
@@ -179,9 +180,9 @@
   function armorMaxHp() { return PLAYER_CFG.maxHp + (currentArmor.maxHpAdd || 0); }
 
   // 群星系列套装计数（2026-10-10 用户定稿；2026-11-11 成员调整）：当前装备中带 starsSeries 标记的件数——
-  // 现役四件 = 机体群星之杀 / 装甲群星守望 + 群星之扉（特殊）/ 僚机群星守愿（原守愿者——2026-11-11 更名加入，
+  // 现役四件 = 机体群星之杀 / 装甲群星之歌 + 群星之扉（特殊）/ 僚机群星守愿（原守愿者——2026-11-11 更名加入，
   // 群星允诺更名「时空允诺」同日退出）；计数 ≥3（即套装齐备）时
-  // 群星守望获得「暴走击坠清弹」额外效果（守望独有，触发点见 06-enemy killEnemy）
+  // 群星之歌获得「暴走击坠清弹」额外效果（群星之歌独有，触发点见 06-enemy killEnemy）
   function starsSeriesCount() {
     return [currentPlane, currentArmor, currentPilotMain, currentPilotSub, currentWingman, currentSubWeapon]
       .filter(x => x && x.starsSeries).length;
@@ -822,16 +823,16 @@
       desc: '天使璃温柔守护。拥有无限条生命<br>被击坠后照常短暂无敌并重生<br>（命数永不减少，不会迎来失败终局）<br>左下角始终显示一颗心<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
 
-    // ── 酒客之王（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃同约定——
+    // ── 九克之王（2026-11-17 用户定稿实装，2026-11-23 用户定稿更名「酒客之王」→「九克之王」）：特殊主驾驶员（special: true，与天使璃同约定——
     //    使用期间无法获得挑战成就 + 卡片青粉三角角标）。开局立刻获得六对词条：
     //    虚象/具象/真我/诗篇/长歌五档各随机一对（该档正面1+负面1，抽签/占用/保底口径见 03b-affix grantJiukePairs）
     //    + 第六对=特殊对整体（sp0 纵逭灭 + sp1 澪叶同时授予）；开局覆盖层展示六对、确认后开战；
     //    全部词条本局永久生效（击坠 BOSS 三选一照常，开局六对为额外赠礼）。
     //    🍷 酒杯（用户定稿「一杯酒的样式」——emoji 自带色，偏离单色字形惯例属用户点名豁免，待定稿可改）
     jiukewang: {
-      id: 'jiukewang', name: '酒客之王', glyph: '🍷', color: '#e0b060', slot: 'main', special: true,
+      id: 'jiukewang', name: '九克之王', glyph: '🍷', color: '#e0b060', slot: 'main', special: true,
       brief: '开局获得六对词条',
-      desc: '酒客之王豪饮天下。开局立刻获得六对词条<br>五个等级（虚象/具象/真我/诗篇/长歌）<br>各随机一对（正面+负面）<br>第六对为特殊对整体（纵逭灭+澪叶）<br>开局会展示这六对词条，确认后出发<br>全部词条本局永久生效<br>（击坠 BOSS 后的三选一词条照常获得）<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
+      desc: '九克之王豪饮天下。开局立刻获得六对词条<br>五个等级（虚象/具象/真我/诗篇/长歌）<br>各随机一对（正面+负面）<br>第六对为随机一对特殊词条（纵逭灭/澪叶二选一）<br>开局会展示这六对词条，确认后出发<br>全部词条本局永久生效<br>（击坠 BOSS 后的三选一词条照常获得）<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',   // 2026-11-23 用户定稿：特殊对改一对（rollSpecial 随机抽取，不再 sp0+sp1 双授——03b-affix rollJiukePairs）
     },
 
     // ── 天秀混沌王子（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃同约定——
@@ -845,7 +846,7 @@
       desc: '天秀混沌王子降临，我方战机替换为<br><b>上下倒置的我方风暴编织者</b><br>（与敌方 BOSS 同形，攻击朝上）<br><b>血量 8000</b>，拾取回血道具恢复 2000<br>不受火力等级影响、被击中无受击无敌帧<br><b>战机 / 僚机 / 副武器选择全部失效</b><br>拾取升级或护盾组件（无护盾效果）：<br>随机一个技能冷却归零<br>拾取暴走组件：全部技能冷却归零<br>普通攻击：蛇形雷条+雷环 / 折线光束<br>（激光全部无限穿透——次数盾耗层<br>挡伤不拦停、圣杯转移后继续贯穿）<br>自动技能（不影响普通攻击）：<br>电弧激光 20s（12000，秒杀非长歌级）<br>四臂激涌 7s（4×2000）<br>雷霆打击 16s（5×4000+外扩雷环）<br>重现光束 9s（4×2000）<br>直击敌人麻痹 1s（无法移动、光环禁用、<br>攻击间隔翻倍；BOSS 免疫）<br>不受到常规碰撞：1 类接触直接击坠<br>非 1 类每 0.1s 敌 -400 / 自 -100<br>BOSS 接触每 0.1s 双方 -100<br>移动速度基础值 +40%<br><b>特殊驾驶员</b>：使用期间无法获得<br>任何挑战成就（无伤系列等）',
     },
 
-    // ── 花礼（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃/酒客之王同约定——
+    // ── 花礼（2026-11-17 用户定稿实装）：特殊主驾驶员（special: true，与天使璃/九克之王同约定——
     //    使用期间无法获得挑战成就 + 卡片青粉三角角标 + specialGearActive 触发）。签名机制（唯一机制）：
     //    ①核心与判定点均 1×1px——hitRadius 0.5（默认 4 的 1/8，受击面积 ≈ 原 1/80），全部受击结算
     //    （弹体/激光/撞机/导弹/刃气/光环/BOSS 弹幕）经 playerHitRadius() 生效；②机体与僚机绘制尺寸
@@ -894,7 +895,7 @@
   // ---------- 特殊装备标记（special，简称 sp）与挑战成就门控（2026-10-08 用户定稿） ----------
   // 约定：各装备注册表（PILOTS / ARMORS / PLANES / WINGMEN_CFG / SUB_WEAPONS……后续扩展）的条目
   // 可带 special: true 标记 = 特殊装备——使用期间无法获得任何挑战成就（ACHIEVEMENTS[x].challenge，
-  // 02-achievements unlockAchievement 统一门控）。当前特殊装备：天使璃（tianshiLovely）/ 酒客之王（jiukewang）/ 花礼（huali）。
+  // 02-achievements unlockAchievement 统一门控）。当前特殊装备：天使璃（tianshiLovely）/ 九克之王（jiukewang）/ 花礼（huali）。
   function specialGearActive() {
     return !!(currentPilotMain.special || currentPilotSub.special ||
       currentArmor.special || currentPlane.special || currentWingman.special || currentSubWeapon.special);

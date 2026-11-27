@@ -1,7 +1,7 @@
 // 01-config-difficulty：难度系统（虚象/具象/真我/诗篇）+ 诗篇血量表 + BOSS/精英血量取值入口（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(3 名) 03b-affix(1 名) 04-spawn(8 名) 05-boss(7 名) 06-enemy(14 名) 07-player(8 名) 08-entities(9 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
+  // 被依赖：01-config-spawn(1 名) 02-achievements(2 名) 02-core(3 名) 03b-affix(2 名) 04-spawn(8 名) 05-boss(8 名) 06-enemy(15 名) 07-player(8 名) 08-entities(9 名) 10-draw-world(3 名) 11-draw-boss(2 名) 12-ui(4 名) 13-encyclopedia(8 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { xiayongImg, CANVAS_H } from './01-config-core.js';
@@ -189,7 +189,7 @@
   // 是否为诗篇难度（当前 wip 占位、不可选；诗篇专属数值分支经此门控）
   function isPoem() { return currentDifficulty.id === 'poem'; }
   // 是否为真我及更高难度档：按 DIFFICULTIES 键序（键序=难度顺序，后续新增更高难度（如下一档「诗篇」）排在真我之后自动归入）。
-  // 用于「高难度保持满强度、低难度放宽」类门控（如群星守望低难度概率放宽，见 06-enemy killEnemy）
+  // 用于「高难度保持满强度、低难度放宽」类门控（如群星之歌低难度概率放宽，见 06-enemy killEnemy）
   function isHardTier() {
     const order = Object.keys(DIFFICULTIES);
     return order.indexOf(currentDifficulty.id) >= order.indexOf('realme');
@@ -217,6 +217,7 @@
     striker_crimson: 400, striker_amber: 400, striker_azure: 400, striker_violet: 400, striker_white: 400,
     striker_fortress: 3000, striker_dusk: 300,
     beyondWing_red: 420, beyondWing_blue: 420, beyondWing_violet: 420, beyondWing_cyan: 420, beyondWing_pink: 420,   // 超越艇五变体（2026-11-13 用户定稿）
+    lanxinShip_blue: 2400, lanxinShip_white: 2400, lanxinShip_black: 2400, lanxinShip_violet: 2400, lanxinShip_pink: 2400,   // 澜心舰五变体（3C，2026-11-27 用户定稿；基准 500）
     gunship_violet: 2000, gunship_crimson: 2000, gunship_amber: 2500, gunship_orange: 2000, gunship_cyan: 2000,
     capital_crimson: 9000, capital_azure: 9000, capital_crgold: 10000,
     harbinger: 3000, harbingerLead: 2400, harbingerHub: 4500, harbingerPolar: 2400,   // 先兆者家族四型（2026-10-16 用户定稿：先导/极夜 800/2400、中枢 1500/4500）
@@ -302,7 +303,7 @@
   }
 
   // 测试模式（图鉴挑战）：敌方不再无敌 —— 非 BOSS 单位统一血量 20000（BOSS 保持注册表血量）；
-  // 持续刷怪测试（swarm）除外——按注册表正常血量（2026-10-01）
+  // 循环刷怪测试页（infTest）除外——按注册表正常血量（原 swarm 除外条目 2026-11-25 随功能删除一并移除）
   const TEST_HP = 20000;              // 1~4 类全部敌机（含大型龙卷 / 法术矩阵等召唤物）
 
   export {

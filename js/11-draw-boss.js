@@ -2960,9 +2960,24 @@
   }
 
   // 统一入口：遍历场上 BOSS 绘制对应血条（战斗阶段；图鉴预览 / 消散残影跳过）
+  // 词条（真我级 2:bad:3）黄金壁垒 BOSS 屏障（2026-11-23 用户定稿「对BOSS效果减半」）：黄标 BOSS 登场懒施加
+  // e.barrier 100（06-enemy updateEnemies 同块）——黄色椭圆护罩渲染同敌人侧 10-draw-world 黄金壁垒样式，
+  // 透明度随余量变淡（frac = barrier / 100 减半满值）
   function drawBossBars() {
     for (const e of enemies) {
       if (e.type !== 'boss' || e.dying || e.ency || e.phase !== 'combat') continue;
+      if ((e.barrier || 0) > 0) {
+        const frac = Math.min(1, e.barrier / 100);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.globalAlpha = 0.08 + 0.12 * frac;
+        ctx.fillStyle = '#e8c34a';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, e.w * 0.62, e.h * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
       if (e.bossId === 'storm') drawStormBar(e);
       else if (e.bossId === 'storm2') drawStorm2Bar(e);
       else drawSongBar(e, e.bossId === 'darkhand');   // 黑暗之手：黑红变体血条（2026-10-03）

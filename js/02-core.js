@@ -1,7 +1,7 @@
 // 02-core：画布与 DOM 引用 / 全局状态与实体数组 / 工具函数 / 星空星云
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(7 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(42 名) 07-player(54 名) 08-entities(25 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(30 名) 11-draw-boss(10 名) 12-ui(99 名) 13-encyclopedia(19 名) 14-main(43 名)
+  // 被依赖：02-achievements(4 名) 03-audio(3 名) 03b-affix(8 名) 04-spawn(10 名) 05-boss(18 名) 06-enemy(44 名) 07-player(56 名) 08-entities(33 名) 09a-draw-loadout(12 名) 09b-draw-enemies(12 名) 10-draw-world(30 名) 11-draw-boss(10 名) 12-ui(99 名) 13-encyclopedia(19 名) 14-main(43 名)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{shakeMag, shakeTime, shakeDur}
   //
@@ -216,6 +216,7 @@
                            // 召唤张华&张策——实体待实装仅占位；resetGame 归位）
     testBoss: null,    // 测试模式：直接挑战的 BOSS id
     challenge: null,   // 图鉴挑战模式：{ kind:'enemy'|'boss', type, variant, behavior, bossId }，敌我真实血量（玩家血量归零自动重置）
+    dmgLog: [],        // 我方伤害账本（循环刷怪测试页 DPS 统计）：{ t, dmg, src }，src='main'|'sub'|'wing'；读端裁剪 8s 窗口（02-core notePlayerDamage）
     affixTartCd: 0,        // 词条（诗篇级 3:good:3）大蛋挞召唤冷却剩余秒数（killEnemy 掷中置 15；06-enemy updateEnemies 递减；resetGame 清零）
     affixFreezeHits: 0,    // 词条（诗篇级 3:good:2）冰封：累计命中敌人次数（08-entities/07-player 伤害结算处 affixFreezeNote 累加；满 20 触发冻结并清零）
     affixFreezeDmg: 0,     // 词条（诗篇级 3:good:2）冰封：累计造成敌人伤害（同上累加；满 2500 触发冻结并清零）
@@ -334,7 +335,7 @@
   /** @type {Array} */ const slashFx = [];   // 群星之杀：空间斩击特效（选中目标处展开的紫白斩痕，短暂存留渐隐）
   /** @type {Array} */ const playerHitFx = [];   // 命中玩家特效（白热闪核 + 红橙冲击环 + 迸溅火花线，短存留渐隐）
   /** @type {Array} */ const phaseFx = [];   // 碎盾特效（群星之杀斩碎虚化护盾：白热闪核 + 冰蓝冲击环 + 飞散弧形碎片）
-  /** @type {Array} */ const watchClearFx = [];   // 群星守望消弹特效（淡黄光粒连线 + 原位迸粒，低图层：绘制于子弹之下）
+  /** @type {Array} */ const watchClearFx = [];   // 群星之歌消弹特效（淡黄光粒连线 + 原位迸粒，低图层：绘制于子弹之下）
   /** @type {Array} */ const armorGlyphFx = [];   // 装甲触发图标演出（祈星减伤 / 澄月得盾：核心处图标渐显-放大-渐隐，跟随机体）
   /** @type {Array} */ const friendStorms = [];  // 天秀忧郁王子：友方大风暴（按 Q 释放，向上推进 + 风弹 + 主体接触伤害）
   /** @type {Array} */ const dashKillFx = [];   // 许凯狗冲刺：被击杀敌机身上的白光冲击（扩散白环 + 渐隐闪核，生成于 14-main 秒杀循环，绘制见 10-draw-world drawDashKillFx）
@@ -689,18 +690,41 @@
     if (time > state.shakeTime) { state.shakeTime = time; state.shakeDur = time; }   // 仅更长的新震屏重置衰减窗口
   }
 
+  // ---------- 射弹清除等级体系（2026-11-24 用户定稿，之后新增清弹逻辑一律按此） ----------
+  // 等级表：1 普通弹/长条弹/风条(b.oval)/三类特殊射弹(b.swRef)/支援弹 ｜ 2 破片导弹/暴鸰炸弹/夏勇回旋刃
+  // ｜ 3 激光(b.laser)/折线光束(b.beamTrail)/长条蛋挞 ｜ 4 巨大蛋挞(b.tart)/敌方导弹 ｜ 10 预警类（导弹预警/雷霆轰击待落/区域标记）
+  // 清除功能声明等级 N → 可清除等级 ≤ N 的射弹；友方词条蛋挞（b.affixTart，王宇都 3:good:3）任何功能不可清除。
+  // 白盾（群星守愿=3级）维持既有交互形态：吸1级弹/截激光/吃折线/弹swRef/巨大蛋挞穿过/正方体 swPen 穿透减伤保留。
+  const CLEAR_TIER = { bullet: 1, sub: 2, beam: 3, big: 4, warn: 10 };
+
+  // eBullets 内单颗射弹的清除等级；-1 = 不可清除（友方蛋挞）
+  function eBulletTier(b) {
+    if (b.affixTart) return -1;
+    if (b.tart) return CLEAR_TIER.big;
+    if (b.laser || b.beamTrail) return CLEAR_TIER.beam;
+    return CLEAR_TIER.bullet;   // 普通弹/长条弹/风条/三类特殊射弹/支援弹
+  }
+
+  // 功能等级 lvl 是否可清除该射弹
+  function canClearBullet(b, lvl) {
+    const t = eBulletTier(b);
+    return t >= 0 && t <= lvl;
+  }
+
   // ---------- 装甲共享辅助（02-core 持有 eBullets/player，避免 06↔07 循环依赖） ----------
 
-  // 清除 (x, y) 半径 radius 内的所有敌方子弹（最终壁垒免死 / 七日澜心护盾消失 / 量子护盾到期 / 炼金璃淡粉冲击波共用）。
-  // 巨大蛋挞（b.tart）可被扩散波消散（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）——
-  // 置 tartHitT 走镰刀同款「颤动→碎裂迸粒→渐隐」管线（状态机见 08-entities），起始补水蓝火花；仅首次触发计数。
-  // 群星守望两通道（clearNearestEnemyBullet / clearEnemyBulletsByOwner）与群星守愿白盾对蛋挞仍豁免（10-08 口径收窄后保留）。
-  // 长条蛋挞（黑暗之手技能4 弹体，boss.e.skill.tarts，不在 eBullets）可被消除（2026-10-08 定稿）：任一身体节点进入半径即整条消散。
+  // 清除 (x, y) 半径 radius 内、等级 ≤ lvl 的敌方射弹（最终壁垒免死 lvl4 / 七日澜心护盾消失 lvl3 / 量子护盾到期 lvl4 /
+  // 炼金璃淡粉冲击波 lvl3 共用——2026-11-24 射弹清除等级体系）。跨容器按等级扫：法术正方体(1)/战争幽灵斩击流(1)/
+  // 破片导弹(2)/暴鸰炸弹(2)/夏勇回旋刃(2)/敌方导弹(4)/长条蛋挞(3)。
+  // 巨大蛋挞（b.tart，4级）仅 lvl ≥ 4 时走扩散波消散管线（2026-10-12 用户定稿形态保留：场上有蛋挞即消散、不限距）——
+  // 置 tartHitT 走「颤动→碎裂迸粒→渐隐」管线（状态机见 08-entities）；友方蛋挞任何等级不清。
+  // 长条蛋挞（黑暗之手技能4，boss.skill.tarts，不在 eBullets）lvl ≥ 3 时可消除：任一身体节点进入半径即整条消散。
   // 返回实际清除数（成就：清除空气 / 云心）
-  function clearEnemyBulletsNear(x, y, radius) {
+  function clearEnemyBulletsNear(x, y, radius, lvl = CLEAR_TIER.warn) {
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
+      if (!canClearBullet(b, lvl)) continue;
       if (b.tart) {
         // 巨大蛋挞：扩散波消散（不立即移除，走消散管线；已消散中不重复计数）
         if (b.tartHitT == null) {
@@ -716,26 +740,64 @@
         n++;
       }
     }
-    // 长条蛋挞消除扫描：身体节点（tar.pts，[0]=头、间距 tartSeg）任一进入半径 → 整条移除（每节迸暖金粒）
-    for (const bs of enemies) {
-      const sk = bs && bs.skill;
-      if (!sk || sk.id !== 3 || !Array.isArray(sk.tarts) || !sk.tarts.length) continue;
-      for (let i = sk.tarts.length - 1; i >= 0; i--) {
-        const tar = sk.tarts[i];
-        let hit = false;
-        for (let k = 0; k < tar.pts.length; k++) {
-          if (Math.hypot(tar.pts[k].x - x, tar.pts[k].y - y) <= radius) { hit = true; break; }
+    // 长条蛋挞（3级）消除扫描：lvl ≥ 3 时生效——身体节点（tar.pts，[0]=头、间距 tartSeg）任一进入半径 → 整条移除（每节迸暖金粒）
+    if (lvl >= CLEAR_TIER.beam) {
+      for (const bs of enemies) {
+        const sk = bs && bs.skill;
+        if (!sk || sk.id !== 3 || !Array.isArray(sk.tarts) || !sk.tarts.length) continue;
+        for (let i = sk.tarts.length - 1; i >= 0; i--) {
+          const tar = sk.tarts[i];
+          let hit = false;
+          for (let k = 0; k < tar.pts.length; k++) {
+            if (Math.hypot(tar.pts[k].x - x, tar.pts[k].y - y) <= radius) { hit = true; break; }
+          }
+          if (!hit) continue;
+          for (let k = 0; k < tar.pts.length; k += 2) spawnParticles(tar.pts[k].x, tar.pts[k].y, '#ffbf47', 3, 110);
+          sk.tarts.splice(i, 1);
+          n++;
         }
-        if (!hit) continue;
-        for (let k = 0; k < tar.pts.length; k += 2) spawnParticles(tar.pts[k].x, tar.pts[k].y, '#ffbf47', 3, 110);
-        sk.tarts.splice(i, 1);
-        n++;
+      }
+    }
+    // 跨容器按等级扫（2026-11-24 射弹清除等级体系）：法术正方体(1)/战争幽灵斩击流(1)/破片导弹(2)/暴鸰炸弹(2)/
+    // 夏勇回旋刃(2)/敌方导弹(4)——命中半径即清除（回旋刃置 done 由 06-enemy 收口）
+    if (lvl >= 1) {
+      for (let i = spellCubes.length - 1; i >= 0; i--) {
+        const c = spellCubes[i];
+        if (Math.hypot(c.x - x, c.y - y) <= radius) { spawnParticles(c.x, c.y, '#ffd9d9', 6, 120); spellCubes.splice(i, 1); n++; }
+      }
+      for (let i = wgSlashes.length - 1; i >= 0; i--) {
+        const s = wgSlashes[i];
+        if (Math.hypot(s.x - x, s.y - y) <= radius) { spawnParticles(s.x, s.y, '#ffd24a', 6, 120); wgSlashes.splice(i, 1); n++; }
+      }
+    }
+    if (lvl >= CLEAR_TIER.sub) {
+      for (let i = popianMissiles.length - 1; i >= 0; i--) {
+        const m = popianMissiles[i];
+        if (Math.hypot(m.x - x, m.y - y) <= radius) { spawnParticles(m.x, m.y, '#ffd166', 6, 120); popianMissiles.splice(i, 1); n++; }
+      }
+      for (let i = blBombs.length - 1; i >= 0; i--) {
+        const b = blBombs[i];
+        if (Math.hypot(b.x - x, b.y - y) <= radius) { spawnParticles(b.x, b.y, '#ffb545', 6, 120); blBombs.splice(i, 1); n++; }
+      }
+      for (const bs of enemies) {
+        if (!bs || !bs.xyBlades) continue;
+        for (const bl of bs.xyBlades) {
+          if (bl.done || Math.hypot(bl.x - x, bl.y - y) > radius) continue;
+          spawnParticles(bl.x, bl.y, '#3a0a10', 6, 140);
+          bl.done = true; n++;
+        }
+      }
+    }
+    if (lvl >= CLEAR_TIER.big) {
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i];
+        if (Math.hypot(m.x - x, m.y - y) <= radius) { spawnParticles(m.x, m.y, '#ffd166', 6, 120); missiles.splice(i, 1); n++; }
       }
     }
     return n;
   }
 
-  // 群星守望消弹演出（低图层）：从 (fromX, fromY) 到被消弹位置铺淡黄光粒连线 + 原位迸粒
+  // 群星之歌消弹演出（低图层）：从 (fromX, fromY) 到被消弹位置铺淡黄光粒连线 + 原位迸粒
   // （连线光粒按固定间距约每 16px 一粒铺满整条路径，不设颗数上限，仅保证不过密）
   function spawnWatchClearFx(fromX, fromY, b) {
     const dx = b.x - fromX, dy = b.y - fromY;
@@ -763,33 +825,67 @@
     }
   }
 
-  // 清除离 (x, y) 最近的一颗敌方子弹（群星守望：击杀敌人按概率触发——常规战斗）。
+  // 群星之歌 1 级候选收集（2026-11-24 射弹清除等级体系）：eBullets 中等级 ≤1 的射弹（普通弹/长条弹/风条/
+  // 三类特殊射弹——激光/折线光束/蛋挞不再可消）+ 法术正方体(1) + 战争幽灵直线斩击流(1)。
+  // 返回 [{arr, idx, obj}] 候选列表（arr = 所属数组，供消除时定位 splice）
+  function watchL1Candidates() {
+    const cands = [];
+    for (let k = 0; k < eBullets.length; k++) {
+      if (canClearBullet(eBullets[k], CLEAR_TIER.bullet)) cands.push({ arr: eBullets, idx: k, obj: eBullets[k] });
+    }
+    for (let k = 0; k < spellCubes.length; k++) cands.push({ arr: spellCubes, idx: k, obj: spellCubes[k] });
+    for (let k = 0; k < wgSlashes.length; k++) cands.push({ arr: wgSlashes, idx: k, obj: wgSlashes[k] });
+    return cands;
+  }
+
+  // 清除离 (x, y) 最近的一颗敌方子弹（群星之歌：击杀敌人按概率触发——常规战斗；清除等级 1 级，
+  // 2026-11-24 射弹清除等级体系——不再可消激光/折线光束/蛋挞/BOSS 高级弹，新增可消正方体/斩击流）。
   // 演出（低图层，绘制于子弹之下）：从机体核心到被消弹位置射出一串淡黄微光粒连线，
   // 原位迸出少量光粒——整体刻意很淡，不抢弹幕视觉。
   function clearNearestEnemyBullet(x, y) {
-    let best = -1, bestD = Infinity;
-    for (let k = 0; k < eBullets.length; k++) {
-      if (eBullets[k].tart) continue;   // 巨大蛋挞对群星守望仍豁免（2026-10-12 口径收窄：仅护盾碰触/扩散波/镰刀可消）——不作为消除目标
-      const d = Math.hypot(eBullets[k].x - x, eBullets[k].y - y);
-      if (d < bestD) { bestD = d; best = k; }
+    const cands = watchL1Candidates();
+    let best = null, bestD = Infinity;
+    for (const c of cands) {
+      const d = Math.hypot(c.obj.x - x, c.obj.y - y);
+      if (d < bestD) { bestD = d; best = c; }
     }
-    if (best >= 0) {
-      const b = eBullets[best];
-      spawnWatchClearFx(x, y, b);
-      eBullets.splice(best, 1);
+    if (best) {
+      spawnWatchClearFx(x, y, best.obj);
+      best.arr.splice(best.idx, 1);
       return 1;   // 返回实际消除数（成就「群星不灭」计数）
     }
     return 0;
   }
 
-  // 清除指定敌人发出的、仍在场上的所有敌方子弹（群星守望：BOSS 战期间击杀非 BOSS 敌人触发）。
+  // 清除随机一颗在场敌方子弹（词条 1:good:12 群星之歌「消除子弹时，额外随机消除一颗敌方射弹」消费——
+  // 清除等级 1 级（2026-11-24 射弹清除等级体系，候选同 clearNearestEnemyBullet）；连线自机体核心射出）。返回实际消除数
+  function clearRandomEnemyBullet(x, y) {
+    const cands = watchL1Candidates();
+    if (!cands.length) return 0;
+    const c = cands[(Math.random() * cands.length) | 0];
+    spawnWatchClearFx(x, y, c.obj);
+    c.arr.splice(c.idx, 1);
+    return 1;
+  }
+
+  // 我方伤害账本（循环刷怪测试页 DPS 统计，2026-11-24 用户定稿）：按来源通道记账（'main' 主武器 / 'sub' 副武器 /
+  // 'wing' 僚机），保留最近 8s 窗口（推入时从头裁剪，账本有界）。08-entities 主结算点挂账；12-ui 测试页 HUD 消费。
+  function notePlayerDamage(dmg, src) {
+    if (!(dmg > 0) || !src) return;
+    const log = state.dmgLog;
+    log.push({ t: state.time, dmg, src });
+    while (log.length && state.time - log[0].t > 8) log.shift();
+  }
+
+  // 清除指定敌人发出的、仍在场上的所有敌方子弹（群星之歌：BOSS 战期间击杀非 BOSS 敌人触发；清除等级 10 级——
+  // 2026-11-24 射弹清除等级体系：该敌发出的一切 eBullets 均可消（含巨大蛋挞），友方蛋挞除外）。
   // 每颗子弹都走同款连线+迸粒演出——多弹齐清时视觉上如同从核心一次射出多束粒子光束。
   // 返回实际消除的子弹数（成就「群星不灭」计数）
   function clearEnemyBulletsByOwner(owner) {
     let n = 0;
     for (let i = eBullets.length - 1; i >= 0; i--) {
       const b = eBullets[i];
-      if (b.owner !== owner || b.tart) continue;   // 巨大蛋挞对群星守望仍豁免（2026-10-12 口径收窄）
+      if (b.owner !== owner || b.affixTart) continue;   // 友方蛋挞任何功能不清除（2026-11-24）
       spawnWatchClearFx(player.x, player.y, b);
       eBullets.splice(i, 1);
       n++;
@@ -911,7 +1007,8 @@
     NEBULA_COUNT, NEBULA_COLORS, nebulae, makeNebula, initNebulae, updateNebulae,
     drawNebulae, rand, clamp, enemyOnScreen, enemyEnterFrac, bossEntranceActive, bossPhantom, entranceDt, hasteMul, timeflowMul, weightedPick, spawnParticles,
     enemyFireIv, enemyFieldFireMul, rewardOutMul, bombDropGate,
-    clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, tryBulwarkCheatDeath,
+    CLEAR_TIER, eBulletTier, canClearBullet,
+    clearEnemyBulletsNear, clearNearestEnemyBullet, clearEnemyBulletsByOwner, clearRandomEnemyBullet, tryBulwarkCheatDeath, notePlayerDamage,
     dhGuardActive, dhFleeLinkedElites, dhOnLinkedEliteKilled, departRevivedElites,
     watchClearFx, armorGlyphFx, spawnArmorGlyphFx, crystalBursts, bulwarkBurst, spawnBlastRing,
     shake,

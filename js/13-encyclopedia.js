@@ -18,7 +18,7 @@
   import { drawBoss } from './11-draw-boss.js';
   import { resetGame } from './12-ui.js';
   import { renderInfoAchievements } from './02-achievements.js';
-  import { AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_UNIMPLEMENTED } from './03b-affix.js';   // 词条（BOSS 后三选一）数据单一来源：03b-affix 运行时持有文案与实装状态，本页单向导入仅作图鉴展示（03b 不反向 import 本页，防循环）
+  import { AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_ENDING, AFFIX_UNIMPLEMENTED, affixText, affixEncyText } from './03b-affix.js';   // 词条（BOSS 后三选一）数据单一来源：03b-affix 运行时持有文案与实装状态，本页单向导入仅作图鉴展示（03b 不反向 import 本页，防循环）；affixText = 按难度动态文案出口（张黄昏 textPoem，2026-11-23）；affixEncyText = 图鉴版文案出口（textEncy 优先，2026-11-23）
 
 
 
@@ -29,7 +29,7 @@
     // 下次整档重排时再归入颜色/机型序列
     { name: '虚象级', entries: ['side_moon', 'side_swirl', 'side_shoot', 'side_pass', 'side_kamikaze', 'prolifera', 'crystalCore'] },   // 赤月/橙旋/黄芒/白影（黄芒之下）/紫电 + 增生（青）+ 水晶核芯艇（1S 特殊档，按登记规则暂置本页最下方）
     { name: '具象级', entries: ['striker_crimson', 'striker_amber', 'striker_azure', 'striker_violet', 'striker_white', 'striker_fortress', 'striker_dusk', 'fashiMatrix', 'popian', 'popianU', 'voyager', 'fashiA1', 'douzhi', 'sponsor', 'sponsorDeluxe', 'collapseConstruct', 'beyondWing_red', 'beyondWing_blue', 'beyondWing_violet', 'beyondWing_cyan', 'beyondWing_pink'] },   // 赤红/烈橙/幽蓝/紫晶/霜白（紫晶之下）/坚垒(黄)/幽暮(黑) + 矩阵/破片/破片U/浮海飘航者/A1/斗志/赞助/豪华 + 2D 坍缩构造体 / 2C 超越艇五变体（2026-10-19 占位，按登记规则暂置本页最下方）
-    { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal', 'harbingerLead', 'harbingerHub', 'harbingerPolar', 'stasisUnreal', 'cocoonDream', 'lanxinShip_blue', 'lanxinShip_white', 'lanxinShip_black', 'lanxinShip_violet', 'lanxinShip_pink'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻 + 先兆者家族三变种（3B/3C/3D，2026-10-16 按登记规则暂置本页最下方）+ 3D 静滞虚幻 / 3E 破茧之梦 / 3C 澜心舰五变体（2026-10-19 占位，同上）
+    { name: '真我级', entries: ['gunship_crimson', 'gunship_orange', 'gunship_amber', 'gunship_violet', 'gunship_cyan', 'harbinger', 'pulseMatrix', 'yu4', 'hanshuang', 'baoling', 'baolingG', 'weilong', 'anvil', 'jiaoxiang', 'fashiA2', 'unreal', 'harbingerLead', 'harbingerHub', 'harbingerPolar', 'stasisUnreal', 'cocoonDream', 'lanxinShip_blue', 'lanxinShip_white', 'lanxinShip_black', 'lanxinShip_violet', 'lanxinShip_pink'] },   // 赤红/橙焰/金曜(黄)/紫晶/青时 + 先兆/脉冲/御4/寒霜/暴鸰/暴鸰G/威龙/铁砧/焦香/A2/虚幻 + 先兆者家族三变种（3B/3C/3D，2026-10-16 按登记规则暂置本页最下方）+ 3D 静滞虚幻 / 3E 破茧之梦 / 3C 澜心舰五变体（2026-11-27 实装转正，仍置本页末位待整档重排）
     // 诗篇级：张华&张策 = wip 白方块占位，其余全部实装（专属外观预览）；四精英顺序 = 朴→夏→韩→辛
     { name: '诗篇级', entries: ['capital_crimson', 'capital_crgold', 'capital_azure', 'fashiArray', 'warMatrix', 'warGhost', 'puxuefeng', 'xiayong', 'hanxixian', 'xinguodong', 'zhangzhang', 'guiltGrail', 'thunderWrath', 'starSlayer_darkSun', 'starSlayer_whiteNight', 'starSlayer_violetMoon'] },   // 赤红/赤金(黄)/苍蓝 主力舰 + 法术阵列/战争矩阵/战争幽灵/四精英/张华&张策 + 4D 愧悔魂灵圣杯（2026-11-10 实装转正，仍置本页末位）+ 4C 雷霆之怒/诛星舰三变体（2026-11-13 占位，按登记规则暂置本页最下方）
 
@@ -429,15 +429,15 @@ boss_storm: {
     },
     starSlayer_darkSun: {
       name: '黑日诛星舰', type: 'starSlayer_darkSun', color: '#2b1a20', hp: 5000, score: 1,
-      desc: '黑曜舰体 + 炽红日环的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——在场时，场上所有白色、黑色敌人的速度与加速度增大 20%、攻击力提高 25%，至多叠加 2 层（场上每台黑日诛星舰 1 层，黑日自身同为黑色受强化）。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
+      desc: '黑曜舰体 + 舰体与翼面装甲脊（翼脊随折翼展开显现）+ 尾部大三角尾（斜边贴垂直双尾焰、暗色焰芯、尾缘饰线）+ 炽红四芒星与缩小三层炽红日环（光环随折翼展开由内向外依次显现，与星核同心）+ 8 角星核（方案 C「星核过载」2026-11-27 定稿；星核不旋转、固定一角朝上）的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——在场时，场上所有白色、黑色敌人的速度与加速度增大 20%、攻击力提高 25%，至多叠加 2 层（场上每台黑日诛星舰 1 层，黑日自身同为黑色受强化）。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
     },
     starSlayer_whiteNight: {
       name: '白夜诛星舰', type: 'starSlayer_whiteNight', color: '#c9d6ea', hp: 5000, score: 1,
-      desc: '月白银蓝舰体的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——被击坠时，立刻召唤 3 个白影侧翼艇朝自身坠落位置飞来直至离场：白影从 360 度任意方向的边界入场（可从底部入场），有先后顺序快速接连入场（非同时），50% 在同一位置入场、50% 在不同位置入场。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
+      desc: '月白银蓝舰体 + 舰体与翼面装甲脊（翼脊随折翼展开显现）+ 尾部大三角尾（斜边贴垂直双尾焰、白色焰芯、尾缘饰线）+ 亮青四芒星与缩小三层冷光光环（光环随折翼展开由内向外依次显现，与星核同心）+ 8 角星核（方案 C「星核过载」2026-11-27 定稿；星核不旋转、固定一角朝上）的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——被击坠时，立刻召唤 3 个白影侧翼艇朝自身坠落位置飞来直至离场：白影从 360 度任意方向的边界入场（可从底部入场），有先后顺序快速接连入场（非同时），50% 在同一位置入场、50% 在不同位置入场。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
     },
     starSlayer_violetMoon: {
       name: '紫月诛星舰', type: 'starSlayer_violetMoon', color: '#6d3fc0', hp: 5000, score: 1,
-      desc: '深紫舰体 + 紫月牙环的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——被击坠前，使自身 125px（诗篇 150px）范围内所有敌人（包括自身）立刻向下发射一枚紫电侧翼艇同款的亡语射弹。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
+      desc: '深紫舰体 + 舰体与翼面装甲脊（翼脊随折翼展开显现）+ 尾部大三角尾（斜边贴垂直双尾焰、暗色焰芯、尾缘饰线）+ 浅紫四芒星与缩小三层紫电光环（光环随折翼展开由内向外依次显现，与星核同心）+ 8 角星核（方案 C「星核过载」2026-11-27 定稿；星核不旋转、固定一角朝上）的主力舰改型：大小同主力舰、停留位与主力舰一致、速度为主力舰的 120%，碰撞伤害为主力舰的 120%。特殊能力——被击坠前，使自身 125px（诗篇 150px）范围内所有敌人（包括自身）立刻向下发射一枚紫电侧翼艇同款的亡语射弹。攻击方式待定（节奏框架 1.2~2.0s 首攻 / 2.2~2.6s 间隔）。',
     },
     returnStar: {
       name: '「归星」', type: 'returnStar', color: '#8a93a6', hp: 0, score: 0,
@@ -470,29 +470,24 @@ boss_storm: {
       desc: '五色超越艇之一（淡粉）。仅从顶部入场，停留于前锋停留线下方 3% 屏高处；移动速度为赤红突击艇的 120%。核心较大且以一定速度持续旋转。<br>登场时 50% 概率拥有一层次数盾（<b>次数盾＝伤害吸收券</b>：能吃掉非贯穿弹体——时空允诺暴走弹特殊赦免除外，耗层后弹照样穿过；<b>无法吃掉任何贯穿弹体</b>——耗 1 层盾挡下本次伤害、弹体继续贯穿飞行）。<br>攻击时锁定自身与玩家连线方向上、间距 80%~120% 的一个点（可在屏幕外），射出的弧线拖尾弹（红橙主体、外环粉光）必定经过该点（出界时除外）：初始方向与连线方向成 25°~60° 随机夹角，以圆滑弧线途经该点后转直线飞出，伤害 18（基准 14+4）。攻击间隔 1~2s 随机。碰撞伤害 34，血量 60（诗篇 420）。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     lanxinShip_blue: {
-      name: '洪流澜心舰（蓝）', type: 'lanxinShip_blue', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '洪流澜心舰（蓝）', type: 'lanxinShip_blue', color: '#4D9FFF', hp: 500, score: 1,   // 诗篇 2400（POEM_HP 覆写）；2026-11-27 实装转正；分数 1 / 水晶 1 均为待定占位
+      desc: '五色澜心舰之一（洪流蓝）。仅从顶部入场，悬停位置与战舰相同，移动速度为战舰的 120%，双舷导流槽持续向下倾泻水流光段。<br>登场时 40% 概率拥有 0.5s 虚化护盾；每次护盾结束的瞬间有 20% 概率再延长 0.5s（可连续判定），护盾累计时长至多 5s。<br>碰撞伤害 43，血量 500（诗篇 2400）。攻击方式待定（节奏框架 0.7~1.5s 首攻 / 1.6~2.2s 间隔）。',   // 机制描述按实装口径（lore 用户未提供故不写——图鉴文案纪律）
     },
     lanxinShip_white: {
-      name: '白影澜心舰（白）', type: 'lanxinShip_white', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '白影澜心舰（白）', type: 'lanxinShip_white', color: '#EAF1F8', hp: 500, score: 1,   // 同上占位口径
+      desc: '五色澜心舰之一（白影白）。仅从顶部入场，悬停位置与战舰相同，移动速度为战舰的 120%。舰体上方有两道淡白轮廓呼吸浮游。<br>无特殊能力。<br>碰撞伤害 43，血量 500（诗篇 2400）。攻击方式待定（节奏框架 0.7~1.5s 首攻 / 1.6~2.2s 间隔）。',   // 同上
     },
     lanxinShip_black: {
-      name: '终日澜心舰（黑）', type: 'lanxinShip_black', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '终日澜心舰（黑）', type: 'lanxinShip_black', color: '#14161C', hp: 500, score: 1,   // 同上占位口径
+      desc: '五色澜心舰之一（终日黑）。仅从顶部入场，悬停位置与战舰相同，移动速度为战舰的 120%。核心外圈有日蚀环。<br>被击坠时 20% 概率立刻召唤 1 个<span class="ency-link" data-ency="striker_dusk">幽暮突击艇</span>（落点随机浮现，与常规登场一致）。<br>碰撞伤害 43，血量 500（诗篇 2400）。攻击方式待定（节奏框架 0.7~1.5s 首攻 / 1.6~2.2s 间隔）。',   // 同上
     },
     lanxinShip_violet: {
-      name: '洄星澜心舰（深蓝紫）', type: 'lanxinShip_violet', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '洄星澜心舰（深蓝紫）', type: 'lanxinShip_violet', color: '#6D5AE8', hp: 500, score: 1,   // 同上占位口径
+      desc: '五色澜心舰之一（洄星深蓝紫）。仅从顶部入场，悬停位置与战舰相同，移动速度为战舰的 120%。舰体表面有蓝紫色斑持续流动，核心周缘两枚白点公转。<br>被击坠前有 10% 概率立刻攻击一次（攻击内容待定稿实装）。<br>碰撞伤害 43，血量 500（诗篇 2400）。攻击方式待定（节奏框架 0.7~1.5s 首攻 / 1.6~2.2s 间隔）。',   // 同上
     },
     lanxinShip_pink: {
-      name: '似幻澜心舰（淡粉）', type: 'lanxinShip_pink', color: '#8a93a6', hp: 0, score: 0,
-      wip: true,
-      desc: '占位条目——尚未实装：外观、数值与机制均待定（2026-10-19 用户定稿登记）。',
+      name: '似幻澜心舰（淡粉）', type: 'lanxinShip_pink', color: '#F9A8D4', hp: 500, score: 1,   // 同上占位口径
+      desc: '五色澜心舰之一（似幻淡粉）。仅从顶部入场，悬停位置与战舰相同，移动速度为战舰的 120%。核心周缘三枚小气泡漂浮。<br>登场时 80% 概率拥有一层次数盾（<b>次数盾＝伤害吸收券</b>：能吃掉非贯穿弹体——时空允诺暴走弹特殊赦免除外，耗层后弹照样穿过；<b>无法吃掉任何贯穿弹体</b>——耗 1 层盾挡下本次伤害、弹体继续贯穿飞行）。<br>碰撞伤害 43，血量 500（诗篇 2400）。攻击方式待定（节奏框架 0.7~1.5s 首攻 / 1.6~2.2s 间隔）。',   // 同上
     },
   };
 
@@ -774,11 +769,15 @@ boss_storm: {
     resetGame(true, { challenge: { kind: 'wave', waveTest3: { f, roll: () => buildT3SpawnPlan(f) }, name: (f.id + (f.name ? ' · ' + f.name : '')) + '（波次示意）' } });
   }
 
-  // 持续刷怪测试：从数值图鉴「旧怪物权重 · 波次」页发起——锁定 Lv20 强度无限刷怪（14-main 锁级 / 04-spawn swarm 分支），
-  // 数字键 1~0 直接发放奖励道具（14-main SWARM_CHEAT_ITEMS）。challenge.kind==='swarm' 同样享受 testMode 门控（不加分不掉落）
-  function startSwarmTest() {
+  // 循环刷怪测试页（2026-11-24 用户定稿实装；2026-11-25 用户定稿入口移至「测试」顶级页签）——
+  // 永动刷怪（14-main updateInfTest 循环驱动：诗篇 lv10/20/30 各 2 波循环 / 其他难度每级 10s 循环）/
+  // 免死回满血（challenge testDamagePlayer：hp≤0 立即回满不掉命）/ 怪物正常血量（04-spawn makeEnemy infTest 排除）/
+  // 暂停页 BOSS 召唤（12-ui）。challenge.kind==='infTest' 享受 testMode 门控（不加分不掉落）。
+  // （原「持续刷怪测试 Lv20」2026-11-25 用户定稿删除——功能被本页覆盖：非诗篇每级 10s 循环含 Lv20 档）
+  function startInfTest() {
+    encReturn = { from: 'info', tab: infoTab, weight: infoWeightKind };   // 记录来源弹窗 + 页签（返回上一步用）
     closeInfoModal();
-    resetGame(true, { challenge: { kind: 'swarm', name: '持续刷怪测试' } });
+    resetGame(true, { challenge: { kind: 'infTest', name: '循环刷怪测试', lv: 10, waveN: 0, waveSpawned: false, clearT: 0, lvT: 0 } });
   }
 
   // BOSS 试炼：正常战斗模式（双方均不无敌，走 testBoss 流程直接进警报登场）
@@ -1626,7 +1625,12 @@ boss_storm: {
 
   function renderInfoWeights() {
     hideFormationPreview();
+    // 外层组 chips 行（renderInfoWeightGroup L2900 insertBefore 首位）保留：本函数被子页签二次调用
+    //（L1653 chips click → 重渲染）时 innerHTML='' 会连带清掉外层行且组页不会重新插入（2026-11-25 用户反馈 bug）——
+    // 清空后原位插回
+    const outerChips = infoBody.querySelector(':scope > .info-subtabs');
     infoBody.innerHTML = '';
+    if (outerChips) infoBody.insertBefore(outerChips, infoBody.firstChild);
     const chips = document.createElement('div');
     chips.className = 'info-subtabs';
     const defs = [
@@ -1661,13 +1665,8 @@ boss_storm: {
       infoAppendNote(INFO_TIER_NOTE + '4类主力舰<b>同屏限 1</b>，由场面压力系统驱动出场，表中为出场时的<b>变体选取权重</b>（按关卡分两档）。苍蓝主力舰 20% 概率带护盾（前 5s 虚化不受伤害、炮弹穿过）。');
     } else {
       infoBody.appendChild(buildWeightTable(['编队', ...INFO_TIERS.map(t => t.label), '测试'], infoFormationRows()));
-      // 持续刷怪测试入口：Lv20 强度无限刷怪（不推进等级 / 永不进 BOSS），数字键改发奖励道具（见 startSwarmTest）
-      const swarmBtn = document.createElement('button');
-      swarmBtn.className = 'ency-challenge-btn';
-      swarmBtn.textContent = '🔥 持续刷怪测试（Lv20）';
-      swarmBtn.title = '锁定 Lv20 强度一直刷怪（不推进等级、永不进 BOSS）；敌方正常血量；数字键 1~0 发放奖励道具';
-      swarmBtn.addEventListener('click', () => startSwarmTest());
-      infoBody.appendChild(swarmBtn);
+      // 历史留档页（2026-11-25 用户定稿）：本页仅保留编队权重表——持续刷怪测试（Lv20）已删除
+      //（功能被循环刷怪测试覆盖：非诗篇每级 10s 循环含 Lv20 档），测试入口统一收编至「测试」顶级页签
       infoAppendNote('持续刷怪测试：<b>锁定 Lv20 强度一直刷怪</b>——不推进等级、永不进警报 / BOSS，波次刷新与正常战斗一致（敌方按注册表<b>正常血量</b>，不加分、不掉水晶 / 道具）。页内常规作弊键（1~5 / 8 / 9）全部停用，数字键改为直接发放奖励道具（<b>立刻生效</b>）：<b>1</b> 牢大特饮 · <b>2</b> 磁力菇 · <b>3</b> 不再陵落 · <b>4</b> 寒霜发生器 · <b>5</b> 辛国栋大怒 · <b>6</b> 轰轰炸弹 · <b>8</b> 绷绷背包 · <b>9</b> 酒客之影 · <b>0</b> 瓶中精灵。');
       infoAppendNote(INFO_TIER_NOTE + '编队权重分两段：<b>Lv1~10 由 a→b 线性过渡</b>（B 档显示 a~b 区间），<b>Lv11~20 恒定</b>；0 = 该等级不出现。Lv5 起每波有概率追加一个编队（组合波，追加位不含战舰编队；<b>Lv5~10 概率由 10%→30%、Lv11~20 由 10%→40%</b>），详见「特殊怪物波次」。<b>鼠标悬停编队行</b>可查看编队演示——mini 战场回放代表性入场与走位（实际入场侧 / 构成随机）。点击行内「<b>测试</b>」按钮可整波实测：场上清空后自动补刷同编队，战斗中按 <b>=</b> 额外追加一整波（不清场，可观察多波叠加）。');
     }
@@ -2322,7 +2321,7 @@ boss_storm: {
       div.append(h, body);
       infoBody.appendChild(div);
     }
-    infoAppendNote('主 / 副驾驶员各装备一名、效果同时生效（同名不可同时占据两槽）。默认主驾驶员叮咚鸡、副驾驶员小艺。天秀忧郁王子、迪奥技能均按 <b>Q</b> 释放，左下角量表显示充能 / 冷却。<b>特殊主驾驶员</b>（天使璃 / 酒客之王 / 天秀混沌王子 / 花礼）：卡片带青粉角标，使用期间无法获得挑战成就；天秀混沌王子另会使战机 / 僚机 / 副武器选择失效（装甲照常可选）。');
+    infoAppendNote('主 / 副驾驶员各装备一名、效果同时生效（同名不可同时占据两槽）。默认主驾驶员叮咚鸡、副驾驶员小艺。天秀忧郁王子、迪奥技能均按 <b>Q</b> 释放，左下角量表显示充能 / 冷却。<b>特殊主驾驶员</b>（天使璃 / 九克之王 / 天秀混沌王子 / 花礼）：卡片带青粉角标，使用期间无法获得挑战成就；天秀混沌王子另会使战机 / 僚机 / 副武器选择失效（装甲照常可选）。');
   }
 
   function buildInfoTabs() {
@@ -2339,6 +2338,7 @@ boss_storm: {
       { id: 'test2',      name: '测试2' },
       { id: 'test3',      name: '测试3' },
       { id: 'test4',      name: '测试4' },
+      { id: 'infTest',    name: '测试' },
       { id: 'copyright',  name: '版权声明' },
     ];
     for (const d of defs) {
@@ -2346,7 +2346,7 @@ boss_storm: {
       b.className = 'info-tab' + (infoTab === d.id ? ' active' : '');
       b.textContent = d.name;
       b.addEventListener('click', () => { infoTab = d.id; hideFormationPreview(); buildInfoTabs(); });
-      if (d.id === 'copyright') b.style.marginLeft = 'auto';   // 「版权声明」置于第二行居右：flex-wrap 下 margin-left:auto 吸收本行剩余空间（11 页签必折两行、本页签落第二行行尾）
+      if (d.id === 'infTest') b.style.marginLeft = 'auto';   // 「测试」页签吸右（2026-11-25 用户定稿：与「版权声明」一同居右——测试在左、版权声明行尾）
       infoTabs.appendChild(b);
     }
     if (infoTab === 'weightGroup') renderInfoWeightGroup();
@@ -2359,8 +2359,34 @@ boss_storm: {
     else if (infoTab === 'test2') renderInfoTest2();
     else if (infoTab === 'test3') renderInfoTest3Draft();   // 2026-10-15 填充：2A 浮海飘航者外观候选（原空占位 renderInfoTest3Empty 更名）
     else if (infoTab === 'test4') renderInfoTest4();
+    else if (infoTab === 'infTest') renderInfoInfTest();
     else if (infoTab === 'copyright') renderInfoCopyright();
     else renderInfoMods();
+  }
+
+  // ---------- 测试页（2026-11-25 用户定稿新增顶级页签，置于版权声明左侧）：循环刷怪测试入口统一收编 ----------
+  // （原「持续刷怪测试 Lv20」入口位于历史留档页「旧怪物权重-波次」，2026-11-25 用户定稿删除——功能被本页覆盖）
+  function renderInfoInfTest() {
+    infoBody.innerHTML = '';
+    const h = document.createElement('h3');
+    h.textContent = '循环刷怪测试（Lv10~30）';
+    infoBody.appendChild(h);
+    const btn = document.createElement('button');
+    btn.className = 'ency-challenge-btn';
+    btn.textContent = '▶ 进入循环刷怪测试页';
+    btn.title = '永动刷怪 / 免死回满血 / 怪物正常血量 / 暂停页可召唤 BOSS';
+    btn.addEventListener('click', startInfTest);
+    infoBody.appendChild(btn);
+    const p = document.createElement('p');
+    p.style.margin = '10px 0 0';
+    p.style.lineHeight = '1.8';
+    p.style.fontSize = '13px';
+    p.style.color = 'var(--muted)';
+    p.innerHTML = '重复刷怪不停止的压力测试页：<b>免死回满血</b>（被击坠不掉命、血量立即回满）、怪物按注册表<b>正常血量</b>。<br>' +
+      '刷怪循环——<b>诗篇</b>：Lv10 两波 → Lv20 两波 → Lv30 两波 → 循环；<b>其他难度</b>：每级按对应等级逻辑刷新 10s → 循环。<br>' +
+      '页面左上角显示当前刷怪波次等级；左侧为主武器 / 副武器 / 僚机的小型预览与最近 8s 的 DPS（自有伤害统计）。<br>' +
+      '暂停页提供「召唤 BOSS」按钮——选择后 BOSS 清场、直接出现、不播放登场动画；击败后自动续刷。';
+    infoBody.appendChild(p);
   }
 
   // ---------- 版权声明（2026-10-13 用户定稿新增页签，置于页签第二行居右） ----------
@@ -2452,7 +2478,8 @@ boss_storm: {
     chips.className = 'info-subtabs';
     const defs = [{ id: 'all', name: '全部' },
       ...AFFIX_DESIGN.map((g, gi) => ({ id: String(gi), name: g.grade })),
-      { id: 'sp', name: '特殊类' }];
+      { id: 'sp', name: '特殊类' },
+      { id: 'end', name: '结局类' }];
     for (const d of defs) {
       const b = document.createElement('button');
       b.className = 'info-chip' + (infoAffixTier === d.id ? ' active' : '');
@@ -2463,7 +2490,7 @@ boss_storm: {
     infoBody.appendChild(chips);
     const SIDE = { good: { label: '正面', color: '#4ade80' }, bad: { label: '负面', color: '#ff5a5a' } };
     AFFIX_DESIGN.forEach((g, gi) => {
-      if (infoAffixTier !== 'all' && infoAffixTier !== 'sp' && infoAffixTier !== String(gi)) return;   // 筛选：仅渲染选中档位
+      if (infoAffixTier !== 'all' && infoAffixTier !== String(gi)) return;   // 筛选：仅渲染选中档位（sp/end 为绑定对页签，等级卡整区跳过——2026-11-27 用户反馈修复：原条件对 'sp' 误放行致特殊类页签下五档全部渲染）
       for (const key of ['good', 'bad']) {
         const s = SIDE[key];
         const head = document.createElement('h3');
@@ -2479,7 +2506,7 @@ boss_storm: {
           h.textContent = (AFFIX_UNIMPLEMENTED.has(gi + ':' + key + ':' + ti) ? '*' : '') + (t.icon ? t.icon + ' ' : '') + t.name;   // * 前缀 = 不参与抽取（未实装或已实装暂缓放出）；icon 为现成 emoji 占位（待定稿后可换自绘 SVG）
           const p = document.createElement('p');
           p.style.lineHeight = '1.7';
-          p.textContent = t.text;
+          p.textContent = affixEncyText(t);   // 图鉴版文案出口（textEncy 优先——2026-11-23 群星之杀连锁 2:good:5 首个使用者）
           div.append(h, p);
           infoBody.appendChild(div);
         });
@@ -2503,13 +2530,42 @@ boss_storm: {
           const p = document.createElement('p');
           p.style.margin = '4px 0';
           p.style.lineHeight = '1.7';
-          p.textContent = k + (v.icon ? v.icon + ' ' : '') + v.text;   // 特殊对正负面不设独立名字（2026-11-10 用户定稿：仅对名 + 正/负面文案）
+          p.textContent = k + (v.icon ? v.icon + ' ' : '') + affixEncyText(v);   // 特殊对正负面不设独立名字（2026-11-10 用户定稿：仅对名 + 正/负面文案）；图鉴走 affixEncyText（textEncy 优先——纵逭灭 good 原带括号详细版，2026-11-23）
           div.appendChild(p);
         }
         infoBody.appendChild(div);
       });
     }
-    infoAppendNote('词条系统（<b>已实装</b>——BOSS 击坠后触发；最终 BOSS 击坠不触发选择；名字前带 * 的词条<b>不参与抽取</b>（含未实装与已实装暂缓放出，见页尾注）；<b>词条名已全部定稿</b>（2026-11-10 驾驶席人名体系；特殊对正负面不设独立名字，仅显示对名 + 正/负面文案；图标＝现成 emoji 占位））：每击败一个 BOSS 后出现 <b>三个选项</b>，每选项一对词条、必定一好一坏且二者稀有度相同（稀有度＝虚象 / 具象 / 真我 / 诗篇 / 长歌 五档，档位出现权重 22/34/16/12/3、特殊对 3，词条内等权；击坠<b>第三轮的第二个 BOSS（风暴编织者）</b>与<b>第五轮 BOSS</b> 后的抽取中，虚象 / 具象权重归零——2026-11-11 定稿，5 轮轮次制接线后完整生效）；<b>必须选择且只能选择一个选项</b>，选择后本局游戏此后生效。<br><b>诗篇难度改版（2026-11-17）</b>：每个选项一对词条，需<b>连续选择两次</b>——第一次选择后<b>被选的选项位</b>换上新的一对全新词条（重新独立抽取，已选词条不再出现），<b>另外两个选项原样保留</b>（仍可刷新 / 选择），再选一次；刷新次数不重置（被选位原位继承其刷新状态）。<br><b>刷新机制（2026-11-06）</b>：所有难度下，均可单独对每个选项<b>至多刷新一次</b>。<br><b>特殊类词条（2026-11-06 新增）</b>：好 / 坏效果<b>绑定成对出现</b>；即使诗篇难度下，每个选项也仅会出现一对特殊词条（均已实装；澪叶·疾速航行在<b>手机模式不出现</b>——触屏相对拖动 1:1 跟手、无速度上限概念，2026-11-17 用户定稿）。<br>配套设计：删除驾驶员 <b>东坤蝰</b>、<b>龚粥</b>，其技能移入词条池。<br>注：名字前带 * 的词条不参与抽取——含占位敌人阻塞的未实装词条，与<b>已实装但设计未定稿、暂缓放出</b>的词条；实装与放出进度均以 <b>js/03b-affix.js</b> 为准。');
+    // 结局类绑定词条（2026-11-23 新增）：每对一张卡，同特殊类版式；end0 登记 AFFIX_UNIMPLEMENTED → 名字前 * 标记；
+    // 筛选非全部/结局类时整区跳过
+    if (infoAffixTier === 'all' || infoAffixTier === 'end') {
+      const endHead = document.createElement('h3');
+      endHead.className = 'info-achv-tier-head';
+      endHead.textContent = '结局类（绑定对）';
+      endHead.style.color = '#ffffff';
+      infoBody.appendChild(endHead);
+      AFFIX_ENDING.forEach((sp, ei) => {
+        const div = document.createElement('div');
+        div.className = 'info-wave-card';
+        const h = document.createElement('h4');
+        h.style.color = '#ffffff';
+        h.textContent = (AFFIX_UNIMPLEMENTED.has('end' + ei) ? '*' : '') + sp.name;   // * 前缀 = 未实装（结局类后续版本实装）
+        div.appendChild(h);
+        for (const [k, v] of [['正面：', sp.good], ['负面：', sp.bad]]) {
+          const p = document.createElement('p');
+          p.style.margin = '4px 0';
+          p.style.lineHeight = '1.7';
+          p.textContent = k + (v.icon ? v.icon + ' ' : '') + affixText(v);
+          div.appendChild(p);
+        }
+        infoBody.appendChild(div);
+      });
+    }
+    // 页尾注（2026-11-27 用户定稿）：完整词条系统介绍仅随「结局类」页签渲染（历史留档归结局类页签收容），
+    // 其余页签（全部/五档/特殊类）不显示任何页尾注
+    if (infoAffixTier === 'end') {
+    infoAppendNote('<b>结局类词条（2026-11-23 登记，后续版本实装）</b>：与特殊词条一样每个是一对，对结局词条的选择将<b>直接影响游戏结局</b>；仅在特殊情况出现、<b>不进词条池</b>（不参与抽取与刷新；出场设定登记见 <b>js/03b-affix.js</b>）。<br>词条系统（<b>已实装</b>——BOSS 击坠后触发；最终 BOSS 击坠不触发选择；名字前带 * 的词条<b>不参与抽取</b>（含未实装与已实装暂缓放出，见页尾注）；<b>词条名已全部定稿</b>（2026-11-10 驾驶席人名体系；特殊对正负面不设独立名字，仅显示对名 + 正/负面文案；图标＝现成 emoji 占位；<b>2026-11-23 新增批次除外</b>——真我级 3 条 / 具象级 13 条绑定词条与结局词条为占位名〔=绑定装备名〕，效果均未实装、不参与抽取））：每击败一个 BOSS 后出现 <b>三个选项</b>，每选项一对词条、必定一好一坏且二者稀有度相同（稀有度＝虚象 / 具象 / 真我 / 诗篇 / 长歌 五档，档位出现权重 22/34/16/12/3、特殊对 3，词条内等权；击坠<b>第三轮的第二个 BOSS（风暴编织者）</b>与<b>第五轮 BOSS</b> 后的抽取中，虚象 / 具象权重归零——2026-11-11 定稿，5 轮轮次制接线后完整生效）；<b>必须选择且只能选择一个选项</b>，选择后本局游戏此后生效。<br><b>诗篇难度改版（2026-11-17）</b>：每个选项一对词条，需<b>连续选择两次</b>——第一次选择后<b>被选的选项位</b>换上新的一对全新词条（重新独立抽取，已选词条不再出现），<b>另外两个选项原样保留</b>（仍可刷新 / 选择），再选一次；刷新次数不重置（被选位原位继承其刷新状态）。<br><b>射弹清除等级（2026-11-24 定稿）</b>：射弹分 5 档——1 级普通弹/长条弹/风条/三类特殊射弹/法术正方体/战争幽灵斩击流、2 级破片导弹/暴鸰炸弹/夏勇回旋刃、3 级激光/折线光束/长条蛋挞、4 级巨大蛋挞/敌方导弹、10 级各类预警；清弹功能只可清除 ≤ 自身等级的射弹（群星之歌最近/随机 1 ｜ 群星之歌按主/段虓 10 ｜ 白盾 3 ｜ 黑洞 9 ｜ 量子/结晶护盾碰触·澜心满格·结晶破碎 3 ｜ 量子护盾破碎 9 ｜ 爆弹·抽卡·BOSS 击坠 10 ｜ 镰刀 9 ｜ 赤金金环 2 ｜ 火环烧弹 1）；王宇都友方蛋挞任何功能不可清除（单一来源见 <b>js/02-core.js</b> CLEAR_TIER）。<br><b>刷新机制（2026-11-23 修订）</b>：<b>仅诗篇难度</b>可刷新——每个选项<b>至多刷新一次</b>（其他难度不渲染刷新按钮、不可刷新）。<br><b>特殊类词条（2026-11-06 新增）</b>：好 / 坏效果<b>绑定成对出现</b>；即使诗篇难度下，每个选项也仅会出现一对特殊词条（均已实装；澪叶·疾速航行在<b>手机模式不出现</b>——触屏相对拖动 1:1 跟手、无速度上限概念，2026-11-17 用户定稿）。<br>配套设计：删除驾驶员 <b>东坤蝰</b>、<b>龚粥</b>，其技能移入词条池。<br>注：名字前带 * 的词条不参与抽取——含占位敌人阻塞的未实装词条、<b>已实装但设计未定稿、暂缓放出</b>的词条与 <b>2026-11-23 新增占位批次（效果未实装）</b>；实装与放出进度均以 <b>js/03b-affix.js</b> 为准。');
+    }
   }
 
   // ---------- 测试1：愧悔魂灵圣杯 · 游戏内形象预览（2026-11-11 用户指令；前史：水晶核芯艇候选页已随定稿清空） ----------
@@ -2592,12 +2648,20 @@ boss_storm: {
     // 中央舰体（前层）：方案 B 舰首收尖 + 尾部双推进器；C 上下装甲脊
     g.beginPath();
     if (style >= 1) {
-      // B/C：舰首（下端）收尖 + 尾部双推进器缺口
+      // B/C：舰首（下端）收尖；C 尾部尖锐凸起（2026-11-26 用户三调，同游戏内——两拐点与顶点直接相连）、B 保留双推进器缺口
       g.moveTo(0, 36);
       g.lineTo(9, 28); g.lineTo(19, 24);
-      g.lineTo(19, -21); g.lineTo(10, -34);
-      g.lineTo(4, -34); g.lineTo(4, -28); g.lineTo(-4, -28); g.lineTo(-4, -34);
-      g.lineTo(-10, -34); g.lineTo(-19, -21); g.lineTo(-19, 24);
+      g.lineTo(19, -21);
+      if (style === 2) {
+        // C：尾部尖锐大三角尾（2026-11-26 用户四调，同游戏内）——去掉 (±10,-34) 折点，两肩 (±19,-21) 与顶点 (0,-38) 直接相连
+        g.lineTo(0, -38);
+        g.lineTo(-19, -21);
+      } else {
+        g.lineTo(10, -34);
+        g.lineTo(4, -34); g.lineTo(4, -28); g.lineTo(-4, -28); g.lineTo(-4, -34);
+        g.lineTo(-10, -34); g.lineTo(-19, -21);
+      }
+      g.lineTo(-19, 24);
       g.lineTo(-9, 28);
     } else {
       g.moveTo(0, 34); g.lineTo(19, 25); g.lineTo(19, -21); g.lineTo(10, -34);
@@ -2608,22 +2672,53 @@ boss_storm: {
     hg.addColorStop(0, pal.dark); hg.addColorStop(0.5, pal.base); hg.addColorStop(1, pal.light);
     g.fillStyle = hg; g.fill();
     g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 1.2; g.stroke();
-    if (style === 2) {   // C：装甲脊
-      g.strokeStyle = pal.accent; g.lineWidth = 1.8; g.globalAlpha = 0.8;
-      g.beginPath(); g.moveTo(0, -30); g.lineTo(0, 24); g.stroke();
-      g.beginPath(); g.moveTo(-13, -26); g.lineTo(-13, 20); g.stroke();
-      g.beginPath(); g.moveTo(13, -26); g.lineTo(13, 20); g.stroke();
-      g.globalAlpha = 1;
-    }
-    if (style >= 1) {   // B/C：尾部双推进器（尾焰呼吸）
-      for (const sx of [-1, 1]) {
-        const fl = 7 + Math.sin(t * 5 + sx) * 2.5;
-        g.fillStyle = pal.glow;
-        g.globalAlpha = 0.75;
-        g.beginPath();
-        g.moveTo(sx * 8 - 3, -28); g.lineTo(sx * 8, -28 - fl); g.lineTo(sx * 8 + 3, -28);
-        g.closePath(); g.fill();
+    // C 舰体四芒星已移至下方 C 饰件块（光环之后、星核之前——与游戏内绘制顺序一致，2026-11-26 四调）
+    if (style >= 1) {   // B：尾部双推进器（竖直尾焰）；C：双焰贴尾部两条连线、垂直、焰基中点向肩侧略下移（2026-11-26 用户十调，同游戏内）——澜心舰双层焰减亮收窄（外焰 α0.5 / 白芯 α0.65、基半宽 4.8，用户十一调）；对向焰增大为游戏内横移专属不在此呈现
+      if (style === 2) {
+        const segs = [[19, -21, 0, -38], [-19, -21, 0, -38]];   // 右肩→顶点 / 左肩→顶点（大三角尾两条斜边）
+        for (const [x1, y1, x2, y2] of segs) {
+          const dx = x2 - x1, dy = y2 - y1;
+          const dl = Math.hypot(dx, dy) || 1;
+          const ux = dx / dl, uy = dy / dl;
+          let nx = -uy, ny = ux;
+          if (ny > 0) { nx = -nx; ny = -ny; }   // 法线朝上（背离机体）
+          const bx = x1 + (x2 - x1) * 0.56, by = y1 + (y2 - y1) * 0.56;   // 焰基：肩端 56%（中点向肩侧略下移）
+          const fl = 15 + Math.sin(t * 7) * 3.5;   // 呼吸同相位（非横移阶段双焰一致，2026-11-27 用户定稿，同游戏内；对向焰增幅为游戏内横移专属）
+          const tx = bx + nx * fl, ty = by + ny * fl;
+          g.globalAlpha = 0.5;   // 外焰：主题色（减亮）
+          g.fillStyle = pal.glow;
+          g.beginPath();
+          g.moveTo(bx - ux * 4.8, by - uy * 4.8);
+          g.lineTo(tx, ty);
+          g.lineTo(bx + ux * 4.8, by + uy * 4.8);
+          g.closePath(); g.fill();
+          g.globalAlpha = 0.65;   // 内焰：芯（半宽减半、长度 60%）——黑日/紫月暗芯 pal.dark、白夜白芯（2026-11-27 用户定稿，同游戏内）
+          g.fillStyle = variant === 'whiteNight' ? '#ffffff' : pal.dark;
+          g.beginPath();
+          g.moveTo(bx - ux * 2.4, by - uy * 2.4);
+          g.lineTo(bx + nx * fl * 0.6, by + ny * fl * 0.6);
+          g.lineTo(bx + ux * 2.4, by + uy * 2.4);
+          g.closePath(); g.fill();
+          g.globalAlpha = 1;
+        }
+        // 峰缘亮线：沿尾部两条斜边的 accent 发光饰线（同翼面装甲脊样式；2026-11-27 三调回调恢复全长，同游戏内）
+        g.strokeStyle = pal.accent;
+        g.lineWidth = 1.2;
+        g.globalAlpha = 0.8;
+        for (const [x1, y1, x2, y2] of segs) {
+          g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+        }
         g.globalAlpha = 1;
+      } else {
+        for (const sx of [-1, 1]) {
+          const fl = 7 + Math.sin(t * 5 + sx) * 2.5;
+          g.fillStyle = pal.glow;
+          g.globalAlpha = 0.75;
+          g.beginPath();
+          g.moveTo(sx * 8 - 3, -28); g.lineTo(sx * 8, -28 - fl); g.lineTo(sx * 8 + 3, -28);
+          g.closePath(); g.fill();
+          g.globalAlpha = 1;
+        }
       }
     }
     // 核心座舱 + 饰件层（按方案差异）
@@ -2719,30 +2814,50 @@ boss_storm: {
         g.globalAlpha = 1;
       }
     } else {
-      // C 星核过载：多层光环系统（黑日三层日环 / 白夜光环+光带十字 / 紫月三层紫环）+ 多角星核
+      // C 星核过载（2026-11-25 用户定稿修改版）：三层光环间隔 6、第三环略微超出机体
+      //（×1.6 屏幕半径 24/33.6/43.2：机身半宽 30.4 / 半高 54.4——内环全在内、中环横向略超、外环翼侧超出）；
+      // 圆心 (0,0) 与星核同心；游戏内逐环淡入由折翼展开进度驱动（此处静态展开姿势全可见）
       g.save();
       g.strokeStyle = pal.accent;
       for (let k = 0; k < 3; k++) {
-        const rr = 30 + k * 9;
+        const rr = 15 + k * 6;
         g.globalAlpha = 0.55 - k * 0.12;
         g.lineWidth = 2.4 - k * 0.5;
         const a0 = t * (0.7 + k * 0.3) * (k % 2 ? -1 : 1);
-        g.beginPath(); g.arc(0, -2, rr, a0, a0 + Math.PI * 1.6); g.stroke();
+        g.beginPath(); g.arc(0, 0, rr, a0, a0 + Math.PI * 1.6); g.stroke();
       }
       g.restore();
-      // 多角星核（8 角星，旋转）
-      g.save(); g.rotate(t * 1.2);
+      // 舰体四芒星（2026-11-26 用户五调）：填充 accent（回退 glow）、纯色块无描边（黑边去除）；
+      // 画在光环之后、星核之下（与游戏内绘制顺序一致）
+      g.fillStyle = pal.star || pal.accent;   // 四芒星专属填充（紫月浅紫偏白 / 黑日暗红，2026-11-26 用户定稿）
+      const fRx = 15, fRy = 20;   // 纵向尖半径 26→20（2026-11-26 用户定稿「高度小一些」）
+      // 内凹点：两臂等比外形（臂基宽/臂长统一 0.4）——修复「左右臂粗、上下臂细」比例失调（同游戏内）
+      const fCx = 4.0, fCy = 3.0;   // 内凹点坐标
+      // 顶点显式坐标表（同游戏内修正）：cos(±π/2)/sin(π) 浮点非精确 0，「=== 0 判零」失败会把
+      // 轴对齐尖点整体推偏（上/下尖推到 x=15、左尖推到 y=26 →「三个角全往右偏」）
+      const fPts = [
+        [0, -fRy], [fCx, -fCy],      // 上尖 → 右上内凹
+        [fRx, 0], [fCx, fCy],        // 右尖 → 右下内凹
+        [0, fRy], [-fCx, fCy],       // 下尖 → 左下内凹
+        [-fRx, 0], [-fCx, -fCy],     // 左尖 → 左上内凹
+      ];
+      g.beginPath();
+      fPts.forEach(([px, py], k) => { if (k === 0) g.moveTo(px, py); else g.lineTo(px, py); });
+      g.closePath();
+      g.fill();   // 纯色块无描边（黑边已按用户定稿去除）
+      // 8 角星核（2026-11-25 用户定稿）：不旋转、固定一角朝上（外顶点 k=6 在 270° 即正上方）——
+      // 半径 5（三调）叠在四芒星中心之上
       g.fillStyle = '#ffffff';
       g.shadowColor = pal.glow; g.shadowBlur = 8;
       g.beginPath();
       for (let k = 0; k < 8; k++) {
         const a = k / 8 * Math.PI * 2;
-        const r = k % 2 ? 4 : 9;
+        const r = k % 2 ? 2.2 : 5;
         const px = Math.cos(a) * r, py = Math.sin(a) * r;
         if (k === 0) g.moveTo(px, py); else g.lineTo(px, py);
       }
       g.closePath(); g.fill();
-      g.shadowBlur = 0; g.restore();
+      g.shadowBlur = 0;
     }
     g.restore();
   }
@@ -2755,9 +2870,9 @@ boss_storm: {
       { key: 'violetMoon', name: '紫月诛星舰' },
     ];
     const styles = [
-      { id: 0, name: '方案 A · 日冕蚀刻', note: '主力舰形状基准 + 专属主题立体渐变 + 专属饰件层（日环 / 饰带 / 月环）——改动最小、与主力舰血缘最近，与 2C 超越艇相对 2A 突击艇的改动思路一致（当前游戏内实装版同源）' },
+      { id: 0, name: '方案 A · 日冕蚀刻', note: '主力舰形状基准 + 专属主题立体渐变 + 专属饰件层（日环 / 饰带 / 月环）——改动最小、与主力舰血缘最近，与 2C 超越艇相对 2A 突击艇的改动思路一致' },
       { id: 1, name: '方案 B · 装甲重构', note: '舰首收尖 + 尾部双推进器 + 翼面外扩——饰件改版：黑日环形日齿（旋转）/ 白夜霜翼扩展冰晶 / 紫月双月环（中等改动）' },
-      { id: 2, name: '方案 C · 星核过载', note: '舰体上下装甲脊 + 尾部双推进器 + 多层光环系统 + 8 角星核（最大改动——远离主力舰原型的独立观感）' },
+      { id: 2, name: '方案 C · 星核过载（已定稿）', note: '2026-11-26 用户定稿（四轮回调）：舰体四芒星（内凹比 0.32 经典臂形、glow 高对比填充 + 深色描边、以核心为同心、不出舰体、压于光环之上）+ 尾部双推进器 + 翼面装甲脊（展开双翼后才出现）+ 三层光环（间隔 6、第三环略微超出机体、与星核同心；初始不出现——随折翼展开动画依次从内向外淡入）+ 8 角星核（不旋转、固定一角朝上，叠于四芒星中心）。游戏内正式绘制已按本方案实装（三变体同构，颜色按专属表区分）' },
     ];
     for (const st of styles) {
       const head = document.createElement('h3');
@@ -3447,7 +3562,8 @@ boss_storm: {
   }
 
   // ---------- 测试4：3C 澜心舰五色 · 造型设计工作区（2026-11-16）----------
-  // 五个 3C 占位敌人（ENEMY_GRADES 已登记 lanxinShip_{blue,white,black,violet,pink}:'3C'，图鉴 wip 占位 hp0/score0）。
+  // 五个 3C 敌人已于 2026-11-27 实装转正（方案G造型迁 09b drawLanXinShipBody、数值/移动/特殊能力见
+  // 01-config-enemies LANXIN_SHIP 与 06-enemy/04-spawn）——本页保留 A~I 九案作设计留档（只读参考，不再消费）。
   // 造型＝以 3 类战舰为基准改形（基准轮廓/涂装见 10-draw-world gunship 分支，碰撞盒 76×62、drawScale 1.55 不变），
   // 改形思路参考超越艇相对突击艇：轮廓微改 + 主题色立体渐变（上暗→主色→下亮）+ 中央核心 + 逐舰专属动效件。
   // 系列共同件＝「澜心」水滴核（取代战舰座舱白点）。用户定稿数值：hp 500 / 诗篇 2400 / 分数与水晶占位 1 待定 /
@@ -3456,6 +3572,13 @@ boss_storm: {
   // 归属怪物种类与权重待定、攻击方式待后续批次定稿。
   // 二批（2026-11-16 用户反馈）：「澜心」＝晶体非水滴（第一批 A/B/C 水滴核保留作对照不删）；第二批方案
   // D 晶脊舰 / E 晶舷舰 / F 裂核舰以机体形状改动与外挂组件为重心，核心统一改晶体（t4LxCrystal）。
+  // 三批（2026-11-25 用户反馈前两批太丑 + 手绘框架定稿）：轮廓采用用户框架（六点箭镖形——中央尾鳍尖峰+
+  // 双翼后掠翼尖+机头下尖，碰撞盒内归一化）；中心核心改菱形晶核（t4LxDiamond）。第三批方案 G 框架净版
+  // / H 框架刃版（前缘刃线+翼尖灯）/ I 框架晶版（尾鳍两侧小晶+翼尖灯）。
+  // 三批二次定稿（2026-11-25 用户反馈「太单薄」+ 红线标注图修正 + 连接点 1/2、透明度微调）：左侧三线自上而下
+  // A=尾鳍边缘（尖峰→翼根腋点）/ B=翼内缘（腋点→翼尖）/ C=翼外缘（翼尖→机头）；弦线直连 A 上 1/2 点与
+  // B 左 1/2 点（不经翼尖）——弦线与机身围成的鳍-翼缺口也计入机身（鳍翼补块：同机身渐变叠白 0.12、半透明
+  // 略淡于机身）+ 弦缝线；双尾焰各自垂直于本侧弦线、自弦中点向后-外撇 ≈36°。
   // 前史：本页原为战争矩阵设计工作区（2026-10-16 四轮定稿 B+D 融合 + 九轮演出修订），战争矩阵早已实装，
   // 其设计内容已随本批（2026-11-16 澜心舰批次）清空；t4 公共小工具（t4Head/t4TextCard/t4DemoGrid/t4Demo/
   // t4Field/t4PlayerPos/t4Player）保留复用。
@@ -3522,7 +3645,24 @@ boss_storm: {
       { title: '细节示例 · 晶脊舰（方案D放大）', sub: '晶体澜心核 + 背部晶脊切面细节', period: 5, draw: t4DrawLxSolo2, w: 214, h: 232 },
     ]);
 
-    infoAppendNote('<b>怎么用本页</b>：告诉我方案号（第一批 A/B/C 或第二批 D/E/F，可混搭调整）+ 五舰专属件是否要调（例如：「方案F；洪流喷流改成舰尾瀑布」），我据此实装——09b-draw-enemies 新增 drawLanXinShipBody + 01-config-enemies ENEMY_TYPES 数值五键 + 13-encyclopedia 条目转正（去 wip）+ 04-spawn（权重待定）+ 06-enemy 特殊能力四式；攻击方式待后续批次定稿。');
+    // ── 六、第三批方案（用户手绘框架 · 菱形核）──
+    infoBody.appendChild(t4Head('六、第三批方案（用户手绘框架 · 菱形核）'));
+    infoBody.appendChild(t4TextCard('框架说明（2026-11-25 用户手绘定稿）', '轮廓采用用户手绘基本框架：<b>中央尾鳍尖峰 + 双翼后掠翼尖 + 机头下尖</b>的六点箭镖形（碰撞盒 76×62 内归一化）；<b>中心核心统一改为菱形晶核</b>（竖长菱形：左亮右暗切面 + 内层白菱 + 主色描边辉光）。主题色立体渐变与五舰专属动效件沿用，尾焰自尾鳍尖峰两侧喷出。', '#e0a05a'));
+    t4DemoGrid([
+      { title: '方案G · 框架净版', sub: '框架轮廓 + 翼面补块 + 双斜尾焰 + 菱形晶核——无附加组件，看框架本体', period: 5, draw: t4DrawLxG, w: 490, h: 172, noPlayer: true },
+      { title: '方案H · 框架刃版', sub: '框架共通件 + 双翼前缘亮刃线 + 翼尖航行灯——锋利感', period: 5, draw: t4DrawLxH, w: 490, h: 172, noPlayer: true },
+      { title: '方案I · 框架晶版', sub: '框架共通件 + 尾鳍尖峰两侧小晶一对 + 翼尖航行灯——保留澜心晶体元素', period: 5, draw: t4DrawLxI, w: 490, h: 172, noPlayer: true },
+    ]);
+    [
+      ['方案G · 框架净版', '完全按用户框架：六点箭镖轮廓（尾鳍尖峰 / 后掠双翼 / 机头下尖）+ <b>鳍翼补块</b>（左侧三线自上而下为 A 尾鳍边缘 / B 翼内缘 / C 翼外缘，红线直连 A 上 1/2 点与 B 左 1/2 点（翼尖侧）成弦线，弦线与机身围成的鳍-翼缺口区域计入机身、半透明且比机身略淡，双侧镜像）+ <b>双斜尾焰</b>（各自垂直于本侧弦线、自弦中点向后-外撇约 36°）+ 中央菱形晶核 + 主题涂装，无任何附加件——用于确认框架本体的观感基准。'],
+      ['方案H · 框架刃版', '框架共通件（翼面补块 + 双斜尾焰）+ 双翼前缘亮刃线（翼尖→机头、主色提亮发光）+ 翼尖白色航行灯脉动——强化「刃」的锋利感，轮廓不动。'],
+      ['方案I · 框架晶版', '框架共通件（翼面补块 + 双斜尾焰）+ 尾鳍尖峰两侧各嵌一枚小晶体（保留「澜心＝晶体」设定元素）+ 翼尖航行灯——晶体与框架结合。'],
+    ].forEach(([n, d]) => infoBody.appendChild(t4TextCard(n, d, '#e0a05a')));
+    t4DemoGrid([
+      { title: '细节示例 · 框架刃版（方案H放大）', sub: '翼面补块 + 双斜尾焰 + 菱形晶核 + 前缘刃线 + 翼尖灯细节', period: 5, draw: t4DrawLxSolo3, w: 214, h: 232 },
+    ]);
+
+    infoAppendNote('<b>怎么用本页</b>：告诉我方案号（第一批 A/B/C、第二批 D/E/F 或第三批 G/H/I，可混搭调整）+ 五舰专属件是否要调（例如：「方案H；洪流喷流改成舰尾瀑布」），我据此实装——09b-draw-enemies 新增 drawLanXinShipBody + 01-config-enemies ENEMY_TYPES 数值五键 + 13-encyclopedia 条目转正（去 wip）+ 04-spawn（权重待定）+ 06-enemy 特殊能力四式；攻击方式待后续批次定稿。');
   }
 
   // ── 测试4 公共小工具 ──
@@ -3651,6 +3791,11 @@ boss_storm: {
         for (let i = 0; i < seg.length; i++) { i ? c.lineTo(seg[i][0] * s, seg[i][1] * s) : c.moveTo(seg[i][0] * s, seg[i][1] * s); }
         c.closePath();
       }
+    } else if (scheme === 'G' || scheme === 'H' || scheme === 'I') {
+      // 用户框架（2026-11-25 手绘定稿）：中央尾鳍尖峰 + 双翼后掠翼尖 + 机头下尖——六点箭镖形
+      const P = [[0, -18], [7.5, 2.5], [23.5, -1], [0, 17], [-23.5, -1], [-7.5, 2.5]];
+      for (let i = 0; i < P.length; i++) { i ? c.lineTo(P[i][0] * s, P[i][1] * s) : c.moveTo(P[i][0] * s, P[i][1] * s); }
+      c.closePath();
     } else {
       const k = scheme === 'C' ? 1.08 : 1;   // 方案C：横向加宽 8%
       const P = [[0, 20], [16, 10], [23, -2], [12, -6], [8, -17], [-8, -17], [-12, -6], [-23, -2], [-16, 10]];
@@ -3727,7 +3872,42 @@ boss_storm: {
     c.stroke();
     c.restore();
   }
-  // 单舰完整绘制：x,y=舰心（机头朝下）；s=缩放；scheme='A'|'B'|'C'|'D'|'E'|'F'；sh=LX_SHIPS 成员；ph=逐舰相位
+  // 「澜心」菱形晶核（第三批起用户定稿 2026-11-25：中心核心改菱形）：竖长菱形——左亮右暗切面 +
+  // 内层白菱（超越艇核心同语义）+ 主色描边辉光呼吸；黑舰专属暗 Ramp；x,y=核心，hw/hh=半宽/半高
+  function t4LxDiamond(c, x, y, hw, hh, col, t, ph) {
+    const dark = col === '#14161C';
+    const pulse = 0.5 + Math.sin(t * 2.6 + ph) * 0.5;
+    c.save();
+    c.translate(x, y);
+    const dia = (g, k) => {
+      g.beginPath();
+      g.moveTo(0, -hh * k); g.lineTo(hw * k, 0); g.lineTo(0, hh * k); g.lineTo(-hw * k, 0);
+      g.closePath();
+    };
+    c.shadowColor = dark ? '#8f9ab5' : col; c.shadowBlur = 5 + pulse * 4;
+    const g = c.createLinearGradient(0, -hh, 0, hh);
+    g.addColorStop(0, dark ? '#4a5268' : t4Shade(col, 1.3));
+    g.addColorStop(0.5, dark ? '#252a38' : col);
+    g.addColorStop(1, dark ? '#10131c' : t4Shade(col, 0.6));
+    dia(c, 1); c.fillStyle = g; c.fill();
+    c.shadowBlur = 0;
+    // 左亮 / 右暗切面（自竖中线分色）
+    c.beginPath(); c.moveTo(0, -hh); c.lineTo(-hw, 0); c.lineTo(0, hh); c.closePath();
+    c.fillStyle = 'rgba(255,255,255,0.30)'; c.fill();
+    c.beginPath(); c.moveTo(0, -hh); c.lineTo(hw, 0); c.lineTo(0, hh); c.closePath();
+    c.fillStyle = 'rgba(0,0,0,0.28)'; c.fill();
+    // 内层白菱（中心白核）
+    c.save();
+    c.shadowColor = '#ffffff'; c.shadowBlur = 3 + pulse * 3;
+    c.fillStyle = '#ffffff';
+    dia(c, 0.45); c.fill();
+    c.restore();
+    c.strokeStyle = dark ? '#aeb8d4' : 'rgba(255,255,255,0.8)';
+    c.lineWidth = 1;
+    dia(c, 1); c.stroke();
+    c.restore();
+  }
+  // 单舰完整绘制：x,y=舰心（机头朝下）；s=缩放；scheme='A'~'I'；sh=LX_SHIPS 成员；ph=逐舰相位
   function t4LxShip(c, x, y, s, scheme, sh, t, ph) {
     const col = sh.color;
     const pulse = 0.5 + Math.sin(t * 2.6 + ph) * 0.5;
@@ -3737,9 +3917,11 @@ boss_storm: {
     // 方案F：澜心主晶垫底（先于舰体两片绘制——两片装甲压住晶体侧缘，裂缝带 + 上下尖端外露）
     if (scheme === 'F') t4LxCrystal(c, 0, 0, 7.5 * s, 23 * s, col, t, ph);
 
-    // 尾焰（垫底，机尾朝上 -y 喷出）：方案B 三口、其余双口——同超越艇短焰口径；方案F 自尾片缘（-19）喷
+    // 尾焰（垫底，机尾朝上 -y 喷出）：方案B 三口、其余双口——同超越艇短焰口径；方案F 自尾片缘（-19）喷；
+    // 框架案 G/H/I 改双斜焰（见下），中央直焰不再绘制
+    const isFrame = scheme === 'G' || scheme === 'H' || scheme === 'I';
     const tailY = scheme === 'F' ? -19 : -17;
-    const ports = scheme === 'B' ? [0, -7, 7] : [-5, 5];
+    const ports = scheme === 'B' ? [0, -7, 7] : isFrame ? [] : [-5, 5];
     for (const px of ports) {
       const fl = (7 + 2 * Math.sin(t * 7 + px + ph)) * s;
       c.globalAlpha = 0.7;
@@ -3752,6 +3934,29 @@ boss_storm: {
       c.moveTo(px * s - 1.5 * s, tailY * s + 0.5 * s); c.lineTo(px * s, tailY * s - fl * 0.6); c.lineTo(px * s + 1.5 * s, tailY * s + 0.5 * s);
       c.closePath(); c.fillStyle = '#ffffff'; c.fill();
       c.globalAlpha = 1;
+    }
+
+    // 框架案双斜焰（2026-11-25 用户二次定稿·红线标注图 + 连接点 1/2 微调）：左侧三线 A=尾鳍边缘（尖峰→翼根
+    // 腋点）/ B=翼内缘（腋点→翼尖）/ C=翼外缘（翼尖→机头）；弦线直连 A 上 1/2 点 (-3.75,-7.75) 与 B 左 1/2 点
+    // (-15.5,0.75) 不经翼尖——双焰各自垂直于本侧弦线（弦向 u=±(0.810,0.586)）、自弦中点（±9.63,-3.5）
+    // 沿法线 n=±(0.586,-0.810) 向后-外喷出（外撇约 36°），基底沿弦线方向
+    if (isFrame) {
+      for (const sx of [-1, 1]) {
+        const fl = (11 + 2.5 * Math.sin(t * 7 + sx + ph)) * s;
+        const mx = sx * 9.625 * s, my = -3.5 * s;                 // 弦中点
+        const dx = sx * 0.586, dy = -0.810;                       // 弦线法线：向后-外
+        const bx = sx * 0.810 * 2.4 * s, by = 0.586 * 2.4 * s;    // 焰基底半宽（沿弦线方向）
+        c.globalAlpha = 0.7;
+        c.beginPath();
+        c.moveTo(mx + bx, my + by); c.lineTo(mx + dx * fl, my + dy * fl); c.lineTo(mx - bx, my - by);
+        c.closePath();
+        c.fillStyle = sh.key === 'black' ? '#8f9ab5' : col; c.fill();
+        c.globalAlpha = 0.9;
+        c.beginPath();
+        c.moveTo(mx + bx * 0.5, my + by * 0.5); c.lineTo(mx + dx * fl * 0.6, my + dy * fl * 0.6); c.lineTo(mx - bx * 0.5, my - by * 0.5);
+        c.closePath(); c.fillStyle = '#ffffff'; c.fill();
+        c.globalAlpha = 1;
+      }
     }
 
     // 白影残影（专属件，垫于舰体之下）：上方两道淡白轮廓呼吸浮游
@@ -3802,18 +4007,64 @@ boss_storm: {
       }
       c.fillStyle = g; c.fill();
     }
+
+    // 框架案鳍翼补块（2026-11-25 用户二次定稿·红线标注图 + 连接点 1/2、透明度微调）：弦线直连 A（尾鳍边缘）
+    // 上 1/2 点 (-3.75,-7.75) 与 B（翼内缘）左 1/2 点 (-15.5,0.75)——弦线与机身（鳍缘 P1→腋点→翼内缘 P2）
+    // 围成的缺口区域也计入机身、比机身略淡；弦线画缝线分界，鳍缘/翼内缘两侧由舰体描边勾出；双侧镜像。
+    // 填色分舰种（2026-11-26 两轮反馈收敛）：彩舰＝同机身渐变+白 0.12；黑舰＝舰体梯度 ×1.65 乘法提亮
+    // （白叠对近黑两头不通：0.04 不可见「后面像没画」、0.12 发中性灰丢黑感——乘法保持暗蓝灰色相）
+    if (isFrame) {
+      const P1 = [-3.75, -7.75], P2 = [-15.5, 0.75], P3 = [-7.5, 2.5];   // A 上1/2 点 / B 左1/2 点 / 翼根腋点
+      for (const sx of [-1, 1]) {
+        c.beginPath();
+        c.moveTo(sx * P1[0] * s, P1[1] * s);
+        c.lineTo(sx * P2[0] * s, P2[1] * s);
+        c.lineTo(sx * P3[0] * s, P3[1] * s);
+        c.closePath();
+        if (sh.key === 'violet') {
+          c.fillStyle = '#2a2050'; c.fill();
+        } else if (sh.key === 'black') {
+          // 黑舰补块＝固定中调蓝灰渐变（2026-11-27 四次反馈定标：用户以白舰补块可见度为基准——近黑舰体上
+          // 「相对提亮」全部失败：×1.65 ΔL≈+15、×1.9 ΔL≈+26 在小尺寸下仍读作黑洞（舰体顶部 L≈12 vs 背景
+          // L≈10）），改为绝对可见度：补块采样带（t 0.23~0.48）落到 L≈80~96——与描边 #6b7690 / 焰 #8f9ab5 /
+          // 暗晶 Ramp #4a5268 同属蓝灰中调族，B>G>R 不发白
+          const mb = c.createLinearGradient(0, -17 * s, 0, 24 * s);
+          mb.addColorStop(0, '#3a4156'); mb.addColorStop(0.5, '#565f7c'); mb.addColorStop(1, '#75809e');
+          c.fillStyle = mb; c.fill();
+        } else {
+          const mg = c.createLinearGradient(0, -17 * s, 0, 24 * s);
+          mg.addColorStop(0, t4Shade(col, 0.5)); mg.addColorStop(0.5, col); mg.addColorStop(1, t4Shade(col, 1.22));
+          c.fillStyle = mg; c.fill();
+          c.fillStyle = 'rgba(255,255,255,0.12)'; c.fill();
+        }
+      }
+      // 弦缝线：黑舰用灰蓝可见缝（黑 0.30 在近黑舰体上不可见——补块无边界定义读作「没画」），其余黑 0.30
+      c.strokeStyle = sh.key === 'black' ? 'rgba(143,154,181,0.55)' : 'rgba(0,0,0,0.30)';
+      c.lineWidth = 1.1;
+      for (const sx of [-1, 1]) {
+        c.beginPath();
+        c.moveTo(sx * P1[0] * s, P1[1] * s);
+        c.lineTo(sx * P2[0] * s, P2[1] * s);
+        c.stroke();
+      }
+    }
+
     c.strokeStyle = sh.key === 'black' ? '#6b7690' : t4Shade(col, 1.45);
     c.lineWidth = 1.2;
     c.stroke();
 
-    // 装甲分块（战舰基准同款：中央龙骨 + 翼根缝；方案F 舰体已裂为两片，龙骨线不再适用）
-    if (scheme !== 'F') {
+    // 装甲分块（战舰基准同款：中央龙骨 + 翼根缝；方案F 舰体已裂为两片、框架案 G/H/I 轮廓不同——基准线均不适用；
+    // 框架案 H/I 改画中央短龙骨）
+    if (scheme !== 'F' && !isFrame) {
       c.strokeStyle = 'rgba(0,0,0,0.30)'; c.lineWidth = 1.2;
       c.beginPath(); c.moveTo(0, -12 * s); c.lineTo(0, 15 * s); c.stroke();
       for (const sx of [-1, 1]) {
         c.beginPath(); c.moveTo(sx * 9 * s, -4 * s); c.lineTo(sx * 19 * s, -1 * s); c.stroke();
         c.beginPath(); c.moveTo(sx * 7 * s, 7 * s); c.lineTo(sx * 14 * s, 8 * s); c.stroke();
       }
+    } else if (scheme === 'H' || scheme === 'I') {
+      c.strokeStyle = 'rgba(0,0,0,0.30)'; c.lineWidth = 1.1;
+      c.beginPath(); c.moveTo(0, -10 * s); c.lineTo(0, 12 * s); c.stroke();
     }
 
     // 洪流喷流（蓝舰专属）：双舷导流槽向下倾泻的水流光段（三段循环下移渐隐）
@@ -3821,14 +4072,16 @@ boss_storm: {
       c.save();
       c.strokeStyle = t4Shade(col, 1.35); c.lineWidth = 2.2 * s; c.lineCap = 'round';
       c.shadowColor = col; c.shadowBlur = 4;
+      const fx = isFrame ? 13 : 20.5;      // 框架案翼面窄，喷流内收至翼中
+      const ySpan = isFrame ? 16 : 24;
       for (const sx of [-1, 1]) {
         for (let i = 0; i < 3; i++) {
-          const yy0 = ((t * 30 + i * 8.7 + ph * 5) % 24) - 6;   // 段起点 -6~18（单位坐标）
-          const k = (yy0 + 6) / 24;
+          const yy0 = ((t * 30 + i * 8.7 + ph * 5) % ySpan) - 6;   // 段起点 -6~10/18（单位坐标）
+          const k = (yy0 + 6) / ySpan;
           c.globalAlpha = 0.55 * (1 - k) * (0.6 + 0.4 * pulse);
           c.beginPath();
-          c.moveTo(sx * 20.5 * s, yy0 * s);
-          c.lineTo(sx * 20.5 * s, (yy0 + 5) * s);
+          c.moveTo(sx * fx * s, yy0 * s);
+          c.lineTo(sx * fx * s, (yy0 + 5) * s);
           c.stroke();
         }
       }
@@ -3837,7 +4090,7 @@ boss_storm: {
 
     // 洄星双星（紫舰专属）：核心周缘两枚白点公转闪烁
     if (sh.key === 'violet') {
-      const cyK = (scheme === 'B' ? 4 : scheme === 'D' ? 1 : -1);
+      const cyK = isFrame ? 0 : (scheme === 'B' ? 4 : scheme === 'D' ? 1 : -1);
       for (let i = 0; i < 2; i++) {
         const a = t * 2.2 + ph + i * Math.PI;
         const tw = 0.6 + 0.4 * Math.sin(t * 5 + i * 2 + ph);
@@ -3850,7 +4103,7 @@ boss_storm: {
 
     // 幻泡（粉舰专属）：核心周缘三枚小气泡漂浮
     if (sh.key === 'pink') {
-      const cyK = (scheme === 'B' ? 4 : scheme === 'D' ? 1 : -1);
+      const cyK = isFrame ? 0 : (scheme === 'B' ? 4 : scheme === 'D' ? 1 : -1);
       for (let i = 0; i < 3; i++) {
         const ba = t * 1.4 + ph + i * 2.1;
         c.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3 + i * 1.9 + ph);
@@ -3929,24 +4182,54 @@ boss_storm: {
         c.fillStyle = sh.key === 'black' ? '#8f9ab5' : col; c.fill();
         c.globalAlpha = 1;
       }
-    } else {
+    } else if (scheme === 'F') {
       // 裂核舰：尾/头两片外缘各嵌一枚护卫小晶（主晶已在舰体前垫底绘制）
       for (const sx of [-1, 1]) {
         c.strokeStyle = 'rgba(0,0,0,0.4)'; c.lineWidth = 1.2;
         c.beginPath(); c.moveTo(sx * 8 * s, -12 * s); c.lineTo(sx * 10.5 * s, -11.5 * s); c.stroke();
         t4LxCrystal(c, sx * 11.5 * s, -11.5 * s, 2.6 * s, 4.5 * s, col, t, ph + sx);
       }
+    } else if (scheme === 'H') {
+      // 框架·刃版：双翼前缘亮刃线（翼尖→机头、平行前缘内收）+ 翼尖航行灯（白点脉动）
+      for (const sx of [-1, 1]) {
+        c.save();
+        c.strokeStyle = sh.key === 'black' ? '#8f9ab5' : t4Shade(col, 1.55);
+        c.shadowColor = sh.key === 'black' ? '#8f9ab5' : col;
+        c.shadowBlur = 4;
+        c.lineWidth = 1.6; c.lineCap = 'round';
+        c.globalAlpha = 0.75 + pulse * 0.25;
+        c.beginPath();
+        c.moveTo(sx * 22 * s, 0.5 * s);
+        c.lineTo(sx * 3 * s, 14.5 * s);
+        c.stroke();
+        c.restore();
+        c.fillStyle = '#ffffff';
+        c.globalAlpha = 0.6 + pulse * 0.4;
+        c.beginPath(); c.arc(sx * 23 * s, -1.5 * s, 1.6 * s, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 1;
+      }
+    } else if (scheme === 'I') {
+      // 框架·晶版：尾鳍尖峰两侧小晶一对（保留「澜心＝晶体」元素）+ 翼尖航行灯
+      for (const sx of [-1, 1]) {
+        t4LxCrystal(c, sx * 5.5 * s, -11.5 * s, 2 * s, 3.6 * s, col, t, ph + sx);
+        c.fillStyle = '#ffffff';
+        c.globalAlpha = 0.6 + pulse * 0.4;
+        c.beginPath(); c.arc(sx * 23 * s, -1.5 * s, 1.6 * s, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 1;
+      }
     }
+    // （方案G 为净版，无附加件）
 
     // 「澜心」核（系列标志，取代战舰座舱白点）：第一批 A/B/C＝水滴核；第二批 D/E/F＝晶体核
     // （2026-11-16 用户定稿「澜心＝晶体非水滴」）；方案F 的核＝舰体夹持主晶（垫底已画），此处不再重复
     if (scheme === 'D') t4LxCrystal(c, 0, 1 * s, 5 * s, 9 * s, col, t, ph);
     else if (scheme === 'E') t4LxCrystal(c, 0, -1 * s, 4.5 * s, 8 * s, col, t, ph);
+    else if (isFrame) t4LxDiamond(c, 0, 0, 4.5 * s, 7 * s, col, t, ph);   // 框架案：中央菱形晶核（2026-11-25 用户定稿）
     else if (scheme !== 'F') t4LxCore(c, s, scheme, col, t, ph);
 
     // 蚀环（黑舰专属，叠于核心之上）：核心外圈日蚀环（上半亮弧呼吸、下半暗弧）
     if (sh.key === 'black') {
-      const cyK = (scheme === 'B' ? 4 : scheme === 'A' ? -2 : scheme === 'D' ? 1 : scheme === 'F' ? 0 : -1) * s;
+      const cyK = (isFrame ? 0 : scheme === 'B' ? 4 : scheme === 'A' ? -2 : scheme === 'D' ? 1 : scheme === 'F' ? 0 : -1) * s;
       c.save();
       c.translate(0, cyK);
       c.strokeStyle = '#dfe6ff'; c.lineWidth = 1.3;
@@ -3992,6 +4275,9 @@ boss_storm: {
   function t4DrawLxD(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'D'); }
   function t4DrawLxE(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'E'); }
   function t4DrawLxF(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'F'); }
+  function t4DrawLxG(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'G'); }
+  function t4DrawLxH(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'H'); }
+  function t4DrawLxI(c, t, dt, W, H, st) { t4LxRow(c, t, W, H, 'I'); }
   // 细节示例：洪流澜心舰（方案A）放大
   function t4DrawLxSolo(c, t, dt, W, H, st) {
     t4LxShip(c, W / 2, H * 0.4, 2.6, 'A', LX_SHIPS[0], t, 0);
@@ -3999,6 +4285,10 @@ boss_storm: {
   // 细节示例：晶脊舰（方案D）放大
   function t4DrawLxSolo2(c, t, dt, W, H, st) {
     t4LxShip(c, W / 2, H * 0.4, 2.6, 'D', LX_SHIPS[0], t, 0);
+  }
+  // 细节示例：框架刃版（方案H）放大
+  function t4DrawLxSolo3(c, t, dt, W, H, st) {
+    t4LxShip(c, W / 2, H * 0.4, 2.6, 'H', LX_SHIPS[0], t, 0);
   }
   // 基准对照：现款战舰（gunship 基准轮廓 + 变体涂装 + 座舱白点 + 龙骨，无改形无专属件）
   function t4DrawLxBase(c, t, dt, W, H, st) {

@@ -1,7 +1,7 @@
 // 05-boss：旧日之歌 + 暴风之眼（状态机 / 技能 / 区域标记 / 涡流风旋 / 击退）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(2 名) 06-enemy(8 名) 11-draw-boss(5 名) 14-main(3 名)
+  // 被依赖：04-spawn(2 名) 06-enemy(8 名) 11-draw-boss(5 名) 12-ui(1 名) 14-main(3 名)
   // 依赖计数：01-config(21) 02-core(15) 04-spawn(3) 07-player(3) 08-entities(1) 02-achievements(1)
   // 本文件写共享状态（state/bossFlow/levelFlow 属性赋值；新增属性先在 02-core 归域声明）：
   //   state.{flash, stormVortex}
@@ -10,19 +10,25 @@
   import { BULWARK, PLAYER_CFG, hasPilot, playerHitRadius } from './01-config-loadout.js';
   import { ELITES, HARBINGER, HARBINGER_POLAR, JIAOXIANG, SHIP_BULLET_LEN } from './01-config-enemies.js';
   import { BOSS, BOSS_LOOT_BOTH, BOSS_LOOT_KIT, BOSS_LOOT_SHIELD, BOSSES, BOSS_BULLET, DARKHAND, SONG_SHIP, STORM, STORM2, STORM2_SHIP, STORM_SHIP, STORM_WIND } from './01-config-boss.js';
-  import { bossDmgMul, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
+  import { bossDmgMul, currentDifficulty, diffMods, invulnDiffMul, isIllusion, isPoem, isRealme, resolveBossHp } from './01-config-difficulty.js';
   import { bossFlow, clamp, ctx, dhGuardActive, eBullets, enemies, dhFleeLinkedElites, missiles, pillarStrikes, player, rand, shake, spawnBlastRing, spawnParticles, state, weightedPick, windFlows, zoneMarks } from './02-core.js';
   import { enemyFrostZoneMoveMul, gachaBottomSlowMul, makeEnemy, spawnEliteMinion, spawnHarbinger, spawnHarbingerHub, spawnHarbingerPolar } from './04-spawn.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, testDamagePlayer } from './07-player.js';
   import { spawnPowerup } from './08-entities.js';
   import { achvNoteBossSpawned } from './02-achievements.js';
-  import { affixBossHpMul, affixBossDmgMul, affixBossIvMul, takeAffixNextBossMods, affixHas } from './03b-affix.js';
+  import { affixBossHpMul, affixBossDmgMul, affixBossIvMul, affixInvulnAdd, takeAffixNextBossMods, affixHas, affixEnemyHpAdd, affixEnemyIvMul, affixEnemyBulletSpdAdd } from './03b-affix.js';
 
   // BOSS 技能释放间隔难度倍率（2026-10-10 用户定稿四档：虚象 1.5 / 具象 1 / 真我 0.7 / 诗篇 0.5——
   // 真我走 realme.mods.bossFireIntervalMul；诗篇 wip 走 isPoem 硬分支、实装时迁移 poem.mods，见《诗篇难度修正.md》#44）
-  // ——覆盖四个 BOSS 的全部 skillCd 赋值点
-  function bossSkillIv(base) {
-    return base * (isPoem() ? 0.5 : (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1)) * affixBossIvMul();   // 词条（下一个/所有 BOSS 增强）攻击间隔乘区（2026-11-17 用户定稿 -20%/-40%）
+  // ——覆盖四个 BOSS 的全部 skillCd 赋值点。
+  // bossId（可选）：词条（真我级 2:bad:2 桀煌 红色狂潮）BOSS 减半挂钩（2026-11-23 用户定稿「对BOSS效果减半」）——
+  // 红标 BOSS（旧日之歌九色含红 / 黑暗之手黑+红，同 06-enemy enemyColorTags boss 分支，改色需两处同步）技能间隔 ×0.85
+  function affixRedBossIvMul(bossId) {
+    return affixHas('2:bad:2') && (bossId === 'song' || bossId === 'darkhand') ? 0.85 : 1;
+  }
+  function bossSkillIv(base, bossId) {
+    // 保底池（2026-11-26）neg_iv：敌方攻击间隔乘算累积（BOSS 技能间隔同受影响——非 BOSS 侧见 06-enemy enemyFireIvMul 流速等效）
+    return base * (isPoem() ? 0.5 : (diffMods().bossFireIntervalMul != null ? diffMods().bossFireIntervalMul : 1)) * affixBossIvMul() * affixRedBossIvMul(bossId) * affixEnemyIvMul();   // 词条（下一个/所有 BOSS 增强）攻击间隔乘区（2026-11-17 用户定稿 -20%/-40%）+ 红色狂潮 BOSS 减半（2026-11-23）
   }
 
 
@@ -45,7 +51,7 @@
       // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）；携带天秀 ×2——其余我方伤害削减机制已取消
       //（2026-10-02 用户定稿：非风暴伤害对暴风之眼不再有任何减少，血量翻倍作平衡代偿）
       takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（1:bad:4/2:bad:1 消费即移除，见 03b-affix）
-      const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1) * affixBossHpMul();   // 词条（下一个/所有 BOSS 增强乘区，见 03b-affix）
+      const hp = resolveBossHp(STORM) * (hasPilot('tianxiu') ? 2 : 1) * affixBossHpMul() * (1 + affixEnemyHpAdd());   // 词条（下一个/所有 BOSS 增强乘区，见 03b-affix）；保底池 neg_hp 加算乘区（2026-11-26）
       enemies.push({
         type: 'boss', bossId: 'storm', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: STORM.hoverY,
@@ -56,7 +62,7 @@
         phaseT: 0,
         scale: 0, combatReady: false,
         moveT: 0, t: 0, rot: 0,   // rot：风暴自转角（逆时针）
-        skill: null, skillCd: bossSkillIv(0.2),   // 进战斗后 0.2s 即释放首个技能（必为技能6）
+        skill: null, skillCd: bossSkillIv(0.2, 'storm'),   // 进战斗后 0.2s 即释放首个技能（必为技能6）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
         bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       });
@@ -67,7 +73,7 @@
     if (B.id === 'storm2') {
       // 词条（长歌级 4:good:3）词条禁用：所有 S 类敌人血量 -95%（风暴编织者 = 5S；四精英/1S 见 04-spawn）
       takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
-      const hp = resolveBossHp(STORM2) * affixBossHpMul() * (affixHas('4:good:3') ? 0.05 : 1);
+      const hp = resolveBossHp(STORM2) * affixBossHpMul() * (1 + affixEnemyHpAdd()) * (affixHas('4:good:3') ? 0.05 : 1);
       enemies.push({
         type: 'boss', bossId: 'storm2', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: STORM2.hoverY,
@@ -83,7 +89,7 @@
         baseY: STORM2.hoverY,   // 航点扫动移动的纵向基准（停留点）
         wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
         bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-        skill: null, skillCd: bossSkillIv(1.0),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我/诗篇经 bossSkillIv 全局倍率）
+        skill: null, skillCd: bossSkillIv(1.0, 'storm2'),   // 进战斗后 1.0s 释放首个技能（随机；间隔 = 暴风之眼的 75%，见 STORM2.skillCd；真我/诗篇经 bossSkillIv 全局倍率）
         lastSkill: -1, skillStreak: 0, dropBerserk: false,
         bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       });
@@ -94,7 +100,7 @@
     // lurk 期间潜伏不可见（警报背后），警报结束才现身
     if (B.id === 'darkhand') {
       takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
-      const hp = resolveBossHp(DARKHAND) * affixBossHpMul();   // 分难度血量表（hpByDiff）+ 词条增强乘区
+      const hp = resolveBossHp(DARKHAND) * affixBossHpMul() * (1 + affixEnemyHpAdd());   // 分难度血量表（hpByDiff）+ 词条增强乘区 + 保底池 neg_hp（2026-11-26）
       enemies.push({
         type: 'boss', bossId: 'darkhand', name: B.name, lv: B.lv,
         x: CANVAS_W / 2, y: DARKHAND.hoverY,
@@ -149,7 +155,7 @@
       });
     }
     takeAffixNextBossMods();   // 「下一个BOSS」一次性增强快照（同上）
-    const hp = resolveBossHp(BOSS) * affixBossHpMul();   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）+ 词条增强乘区
+    const hp = resolveBossHp(BOSS) * affixBossHpMul() * (1 + affixEnemyHpAdd());   // 分难度血量表（hpByDiff；旧配置回退 基准 × bossHpMul）+ 词条增强乘区 + 保底池 neg_hp（2026-11-26）
     enemies.push({
       type: 'boss', bossId: B.id, name: B.name, lv: B.lv,
       x: CANVAS_W / 2, y: BOSS.hoverY,
@@ -165,7 +171,7 @@
       baseY: BOSS.hoverY,   // 航点扫动移动的纵向基准（停留点）
       wp: null, wpDir: 0, wpLimit: null,   // 航点状态：当前段目标 / 扫动方向(+1右 -1左) / 本轮折返点
       bvx: 0, bvy: 0, wpHold: false,   // 转向扫动速度向量 / 中线驻留标记（技能6 预约）
-      skill: null, skillCd: bossSkillIv(1.4),   // 入场期占位（进入 combat 时重置为 1.0s × 难度倍率，见组装完成分支）
+      skill: null, skillCd: bossSkillIv(1.4, B.id),   // 入场期占位（进入 combat 时重置为 1.0s × 难度倍率，见组装完成分支）
       lastSkill: -1, skillStreak: 0, dropBerserk: false, summonHarbL: false, summonHarbR: false,
       bossPhT: affixBossPhantom(),   // 词条（0:bad:5）BOSS虚化护盾时长（0=无）
       parts,
@@ -388,7 +394,7 @@
     // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2）
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv(repeat ? STORM.skillCd * 0.3 : STORM.skillCd);
+    e.skillCd = bossSkillIv(repeat ? STORM.skillCd * 0.3 : STORM.skillCd, 'storm');
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速/风流速度 ×1.4
     // 全局机制结算：记录本次使用，其他从未释放过的技能权重 ×1.5
@@ -406,7 +412,7 @@
         const side = Math.random() < 0.5 ? 1 : -1;   // 首轮入射侧（1 = 右侧向左，-1 = 左侧向右）
         pushWaveMarks(side, n);
         e.skill = { id: 0, t: 0, dur: 1.7, side, round2Pushed: false };
-        e.skillCd = bossSkillIv(STORM.skillCd * 0.25);
+        e.skillCd = bossSkillIv(STORM.skillCd * 0.25, 'storm');
         break;
       }
       case 1:
@@ -840,7 +846,8 @@
   function pushBossBullet(x, y, ang, speed, opts = {}) {
     // 词条（特殊对 sp1）弹速迟缓：所有敌方子弹弹速 -50%（初速/横向加速度/沿程加速度/加速上限同步折半，
     // 保持弹道形状不变仅整体放慢；生成时一次性缩放，不逐帧修改既有弹——平滑无突变）
-    const bs = affixHas('sp1') ? 0.5 : 1;
+    // 保底池（2026-11-26）neg_bulletSpd：敌方弹速加算乘区（1+sum——与 sp1 迟缓同点叠乘）
+    const bs = (affixHas('sp1') ? 0.5 : 1) * (1 + affixEnemyBulletSpdAdd());
     eBullets.push({
       x, y,
       // vxMul（2026-10-04 黑暗之手技能1）：生成时一次性水平分量缩放（虚象/具象 0.7），不影响后续移动
@@ -1126,7 +1133,7 @@
     // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2）
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;
-    e.skillCd = bossSkillIv(repeat ? STORM2.skillCd * 0.3 : STORM2.skillCd);   // 真我/诗篇经 bossSkillIv 全局倍率（原真我专属 ×1.4 已取消）
+    e.skillCd = bossSkillIv(repeat ? STORM2.skillCd * 0.3 : STORM2.skillCd, 'storm2');   // 真我/诗篇经 bossSkillIv 全局倍率（原真我专属 ×1.4 已取消）
     e.lastSkill = id;
     const spMul = repeat ? 1.4 : 1.0;   // 连中同技能：弹速 ×1.4
     e.skillUseCount[id] = (e.skillUseCount[id] || 0) + 1;
@@ -1366,6 +1373,7 @@
         x: cx + Math.cos(ba) * rr, y: cy + Math.sin(ba) * rr,
         r: STORM2.ringR, dmg: storm2Dmg('s4Dmg'), color: '#9fd8ff',
         trail: true, trailCol: '159, 216, 255', trailLife: 0.16,   // 短拖尾（白蓝，0.16s）
+        streak: 26,   // 方向性短拖尾（px，≈2× 弹径——2026-11-20 用户反馈「雷环射弹缺少拖尾」补齐；口径与 06-enemy cb 弹一致，两侧同补保渲染一致）
         decelTo, decelRate: ringDecel, ringTag: tag,
       };
       if (hold > 0) {
@@ -1802,7 +1810,7 @@
         const dmg = Math.max(1, player.hp * frac);
         if (state.challenge) {
           testDamagePlayer(dmg);
-          player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul(); player.invulnBlink = true;   // 同 BOSS 接触口径：挑战模式照常给受击无敌帧
+          player.invuln = PLAYER_CFG.invulnTime * invulnDiffMul() + affixInvulnAdd(); player.invulnBlink = true;   // 同 BOSS 接触口径：挑战模式照常给受击无敌帧；词条（1:good:17）无敌 +0.3s
         } else {
           damagePlayer(dmg, 1, false, false, null, 'darkhandSweep');   // 成就死因：黑暗之手登场掠过
         }
@@ -1946,9 +1954,15 @@
   // 黑暗之手技能间隔（2026-10-01 用户定稿；有连携比例 2026-10-10 用户定稿 120%→150%、2026-11-10 用户定稿 150%→160%）：
   // 无连携精英在场 = 旧日之歌（BOSS.skillCd 2.0s）的 40%（≈0.8s）；有连携精英在场（dhGuardActive）= 旧日之歌的 160%（≈3.2s）；
   // 均再经 bossSkillIv 难度倍率。
+  // 虚象/具象 4S 在场绝对定档（2026-11-25 用户定稿）：虚象 10s / 具象 5s——绕过 bossSkillIv 难度倍率（定档值即实际间隔，
+  // 原虚象 2.0×1.6×1.5≈4.8s / 具象 ≈3.2s），仅词条攻击间隔乘区（BOSS 增强 -20%/-40% / 红色狂潮 ×0.85）与 repeatMul 照常作用；
+  // 真我/诗篇维持 ×1.6 乘算（≈2.24s / 1.6s）。
   // repeatMul：连续随机到同技能时 ×0.3（同其他 BOSS 全局规则，2026-10-03 建规则、2026-11-10 用户定稿 0.2→0.3）
   function darkhandSkillCd(repeatMul = 1) {
-    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.6 : 0.4)) * repeatMul;
+    if (dhGuardActive() && (isIllusion() || currentDifficulty.id === 'form')) {
+      return (isIllusion() ? 10 : 5) * affixBossIvMul() * affixRedBossIvMul('darkhand') * repeatMul;   // 绝对定档：虚象 10s / 具象 5s（绕过难度倍率）
+    }
+    return bossSkillIv(BOSS.skillCd * (dhGuardActive() ? 1.6 : 0.4), 'darkhand') * repeatMul;
   }
 
   function runDarkhandSkill(e, dt) {
@@ -2640,7 +2654,7 @@
         e.phaseT = 0;
         e.scale = 1;
         e.combatReady = true;
-        e.skillCd = bossSkillIv(1.0);
+        e.skillCd = bossSkillIv(1.0, e.bossId);
         if (songRealmeTier()) {
           // 真我/诗篇：登场部件球弹幕改为技能5 的登场变体——六发暗黑子弹共同瞄准玩家当前位置
           // （视为释放一次技能5，但不走技能池、不触发技能1连携）
@@ -2981,7 +2995,7 @@
     // 全局规则：连续随机到同一技能 → 技能间冷却 ×0.3（2026-11-10 用户定稿，原 ×0.2），且本次技能弹速 +60%
     const repeat = id === e.lastSkill;
     e.skillStreak = repeat ? e.skillStreak + 1 : 1;   // 连续释放同技能的次数（上限 2）
-    e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.3 : BOSS.skillCd);
+    e.skillCd = bossSkillIv(repeat ? BOSS.skillCd * 0.3 : BOSS.skillCd, e.bossId);
     // 血量 <50%：技能释放间隔额外降低 50%
     if (e.hp / e.maxHp < 0.5) e.skillCd *= 0.5;
     e.lastSkill = id;

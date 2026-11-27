@@ -279,7 +279,7 @@ async function sceneCoreFlow() {
 
 async function scenePilots() {
   // 驾驶员系统：逐个选中驾驶员跑主路径（可莉绷绷炸弹 / 许凯狗冲刺 / 埃逸 / 天秀量表 /
-  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 迪奥 Q 技能 / 酒客之王开局六对词条覆盖层），
+  // 大无垠之王累积 / 温酒客占位 / 小艺拾取回血 / 迪奥 Q 技能 / 九克之王开局六对词条覆盖层），
   // 覆盖 buildPilotCards 卡片选中 → 开局 → 驾驶员技能键 Q → 暂停返回主界面
   for (const pid of ['keli', 'xukaigou', 'aiyi', 'tianxiu', 'king', 'wenjiuke', 'xiaoyi', 'diao', 'hajimi', 'dagou', 'lianjinLovely', 'hudike', 'xiaoyang', 'jiukewang', 'huali']) {
     const allCards = [...elements.pilotGridMain.children, ...elements.pilotGridSub.children];
@@ -287,29 +287,30 @@ async function scenePilots() {
     if (!card) { errors.push({ key: '驾驶员卡片缺失', stack: 'pilotGrid 中未找到卡片 ' + pid }); continue; }
     card.click();
     elements.startBtn.click();                  // 以该驾驶员开局
-    // 酒客之王特判（2026-11-17 用户定稿）：开局覆盖层立刻弹出（确认前 state.paused 冻结主循环）+
-    // 六对词条已登记生效（affixOwnedEntries 12 名 = 5 对×2 + sp0 + sp1）→ 点「确认出发」恢复
+    // 九克之王特判（2026-11-17 用户定稿；2026-11-23 用户定稿更名「酒客之王」→「九克之王」+ 特殊对改一对授予）：开局覆盖层立刻弹出（确认前 state.paused 冻结主循环）+
+    // 六对词条已登记生效（affixOwnedEntries 11 名 = 5 对×2 + 抽中的一对特殊词条）→ 点「确认出发」恢复
     if (pid === 'jiukewang' && isModules) {
       const core = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
       const jm = document.getElementById('jiukeModal');
       if (!jm || jm.style.display !== 'flex') {
-        errors.push({ key: '酒客之王开局覆盖层未弹出', stack: 'startBtn 后 jiukeModal display=' + (jm ? jm.style.display : 'null') });
+        errors.push({ key: '九克之王开局覆盖层未弹出', stack: 'startBtn 后 jiukeModal display=' + (jm ? jm.style.display : 'null') });
       } else {
-        if (!core.state.paused) errors.push({ key: '酒客之王覆盖层未冻结主循环', stack: 'paused=' + core.state.paused });
+        if (!core.state.paused) errors.push({ key: '九克之王覆盖层未冻结主循环', stack: 'paused=' + core.state.paused });
         const affix3 = await import(pathToFileURL(join(jsDir, '03b-affix.js')).href);
         const owned = affix3.affixOwnedEntries();
         const kinds = owned.map(e => e.kind);
         const spCount = kinds.filter(k => k === 'special').length;
-        // 合法区间 11~12：诗篇对正面抽中令雨汐（4 选 1 = 25%）时，长歌负面被禁不登记 → 11；
-        // 其余 12。特殊对恒 2 名（sp0+sp1 整体授予，不做手机模式过滤）
+        // 合法区间 10~11：诗篇对正面抽中令雨汐（4 选 1 = 25%）时，长歌负面被禁不登记 → 10；
+        // 其余 11。特殊对恒 1 名（2026-11-23 用户定稿：rollSpecial 随机抽一对——sp0/sp1 二选一；
+        // 新开局占用表为空 + 桌面模式不过滤 → 恒抽中 1 对）
         const entryCount = owned.length - spCount;
-        if (owned.length < 11 || owned.length > 12 || spCount !== 2 || entryCount < 9 || entryCount > 10) {
-          errors.push({ key: '酒客之王开局词条数异常', stack: 'affixOwnedEntries.length=' + owned.length + ' special对=' + spCount + '（应 11~12 名 = 5 对×2 + sp0 + sp1；11 = 诗篇抽中令雨汐长歌负面被禁）' });
+        if (owned.length < 10 || owned.length > 11 || spCount !== 1 || entryCount < 9 || entryCount > 10) {
+          errors.push({ key: '九克之王开局词条数异常', stack: 'affixOwnedEntries.length=' + owned.length + ' special对=' + spCount + '（应 10~11 名 = 5 对×2 + 抽中的一对特殊词条；10 = 诗篇抽中令雨汐长歌负面被禁）' });
         }
         // smoke 桩元素 querySelector 恒返回 null（无法模拟点击模态内确认按钮）——直调导出的
         // closeJiukeOpening（与「确认出发」按钮 click 绑定同一回调，语义一致）
         affix3.closeJiukeOpening();
-        if (core.state.paused) errors.push({ key: '酒客之王确认后未恢复主循环', stack: 'paused=' + core.state.paused });
+        if (core.state.paused) errors.push({ key: '九克之王确认后未恢复主循环', stack: 'paused=' + core.state.paused });
       }
     }
     // 花礼特判（2026-11-17 用户定稿）：核心与判定点均 1×1px + 机体/僚机绘制尺寸减半——选中后
@@ -326,7 +327,7 @@ async function scenePilots() {
     elements.pauseHomeBtn.click(); frames(10);  // 返回主界面
     sample('驾驶员 ' + pid + ' 主路径');
   }
-  // 场景隔离收尾：酒客之王为开局钩子驾驶员（2026-11-17 实装）——选中后跨场景残留，此后任何场景
+  // 场景隔离收尾：九克之王为开局钩子驾驶员（2026-11-17 实装）——选中后跨场景残留，此后任何场景
   // startBtn 开局都会弹开局词条覆盖层（state.paused=true 冻结主循环），全量后续场景行为断言全灭
   //（手柄 / touch 场景 paused=true 即此残留）——末位复位回默认主驾驶员叮咚鸡（sceneSubWeapons 收尾先例）
   if (isModules) {
@@ -390,7 +391,7 @@ async function sceneCheyue() {
       // ①② 常规单发：capital 悬停于玩家正上方 +40% 屏高瞄准点（弹道在 x=px 处汇聚——敌机钉在此处才吃弹）
       core.enemies.length = 0; core.pBullets.length = 0;
       const aimY = py - cfgCore.CANVAS_H * 0.4;
-      const e = spawn.makeEnemy('capital', px, -110, { hoverY: aimY, holdTimer: 1000 });
+      const e = spawn.makeEnemy('capital', px, -110, { hoverY: aimY, holdTimer: 1000, variant: 'crimson' });   // 变体钉死 crimson（zhuixing 教训——azure 变体 20% 掷 5s 虚化护盾，彻月弹穿虚化靶不结算伤害不登记 hits=「伤害未结算/hits 未登记」偶红根因，2026-11-24 诊断实证 phase=0.9 shielded=true boltHits=-1）
       if (!e || e.type !== 'capital') {
         errors.push({ key: '彻月 目标生成失败', stack: 'makeEnemy capital 未返回预期实体' });
       } else {
@@ -434,7 +435,7 @@ async function sceneCheyue() {
             const lossA = hp0 - e.hp;
             for (let f = 0; f < 40; f++) { isolate(false); frames(1); e.x = px; e.y = aimY; }
             const lossB = hp0 - e.hp;
-            if (lossB <= 0) errors.push({ key: '彻月 伤害未结算', stack: '命中后 hp 损失 ' + lossB + '（应 >0）' });
+            if (lossB <= 0) errors.push({ key: '彻月 伤害未结算', stack: '命中后 hp 损失 ' + lossB + '（应 >0）——诊断: hp0=' + hp0 + ' e.hp=' + e.hp.toFixed(0) + ' maxHp=' + (e.maxHp || 0).toFixed(0) + ' barrier=' + (e.barrier || 0) + ' barrierMax=' + (e.barrierMax || 0) + ' chargeShield=' + (e.chargeShield || 0) + ' phase=' + e.phase + ' shielded=' + e.shielded + ' boltHits=' + fired.map(b => b.hits ? b.hits.size : -1).join(',') + ' boltDmg=' + fired.map(b => (b.dmg || 0).toFixed(1)).join(',') + ' weapon=' + core.player.weapon });
             if (lossA !== lossB) errors.push({ key: '彻月 每敌多次结算', stack: '穿出后 hp 损失继续增长 ' + lossA + ' → ' + lossB + '（hits Set 应防同敌多帧重复结算）' });
           }
         }
@@ -500,7 +501,7 @@ async function sceneJiyeBeam() {
       // ①②③a 瞬时命中 + 贯穿剩余：hp10 低血靶钉右僚机弹道（capital 判定半宽 101px——左右僚机光束均能扫到，按「存在性」断言）
       core.enemies.length = 0; core.pBullets.length = 0; clearBeams();
       const wR = core.wingmen.find(w => w.side === 1);
-      const e1 = spawn.makeEnemy('capital', wR ? wR.x : px + 46, -110, { hoverY: 200, holdTimer: 1000 });
+      const e1 = spawn.makeEnemy('capital', wR ? wR.x : px + 46, -110, { hoverY: 200, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（防 azure 虚化——hitscan 穿虚化靶不结算）
       if (!e1 || e1.type !== 'capital') {
         errors.push({ key: '极夜千星 目标生成失败', stack: 'makeEnemy capital 未返回预期实体' });
       } else {
@@ -512,7 +513,7 @@ async function sceneJiyeBeam() {
         let fired = false;   // 瞬时发射观察：光束生成帧（与伤害结算同帧）
         for (let f = 0; f < 280 && !fired; f++) {
           for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e1) core.enemies.splice(i, 1);   // 清杂兵防中途吃光束
-          e1.x = wR.x; e1.y = 200;   // 钉靶位（capital 悬停期横向巡航会偏出光束路径）——钉位先于 frames(1)，保证发射帧扫描用已钉位置
+          e1.x = wR.x; e1.y = 200; e1.phase = 0;   // 钉靶位（capital 悬停期横向巡航会偏出光束路径）+ phase 强制归零（azure 变体 20% 带 5s 虚化护盾——hitscan 按虚化穿透跳过不结算，2026-11-23 加固同 txc 场景先例）——钉位先于 frames(1)，保证发射帧扫描用已钉位置
           isolate(); clearBeams(); frames(1);
           if (core.beamFx.length > 0) fired = true;
         }
@@ -534,7 +535,7 @@ async function sceneJiyeBeam() {
           }
           // ③b 高血截断：满血 capital 钉更高位（y=140）——剩余 min(额定, 4200)=额定 归零、光束截断于靶
           core.enemies.length = 0; core.pBullets.length = 0; clearBeams();
-          const e2 = spawn.makeEnemy('capital', wR.x, -110, { hoverY: 140, holdTimer: 1000 });
+          const e2 = spawn.makeEnemy('capital', wR.x, -110, { hoverY: 140, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（同上）
           let fired2 = false;
           if (e2 && e2.type === 'capital') {
             for (let f = 0; f < 480 && !(e2.arrived || Math.abs(e2.y - e2.hoverY) < 12); f++) {
@@ -544,7 +545,7 @@ async function sceneJiyeBeam() {
             const hp0 = e2.hp;
             for (let f = 0; f < 280 && !fired2; f++) {
               for (let i = core.enemies.length - 1; i >= 0; i--) if (core.enemies[i] !== e2) core.enemies.splice(i, 1);
-              e2.x = wR.x; e2.y = 140;   // 钉位先于 frames(1)（同上）
+              e2.x = wR.x; e2.y = 140; e2.phase = 0;   // 钉位 + phase 归零（同上 azure 虚化加固）先于 frames(1)（同上）
               isolate(); clearBeams(); frames(1);
               if (core.beamFx.length > 0) fired2 = true;
             }
@@ -572,7 +573,7 @@ async function sceneJiyeBeam() {
       //（按本体血量截断：hp50 盾靶 → 本体吃 50 死亡、光束剩 额定×0.35-50 继续穿透——本体血量不可漏算）
       // 单低血带盾靶（hp 钉 50、chargeShield=1）：断言盾 1→0、敌死、存在 remain=额定×0.35-50 的穿透光束
       core.enemies.length = 0; core.pBullets.length = 0; clearBeams();
-      const e3 = spawn.makeEnemy('capital', wR.x, -110, { hoverY: 200, holdTimer: 1000 });
+      const e3 = spawn.makeEnemy('capital', wR.x, -110, { hoverY: 200, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（同上）
       if (!e3 || e3.type !== 'capital') {
         errors.push({ key: '极夜千星 盾靶生成失败', stack: 'makeEnemy capital 未返回预期实体' });
       } else {
@@ -678,7 +679,7 @@ async function sceneJinxiao() {
       if (!(t3.length === 2 && t3[0] === 3 && t3[1] === 3)) errors.push({ key: '今宵 同距均分异常', stack: '同距双敌 6 发分配 ' + JSON.stringify(t3) + '（应 3:3 平均分布）' });
       core.enemies.length = 0; core.pBullets.length = 0;
       // ② 错序齐射 + 弧线 + 命中：capital 钉在玩家上方 350px（唯一目标——12 发全锁定）
-      const eCap = spawn.makeEnemy('capital', px, py - 350, { hoverY: py - 350, holdTimer: 1000 });
+      const eCap = spawn.makeEnemy('capital', px, py - 350, { hoverY: py - 350, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（防 azure 虚化污染承伤）
       eCap.phase = 0; eCap.shielded = false;   // 幽蓝主力舰 20% 自带 5s 虚化——清零保证承伤结算
       for (let f = 0; f < 480 && !(eCap.arrived || Math.abs(eCap.y - eCap.hoverY) < 12); f++) { isolate(null); frames(1); }   // 等就位（≤8s；期间开火弹全清）
       core.pBullets.length = 0;   // 清在飞弹——本轮捕获自全新一轮错序发射起算
@@ -776,14 +777,14 @@ async function sceneTisu() {
       };
       // ① 目标选择直调（敌机刚生成未跑帧、位置精确——与开火同一代码路径）
       core.enemies.length = 0; core.pBullets.length = 0;
-      const sA = spawn.makeEnemy('striker', px, py - 200);
-      const big = spawn.makeEnemy('capital', px, py - 420, { hoverY: py - 420, holdTimer: 1000 });
+      const sA = spawn.makeEnemy('striker', px, py - 200, { variant: 'crimson' });
+      const big = spawn.makeEnemy('capital', px, py - 420, { hoverY: py - 420, holdTimer: 1000, variant: 'crimson' });   // 变体钉死（zhuixing 教训——azure 虚化 roll 影响血量断言与密度选靶稳定性，2026-11-24 二撞/三撞取证）
       for (const s of [sA, big]) { s.phase = 0; s.shielded = false; }   // 清幽蓝虚化 roll（保证候选有效）
       if (pl.pickTisuHeaviest(core.enemies.slice()) !== big) errors.push({ key: '时流天梭 血量最高选择异常', stack: '双敌（striker+capital）应选 capital（当前血量最高口径）' });
-      const c1 = spawn.makeEnemy('striker', px + 200, py - 260);
-      const c2 = spawn.makeEnemy('striker', px + 240, py - 260);
-      const c3 = spawn.makeEnemy('striker', px + 220, py - 300);
-      const far = spawn.makeEnemy('striker', px - 300, py - 520);
+      const c1 = spawn.makeEnemy('striker', px + 200, py - 260, { variant: 'crimson' });
+      const c2 = spawn.makeEnemy('striker', px + 240, py - 260, { variant: 'crimson' });
+      const c3 = spawn.makeEnemy('striker', px + 220, py - 300, { variant: 'crimson' });
+      const far = spawn.makeEnemy('striker', px - 300, py - 520, { variant: 'crimson' });   // 聚簇变体钉死：hp 一致化——pickTisuDensest 平局 tie-break 稳定（2026-11-24 三撞取证）
       for (const s of [c1, c2, c3, far]) { s.phase = 0; s.shielded = false; }
       const dst = pl.pickTisuDensest(core.enemies.slice(), 110);
       if (!dst || Math.hypot(dst.x - (px + 213), dst.y - (py - 273)) > 130) errors.push({ key: '时流天梭 密度最高选择异常', stack: '选中 ' + (dst ? '(' + dst.x.toFixed(0) + ',' + dst.y.toFixed(0) + ') 变体 ' + dst.variant + ' hp ' + dst.hp.toFixed(0) : 'null') + '——聚集三连（110px 内互为邻居）+ 远处单体，应选聚集组之一' });
@@ -1116,55 +1117,8 @@ async function sceneWaveTest() {
   } else errors.push({ key: '波次子页缺失', stack: '权重表未找到「波次」子页 chip（renderInfoWeights 改动回归？）' });
 }
 
-async function sceneSwarm() {
-  // 持续刷怪测试（Lv20 无限刷怪）回归：
-  // （2026-09-30 事故：正常刷怪通道 !state.challenge 门控把 swarm 一并跳过 → 开局空场一只怪都没有）
-  // 覆盖：图鉴按钮进入 swarm 挑战 / 14-main 正常通道放行 + 锁 Lv20 / 04-spawn swarm 分支不误补刷
-  elements.infoEntryBtn.click(); frames(10);    // 打开图鉴（单跑时构建 DOM；openInfoModal 幂等）
-  await navToOldWeightsTab();                   // 2026-10-12：旧怪物权重为权重组外层页签，先导航过去
-  // 持续刷怪测试按钮在「波次」档位分支（renderInfoWeights else）——外层页签导航后 infoWeightKind 仍为默认 'side'，
-  // 须再点「波次」档位 chip（与 sceneWaveTest 同款顺序消歧：取最近「虚象级」chip 之后的首个「波次」按钮）
-  let lastXwIdx2 = -1;
-  for (let i = 0; i < createdElements.length; i++) {
-    const el = createdElements[i];
-    if (el.tagName === 'BUTTON' && el.textContent === '虚象级') lastXwIdx2 = i;
-  }
-  const waveChip2 = createdElements.find((el, i) => i > lastXwIdx2 && el.tagName === 'BUTTON' && el.textContent === '波次');
-  if (waveChip2) { waveChip2.click(); frames(2); }
-  const swarmBtn = [...createdElements].reverse().find(el => el.tagName === 'BUTTON' && el.textContent.includes('持续刷怪测试'));
-  if (swarmBtn) {
-    swarmBtn.click();                             // 开局持续刷怪测试（challenge.kind==='swarm'）
-    frames(400);                                  // ≈6.7s：spawnTimer 出怪 + 编队入场
-    if (isModules) {
-      const coreSw = await import(pathToFileURL(join(jsDir, '02-core.js')).href);
-      if (coreSw.enemies.length === 0) {
-        errors.push({ key: '持续刷怪测试空场', stack: 'swarm 模式 400 帧后场上无敌人（正常刷怪通道 challenge 门控回归？）' });
-      }
-      if (coreSw.levelFlow.level !== 20) {
-        errors.push({ key: '持续刷怪测试等级未锁', stack: 'swarm 模式 levelFlow.level=' + coreSw.levelFlow.level + '（预期恒 20）' });
-      }
-      // 测试挑战强制抽卡（debugForceGacha 函数级直调——原直按键 7 已于 2026-11-09 收进调试菜单，
-      // 键位分支删除但函数与行为不变）：swarm 场默认不带萧杨，也应立刻建立抽卡演出且不动充能字段
-      //（14-main 键盘入口 → 07-player debugForceGacha；随后清演出跳过 ≈4s 状态机，不影响后续场景）
-      const pmSw = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
-      if (pmSw.debugForceGacha) {
-        coreSw.player.invuln = 5;   // 防测量窗口内被击杀中断断言
-        const ready0 = coreSw.state.gachaReady, stones0 = coreSw.state.gachaStones;
-        const fired = pmSw.debugForceGacha();
-        if (!fired || !coreSw.state.gachaFx) {
-          errors.push({ key: '测试挑战按 7 未强制抽卡', stack: 'debugForceGacha=' + fired + ' gachaFx=' + !!coreSw.state.gachaFx + '（swarm 挑战内应无视驾驶员/充能门控立刻建立抽卡演出）' });
-        }
-        if (coreSw.state.gachaReady !== ready0 || coreSw.state.gachaStones !== stones0) {
-          errors.push({ key: '强制抽卡误清充能', stack: '非携带萧杨时 gachaReady/gachaStones 被改动（ready ' + ready0 + '→' + coreSw.state.gachaReady + ', stones ' + stones0 + '→' + coreSw.state.gachaStones + '）' });
-        }
-        coreSw.state.gachaFx = null;
-      } else {
-        errors.push({ key: 'debugForceGacha 未导出', stack: '07-player 缺少 debugForceGacha 导出（契约回归？）' });
-      }
-    }
-    sample('持续刷怪测试 Lv20 出怪');
-  } else errors.push({ key: '刷怪测试按钮缺失', stack: '权重页未找到「持续刷怪测试」按钮（renderInfoWeights 改动回归？）' });
-}
+// （sceneSwarm 持续刷怪测试场景 2026-11-25 用户定稿删除——swarm 功能整体移除，被循环刷怪测试覆盖；
+//   debugForceGacha 强制抽卡断言随场景一并移除，功能本体保留于调试菜单按钮）
 
 async function scenePoem() {
   // 诗篇波次制（wip 实测）：modules 模式下直接 setDifficulty 到 poem（绕过主菜单 wip 选择限制）→ 开局跑帧——
@@ -1210,14 +1164,15 @@ async function sceneStarslayer() {
     // 换装群星之杀（空间斩击战机）
     const prevPlane = cfgL.currentPlane;
     if (cfgL.PLANES.stars && cfgL.setPlane) cfgL.setPlane(cfgL.PLANES.stars);
-    // 从上一场景干净返回 → 开局 → 直接构造 swarm 挑战态（不依赖图鉴按钮——单跑场景时
-    // 权重页签未构建、按钮不存在；startSwarmTest 语义 = resetGame(true, { challenge: { kind:'swarm', ... } })）
+    // 从上一场景干净返回 → 开局 → 直接构造 infTest 挑战态（不依赖图鉴按钮——单跑场景时
+    // 页签未构建、按钮不存在；原 swarm 挑战态 2026-11-25 随功能删除，改用等价环境：
+    // infTest 非诗篇 = 常规压力通道持续出怪 + 帧首等级锁定 ch.lv=20 + 正常血量，同 swarm 锁级语义）
     key('p'); frames(5); key('p', false);
     elements.pauseHomeBtn.click(); frames(10);
     elements.startBtn.click(); frames(10);
     const uiMod = await import(pathToFileURL(join(jsDir, '12-ui.js')).href);
-    if (uiMod.resetGame) uiMod.resetGame(true, { challenge: { kind: 'swarm', name: '持续刷怪测试' } });
-    frames(420);                                  // ≈7s：swarm Lv20 出怪（编队入场 / 停留线就位）
+    if (uiMod.resetGame) uiMod.resetGame(true, { challenge: { kind: 'infTest', name: '循环刷怪测试', lv: 20, waveN: 0, waveSpawned: false, clearT: 0, lvT: 0 } });
+    frames(420);                                  // ≈7s：Lv20 档出怪（编队入场 / 停留线就位）
     core.player.invuln = 1e9;                     // 防玩家死亡中断复现
     core.player.weapon = 5;                       // 暴走 Lv5：三线独立斩击（2026-10-12 改动面）
     core.player.berserk = 1e9;                    // 暴走常驻（不触发暴走结束掉级/澄月结算）
@@ -2597,7 +2552,7 @@ async function sceneCocoonDream() {
   }
 }
 
-async function sceneQunxingGate() {
+async function sceneStarsGate() {
   // 群星之扉特殊护甲（2026-11-11 实装）全链路回归：
   // ① 免伤触发（stub Math.random=0 必中——前置消费点均带门控短路，不污染判定）：血量不损 / 无受击无敌
   //    （不按闪避口径——同屏障 return false）/ 黑洞对象生成；参数公式口径（动态 count 含自身）：
@@ -2614,7 +2569,7 @@ async function sceneQunxingGate() {
     const playerMod = await import(pathToFileURL(join(jsDir, '07-player.js')).href);
     const prevArmor = cfgL.currentArmor;
     const prevWingman = cfgL.currentWingman;
-    cfgL.setArmor(cfgL.ARMORS.qunxingGate);
+    cfgL.setArmor(cfgL.ARMORS.starsGate);
     cfgL.setWingman(cfgL.WINGMEN_CFG.none);   // 禁僚机：默认时空允诺自动射击会污染伤害 tick 断言（前序场景僚机弹残留同理）
     key('p'); frames(5); key('p', false);
     elements.pauseHomeBtn.click(); frames(10);   // 从上一场景干净返回
@@ -3712,7 +3667,7 @@ async function sceneTxc() {
 // 速查：改动文件 → 建议场景（02-core / 01x 配置域 / 14-main 改动跑全量，共享层不省）
 const SCENES = [
   { name: 'core-flow', desc: '主界面空闲 / 开局战斗 / 移动爆弹 / 暂停恢复重开 / 二次开局', files: '14-main 07-player 08-entities 02-core', run: sceneCoreFlow },
-  { name: 'pilots', desc: '全部驾驶员卡片选中主路径（含花礼 1×1 判定断言）+ 酒客之王开局覆盖层 12 词条 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
+  { name: 'pilots', desc: '全部驾驶员卡片选中主路径（含花礼 1×1 判定断言）+ 九克之王开局覆盖层 12 词条 + Q 技能 + 暂停返回', files: '07-player 12-ui', run: scenePilots },
   { name: 'txc', desc: '天秀混沌王子（血量8000/装备失效/移速逼近/蛇形雷条+雷环/折线中线触发/四技能首轮冷却/麻痹平滑/雷击外扩/无敌帧禁用/拾取特化/接触秒杀与tick 4:1）', files: '01-config-loadout 02-core 06-enemy 07-player 08-entities 12-ui', run: sceneTxc },
   { name: 'sub-weapons', desc: '全部副武器卡片主路径（演示发射 / 战斗 / 重开冷却）', files: '07-player 12-ui', run: sceneSubWeapons },
   { name: 'zhuixing', desc: '坠星长枪（垂直直射 / 驻留减速 / 无限穿透 / 伤害结算 / 暴走错峰队列）', files: '07-player 08-entities 10-draw-world 01-config-loadout', run: sceneZhuixingSpear },
@@ -3722,7 +3677,6 @@ const SCENES = [
   { name: 'jiye-beam', desc: '极夜千星僚机（瞬时激光 hitscan：无飞行弹体同帧结算 / 无限射程 / 贯穿剩余伤害低血穿透·高血截断 / 消散无伤害 / 暴走持续 0.1s tick）', files: '07-player 08-entities 09a-draw-loadout 10-draw-world 01-config-loadout 02-core', run: sceneJiyeBeam },
   { name: 'encyclopedia', desc: '怪物图鉴预览渲染 + 数值与机制图鉴 DOM 构建', files: '12-ui 13-encyclopedia', run: sceneEncyclopedia },
   { name: 'wave-test', desc: '权重表「波次」子页试波挑战 + = 追加补波', files: '12-ui 13-encyclopedia 04-spawn 14-main', run: sceneWaveTest },
-  { name: 'swarm', desc: '持续刷怪测试 Lv20 锁级 + 强制抽卡（调试菜单同款函数直调）', files: '04-spawn 14-main 07-player', run: sceneSwarm },
   { name: 'starslayer', desc: '群星之杀暴走三线斩击 hp 有限性（血条消失+无敌回归哨兵）', files: '07-player 08-entities 01-config-loadout', run: sceneStarslayer },
   { name: 'poem', desc: '诗篇波次制：出波 / BOSS 触发计数 / 重开归零', files: '14-main 04-spawn 06-enemy 08-entities', run: scenePoem },
   { name: 'popian-u', desc: '破片U型状态机（入场即计时 / 途中瞄准 / 延迟三连发）', files: '04-spawn 06-enemy', run: scenePopianU },
@@ -3740,7 +3694,7 @@ const SCENES = [
   { name: 'beyond-wings', desc: '超越艇五变体（入场连续性 / 停留线+3% 屏高 / 逐机弹种 / 时流绿环命中我方置 buff）', files: '04-spawn 06-enemy 08-entities 01-config-enemies', run: sceneBeyondWings },
   { name: 'collapse-cc', desc: '坍缩构造体（双逻辑镜像重走 / 瞬移与连续性 / 刹停渐变弹 / 场高承伤乘区）', files: '04-spawn 06-enemy 01-config-enemies 01-config-difficulty', run: sceneCollapseConstruct },
   { name: 'cocoon-dream', desc: '破茧之梦（侧翼七段路径连续性 / 刹停五连弹弹速同威龙±5° 偏移 / 击坠掉 1 水晶）', files: '04-spawn 06-enemy 01-config-enemies', run: sceneCocoonDream },
-  { name: 'qunxing-gate', desc: '群星之扉（免伤不按闪避口径 / 黑洞吞弹含激光覆盖段截断拆段 / 伤害 tick / 减速 BOSS 豁免 / 到期清除）', files: '07-player 08-entities 04-spawn 01-config-loadout', run: sceneQunxingGate },
+  { name: 'stars-gate', desc: '群星之扉（免伤不按闪避口径 / 黑洞吞弹含激光覆盖段截断拆段 / 伤害 tick / 减速 BOSS 豁免 / 到期清除）', files: '07-player 08-entities 04-spawn 01-config-loadout', run: sceneStarsGate },
   { name: 'hover-bob', desc: '御4 / 铁砧到位悬停纵向微摆（连续性 + 公式复核）', files: '04-spawn 06-enemy', run: sceneHoverBob },
   { name: 'gacha', desc: '原石规则（非萧杨不计数 / 16 颗充能 / Q 释放 / 转化概率）', files: '07-player 01-config-loadout', run: sceneGacha },
   { name: 'gamepad', desc: '手柄全链路（认领 / 菜单导航 / 摇杆死区 / 爆弹暂停 / 拔出回退）', files: '02-core 14-main 07-player 12-ui', run: sceneGamepad },

@@ -1,7 +1,7 @@
 // 01-config-boss：BOSS 注册表与序列（旧日之歌 / 暴风之眼 / 风暴编织者 / 黑暗之手）（《并行开发改造设计.md》批次 1c 自 01-config.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：04-spawn(3 名) 05-boss(13 名) 06-enemy(9 名) 07-player(2 名) 08-entities(5 名) 10-draw-world(1 名) 11-draw-boss(7 名) 13-encyclopedia(4 名) 14-main(4 名)
+  // 被依赖：04-spawn(3 名) 05-boss(13 名) 06-enemy(9 名) 07-player(2 名) 08-entities(5 名) 10-draw-world(1 名) 11-draw-boss(7 名) 12-ui(1 名) 13-encyclopedia(4 名) 14-main(4 名)
   // 配置域群（01x）内部单向依赖：加载序见 index.html（core→loadout→enemies→boss→difficulty→spawn→achievements），对外只出不进
 
   import { JIAOXIANG } from './01-config-enemies.js';

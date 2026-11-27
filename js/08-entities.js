@@ -7,17 +7,17 @@
   //
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
   import { ARMOR_SKILLS, crystalShieldDur, BULWARK, MAX_BOMBS, PILOTS, PLAYER_CFG, PRINCE_STORM, SHIELD_DURATION, TXC, currentArmor, currentWingman, hasPilot, playerHitRadius, txcActive } from './01-config-loadout.js';
-  import { BEYOND_WING, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, JIAOXIANG, ELITES, STASIS_UNREAL, THUNDER, enemyGrade } from './01-config-enemies.js';
+  import { BEYOND_WING, FASHI_MATRIX, GUILT_GRAIL, HANSHUANG, JIAOXIANG, ELITES, STASIS_UNREAL, THUNDER, enemyColorTags, enemyGrade } from './01-config-enemies.js';
   import { BOSS_LOWFIRE_BONUS, DARKHAND, STORM, STORM2, STORM_SHIP } from './01-config-boss.js';
   import { diffMods, enemyDmgMul, isRealme, isPoem, pxpfChargeHurtMul, constructAltHurtMul, xiayongBarAbsorb, xiayongHornDmgMul, HP_KIT_HEAL_PCT } from './01-config-difficulty.js';
   import { CHAOS_SMALL_DMG_MUL, CRYSTAL_ABSORB_DELAY, PIERCE_WEAKEN_MUL } from './01-config-spawn.js';
-  import { bossEntranceActive, bossPhantom, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, timeflowMul, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts, beamFx, wingmen } from './02-core.js';
+  import { bossEntranceActive, bossPhantom, bossFlow, clamp, dashKillFx, dhGuardActive, eBullets, enemies, enemyOnScreen, crystals, frostZones, hasteMul, timeflowMul, notePlayerDamage, pBullets, particles, phaseFx, player, powerups, rand, rewardOutMul, spawnParticles, state, trailGhosts, beamFx, wingmen, missiles, popianMissiles, blBombs, spellCubes, wgSlashes, canClearBullet, CLEAR_TIER } from './02-core.js';
   import { yu4AuraMul } from './04-spawn.js';
   import { killEnemy, grailRedirect, applyRainAttackDelay } from './06-enemy.js';
   import { armorSkillGain, currentBombCap, kingDmgBonusMul, noteGachaStone, princeStormKillGain, pickTisuRandom } from './07-player.js';
   import { bulwarkActive, clipAgainstShield, damagePlayer, pickupBerserk, pickupKit, rainApplyBerserk, rainApplyKit, shieldReflectHit, shieldSweepHit } from './07-player.js';
   import { achvNoteGiantCrystal, achvNoteLanxinAbsorb, achvNoteLanxinShieldStart, achvNotePickup, achvWingmanBlock, achvZidianHit } from './02-achievements.js';
-  import { affixCrystalExtend, affixCrystalShieldDur, affixFreezeNote, affixHas, affixMainGunDamageMul, affixResetShieldExt } from './03b-affix.js';
+  import { affixBulwarkAbsorbDmg, affixCrystalExtend, affixCrystalShieldDur, affixFreezeNote, affixHas, affixMainGunDamageMul, affixResetShieldExt } from './03b-affix.js';
 
 
   // ---------- 敌人受伤修正链（主武器弹幕 / 僚机弹幕 / 空间斩击共用）----------
@@ -655,7 +655,16 @@
           // 铜皮夏勇·屏障（技能3，2026-10-03 用户定稿）：常规直击伤害先被红色护盾吸收（秒杀类/爆弹等
           // 真实伤害不经此处；破盾检测在 06-enemy advanceEliteMinions）
           e.hp -= xiayongBarAbsorb(e, dmg * pxpfChargeHurtMul(e) * constructAltHurtMul(e));   // 朴学峰冲刺易伤 ×2（群星守愿对大型龙卷双判定已删除——2026-10-11 用户定稿）
+          // 我方伤害账本（循环刷怪测试页 DPS 统计，2026-11-24）：主炮 mainGun/mainShot / 副武器 sub / 僚机 wing——
+          // 仅统计三条主通道（斩击/激光结算/导弹等独立路径不挂账，测试页 DPS 为弹道通道口径）
+          notePlayerDamage(dmg, b.mainGun || b.mainShot ? 'main' : b.sub ? 'sub' : b.wing ? 'wing' : null);
           affixFreezeNote(e, dmg);   // 词条（诗篇级 3:good:2）冰封：主武器/僚机/副武器弹命中与伤害计数
+          // 词条（具象级 1:good:7）极夜流光：光束直接击坠敌人 → 额外一次无衰减穿透（mainPierce +1；
+          // noWeaken 标记该次穿透伤害不减半——下方 mainPierce 分支消费后清除；须在穿透分支判定前加次数，
+          // 使穿透次数恰用尽时击坠的弹体也能获得额外穿透而不被销毁）
+          if (e.hp <= 0 && b.laserBolt && affixHas('1:good:7')) { b.mainPierce = (b.mainPierce || 0) + 1; b.noWeaken = true; }
+          // 词条（具象级 1:good:9）无界飞剑：10% 概率造成 200% 伤害，对黑色敌人概率提高到 30%（黑标走 enemyColorTags——已迁 01-config-enemies）
+          if (b.sword && b.sub && affixHas('1:good:9') && Math.random() < (enemyColorTags(e).includes('black') ? 0.30 : 0.10)) dmg *= 2;
           // 时流之雨：下一次攻击间隔 +0.3s（每轮射弹对同一敌人仅一次——e.rainVid 记录轮次 id 去重，
           // BOSS 同样生效走 skillCd；应用全攻击计时通道见 06-enemy applyRainAttackDelay）
           if (b.rain && e.rainVid !== b.volley) { e.rainVid = b.volley; applyRainAttackDelay(e); }
@@ -685,6 +694,7 @@
           else if (b.mainPierce > 0 && e.type !== 'boss' && e.type !== 'capital' && e.type !== 'fashiArray') {
             pierce = true; b.mainPierce--;
             if (b.pierceStep != null) { b.pierceHitN = (b.pierceHitN || 0) + 1; b.dmg = Math.max(0, b.pierceBase * (1 - b.pierceStep * b.pierceHitN)); b.lastHit = e; }   // Math.max(0,…) 下限：未来 mainPierce 调大到 ≥5 时防负伤害（负数即给敌人回血）
+            else if (b.noWeaken) b.noWeaken = false;   // 词条（1:good:7）极夜流光：击坠触发的额外穿透——这一次不衰减（一次性消费）
             else b.weakened = true;
           }
           if (!pierce) pBullets.splice(i, 1);
@@ -1022,6 +1032,7 @@
           const ux = b.vx / sp, uy = b.vy / sp;
           const clip = clipAgainstShield(b.x, b.y, ux, uy, b.len, b.r + BULWARK.thickness / 2 * BULWARK.scale);
           if (clip) {
+            if (!b.shieldHold) affixBulwarkAbsorbDmg(b.dmg);   // 词条（2:good:6）群星守愿吸伤：激光首次被盾咬住按弹体伤害值记一次吸收（持续截断不重复计）
             b.clipLen = clip.d;
             b.shieldHold = true; b.shieldW = clip.w;
             b.shieldLX = clip.x - clip.w.x; b.shieldLY = clip.y - clip.w.y;
@@ -1063,7 +1074,7 @@
               b.pathLen = target;
             }
             if (Math.random() < 0.5) spawnParticles(b.sbX, b.sbY, '#eaf6ff', 2, 90);   // 盾面节流迸火花
-            if (b.pathLen <= 1 || b.path.length < 2) { eBullets.splice(i, 1); continue; }   // 被盾吃完
+            if (b.pathLen <= 1 || b.path.length < 2) { affixBulwarkAbsorbDmg(b.dmg); eBullets.splice(i, 1); continue; }   // 被盾吃完（词条 2:good:6：吸收计伤）
           }
         } else if (b.len && b.oval) {
           // 椭圆风条：head 端先触盾，逐帧“磨短”（裁掉越盾部分、头端钉在盾面），尾端越盾（有效长度≤0）即消解
@@ -1087,7 +1098,7 @@
           }
           if (d != null) {
             spawnParticles(cx, cy, '#eaf6ff', 3, 110);
-            if (d <= 0.5) { eBullets.splice(i, 1); continue; }   // 被吃完
+            if (d <= 0.5) { affixBulwarkAbsorbDmg(b.dmg); eBullets.splice(i, 1); continue; }   // 被吃完（词条 2:good:6：吸收计伤）
             b.len = d;                                   // 收缩到盾面
             b.x = tx + ux * d / 2; b.y = ty + uy * d / 2;   // 尾端不动、中心回移
           }
@@ -1120,19 +1131,21 @@
           const hit = shieldSweepHit(sx1, sy1, sx2, sy2, b.r);
           if (hit) {
             spawnParticles(hit.x, hit.y, '#eaf6ff', 6, 150);
+            affixBulwarkAbsorbDmg(b.dmg);   // 词条（2:good:6）群星守愿吸伤：吸收的射弹伤害累计（下一轮 fan 发射加成）
             achvWingmanBlock();   // 成就：守愿加护——白盾挡弹计数
             eBullets.splice(i, 1); continue;
           }
         }
       }
-      // 群星之扉黑洞吞噬（state.blackhole，中心持续跟随玩家；2026-11-11 用户定稿）：圈内一切 eBullets
-      // 整颗吞——普通弹 / 长条弹 / 折线光束 / 巨大蛋挞（b.tart）/ 词条大蛋挞（b.affixTart）；
+      // 群星之扉黑洞吞噬（state.blackhole，中心持续跟随玩家；2026-11-11 用户定稿；清除等级 9 级——2026-11-24
+      // 射弹清除等级体系）：圈内一切 eBullets 整颗吞——普通弹 / 长条弹 / 折线光束 / 巨大蛋挞（b.tart）；
       // 激光（b.laser）按覆盖段处理：「光束仅能吞噬覆盖的部分，其他部分还在」——尾段覆盖→尾端前移、
       // 头段覆盖→截短 len、中段覆盖→拆两段（本颗留靠尾段、克隆承接靠头段，倒序遍历下新弹下帧起参与）、
-      // 整段覆盖→整颗吞。判定半径 rEff 与视觉同源（出现 0.15s 半径缓入）；不计数守望清弹成就；
-      // 铁砧导弹 / 暴鸰炸弹 / 寒冷静滞区域 / 脉冲矩阵震荡波不经 eBullets，不在吞噬范围（与守望清弹同口径）
+      // 整段覆盖→整颗吞。判定半径 rEff 与视觉同源（出现 0.15s 半径缓入）；不计数群星之歌清弹成就；
+      // 友方词条蛋挞（b.affixTart）任何功能不可吞（2026-11-24）。非 eBullets 容器（敌方导弹/破片导弹/暴鸰炸弹/
+      // 正方体/斩击流/回旋刃/长条蛋挞）的吞噬见本函数末尾黑洞跨容器扫掠块（等级均 ≤9）
       const bhSw = state.blackhole;
-      if (bhSw && player.alive) {
+      if (bhSw && player.alive && !b.affixTart) {
         const rEff = bhSw.r * Math.min(1, bhSw.t / bhSw.growT);
         if (b.laser) {
           const sp = Math.hypot(b.vx, b.vy) || 1;
@@ -1168,22 +1181,12 @@
           eBullets.splice(i, 1); continue;
         }
       }
-      // 护盾加持：碰到护盾气泡的敌弹直接消解（激光穿透护盾，仅尾端出界才消失）
+      // 护盾加持：碰到护盾气泡的敌弹直接消解（清除等级 3 级——2026-11-24 射弹清除等级体系：激光现可被气泡
+      // 吸收整颗消解；巨大蛋挞（4级）不再被碰触消散——穿过气泡正常结算；友方蛋挞任何功能不清除）
       // 七日澜心水晶护盾：同样消解气泡内敌弹（粉色迸散）——成就「云心」按结晶护盾期间的消解数计数
-      if (!b.laser && !b.affixTart && player.alive &&
+      if (!b.affixTart && player.alive &&
           Math.hypot(b.x - player.x, b.y - player.y) < 36 + b.r &&
           (player.shield > 0 || player.crystalShield > 0)) {
-        // 巨大蛋挞（2026-10-12 用户定稿，回调 2026-10-08「仅镰刀可斩」豁免）：量子/结晶护盾碰触可消散——
-        // 置 tartHitT 走镰刀同款「颤动→碎裂迸粒→渐隐」管线（状态机见本文件上方 b.tart 分支；消散期
-        // 冻结移动/自旋/碰撞），起始补一轮护盾色火花；仅首次触发计数，防管线存续期逐帧重复
-        if (b.tart) {
-          if (b.tartHitT == null) {
-            b.tartHitT = 0;
-            if (player.crystalShield > 0) achvNoteLanxinAbsorb();
-            spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 10, 170);
-          }
-          continue;
-        }
         if (player.crystalShield > 0) achvNoteLanxinAbsorb();
         spawnParticles(b.x, b.y, player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff', 6, 140);
         eBullets.splice(i, 1);
@@ -1250,6 +1253,71 @@
         if (tookHit && b.owner && b.owner.deathShot) achvZidianHit();
         // 蛋挞弹（b.tart）穿透：击中我方战机不消失、继续前进（2026-10-04 用户定稿，与白盾豁免同口径）
         if (!b.laser && !b.tart) eBullets.splice(i, 1);   // 激光穿透：命中不消失，持续生长直到尾端出界
+      }
+    }
+
+    // ---------- 非 eBullets 容器的射弹等级扫掠（2026-11-24 射弹清除等级体系，每帧一次） ----------
+    // ① 群星之扉黑洞跨容器吞噬（9 级）：敌方导弹(4)/破片导弹(2)/暴鸰炸弹(2)/法术正方体(1)/战争幽灵斩击流(1)/
+    //    夏勇回旋刃(2)/长条蛋挞(3)——进入 rEff 即吞（回旋刃置 done 由 06-enemy 收口；长条蛋挞任一节点入圈整条吞）
+    // ② 量子/结晶护盾气泡碰触（3 级）：战争幽灵斩击流(1)/暴鸰炸弹(2)/夏勇回旋刃(2)/长条蛋挞(3)——碰触即消解；
+    //    破片导弹/正方体的气泡碰触在 06-enemy 各自更新循环内（同 3 级口径）；敌方导弹 4 级 > 3 不再被气泡消解
+    if (player.alive && (state.blackhole || player.shield > 0 || player.crystalShield > 0)) {
+      const bh2 = state.blackhole;
+      const bhR = bh2 ? bh2.r * Math.min(1, bh2.t / bh2.growT) : 0;
+      const bubble = player.shield > 0 || player.crystalShield > 0;
+      const absorbCol = () => (player.crystalShield > 0 ? '#FFC0CB' : '#6fe3ff');
+      if (bh2) {   // 敌方导弹（4级）：仅黑洞吞噬
+        for (let i = missiles.length - 1; i >= 0; i--) {
+          const m = missiles[i];
+          if (Math.hypot(m.x - player.x, m.y - player.y) < bhR) { spawnParticles(m.x, m.y, '#8a97a8', 5, 130); missiles.splice(i, 1); }
+        }
+        for (let i = popianMissiles.length - 1; i >= 0; i--) {   // 破片导弹（2级）：仅黑洞吞噬
+          const m = popianMissiles[i];
+          if (Math.hypot(m.x - player.x, m.y - player.y) < bhR) { spawnParticles(m.x, m.y, '#8a97a8', 5, 130); popianMissiles.splice(i, 1); }
+        }
+        for (let i = spellCubes.length - 1; i >= 0; i--) {   // 法术正方体（1级）：仅黑洞吞噬（白盾 swPen 穿透与气泡消解维持 06-enemy 既有口径）
+          const c = spellCubes[i];
+          if (Math.hypot(c.x - player.x, c.y - player.y) < bhR) { spawnParticles(c.x, c.y, '#8a97a8', 5, 130); spellCubes.splice(i, 1); }
+        }
+      }
+      for (let i = wgSlashes.length - 1; i >= 0; i--) {   // 战争幽灵斩击流（1级）
+        const s = wgSlashes[i];
+        if (bh2 && Math.hypot(s.x - player.x, s.y - player.y) < bhR) { spawnParticles(s.x, s.y, '#8a97a8', 5, 130); wgSlashes.splice(i, 1); continue; }
+        if (bubble && Math.hypot(s.x - player.x, s.y - player.y) < 36 + 16) {
+          if (player.crystalShield > 0) achvNoteLanxinAbsorb();
+          spawnParticles(s.x, s.y, absorbCol(), 6, 140); wgSlashes.splice(i, 1);
+        }
+      }
+      for (let i = blBombs.length - 1; i >= 0; i--) {   // 暴鸰炸弹（2级）
+        const b = blBombs[i];
+        if (bh2 && Math.hypot(b.x - player.x, b.y - player.y) < bhR) { spawnParticles(b.x, b.y, '#8a97a8', 5, 130); blBombs.splice(i, 1); continue; }
+        if (bubble && Math.hypot(b.x - player.x, b.y - player.y) < 36 + (b.r || 12)) {
+          if (player.crystalShield > 0) achvNoteLanxinAbsorb();
+          spawnParticles(b.x, b.y, absorbCol(), 6, 140); blBombs.splice(i, 1);
+        }
+      }
+      for (const en of enemies) {
+        if (!en) continue;
+        if (en.xyBlades) {   // 夏勇回旋刃（2级）
+          for (const bl of en.xyBlades) {
+            if (bl.done) continue;
+            if (bh2 && Math.hypot(bl.x - player.x, bl.y - player.y) < bhR) { spawnParticles(bl.x, bl.y, '#8a97a8', 5, 130); bl.done = true; continue; }
+            if (bubble && Math.hypot(bl.x - player.x, bl.y - player.y) < 36 + 12) {
+              if (player.crystalShield > 0) achvNoteLanxinAbsorb();
+              spawnParticles(bl.x, bl.y, absorbCol(), 6, 140); bl.done = true;
+            }
+          }
+        }
+        if (bh2 && en.skill && en.skill.id === 3 && Array.isArray(en.skill.tarts)) {   // 长条蛋挞（3级）：黑洞吞
+          for (let i = en.skill.tarts.length - 1; i >= 0; i--) {
+            const tar = en.skill.tarts[i];
+            let hit = false;
+            for (const p of tar.pts) { if (Math.hypot(p.x - player.x, p.y - player.y) < bhR) { hit = true; break; } }
+            if (!hit) continue;
+            for (let k = 0; k < tar.pts.length; k += 2) spawnParticles(tar.pts[k].x, tar.pts[k].y, '#8a97a8', 3, 110);
+            en.skill.tarts.splice(i, 1);
+          }
+        }
       }
     }
   }

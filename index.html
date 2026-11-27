@@ -67,9 +67,15 @@
               <span class="stone-icon">✦</span><b id="stoneCount">0</b>
             </div>
           </div>
+          <!-- 循环刷怪测试页：当前刷怪波次等级（仅测试页显示，2026-11-24 用户定稿） -->
+          <div class="inftest-level hidden" id="infTestLv"></div>
         </div>
         <!-- （原右上角爆弹已移入左下角 hud-bl 首行，2026-10-04；右上角不再有 HUD 内容） -->
       </div>
+
+      <!-- 循环刷怪测试页：左侧武器 DPS 面板（主武器/副武器/僚机小型预览 + 最近 8s DPS，2026-11-24 用户定稿；
+           仅测试页显示，12-ui updateHUD 构建与刷新） -->
+      <div class="inftest-dps hidden" id="infTestDps"></div>
 
       <!-- 左下角：爆弹（血条左侧心形图案上方） + 技能计数器（爆弹右侧让位） + 量表行下增伤读数 + 心心 + HP 条 -->
       <div class="hud-bl">
@@ -146,7 +152,7 @@
              【发版必改 · 给执行 release / 打 tag 的 AI】每次发版除 README 顶部「当前版本」与
              package.json 的 version 外，还必须同步更新下面这一行的版本号——三处缺一不可；
              v0.3.5 发版时曾漏改此处，导致主菜单右上角停留在 v0.3.4，勿再重蹈。 -->
-          <span class="menu-version">v0.5.2</span>
+          <span class="menu-version">v0.5.3</span>
         <!-- 操作提示：左上角「教程」按钮，点击展开 / 收起按键说明卡片 -->
         <button class="help-entry-btn" id="helpEntryBtn" title="游戏操作按键" aria-label="游戏操作按键">教程</button>
         <!-- 游戏教程面板：与战机卡片同款中央大面板（.loadout-panel），四象限布局（右上/右下预留）；
@@ -352,6 +358,10 @@
           <button id="pauseHomeBtn" class="hidden">返回主界面</button>
           <!-- 调试菜单入口（仅暂停页显示，随 pauseHomeBtn 同步显隐）：作弊/调试功能收编入口，0 键亦可直接呼出 -->
           <button id="pauseDebugBtn" class="hidden">调试菜单</button>
+          <!-- 循环刷怪测试页专属（2026-11-24 用户定稿）：BOSS 召唤入口（仅测试页暂停时显示）+ BOSS 选择行
+              （点击召唤：清场 → BOSS 直接出现、不播放登场动画，随后恢复游戏） -->
+          <button id="pauseBossBtn" class="hidden">召唤 BOSS</button>
+          <div id="bossPickRow" class="boss-pick-row hidden"></div>
           <!-- 当前局已获词条（2026-11-10 用户需求）：togglePause paused 分支经 affixOwnedEntries 渲染；
                无词条（未击败任何 BOSS）时隐藏容器 -->
           <div id="pauseAffixList" class="hidden"></div>

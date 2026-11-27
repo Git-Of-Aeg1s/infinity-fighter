@@ -1,7 +1,7 @@
 // 09b-draw-enemies.js：敌机形体 / 弹幕标记 / 法术方块 / 战争幽灵斩击绘制（《并行开发改造设计.md》批次 2b 自 09-draw-ships.js 拆出）
 
   // ─── 模块契约（并行修改请先读；npm run check 静态强制校验 import/export）───
-  // 被依赖：10-draw-world(40 名) 13-encyclopedia(1 名)
+  // 被依赖：10-draw-world(41 名) 13-encyclopedia(1 名)
   // 渲染层只读：只进 01x 配置域 / 02-core / 09x 兄弟文件；09x 之间禁止互相 import
 
   import { blBombs, clamp, ctx, cubeHitFx, douzhiFx, enemies, player, popianMissiles, slashFx, spellCubes, state, wgSlashes } from './02-core.js';
@@ -3088,6 +3088,227 @@
         ctx.beginPath(); ctx.arc(s * 13, 2, 2.8, 0, TAU); ctx.stroke();
       }
       ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
+  }
+
+  // ---------- 澜心舰（3C 五变体，2026-11-27 实装，样式沿测试4页方案G框架净版定稿） ----------
+  // 六点箭镖轮廓（2026-11-25 用户手绘框架：中央尾鳍尖峰 + 双翼后掠翼尖 + 机头下尖，碰撞盒内归一化 [±23.5,-18~+17]）
+  // + 鳍翼补块（弦线直连尾鳍边缘上 1/2 点与翼内缘左 1/2 点——弦线与机身围成的缺口计入机身、填色略淡于机身）
+  // + 双斜尾焰（各自垂直于本侧弦线、自弦中点向后-外撇 ≈36°）+ 中央菱形晶核；逐舰专属动效件（白影残影 /
+  // 洪流喷流 / 洄星涡流+双星 / 终日暗舰+蚀环 / 似幻幻泡）。黑舰暗色件三条铁律（白叠对近黑两头不通 /
+  // 相对提亮同样失败 / 暗舰缝线须灰蓝）——补块用固定中调蓝灰渐变、缝线灰蓝，见测试4页 11-27 定标记录。
+  // 单位坐标同 gunship 基准（外层 drawScale 1.55 放大）；自带完整填充描边——末尾清空路径让尾部公共 fill/stroke 空跑
+  function drawLanXinShipBody(e) {
+    const t = state.time;
+    const key = e.type.slice('lanxinShip_'.length);   // blue / white / black / violet / pink
+    const col = e.color;
+    const dark = key === 'black';
+    const ph = e.wobble || 0;
+    const pulse = 0.5 + Math.sin(t * 2.6 + ph) * 0.5;
+    // 舰体轮廓路径（六点箭镖；clip 用后 restore 描边复用同一路径——save/restore 不清 path）
+    const hullPath = () => {
+      const P = [[0, -18], [7.5, 2.5], [23.5, -1], [0, 17], [-23.5, -1], [-7.5, 2.5]];
+      ctx.beginPath();
+      for (let i = 0; i < P.length; i++) { i ? ctx.lineTo(P[i][0], P[i][1]) : ctx.moveTo(P[i][0], P[i][1]); }
+      ctx.closePath();
+    };
+
+    // 双斜尾焰（垫底）：左/右焰各自垂直于本侧弦线（弦向 u=±(0.810,0.586)）、自弦中点（±9.63,-3.5）
+    // 沿法线 n=±(0.586,-0.810) 向后-外喷出（外撇约 36°），基底沿弦线方向；外焰主色（黑舰灰蓝）+ 内焰白亮
+    for (const sx of [-1, 1]) {
+      const fl = 11 + 2.5 * Math.sin(t * 7 + sx + ph);
+      const mx = sx * 9.625, my = -3.5;
+      const dx = sx * 0.586, dy = -0.810;
+      const bx = sx * 0.810 * 2.4, by = 0.586 * 2.4;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(mx + bx, my + by); ctx.lineTo(mx + dx * fl, my + dy * fl); ctx.lineTo(mx - bx, my - by);
+      ctx.closePath();
+      ctx.fillStyle = dark ? '#8f9ab5' : col; ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(mx + bx * 0.5, my + by * 0.5); ctx.lineTo(mx + dx * fl * 0.6, my + dy * fl * 0.6); ctx.lineTo(mx - bx * 0.5, my - by * 0.5);
+      ctx.closePath(); ctx.fillStyle = '#ffffff'; ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // 白影残影（专属件，垫于舰体之下）：上方两道淡白轮廓呼吸浮游
+    if (key === 'white') {
+      const wa = 0.5 + Math.sin(t * 1.8 + ph) * 0.5;
+      for (let i = 1; i <= 2; i++) {
+        ctx.save();
+        ctx.translate(0, -(4.5 * i + (1 - wa) * 1.5));
+        ctx.globalAlpha = (i === 1 ? 0.20 : 0.10) * (0.55 + wa * 0.45);
+        hullPath();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 舰体：轮廓 → 填充（黑舰专属暗 Ramp；洄星走 clip 色斑涡流）→ 描边
+    hullPath();
+    if (key === 'violet') {
+      // 洄星涡流：clip 内暗紫底 + 3 个蓝紫色斑绕漂融合（织夜同款思路）——路径保留供 restore 后描边
+      ctx.save();
+      ctx.clip();
+      const base = ctx.createLinearGradient(0, -17, 0, 20);
+      base.addColorStop(0, '#241a4e'); base.addColorStop(1, '#150f33');
+      ctx.fillStyle = base;
+      ctx.fillRect(-30, -20, 60, 44);
+      const blobs = [
+        { cc: '#7a5cff', r: 11, sp: 0.7, p0: 0 },
+        { cc: '#3f58e0', r: 10, sp: 0.5, p0: 2.4 },
+        { cc: '#9a4ae0', r: 8, sp: 0.9, p0: 4.6 },
+      ];
+      for (const bl of blobs) {
+        const bx = Math.cos(ph + t * bl.sp + bl.p0) * 14;
+        const by = Math.sin(ph * 1.3 + t * bl.sp * 1.35 + bl.p0 * 1.7) * 8;
+        const rg = ctx.createRadialGradient(bx, by, 0, bx, by, bl.r);
+        rg.addColorStop(0, bl.cc); rg.addColorStop(1, 'rgba(18,12,44,0)');
+        ctx.globalAlpha = 0.8; ctx.fillStyle = rg;
+        ctx.fillRect(-30, -20, 60, 44);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else {
+      const g = ctx.createLinearGradient(0, -17, 0, 24);
+      if (dark) {
+        g.addColorStop(0, '#0b0c12'); g.addColorStop(0.5, '#1e222e'); g.addColorStop(1, '#3d4456');
+      } else {
+        g.addColorStop(0, bwShade(col, 0.5)); g.addColorStop(0.5, col); g.addColorStop(1, bwShade(col, 1.22));
+      }
+      ctx.fillStyle = g; ctx.fill();
+    }
+
+    // 鳍翼补块：弦线直连 A（尾鳍边缘）上 1/2 点 (-3.75,-7.75) 与 B（翼内缘）左 1/2 点 (-15.5,0.75)——
+    // 弦线与机身（鳍缘 P1→腋点→翼内缘 P2）围成的缺口区域也计入机身、比机身略淡；弦线画缝线分界，
+    // 鳍缘/翼内缘两侧由舰体描边勾出；双侧镜像。填色分舰种：彩舰＝同机身渐变+白 0.12；
+    // 黑舰＝固定中调蓝灰渐变（绝对可见度定标：采样带 L≈80~96，与描边/焰/暗晶 Ramp 同族，B>G>R 不发白）
+    {
+      const A1 = [-3.75, -7.75], B1 = [-15.5, 0.75], AX = [-7.5, 2.5];   // 弦点 P1 / 弦点 P2 / 翼根腋点
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sx * A1[0], A1[1]);
+        ctx.lineTo(sx * B1[0], B1[1]);
+        ctx.lineTo(sx * AX[0], AX[1]);
+        ctx.closePath();
+        if (key === 'violet') {
+          ctx.fillStyle = '#2a2050'; ctx.fill();
+        } else if (dark) {
+          const mb = ctx.createLinearGradient(0, -17, 0, 24);
+          mb.addColorStop(0, '#3a4156'); mb.addColorStop(0.5, '#565f7c'); mb.addColorStop(1, '#75809e');
+          ctx.fillStyle = mb; ctx.fill();
+        } else {
+          const mg = ctx.createLinearGradient(0, -17, 0, 24);
+          mg.addColorStop(0, bwShade(col, 0.5)); mg.addColorStop(0.5, col); mg.addColorStop(1, bwShade(col, 1.22));
+          ctx.fillStyle = mg; ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill();
+        }
+      }
+      // 弦缝线：黑舰用灰蓝可见缝（黑 0.30 在近黑舰体上不可见——补块无边界定义读作「没画」），其余黑 0.30
+      ctx.strokeStyle = dark ? 'rgba(143,154,181,0.55)' : 'rgba(0,0,0,0.30)';
+      ctx.lineWidth = 1.1;
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sx * A1[0], A1[1]);
+        ctx.lineTo(sx * B1[0], B1[1]);
+        ctx.stroke();
+      }
+    }
+
+    // 舰体描边（黑舰亮灰蓝勾边——暗背景下勾勒轮廓）
+    ctx.strokeStyle = dark ? '#6b7690' : bwShade(col, 1.45);
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 中央菱形晶核（系列标志，取代战舰座舱白点）：竖长菱形——左亮右暗切面 + 内层白菱 + 描边辉光呼吸；黑舰专属暗 Ramp
+    {
+      const hw = 4.5, hh = 7;
+      const dia = (k) => {
+        ctx.beginPath();
+        ctx.moveTo(0, -hh * k); ctx.lineTo(hw * k, 0); ctx.lineTo(0, hh * k); ctx.lineTo(-hw * k, 0);
+        ctx.closePath();
+      };
+      ctx.shadowColor = dark ? '#8f9ab5' : col; ctx.shadowBlur = 5 + pulse * 4;
+      const g = ctx.createLinearGradient(0, -hh, 0, hh);
+      g.addColorStop(0, dark ? '#4a5268' : bwShade(col, 1.3));
+      g.addColorStop(0.5, dark ? '#252a38' : col);
+      g.addColorStop(1, dark ? '#10131c' : bwShade(col, 0.6));
+      dia(1); ctx.fillStyle = g; ctx.fill();
+      ctx.shadowBlur = 0;
+      // 左亮 / 右暗切面（自竖中线分色）
+      ctx.beginPath(); ctx.moveTo(0, -hh); ctx.lineTo(-hw, 0); ctx.lineTo(0, hh); ctx.closePath();
+      ctx.fillStyle = 'rgba(255,255,255,0.30)'; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -hh); ctx.lineTo(hw, 0); ctx.lineTo(0, hh); ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fill();
+      // 内层白菱（中心白核）
+      ctx.save();
+      ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 3 + pulse * 3;
+      ctx.fillStyle = '#ffffff';
+      dia(0.45); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = dark ? '#aeb8d4' : 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 1;
+      dia(1); ctx.stroke();
+    }
+
+    // 蚀环（黑舰专属，叠于核心之上）：核心外圈日蚀环（上半亮弧呼吸、下半暗弧）
+    if (dark) {
+      ctx.save();
+      ctx.strokeStyle = '#dfe6ff'; ctx.lineWidth = 1.3;
+      ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 5;
+      ctx.globalAlpha = 0.75 + pulse * 0.25;
+      ctx.beginPath(); ctx.arc(0, 0, 8, -0.6, Math.PI + 0.6); ctx.stroke();
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath(); ctx.arc(0, 0, 8, Math.PI - 0.4, -0.4); ctx.stroke();
+      ctx.restore();
+    }
+
+    // 洪流喷流（蓝舰专属）：双舷导流槽向下倾泻的水流光段（三段循环下移渐隐；框架翼面窄，喷流内收至翼中）
+    if (key === 'blue') {
+      ctx.save();
+      ctx.strokeStyle = bwShade(col, 1.35); ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+      ctx.shadowColor = col; ctx.shadowBlur = 4;
+      const ySpan = 16;
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const yy0 = ((t * 30 + i * 8.7 + ph * 5) % ySpan) - 6;   // 段起点 -6~10（单位坐标）
+          const k = (yy0 + 6) / ySpan;
+          ctx.globalAlpha = 0.55 * (1 - k) * (0.6 + 0.4 * pulse);
+          ctx.beginPath();
+          ctx.moveTo(sx * 13, yy0);
+          ctx.lineTo(sx * 13, yy0 + 5);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 洄星双星（紫舰专属）：核心周缘两枚白点公转闪烁
+    if (key === 'violet') {
+      for (let i = 0; i < 2; i++) {
+        const a = t * 2.2 + ph + i * Math.PI;
+        const tw = 0.6 + 0.4 * Math.sin(t * 5 + i * 2 + ph);
+        ctx.globalAlpha = 0.75 * tw;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(Math.cos(a) * 9, Math.sin(a) * 5, 1.4, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // 幻泡（粉舰专属）：核心周缘三枚小气泡漂浮
+    if (key === 'pink') {
+      for (let i = 0; i < 3; i++) {
+        const ba = t * 1.4 + ph + i * 2.1;
+        ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3 + i * 1.9 + ph);
+        ctx.strokeStyle = bwShade(col, 1.25); ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(Math.cos(ba) * 11, Math.sin(ba * 1.7) * 5, 1.7 + i * 0.35, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
     ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
   }
@@ -6265,7 +6486,7 @@
     drawAnvilBody, drawPopianBody, drawPopianUBody, drawVoyagerBody, drawFashiMatrixBody,
     drawFashiArrayBody, drawPulseMatrixBody, drawPmOrphanWave, drawJiaoxiangBody, drawFashiA1Body,
     drawWarMatrixBody, drawGuiltGrailBody,
-    drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody, drawBeyondWingBody,
+    drawFashiA2Body, drawYu4Body, drawDuskStrikerBody, drawFortressStrikerBody, drawBeyondWingBody, drawLanXinShipBody,
     paintSkull, paintSnowflake, paintBaolingBomb, paintUnrealBomb, paintStasisUnrealBomb,
     drawBaolingBody, drawBaolingGBody, drawUnrealBody, drawStasisUnrealBody, drawCocoonDreamBody, drawBaolingWarn,
     drawCollapseConstructBody,

@@ -11,6 +11,8 @@
   import { BEYOND_WING, DOUZHI } from './01-config-enemies.js';
   import { DIFFICULTIES, currentDifficulty, diffMods, setDifficulty } from './01-config-difficulty.js';
   import { resetDesignedWaveState } from './01-config-spawn.js';   // 设计波次抽取状态（剩余权重/角色平衡）随重开清零
+  import { BOSSES } from './01-config-boss.js';   // 循环刷怪测试页：暂停页 BOSS 召唤选择列表（非 wip 条目，2026-11-24 用户定稿）
+  import { spawnBoss } from './05-boss.js';   // 循环刷怪测试页：召唤 BOSS（清场直召无警报/无登场动画——与图鉴挑战 storm2 直召同型）
   import { DPR, armorGrid, armorGlyphFx, berserkBar, berserkFill, blastRings, blBombs, bombIcons, bossEntranceActive, bossFlow, bossTestRow, bulwarkBurst, clamp, crystalBursts, crystals, cubeHitFx, dagouMissiles, dashKillFx, diffGrid, diffLabel, douzhiBar, douzhiFill, douzhiFx, eBullets, encyClose, encyclopedia, enemies, feijianWaves, frostZones, friendStorms, gameoverHomeBtn, hpBarrier, hpBar, hpPermBarrier, hpFill, infoClose, infoEntryBtn, infoModal, jingdunBar, jingdunFill, kingBonus, levelFlow, livesText, menuScreen, menuStartBtn, missileWarns, missiles, overlay, overlayDesc, overlayTitle, pBullets, gamepad, padIndicator, padPressed, particles, pmWaves, pauseBackBtn, pauseHomeBtn, pauseRetryBtn, pilotGauge, pilotGaugeCount, pilotGaugeKey, pilotGaugeRing, pilotGridMain, pilotGridSub, pillarStrikes, phaseFx, planeGrid, player, playerHitFx, popianMissiles, powerups, rand, resultAchieve, retrialBtn, scoreText, shieldBar, shieldFill, skillGauge, skillGaugeRing, slashFx, spellCubes, startBtn, state, stoneCount, stonePanel, subGrid, timeflowBar, timeflowFill, titleBar, trailGhosts, watchClearFx, wgSlashes, windFlows, wingmanGrid, xinRings, meiScythes, ddjMissiles, zoneMarks } from './02-core.js';
   import { holdBGM, stopAlarm } from './03-audio.js';
   import { achvEvaluateDefeat, achvNoteDagouCheatOn, achvNoteInvulnCheatOn, achvNoteTianxiuCheatOn, renderResultAchievements, resetAchievements } from './02-achievements.js';
@@ -48,6 +50,7 @@
       _hudLivesN = -1, _hudDiffName = null, _hudBerserkW = '', _hudShieldW = '', _hudDouzhiW = '', _hudJingdunW = '', _hudTimeflowW = '',
       _hudSkillFrac = -1, _hudSkillColor = null, _hudPilotFrac = -1, _hudPilotMode = null,
       _hudPilotCnt = null, _hudKing = -1, _hudBombInf = false;
+  let _infTestLv = -1, _infTestDps = '', _infTestDpsBuilt = false;   // 循环刷怪测试页 HUD 脏检查缓存（2026-11-24）
 
   function updateHUD() {
     // 主菜单打开时给舞台挂 menu-open 类：CSS 隐藏战斗 HUD（菜单背景透明后会透出画布）
@@ -89,6 +92,41 @@
     const scoreDisp = state.challenge ? 'none' : '';
     if (scoreDisp !== _hudScoreDisp) { scoreText.parentElement.style.display = scoreDisp; _hudScoreDisp = scoreDisp; }
     if (state.score !== _hudScore) { scoreText.textContent = state.score; _hudScore = state.score; }
+    // 循环刷怪测试页 HUD（2026-11-24 用户定稿）：左上角当前刷怪波次等级 + 左侧武器 DPS 面板（仅测试页显示）。
+    // DPS = state.dmgLog 最近 8s 窗口按来源通道求和（02-core notePlayerDamage 账本，读端裁剪过期条目）
+    const infTest = state.mode === 'playing' && state.challenge && state.challenge.kind === 'infTest';
+    infTestLvEl.classList.toggle('hidden', !infTest);
+    infTestDpsEl.classList.toggle('hidden', !infTest);
+    if (infTest) {
+      if (_infTestLv !== levelFlow.level) { infTestLvEl.textContent = '刷怪 Lv ' + levelFlow.level; _infTestLv = levelFlow.level; }
+      if (!_infTestDpsBuilt) {
+        _infTestDpsBuilt = true;
+        // 三行：主武器（机体名文本）/ 副武器（iconSvg 矢量）/ 僚机（iconSvg 矢量）——预览图 + 名称 + DPS 读数
+        const rows = [
+          { label: '主武器', name: currentPlane ? currentPlane.name : '无', icon: null },
+          { label: '副武器', name: currentSubWeapon ? currentSubWeapon.name : '无', icon: currentSubWeapon && currentSubWeapon.iconSvg ? (typeof currentSubWeapon.iconSvg === 'function' ? currentSubWeapon.iconSvg() : currentSubWeapon.iconSvg) : null },
+          { label: '僚机', name: currentWingman ? currentWingman.name : '无', icon: currentWingman && currentWingman.iconSvg ? (typeof currentWingman.iconSvg === 'function' ? currentWingman.iconSvg() : currentWingman.iconSvg) : null },
+        ];
+        infTestDpsEl.innerHTML = rows.map((r, i) =>
+          `<div class="inftest-dps-row"><span class="inftest-dps-icon">${r.icon || ''}</span>` +
+          `<span class="inftest-dps-name">${r.label}·${r.name}</span>` +
+          `<b class="inftest-dps-val" id="infTestDpsVal${i}">0</b></div>`
+        ).join('');
+      }
+      const log = state.dmgLog;
+      while (log.length && state.time - log[0].t > 8) log.shift();
+      const sums = { main: 0, sub: 0, wing: 0 };
+      for (const it of log) if (sums[it.src] != null) sums[it.src] += it.dmg;
+      const dpsVals = [Math.round(sums.main / 8), Math.round(sums.sub / 8), Math.round(sums.wing / 8)];
+      const dpsKey = dpsVals.join(',');
+      if (dpsKey !== _infTestDps) {
+        _infTestDps = dpsKey;
+        for (let i = 0; i < 3; i++) {
+          const el = document.getElementById('infTestDpsVal' + i);
+          if (el) el.textContent = String(dpsVals[i]);
+        }
+      }
+    }
     // 原石收集计数（当局）：仅萧杨显示——其他驾驶员不收集原石（隐藏避免常驻 0 的噪音；挑战/测试不掉水晶同样隐藏）；
     // resetGame 归零后随首颗原石点亮；萧杨只显示收集数（不再带 /16 上限后缀，2026-10-01）
     const showStones = hasPilot('xiaoyang') && !state.challenge && !state.testBoss && state.mode === 'playing';
@@ -367,7 +405,7 @@
     berserkBursts.length = 0;      // 暴走冲击波列表随重开清空（多道并存；主菜单演示中途开局时可能仍存留）
     crystalBursts.length = 0;      // 结晶护盾解除冲击波列表随重开清空（多道并存）
     bulwarkBurst.active = false;   // 最终壁垒免死金环随重开熄灭
-    watchClearFx.length = 0;       // 群星守望消弹光粒随重开清空
+    watchClearFx.length = 0;       // 群星之歌消弹光粒随重开清空
     armorGlyphFx.length = 0;       // 装甲触发图标演出随重开清空
     blastRings.length = 0;         // 爆炸冲击圈（叮咚鸡导弹雨）随重开清空
     stopAlarm();
@@ -471,7 +509,7 @@
     if (autoStart && currentPilotMain.id === 'wenjiuke') {
       openWenjiukeOpening(true);
     }
-    // 酒客之王开局六对词条覆盖层（2026-11-17 用户定稿）：同温酒客口径——仅真正开局且主槽酒客之王时弹出；
+    // 九克之王开局六对词条覆盖层（2026-11-17 用户定稿；2026-11-23 用户定稿更名「酒客之王」→「九克之王」）：同温酒客口径——仅真正开局且主槽九克之王时弹出；
     // 六对已在 openJiukeOpening 内抽签登记生效（03b-affix grantJiukePairs），确认后恢复主循环
     if (autoStart && currentPilotMain.id === 'jiukewang') {
       openJiukeOpening(true);
@@ -495,6 +533,8 @@
     startBtn.textContent = btnText;
     overlayCard.classList.toggle('special-run', !!specialBadge);   // 特殊装备角标：仅结算页显示（第 4 参，暂停页缺省 → 清除）
     pauseDebugBtn.classList.add('hidden');   // 调试菜单入口仅暂停页显示（togglePause paused 分支随后恢复；结算页保持隐藏）
+    pauseBossBtn.classList.add('hidden');    // 召唤 BOSS 入口仅循环刷怪测试页暂停时显示（2026-11-25 用户反馈：其他测试与其他时候一律不出现；togglePause paused 分支随后按需恢复，结算页保持隐藏）
+    bossPickRow.classList.add('hidden');     // BOSS 选择行随召唤入口一并收起（结算/重开残留防护）
     closeDebugMenu();   // 结算弹窗打开时调试菜单强制收起（防游戏中开着面板时战斗结束叠置；暂停页打开被 togglePause 守卫阻断，此处无副作用）
     overlay.classList.remove('hidden');
   }
@@ -1086,6 +1126,11 @@
   const debugCloseBtn = document.getElementById('debugCloseBtn');
   const pauseDebugBtn = document.getElementById('pauseDebugBtn');
   const pauseAffixList = document.getElementById('pauseAffixList');
+  // 循环刷怪测试页（2026-11-24 用户定稿）：暂停页 BOSS 召唤入口 + 选择行 + 测试页 HUD（左上角刷怪等级 / 左侧 DPS 面板）
+  const pauseBossBtn = document.getElementById('pauseBossBtn');
+  const bossPickRow = document.getElementById('bossPickRow');
+  const infTestLvEl = document.getElementById('infTestLv');
+  const infTestDpsEl = document.getElementById('infTestDps');
   // 代码级兜底隐藏（与 index.html 静态 class="... hidden" 双保险）：元素初始态以代码为准，
   // 无头 smoke 桩的 classList 不继承 HTML 静态类，漏掉这两行会使 debugMenuOpen() 恒真、
   // 手柄焦点导航被劫持到调试面板（2026-11-09 smoke gamepad 场景 7 错全灭根因）
@@ -1220,10 +1265,55 @@
   debugCloseBtn.addEventListener('click', closeDebugMenu);
   pauseDebugBtn.addEventListener('click', toggleDebugMenu);
 
+  // ---------- 循环刷怪测试页：暂停页 BOSS 召唤（2026-11-24 用户定稿） ----------
+  // 「召唤 BOSS」展开选择行（BOSSES 非 wip 条目）；点选后清场（敌人 / 敌弹 / 导弹 / 预警）→ 直接 spawnBoss、
+  // stage='fight'（无警报演出、无登场动画——风暴编织者同样跳过暴风之眼残影演出，与图鉴挑战直召同型）→ 恢复游戏。
+  // 击坠后 bossFlow.stage 归 'none'（06-enemy killEnemy BOSS 分支），updateInfTest 自动续刷。
+  function ensureBossPickRow() {
+    if (bossPickRow.dataset.built) return;
+    bossPickRow.dataset.built = '1';
+    for (const id of Object.keys(BOSSES)) {
+      const b = BOSSES[id];
+      if (b.wip) continue;
+      const btn = document.createElement('button');
+      btn.textContent = b.name;
+      btn.addEventListener('click', () => summonInfTestBoss(id));
+      bossPickRow.appendChild(btn);
+    }
+  }
+
+  function summonInfTestBoss(id) {
+    enemies.length = 0;
+    eBullets.length = 0;
+    missiles.length = 0;
+    missileWarns.length = 0;
+    stopAlarm();
+    bossFlow.warnT = 0;
+    bossFlow.pending = id;
+    spawnBoss(id);
+    bossFlow.stage = 'fight';
+    // 恢复游戏（镜像 togglePause 恢复分支——召唤完成后直接开打）
+    state.paused = false;
+    overlay.classList.add('hidden');
+    pauseHomeBtn.classList.add('hidden');
+    pauseDebugBtn.classList.add('hidden');
+    pauseRetryBtn.classList.add('hidden');
+    pauseBackBtn.classList.add('hidden');
+    pauseBossBtn.classList.add('hidden');
+    bossPickRow.classList.add('hidden');
+    retrialBtn.classList.add('hidden');
+    syncInfoEntryBtn();
+  }
+
+  pauseBossBtn.addEventListener('click', () => {
+    ensureBossPickRow();
+    bossPickRow.classList.toggle('hidden');
+  });
+
   function togglePause() {
     if (affixModalOpen()) return;   // 词条选择界面开启期间禁用暂停/恢复（避免选择中误触 P / Start 解除冻结）
     if (wenjiukeOpeningOpen()) return;   // 温酒客开局确认模态同口径禁用（确认前冻结主循环，P/Start 不应穿透）
-    if (jiukeOpeningOpen()) return;   // 酒客之王开局词条覆盖层同口径禁用（2026-11-17 新增）
+    if (jiukeOpeningOpen()) return;   // 九克之王开局词条覆盖层同口径禁用（2026-11-17 新增）
     if (debugMenuOpen()) return;   // 调试菜单开启期间同口径禁用（面板覆盖暂停页，P/Start 先关面板再操作——防暂停态切换后面板动作条目置灰态失真）
     state.paused = !state.paused;
     if (state.paused) {
@@ -1235,6 +1325,10 @@
       retrialBtn.classList.add('hidden');   // 暂停菜单不显示胜利页专属按钮
       pauseHomeBtn.classList.remove('hidden');
       pauseDebugBtn.classList.remove('hidden');   // 调试菜单入口（仅暂停页；恢复/结算随下方隐藏）
+      // 循环刷怪测试页专属：BOSS 召唤入口（仅测试页暂停时显示，2026-11-24 用户定稿）
+      if (state.challenge && state.challenge.kind === 'infTest') pauseBossBtn.classList.remove('hidden');
+      else pauseBossBtn.classList.add('hidden');
+      bossPickRow.classList.add('hidden');   // 选择行默认收起（点「召唤 BOSS」展开）
       renderPauseAffixes();   // 当前局已获词条（无词条时容器隐藏）
       // 挑战模式（含 BOSS 试炼/测试）：额外显示“重新挑战”；有图鉴来源时再显示“返回上一步”
       if (state.challenge || state.testBoss) {
@@ -1251,6 +1345,8 @@
       pauseDebugBtn.classList.add('hidden');
       pauseRetryBtn.classList.add('hidden');
       pauseBackBtn.classList.add('hidden');
+      pauseBossBtn.classList.add('hidden');
+      bossPickRow.classList.add('hidden');
       retrialBtn.classList.add('hidden');
     }
     syncInfoEntryBtn();

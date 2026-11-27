@@ -12,7 +12,8 @@
   import { GACHA_FX_DRAW } from './07-player.js';
   import { berserkBursts, bombBursts, shieldBurst, tisuRings } from './08-entities.js';
   import { drawDagouMissiles, drawFrostZones, drawItemPickFx, drawMissileWarns, drawMissiles, drawPlayer, drawPlayerHitFx, drawStarslayerBeam, drawWingmen } from './09a-draw-loadout.js';
-  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawBeyondWingBody, drawCocoonDreamBody, drawCollapseConstructBody, drawCrystalCoreBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawGuiltGrailBody, drawHanshuangBody, drawHarbingerBody, drawHarbingerHubBody, drawHarbingerLeadBody, drawHarbingerPolarBody, drawJiaoxiangBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawStasisUnrealBody, drawVoyagerBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWarMatrixBody, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
+  import { affixHas } from './03b-affix.js';
+  import { drawAnvilBody, drawBaolingBody, drawBaolingBombs, drawBaolingGBody, drawBeyondWingBody, drawCocoonDreamBody, drawCollapseConstructBody, drawCrystalCoreBody, drawCubeHitFx, drawDouzhiBody, drawDouzhiFx, drawDuskStrikerBody, drawFashiA1Body, drawFashiA2Body, drawFashiArrayBody, drawFashiMatrixBody, drawFortressStrikerBody, drawGuiltGrailBody, drawHanshuangBody, drawHarbingerBody, drawHarbingerHubBody, drawHarbingerLeadBody, drawHarbingerPolarBody, drawJiaoxiangBody, drawLanXinShipBody, drawPmOrphanWave, drawPopianBody, drawPopianFx, drawPopianUBody, drawPulseMatrixBody, drawSlashFx, drawSpellCubes, drawUnrealBody, drawStasisUnrealBody, drawVoyagerBody, drawWarGhostBody, drawWarGhostSlashes, drawWarGhostWarns, drawWarMatrixBody, drawWeilongBody, drawYu4Body } from './09b-draw-enemies.js';
   import { getCrystal3DSprite } from './09c-draw-crystal.js';
   import { drawBoss, drawBossBars, drawBossWarning, drawDarkhandTarts, drawPlayerStormWeaver, drawStormVortex, drawTornado, drawTxcBeamsStormStyle, drawZoneMarks } from './11-draw-boss.js';
 
@@ -348,6 +349,9 @@
     } else if (e.type && e.type.startsWith('beyondWing_')) {
       drawBeyondWingBody(e);  // 超越艇（2C 五变体，2026-11-13）：自带填充与描边（尖角菱形 + 方形核心 + 状态尾焰 + 五色特效）
       ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
+    } else if (e.type && e.type.startsWith('lanxinShip_')) {
+      drawLanXinShipBody(e);  // 澜心舰（3C 五变体，2026-11-27）：自带填充与描边（六点箭镖 + 鳍翼补块 + 双斜尾焰 + 菱形晶核 + 逐舰专属动效件）
+      ctx.beginPath();   // 清空路径：尾部公共 fill/stroke 空跑（本体已在分支内绘制完毕）
     } else if (e.type === 'striker' && e.skill === 'dusk') {
       drawDuskStrikerBody(e); // 自带填充与描边（暗黑渐变菱形 + 微亮描边 + 中央白色发光核心；渐显/渐隐透明度内含）
     } else if (e.type === 'striker' && e.skill === 'fortress') {
@@ -441,9 +445,16 @@
       ctx.moveTo(0, 34);
       ctx.lineTo(19, 25);
       ctx.lineTo(19, -21);
-      ctx.lineTo(10, -34);
-      ctx.lineTo(-10, -34);
-      ctx.lineTo(-19, -21);
+      if (isStar) {
+        // 诛星舰尾部（2026-11-26 用户四调）：去掉 (±10,-34) 两个折点——两肩 (±19,-21) 与顶点 (0,-38)
+        // 直接相连成尖锐大三角尾；顶点下与机体围成部分随路径填充同为机体（折翼根竖边贴 x=±19 不受影响）
+        ctx.lineTo(0, -38);
+        ctx.lineTo(-19, -21);
+      } else {
+        ctx.lineTo(10, -34);
+        ctx.lineTo(-10, -34);
+        ctx.lineTo(-19, -21);   // 主力舰保持原折线尾缘不变
+      }
       ctx.lineTo(-19, 25);
       ctx.closePath();
       // 舰体渐变（后/上暗 → 前/下亮）取代纯色平涂，增强装甲立体感
@@ -472,14 +483,9 @@
       const wpal = ssWing
         ? (STARS_SLAYER_PALETTE[ssKey2] || STARS_SLAYER_PALETTE.darkSun)
         : (CAPITAL_PALETTE[e.variant] || CAPITAL_PALETTE.crimson);
-      // 展开进度 wingT：0=收拢（贴于中心、翼尖露出一角）→ 1=完全展开（就位）；缓入缓出、无过冲
-      let wingT = 1;
-      if (e.unfoldT > 0) {
-        const p = clamp(1 - e.unfoldT / 0.55, 0, 1);
-        wingT = p * p * (3 - 2 * p);   // smoothstep 缓入缓出：速度 0→最大→0，起步/到位都柔和
-      } else if (!e.arrived && e.unfoldT == null) {
-        wingT = 0;   // 下降途中（展开未开始）机翼收拢于中心；展开完成后缓冲滑行期间保持展开
-      }
+      // 展开进度 wingT：0=收拢（贴于中心、翼尖露出一角）→ 1=完全展开（就位）；缓入缓出、无过冲——
+      // wingSpreadT 共用 helper（4C 诛星舰饰件层三层光环淡入同由该进度驱动）
+      const wingT = wingSpreadT(e);
       const retract = 20;   // 收拢时两翼向中心内移距离（翼尖收到 ±27，露出舰体边缘 ±19 一角）
       for (const sx of [-1, 1]) {
         ctx.save();
@@ -510,20 +516,31 @@
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
         ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.moveTo(sx * 15, -20); ctx.lineTo(sx * 38, -8); ctx.stroke();
+        // 4C 诛星舰翼面装甲脊（方案 C，2026-11-25 用户定稿）：accent 亮色装饰线——
+        // 门控在折翼完全展开后（wingT >= 1，覆盖「unfoldT 走完」与「挑战召唤 arrived 直展」两态）才出现：
+        // 收拢/展开途中不露头（提前出线很奇怪）；画在折翼块内（同一 translate 变换下），随翼面刚体平移
+        if (ssWing && wingT >= 1) {
+          ctx.strokeStyle = wpal.accent;
+          ctx.lineWidth = 1.6;
+          ctx.globalAlpha = 0.8;
+          ctx.beginPath(); ctx.moveTo(sx * 24, 14); ctx.lineTo(sx * 44, 0); ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
         ctx.restore();
       }
     }
 
     // 座舱（体型越大座舱越大；卫护飞船为纯三角形，无核心；4S 精英为素材立绘，无座舱；
-    // 雷霆之怒自带中央菱形核，不再叠座舱白点）
-    if (e.type !== 'escort' && e.type !== 'thunderWrath' && e.elPhase == null) {
+    // 雷霆之怒自带中央菱形核，不再叠座舱白点；澜心舰自带菱形晶核，同豁免）
+    if (e.type !== 'escort' && e.type !== 'thunderWrath' && !(e.type && e.type.startsWith('lanxinShip_')) && e.elPhase == null) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
       ctx.beginPath();
       ctx.arc(0, 0, e.type === 'capital' || (e.type && e.type.startsWith('starSlayer_')) ? 7 : e.type === 'gunship' ? 4.5 : 3, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 4C 诛星舰三变体饰件层（2026-11-16 实装——主力舰形状基准上的改型特征，方案 A「日冕蚀刻」同源）：
+    // 4C 诛星舰三变体饰件层（2026-11-16 实装；2026-11-25 用户定稿换装方案 C「星核过载」修改版——
+    // 装甲脊/双推进器/缩小三层光环/固定一角朝上的 8 角星核，详见 drawStarSlayerDeco）：
     // 黑日=舰体背后大日环（黑底炽红光弧旋转）+ 翼尖炽红日斑；白夜=舰艏冷光饰带 + 翼尖月白光点；
     // 紫月=舰体上方紫月牙环（恒向张口）+ 紫色电纹脉冲。全部纯装饰层（本体/折翼/座舱之上）
     if (e.type && e.type.startsWith('starSlayer_')) drawStarSlayerDeco(e);
@@ -928,83 +945,143 @@
     if (e.elPhase != null) drawEliteFx(e);
   }
 
-  /* ---------- 4C 诛星舰饰件层 / 雷霆之怒临时绘制（2026-11-16 实装） ---------- */
+  /* ---------- 4C 诛星舰饰件层 / 雷霆之怒临时绘制（2026-11-16 实装；2026-11-25 定稿换装方案 C） ---------- */
 
-  // 诛星舰三变体饰件层（方案 A「日冕蚀刻」游戏内实装版；测试3 方案页同源设计语言）：
-  //   黑日：舰体背后大日环（黑曜底 + 炽红光弧缓旋）+ 两翼尖炽红日斑
-  //   白夜：舰艏冷光饰带（三条横贯亮线）+ 翼尖月白光点
-  //   紫月：舰体上方紫月牙环（张口朝下恒定）+ 侧腹紫色电纹脉冲
+  // 折翼展开进度（0=收拢 → 1=完全展开；smoothstep 缓入缓出）——capital 折翼与 4C 诛星舰饰件层共用：
+  // 三层光环的逐环淡入由同一进度驱动（2026-11-25 用户定稿：光环初始不出现、展开过程中依次从内向外出现）
+  function wingSpreadT(e) {
+    if (e.unfoldT > 0) {
+      const p = clamp(1 - e.unfoldT / 0.55, 0, 1);
+      return p * p * (3 - 2 * p);   // smoothstep 缓入缓出：速度 0→最大→0，起步/到位都柔和
+    }
+    if (!e.arrived && e.unfoldT == null) return 0;   // 下降途中（展开未开始）收拢
+    return 1;
+  }
+
+  // 诛星舰三变体饰件层（方案 C「星核过载」定稿修改版——2026-11-25 用户选定；测试3 方案页同源）：
+  // 统一结构，颜色按变体专属表区分（黑日炽红 / 白夜蓝白 / 紫月紫电）：
+  //   ② 尾部双焰（2026-11-26 用户定稿：尾部人字峰化——双焰贴两条新连线上、与连线垂直）
+  //   ④ 三层光环（间隔 6 / 第三环略微超出机体；与星核同心；初始不出现——随折翼展开进度依次从内向外淡入）
+  //   ① 舰体四芒星（2026-11-26 用户四调：原三条装甲脊竖线改为四芒星——以核心为同心、不出舰体轮廓；
+  //      填充 glow 高对比色 + 深色描边，绘制顺序在光环之后、星核之下）
+  //   ⑤ 8 角星核（不旋转，固定一角朝上；白色星体 + 专属辉光，叠于四芒星中心）
   // 全部纯装饰（不影响碰撞）；局部坐标同主力舰绘制基准（drawScale 2.0 已由外层 scale）
   function drawStarSlayerDeco(e) {
     const pal = STARS_SLAYER_PALETTE[e.type.slice('starSlayer_'.length)] || STARS_SLAYER_PALETTE.darkSun;
     const t = state.time;
-    if (e.type === 'starSlayer_darkSun') {
-      // 大日环：舰体后方（上层）黑色日盘 + 炽红边缘光弧（0.5rad/s 缓旋 + 呼吸）
-      const rr = 40;
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.beginPath(); ctx.arc(0, -2, rr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(10, 6, 10, 0.72)'; ctx.fill();
-      ctx.lineWidth = 2.4;
-      ctx.strokeStyle = pal.accent;
-      ctx.globalAlpha = 0.75 + Math.sin(t * 2.2 + (e.wobble || 0)) * 0.18;
-      ctx.beginPath(); ctx.arc(0, -2, rr, t * 0.5, t * 0.5 + Math.PI * 1.35); ctx.stroke();
-      ctx.globalAlpha = 0.45;
-      ctx.beginPath(); ctx.arc(0, -2, rr, t * 0.5 + Math.PI, t * 0.5 + Math.PI * 2.1); ctx.stroke();
-      ctx.restore();
-      // 翼尖日斑
-      for (const sx of [-1, 1]) {
+    // 展开进度（与折翼块同源公式）：0=收拢（光环全隐）→ 1=完全展开（光环全可见）——
+    // 三层光环的逐环淡入由此驱动（2026-11-25 用户定稿：初始不出现、展开过程中依次从内向外出现）
+    const wingT = wingSpreadT(e);
+    // ② 尾部双焰（方案 C 十调，2026-11-26 用户定稿）：贴尾部两条连线（右肩→顶点 / 左肩→顶点）、
+    // 与连线垂直；焰基在连线中点基础上沿斜边向肩侧略下移（6% 段长）。宽焰（基半宽 4.8 / 芯 2.4，
+    // 2026-11-26 用户十一调宽度 -20%、外焰 α0.5 / 芯 α0.65 减亮）；
+    // 焰芯配色（2026-11-27 用户定稿）：黑日/紫月芯改暗色（pal.dark 近黑，同舰体暗端色相），白夜保持白芯；
+    // 左右移动倾斜：悬停摆动（06-enemy capital 位置公式 sin(wobble*0.35)*30，wobble 递增 dt*2）
+    // 的解析导数为横移速度——右移时左焰（对向/迎风）增大、左移时右焰增大，增幅随摆速归一渐变
+    //（解析量天然平滑、无瞬跳；摆动参数若调整需同步此处）
+    {
+      const segs = [
+        [19, -21, 0, -38],    // 右肩 → 顶点
+        [-19, -21, 0, -38],   // 左肩 → 顶点
+      ];
+      const swayV = Math.cos(e.wobble * 0.35) * 30 * 0.7 * (e.holdEase == null ? 1 : e.holdEase);   // 悬停摆动横移速度（峰值 ≈21px/s；crgold 停移 holdEase→0 焰对称）
+      const lean = clamp(Math.abs(swayV) / 21, 0, 1);
+      const boost = [swayV < 0 ? lean : 0, swayV > 0 ? lean : 0];   // [右焰, 左焰] 对向增幅（右移→左焰迎风）
+      const fr = -0.06;   // 焰基偏移：中点向肩侧 6% 段长（两斜边均以肩端为起点，同向即镜像）
+      for (let si = 0; si < 2; si++) {
+        const [x1, y1, x2, y2] = segs[si];
+        const dx = x2 - x1, dy = y2 - y1;
+        const dl = Math.hypot(dx, dy) || 1;
+        const ux = dx / dl, uy = dy / dl;   // 连线方向单位向量
+        let nx = -uy, ny = ux;              // 法线
+        if (ny > 0) { nx = -nx; ny = -ny; } // 法线朝上（背离机体一侧）
+        const bx = (x1 + x2) / 2 + dx * fr, by = (y1 + y2) / 2 + dy * fr;
+        const fl = (15 + Math.sin(t * 7) * 3.5) * (1 + boost[si] * 0.45);   // 对向焰长 +45%；呼吸同相位（2026-11-27 用户定稿：非横移阶段双焰一致——相位差曾致常驻一大一小）
+        const hw = 4.8 * (1 + boost[si] * 0.35);   // 对向焰基半宽 +35%（基 4.8 = 6×0.8，2026-11-26 用户十一调宽度 -20%）
+        const tx = bx + nx * fl, ty = by + ny * fl;
+        ctx.globalAlpha = 0.5;   // 外焰：主题色（0.7→0.5 减亮，2026-11-26 用户十一调）
         ctx.fillStyle = pal.glow;
-        ctx.globalAlpha = 0.55 + Math.sin(t * 3 + sx) * 0.2;
-        ctx.beginPath(); ctx.arc(sx * 47, 2, 3.2, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    } else if (e.type === 'starSlayer_whiteNight') {
-      // 舰艏冷光饰带：三条纵向亮线（中长侧短）+ 翼尖月白光点
-      ctx.strokeStyle = pal.light;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.9;
-      for (const [ox, y0, y1] of [[0, -30, 26], [-7, -22, 16], [7, -22, 16]]) {
-        ctx.beginPath(); ctx.moveTo(ox, y0); ctx.lineTo(ox, y1); ctx.stroke();
-      }
-      ctx.globalAlpha = 0.5 + Math.sin(t * 2.6 + (e.wobble || 0)) * 0.2;
-      ctx.strokeStyle = pal.glow;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(-19, -21); ctx.lineTo(19, -21); ctx.stroke();
-      ctx.globalAlpha = 1;
-      for (const sx of [-1, 1]) {
-        ctx.fillStyle = pal.light;
-        ctx.globalAlpha = 0.8;
-        ctx.beginPath(); ctx.arc(sx * 47, 2, 2.6, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-    } else {
-      // 紫月牙环：舰体上方张口朝下的月牙（两段圆弧拼合）+ 侧腹电纹脉冲
-      ctx.save();
-      ctx.strokeStyle = pal.accent;
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.85;
-      ctx.shadowColor = pal.glow; ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.arc(0, -38, 24, Math.PI * 0.25, Math.PI * 0.75, false);   // 外弧（上缘）
-      ctx.arc(0, -34, 18, Math.PI * 0.72, Math.PI * 0.28, true);    // 内弧回扫（月牙张口朝下）
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      // 侧腹电纹：两翼根处短促折线（相位随 wobble/t 脉动切换）
-      const ph = Math.floor((t * 6 + (e.wobble || 0)) % 2);
-      ctx.strokeStyle = pal.light;
-      ctx.lineWidth = 1.3;
-      ctx.globalAlpha = 0.6 + (ph ? 0.25 : 0);
-      for (const sx of [-1, 1]) {
         ctx.beginPath();
-        ctx.moveTo(sx * 14, -6);
-        ctx.lineTo(sx * (ph ? 20 : 24), 4);
-        ctx.lineTo(sx * (ph ? 24 : 20), 14);
+        ctx.moveTo(bx - ux * hw, by - uy * hw);
+        ctx.lineTo(tx, ty);
+        ctx.lineTo(bx + ux * hw, by + uy * hw);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 0.65;   // 内焰：芯（半宽减半、长度 60%）——黑日/紫月暗芯 pal.dark、白夜白芯（2026-11-27 用户定稿）
+        ctx.fillStyle = e.type === 'starSlayer_whiteNight' ? '#ffffff' : pal.dark;
+        ctx.beginPath();
+        ctx.moveTo(bx - ux * hw * 0.5, by - uy * hw * 0.5);
+        ctx.lineTo(bx + nx * fl * 0.6, by + ny * fl * 0.6);
+        ctx.lineTo(bx + ux * hw * 0.5, by + uy * hw * 0.5);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      // ②b 人字峰缘亮线（2026-11-27 用户定稿）：沿尾部两条斜边的 accent 发光饰线——同翼面装甲脊
+      // 样式（accent α0.8 / lineWidth 1.2）；2026-11-27 三调回调：恢复全长（原中间一半长度的收窄作废）；
+      // 贴舰缘常显（舰体不随折翼收拢，无 wingT 门控）
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.8;
+      for (const [x1, y1, x2, y2] of segs) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
     }
+    // ③（翼面装甲脊已挪至折翼块，见 10-draw-world 折翼块 wingT >= 1 门控）
+    // ④ 三层光环（2026-11-25 用户定稿）：rr = 15 + k*6（局部）→ 屏幕 ×2.0 = 30/42/54——
+    // 间隔 5→6 略增、第三环 54 略超机身半宽 38（纵向 54 < 68 全在内）；圆心 (0,0) 与星核同心；
+    // 弧段缓旋 + 交替反向；逐环淡入：第 k 环 alpha × clamp((wingT − k·0.32) / 0.34, 0, 1)——
+    // wingT=0 全隐（初始不出现）→ 0.32 起内环淡入 → 0.64 起中环 → 0.96 起外环，wingT=1 全可见
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
+    for (let k = 0; k < 3; k++) {
+      const ringFade = clamp((wingT - k * 0.32) / 0.34, 0, 1);
+      if (ringFade <= 0) continue;   // 尚未轮到（初始不出现，展开过程中依次从内向外）
+      const rr = 15 + k * 6;
+      ctx.globalAlpha = (0.55 - k * 0.12) * ringFade;
+      ctx.lineWidth = 2.4 - k * 0.5;
+      const a0 = t * (0.7 + k * 0.3) * (k % 2 ? -1 : 1);
+      ctx.beginPath(); ctx.arc(0, 0, rr, a0, a0 + Math.PI * 1.6); ctx.stroke();
+    }
+    ctx.restore();
+    // ① 舰体四芒星（方案 C 五调，2026-11-26 用户定稿）：原三条装甲脊竖线改为四芒星样式——
+    // 以核心 (0,0) 为中心（同心）、整体不出舰体轮廓（横向尖 15 < 半宽 19、纵向尖 26 < 半高 34）；
+    // 纯色块无描边（用户定稿：黑边去除）。
+    ctx.fillStyle = pal.star || pal.accent;   // 四芒星专属填充（2026-11-26 用户定稿：紫月浅紫偏白 / 黑日暗红；未配置回退 accent）
+    const fRx = 15, fRy = 20;   // 纵向尖半径 26→20（2026-11-26 用户定稿「高度小一些」）
+    // 内凹点：两臂等比外形（臂基宽/臂长统一 0.4）——修复「左右臂粗、上下臂细」的比例失调：
+    // 旧椭圆内凹（fCx=0.32*fRx=4.8 / fCy=0.32*fRy=8.3）→ 右臂基宽 16.6 vs 臂长 15（比值 1.1 过粗）、
+    // 上臂基宽 9.6 vs 臂长 26（比值 0.37 过细）；等比后 fCx=0.4*fRy/2=4.0、fCy=0.4*fRx/2=3.0，
+    // 两臂形状相似仅长度差（20 vs 15），观感统一
+    // 顶点用显式坐标表——严禁 cos/sin + 「=== 0 判零」计算尖点：Math.cos(±π/2)=6.12e-17、
+    // Math.sin(π)=1.22e-16 均非精确 0，判零失败会把轴对齐尖点整体推到横向/纵向
+    //（2026-11-26 事故：上/下尖被推到 x=15、左尖被推到 y=26，星形退化成「三个角全往右偏」的怪形）
+    const fCx = 4.0, fCy = 3.0;   // 内凹点坐标（两臂等比外形，见上注释）
+    const fPts = [
+      [0, -fRy], [fCx, -fCy],      // 上尖 → 右上内凹
+      [fRx, 0], [fCx, fCy],        // 右尖 → 右下内凹
+      [0, fRy], [-fCx, fCy],       // 下尖 → 左下内凹
+      [-fRx, 0], [-fCx, -fCy],     // 左尖 → 左上内凹
+    ];
+    ctx.beginPath();
+    fPts.forEach(([px, py], k) => { if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+    ctx.closePath();
+    ctx.fill();   // 纯色块无描边（黑边已按用户定稿去除）
+    // ⑤ 8 角星核（2026-11-25 用户定稿）：不旋转、固定一角朝上（外顶点 k=6 在 270° 即正上方）——
+    // 白色星体 + 专属辉光，覆盖座舱白点；半径 5（三调）叠在四芒星中心之上
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = pal.glow; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2;
+      const r = k % 2 ? 2.2 : 5;
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
   }
 
   // 雷霆之怒临时绘制（形象待定——战争矩阵体格改蓝的占位画法）+ 125px 雷电光环：
@@ -3138,7 +3215,7 @@
     ctx.globalAlpha = 1;
   }
 
-  // 群星守望消弹特效（低图层——位于各子弹之下，刻意很淡）：
+  // 群星之歌消弹特效（低图层——位于各子弹之下，刻意很淡）：
   // 淡黄微光粒沿"机体核心 → 被消子弹"连线铺开 + 原位迸散的小光粒，随寿命渐隐
   function drawWatchClearFx() {
     for (const p of watchClearFx) {
@@ -3465,7 +3542,7 @@
   // 主菜单攻击演示（state.demo）同样绘制，随演示屏裁剪呈现"屏幕"边框感
   function drawPlayerFireRing() {
     if (currentArmor.id !== 'chixin' || !player.alive || (state.mode !== 'playing' && !state.demo)) return;
-    const ar = currentArmor.burnR || 100;
+    const ar = (currentArmor.burnR || 100) * (affixHas('1:good:19') ? 1.35 : 1);   // 词条（具象级 1:good:19）炽心：火环半径增大 35%（与 07-player 灼烧判定同源）
     ctx.save();
     ctx.translate(player.x, player.y);
     ctx.globalAlpha *= 0.45;   // 整体减淡（焦香本体的火环更浓）
@@ -4291,7 +4368,7 @@
     drawFriendStorms();   // 天秀忧郁王子：友方大风暴（僚机之上、子弹之下）
     drawAiyiFx();         // 埃逸：自爆收缩波（蓄力期）与扩散波（爆炸后）
     drawTrailGhosts();
-    drawWatchClearFx();   // 群星守望消弹特效（低图层：位于各子弹之下）
+    drawWatchClearFx();   // 群星之歌消弹特效（低图层：位于各子弹之下）
     drawXinRings();       // 副武器·辛国栋之怒：灼烧火环（子弹之下）
     drawXinFuryRing();    // 奖励道具·辛国栋大怒：固定位置扩散火环（子弹之下）
     drawFeijianWaves();   // 副武器·无界飞剑：待发射飞剑（凝聚下沉 → 分裂悬浮）

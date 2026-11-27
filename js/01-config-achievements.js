@@ -78,7 +78,7 @@
     douzhi2: { name: '斗志非常昂扬', tier: 'gold', icon: '⏫', desc: '击坠两个及以上斗志昂扬。' },
     laserStorm2Death: { name: '极光陨落', tier: 'gold', icon: '⚡', desc: '被风暴编织者技能1的激光击坠。' },
     bossMarathon: { name: '持久战', tier: 'gold', icon: '⏱', desc: '胜利一场至少持续2分钟的BOSS战。' },
-    watch60: { name: '群星不灭', tier: 'gold', icon: '✧', desc: '群星守望消除 100 颗敌弹。' },
+    watch60: { name: '群星不灭', tier: 'gold', icon: '✧', desc: '群星之歌消除 100 颗敌弹。' },
     chixinClass1: { name: '飞蛾扑火', tier: 'gold', icon: '🦋', desc: '炽心灼烧击坠 20 个1类敌人。' },
     baoling5: { name: '砰砰礼物', tier: 'gold', icon: '🎁', desc: '暴鸰殉爆一次击坠至少6个敌人。' },
     lingluo3: { name: '疯狂杀戮', tier: 'gold', icon: '✵', desc: '迪奥释放3次技能。' },

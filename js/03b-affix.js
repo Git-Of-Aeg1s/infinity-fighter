@@ -1,16 +1,16 @@
 // 03b-affix：BOSS 击坠三选一词条系统（2026-11-09 实装）
 
   // 模块契约（并行修改请先读；node tools/check-names.js 静态强制校验 import/export）
-  // 被依赖：04-spawn(1 名) 05-boss(5 名) 06-enemy(5 名) 07-player(13 名) 08-entities(6 名) 12-ui(11 名) 13-encyclopedia(3 名) 14-main(7 名)
+  // 被依赖：04-spawn(4 名) 05-boss(9 名) 06-enemy(13 名) 07-player(19 名) 08-entities(7 名) 10-draw-world(1 名) 12-ui(11 名) 13-encyclopedia(6 名) 14-main(7 名)
   // 依赖：01-config-core 01-config-difficulty 01-config-loadout 02-core
   // 本文件写共享状态：state.paused（词条选择期间暂停主循环，12-ui togglePause 受 affixModalOpen 门控）
   // 加载序：本文件在 03-audio 之后、04-spawn 之前——下游 04/05/06/07/08/12/13/14 单向引用本模块；
   // 本模块严禁 import 下游模块（防循环依赖）——需要下游能力的词条（如生成道具）由 14-main 等下游侧消费 affixHas 实现
 
   import { CANVAS_H, CANVAS_W } from './01-config-core.js';
-  import { isPoem } from './01-config-difficulty.js';
-  import { SUB_WEAPONS, PLANES, WINGMEN_CFG, berserkDuration, crystalShieldDur, currentPlane, currentWingman } from './01-config-loadout.js';
-  import { player, rand, spawnParticles, state, xinRings, bossFlow, TOUCH_DEVICE } from './02-core.js';
+  import { diffMods, isPoem } from './01-config-difficulty.js';
+  import { SUB_WEAPONS, PLANES, WINGMEN_CFG, ARMORS, MAX_BOMBS, berserkDuration, crystalShieldDur, currentPlane, currentWingman, currentArmor, currentSubWeapon } from './01-config-loadout.js';
+  import { player, rand, spawnBlastRing, spawnParticles, state, xinRings, bossFlow, TOUCH_DEVICE } from './02-core.js';
 
 
   // ---------- 词条数据（2026-11-09 自 13-encyclopedia 迁入为运行时单一来源，文案逐字保留） ----------
@@ -25,6 +25,12 @@
   // 2026-11-09：诗篇级负面三处替换词条概率 75%→65%（用户改稿）；词条页版式改为逐词条独立条目卡。
   // 2026-11-17 改版（用户定稿）：诗篇难度不再每选项内嵌两对词条——改为分两次选择（每次一对），
   //   第一次选择后**仅被选选项位**换新的一对（另两个选项不动），再选一次；刷新次数不重置。
+  // 2026-11-23 改版（用户定稿）：①刷新改为仅诗篇难度可用（每选项至多一次不变；其他难度不渲染刷新按钮）；
+  //   ②选择动画——被选选项卡边框发亮 + 略微缩小（≈0.27s）后再结算（pickOptionAnimated）；
+  //   ③杭方衍（0:good:5）改版见 07-player：特殊暴走被击中不再 +1s 延长，改「无敌时间内暴走不结束」（tick 冻结）；
+  //   ④词条池新增真我级正面 3 条 / 具象级正面 13 条（占位批次，全部登记 AFFIX_UNIMPLEMENTED 不参与抽取、
+  //   效果后续版本实装；绑定条件见 affixIdOfferable）+ 新增结局类词条 AFFIX_ENDING（无垠赠礼 end0，同上不实装）；
+  //   ⑤affixText 扩展 textEncy（图鉴版文案出口 affixEncyText，13-encyclopedia 消费）。
   // 配套设计：删除驾驶员 东坤蝰 / 龚粥，其技能移入词条池（见 13-encyclopedia 页尾注）。
   // 文案纪律：以下正负面条目为用户逐字口述定稿，照录不得改写措辞（同图鉴 desc/lore 纪律）。
   // 2026-11-09 二轮改版：词条加 name 字段（**当前全部为占位名，待用户逐条定稿**，定稿后直接改 name 即可，
@@ -32,15 +38,15 @@
   const AFFIX_DESIGN = [
     { grade: '虚象级', color: '#7fe8c9',
       good: [
-        { name: '萧杨杨', icon: '🎲', text: '每次升级波次等级时，均有1%概率触发一次抽卡。（萧杨技能）' },
+        { name: '萧杨杨', icon: '🎲', text: '每次升级波次等级时，均有1%概率触发一次抽卡。', textEncy: '每次升级波次等级时，均有1%概率触发一次抽卡。（萧杨技能）' },
         { name: '又春花', icon: '❤️', text: '战机血量增加25。' },
         { name: '恒则成', icon: '🔥', text: '每次升级波次等级时，有10%概率从场地下方朝上射出5个辛国栋之怒Lv4的火环。这几个火环之间均匀分布，中间的首先出现。' },
         { name: '侯琏琵', icon: '⚖️', text: '战机单次受到的伤害不会再超过50。' },
         { name: '苏沐哲', icon: '🔒', text: '战机的火力等级不会再因为受击而减少。' },   // 2026-11-06 自具象级正面移入（原括注「（改到虚象级）」为操作指示不入文案）
-        { name: '杭方衍', icon: '😤', text: '战机处于无敌时间时启动暴走状态。（处于护盾时不启动，另外这个特殊的暴走状态结束后仍回到原来的火力等级+这段时间拾取的升级套件等级，如果暴走时被击中，则延长1s暴走时长，可以突破上限）' },
-        { name: '张黄昏', icon: '💥', text: '战机受到伤害时，立刻对周围250px内所有敌人造成40倍等同伤害。（诗篇难度提高至80倍）' },
-        { name: '予临翎', icon: '⭐', text: '时空允诺的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择时空允诺时会出现这个词条）' },
-        { name: '夏郢陵', icon: '🚀', text: '混乱将至的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择混乱将至时会出现这个词条）' },
+        { name: '杭方衍', icon: '😤', text: '战机处于无敌时间时启动暴走状态。', textEncy: '战机处于无敌时间时启动暴走状态。（处于护盾时不启动，另外这个特殊的暴走状态结束后仍回到原来的火力等级+这段时间拾取的升级套件等级，暴走期间被击中不会延长暴走时长，但无敌时间内暴走不会结束）' },   // 图鉴括注 2026-11-23 用户定稿：末句止于「不会结束」（机制细节「倒计时在无敌期间走完时持续至无敌时间结束」不写入文案——实现在 07-player tick 钳 0 门控）
+        { name: '张黄昏', icon: '💥', text: '战机受到伤害时，立刻对周围250px内所有敌人造成40倍等同伤害。', textPoem: '战机受到伤害时，立刻对周围250px内所有敌人造成80倍等同伤害。', textEncy: '战机受到伤害时，立刻对周围250px内所有敌人造成40倍等同伤害。（诗篇难度提高至80倍）' },   // 实机：text/textPoem 按难度动态显示（affixText）；图鉴：textEncy 固定原带括号详细版（2026-11-23 用户定稿双版分开）
+        { name: '予临翎', icon: '⭐', text: '时空允诺的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。', textEncy: '时空允诺的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择时空允诺时会出现这个词条）' },
+        { name: '夏郢陵', icon: '🚀', text: '混乱将至的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。', textEncy: '混乱将至的每轮射弹有0.5%全部转化为捣蛋来袭的导弹。（仅在选择混乱将至时会出现这个词条）' },
       ],
       bad: [
         { name: '完濠壕', icon: '🧱', text: '坚垒护卫艇受到的所有伤害降低25%。' },
@@ -53,13 +59,34 @@
       ] },
     { grade: '具象级', color: '#ffd166',
       good: [
-        { name: '龚粥', icon: '❤️‍🩹', text: '所有量子护盾道具变为血量增加道具（不受掉落限制），但所有血量增加道具回复量改为25%血量。' },
+        { name: '龚粥', icon: '❤️‍🩹', text: '所有量子护盾道具变为血量增加道具，但所有血量增加道具回复量改为25%血量。', textEncy: '所有量子护盾道具变为血量增加道具（不受掉落限制），但所有血量增加道具回复量改为25%血量。' },
         { name: '封夜', icon: '🛸', text: '所有增生侧翼艇不再召唤卫护飞船。' },
-        { name: '布药莲', icon: '📦', text: '拾取任意道具时，均有10%概率在顶部生成一个同类道具。（额外生成的爆弹不受掉落限制）' },
+        { name: '布药莲', icon: '📦', text: '拾取任意道具时，均有10%概率在顶部生成一个同类道具。', textEncy: '拾取任意道具时，均有10%概率在顶部生成一个同类道具。（额外生成的爆弹不受掉落限制）' },
         { name: '金木木', icon: '💎', text: '所有BOSS血量降至40%时必定掉落一个结晶护盾，但结晶护盾的持续时长减少0.5s。' },
         { name: '俊隽', icon: '👁️', text: '战机有20%概率闪避攻击。' },
         { name: '离螱', icon: '🛡️', text: '战机每次击坠BOSS时获得5层伤害减免，每层减少12%受到的伤害。（至多5层）' },
-        { name: '墨璃', icon: '⏳', text: '拾取水晶能够延长结晶护盾的持续时长，至多通过此种方式延长2s。（仅在有途径召唤结晶护盾时出现本词条）' },
+        { name: '墨璃', icon: '⏳', text: '拾取水晶能够延长结晶护盾的持续时长，至多通过此种方式延长2s。', textEncy: '拾取水晶能够延长结晶护盾的持续时长，至多通过此种方式延长2s。（仅在有途径召唤结晶护盾时出现本词条）' },
+        // ↓ 2026-11-23 用户批次新增十三条绑定词条（同日实装，口径同真我级三条：占位名=绑定装备名待定稿、
+        //   icon emoji 占位、括注不入 text；绑定判定见 affixIdOfferable——1:good:7~10 副武器 / 1:good:11~19 装甲）；
+        //   实装落点：1:good:7 击坠加穿透=08-entities 通用命中区 / 1:good:8 烧弹=07-player updateXinRings /
+        //   1:good:9 飞剑掷点=08-entities 通用命中区 / 1:good:10 捣蛋瞄准=07-player launchDaodanMissile /
+        //   1:good:11 铜皮减伤与 1:good:13 祈星=07-player damagePlayer / 1:good:12 随机消弹=06-enemy killEnemy /
+        //   1:good:14 时流之洄恢复=damagePlayer 累计 + killEnemy 结算 / 1:good:15 澜心满格=updatePilotStatus /
+        //   1:good:16 免死暴走=affixBulwarkOnTrigger / 1:good:17 无敌+0.3s=各授予点 affixInvulnAdd /
+        //   1:good:18 澄月概率=tryChengyueShield / 1:good:19 炽心半径=灼烧判定与绘制
+        { name: '极夜流光', icon: '🔆', text: '极夜流光发射的光束如果直接击坠敌人，则可以额外造成一次无衰减的穿透。' },   // 1:good:7 绑定副武器极夜流光
+        { name: '辛国栋之怒', icon: '🌋', text: '辛国栋之怒的火环有5%概率烧毁非BOSS敌机的射弹。' },   // 1:good:8 绑定副武器辛国栋之怒；实装注意：每个敌机射弹仅能被所有火环判定一次
+        { name: '无界飞剑', icon: '🗡️', text: '无界飞剑有10%概率造成200%伤害，对黑色敌人的概率提高到30%。' },   // 1:good:9 绑定副武器无界飞剑
+        { name: '捣蛋来袭', icon: '🎯', text: '捣蛋来袭发射的导弹不再直射，而是瞄准场上生命值最高的敌人发射。' },   // 1:good:10 绑定副武器捣蛋来袭
+        { name: '铁皮夏勇', icon: '🦾', text: '受到的伤害降低10%，有50%概率改为降低20%。' },   // 1:good:11 绑定装甲铜皮夏勇（词条名照录用户原稿「铁皮夏勇」，占位待定稿）
+        { name: '群星之歌', icon: '✨', text: '群星之歌消除子弹时，额外随机消除一颗敌方射弹。' },   // 1:good:12 绑定装甲群星之歌
+        { name: '祈星', icon: '🍀', text: '祈星触发时使伤害减少60%。' },   // 1:good:13 绑定装甲祈星
+        { name: '时流之洄', icon: '⏪', text: '时流之洄击坠曾对自身造成过伤害的敌人时，有10%概率恢复其对自身造成的所有伤害。' },   // 1:good:14 绑定装甲时流之洄
+        { name: '七日澜心', icon: '🌸', text: '七日澜心在充能满时，立刻清除周围250px的敌方射弹。' },   // 1:good:15 绑定装甲七日澜心；实装注意：清除演出为粉色冲击波形式
+        { name: '最终壁垒', icon: '🔺', text: '最终壁垒触发时立刻进入暴走。' },   // 1:good:16 绑定装甲最终壁垒
+        { name: '天枢圣卫', icon: '🕐', text: '战机无敌时长增加0.3s。' },   // 1:good:17 绑定装甲天枢圣卫
+        { name: '澄月', icon: '🌙', text: '澄月触发的概率增加5%。' },   // 1:good:18 绑定装甲澄月
+        { name: '炽心', icon: '♨️', text: '炽心的火环半径增大35%。' },   // 1:good:19 绑定装甲炽心
       ],
       bad: [
         { name: '穆毅', icon: '🟠', text: '橙旋侧翼艇的子弹环绕半径扩大至1.5~2.2倍。' },
@@ -68,34 +95,44 @@
         { name: '黎宇', icon: '🌟', text: '黄芒侧翼艇现在发射三发散弹，子弹间的夹角为随机20~30度。' },
         { name: '时少凯风', icon: '⬆️', text: '下一个BOSS得到小幅增强。' },
         { name: '王妍', icon: '🏹', text: '赤红突击艇等1A级突击艇的首次攻击间隔减少50%。' },
-        { name: '霸彪', icon: '🔵', text: '矩阵类敌人（法术矩阵、法术阵列、战争矩阵，还有脉冲矩阵的扩散半径）的射弹尺寸增大20%。' },
-        { name: '雷偷煦旭', icon: '↔️', text: '法术大师A1、法术大师A2在横移期间受到的所有伤害降低60%，且横向移动速度增大50%（不会导致出界）。' },
+        { name: '霸彪', icon: '🔵', text: '矩阵类敌人的射弹尺寸增大20%。', textEncy: '矩阵类敌人（法术矩阵、法术阵列、战争矩阵，还有脉冲矩阵的扩散半径）的射弹尺寸增大20%。' },
+        { name: '雷偷煦旭', icon: '↔️', text: '法术大师A1、法术大师A2在横移期间受到的所有伤害降低60%，且横向移动速度增大50%。', textEncy: '法术大师A1、法术大师A2在横移期间受到的所有伤害降低60%，且横向移动速度增大50%（不会导致出界）。' },
         { name: '朱蠕', icon: '⭕', text: '御4和铁砧同时能释放双方的光环。' },
         { name: '孙垚', icon: '❄️', text: '寒霜和焦香螺旋桨同时能释放双方的光环。' },
         { name: '百演螂', icon: '🪖', text: '所有炮火先兆者及其变体受到的伤害降低10%；导弹的预警时长减少0.5s。' },
         { name: '随世', icon: '🌊', text: '浮海飘航者、破片、破片U型登场时获得1.5s虚化护盾。' },
         { name: '逢殇', icon: '🩹', text: '战机受到的所有伤害提高20%。' },
-        { name: '马大笑', icon: '🔁', text: '法术大师A2被击坠时召唤一个法术大师A1。（逻辑类似法术阵列召唤法术矩阵，旋转着出场）' },
+        { name: '马大笑', icon: '🔁', text: '法术大师A2被击坠时召唤一个法术大师A1。', textEncy: '法术大师A2被击坠时召唤一个法术大师A1。（逻辑类似法术阵列召唤法术矩阵，旋转着出场）' },
         { name: '黎龘', icon: '🏆', text: '愧悔魂灵圣杯的血量增加60%。' },
         { name: '张丈天', icon: '🏃', text: '所有敌人的入场速度和入场速度的对应加速度均提高40%。' },   // 2026-11-10 自虚象级 bad 移入（追加末位 → id 1:bad:15；强度 ×1.4；同持方苟辟时取强）
       ] },
     { grade: '真我级', color: '#ff5a5a',
       good: [
         { name: '东坤蝰', icon: '⏱️', text: '暴走时长增加0.5s，每触发过一次暴走，这个时长就增加0.01s。' },
-        { name: '段虓', icon: '🎖️', text: '斗志昂扬无人机现在在每次升级波次等级时均有额外的4%生成概率，且BOSS的血量每减少10%也会触发一次这个判定；斗志昂扬期间击杀敌人时，会立刻清除其发射的场上的所有弹幕；但斗志昂扬期间敌人的攻击间隔减少40%。' },
+        { name: '段虓', icon: '🎖️', text: '每次升级波次等级时或BOSS血量每减少10%，都有4%生成一架斗志昂扬无人机；拥有斗志昂扬效果时，击坠敌人会立刻清除其发射的场上的所有弹幕；但斗志昂扬期间敌人的攻击间隔减少40%。' },   // 2026-11-23 用户定稿：删「其场发射的场上的」中误打的「场」字
         { name: '贾苏读', icon: '🔫', text: '副武器的射击间隔减少40%。' },
         { name: '规浩云', icon: '✈️', text: '僚机的射击间隔减少30%。' },
         { name: '李扶摇', icon: '🎯', text: '战机的攻击间隔减少20%。' },
+        // ↓ 2026-11-23 用户批次新增三条绑定词条（同日实装）：占位名=绑定装备名（待用户定稿）、icon 为语义相近
+        //   emoji 占位；文案括注「仅选择XX时出现」不入 text，绑定判定见 affixIdOfferable；
+        //   实装落点：2:good:5 连锁=07-player 斩击击坠结算（affixStarsChainKill）/ 2:good:6 吸伤=08-entities
+        //   白盾吸收点累计 affixBulwarkAbsorbDmg + 07-player fan 轮启动 affixBulwarkTakeBonus 消费 /
+        //   2:good:7 黑洞时长=07-player 群星之扉免伤分支 +0.5s
+        { name: '群星之杀', icon: '💫',
+          text: '群星之杀击坠敌机时，10%概率对周围200px内随机一个敌人造成相当于被击坠敌人100%最大生命值的连锁伤害，该伤害同样可进行连锁。',
+          textEncy: '群星之杀击坠敌机时，10%概率对周围200px内随机一个敌人造成相当于被击坠敌人100%最大生命值的连锁伤害。这个连锁伤害同样可以触发这个10%判定。' },   // 2:good:5 绑定机型群星之杀；双文案分工（2026-11-23 用户纠正）：text=游戏实机（简版）/ textEncy=数值与机制图鉴（详细版）；已实装（07-player 斩击击坠结算——仅最后一击为群星之杀本体所为才判定，连锁击坠递归再判）
+        { name: '群星守愿', icon: '🧲', text: '群星守愿能够吸收敌方射弹（包括光束等）的伤害，在下一次发射时将该伤害加到每颗群星守愿射弹的基础伤害上。' },   // 2:good:6 绑定僚机群星守愿
+        { name: '群星之扉', icon: '🕳️', text: '群星之扉的黑洞持续时长增加0.5s。' },   // 2:good:7 绑定装甲群星之扉
       ],
       bad: [
         { name: '东方落雪', icon: '🦠', text: '所有白影侧翼艇替换为增生侧翼艇。' },
         { name: '贾德茗', icon: '⏫', text: '下一个BOSS得到大幅增强。' },
-        { name: '桀煌', icon: '🔴', text: '所有红色敌人的攻击间隔减少30%（不含BOSS）。' },
-        { name: '郑宣沐', icon: '🟡', text: '所有黄色敌人登场时均获得200屏障（不含BOSS）。' },
+        { name: '桀煌', icon: '🔴', text: '所有红色敌人的攻击间隔减少30%（对BOSS效果减半）。' },
+        { name: '郑宣沐', icon: '🟡', text: '所有黄色敌人登场时均获得200屏障（对BOSS效果减半）。' },
         { name: '於樾', icon: '💭', text: '虚幻的攻击范围和爆炸范围扩大30%，持续时长增加8s；虚幻和寒霜的减速区域范围扩大30%。' },
-        { name: '義灏玺', icon: '🐦', text: '暴鸰和暴鸰·G的血量和攻击力（对敌我双方的攻击力均）翻倍。' },
-        { name: '凌涟翌', icon: '💢', text: '所有赤红战舰等3A类战舰，释放技能后有10%概率使得下一次攻击间隔减少80%。（跟其他乘区为乘算关系，也即乘0.2）' },
-        { name: '刘重天', icon: '🔄', text: '所有赤红主力舰等4A类主力舰，释放技能完毕后均会立刻再释放一轮同种技能（技能间隔按照后面那一轮技能结束再开始算）。' },
+        { name: '義灏玺', icon: '🐦', text: '暴鸰和暴鸰·G的血量和攻击力翻倍。', textEncy: '暴鸰和暴鸰·G的血量和攻击力（对敌我双方的攻击力均）翻倍。' },
+        { name: '凌涟翌', icon: '💢', text: '所有赤红战舰等3A类战舰，释放技能后有10%概率使得下一次攻击间隔减少80%。', textEncy: '所有赤红战舰等3A类战舰，释放技能后有10%概率使得下一次攻击间隔减少80%。（跟其他乘区为乘算关系，也即乘0.2）' },
+        { name: '刘重天', icon: '🔄', text: '所有赤红主力舰等4A类主力舰，释放技能完毕后均会立刻再释放一轮同种技能。', textEncy: '所有赤红主力舰等4A类主力舰，释放技能完毕后均会立刻再释放一轮同种技能（技能间隔按照后面那一轮技能结束再开始算）。' },
         { name: '逢离歌', icon: '📉', text: '战机血量上限减少35。' },
         { name: '应堕', icon: '💣', text: '高能爆弹和绷绷炸弹的伤害降低80%。' },
         { name: '王东阳', icon: '🎒', text: '高能爆弹和绷绷炸弹的携带上限减少1（不会低于1）。' },
@@ -105,33 +142,33 @@
     { grade: '诗篇级', color: '#c084fc',
       good: [
         { name: '天爵', icon: '🗡️', text: '所有自侧翼出现的敌人受到的伤害提高150%。' },
-        { name: '慕容爵', icon: '🪃', text: '战机不再受到敌方导弹的伤害，且机身任意位置碰到敌方导弹时将之朝射来的相反方向反弹。反弹的导弹能够贯穿非4类和非BOSS敌人，穿透造成3000+5%最大生命值（不超过1500）伤害，且击中4类敌人或BOSS敌人时爆炸，对周围所有敌人造成3000+5%最大生命值（不超过1500）伤害。一个敌人能够同时受到爆炸伤害和贯穿伤害。爆炸范围同副武器捣蛋来袭的导弹。反弹时出现特殊音效和特效，且反弹后立刻进入无敌状态（持续时长同受击）。持有这个词条时，所有敌方导弹的预警线将会变为蓝色。' },
-        { name: '逢淞', icon: '🧊', text: '累计命中敌人20次或者累计造成2500伤害后，立刻使敌人冻结随机1.5~2s。（冻结：颜色变深蓝，立刻停止移动、攻击和技能，失去虚化护盾和所有减伤。焦香螺旋桨、御4等力场型敌人在被冻结后光环暂时消失且失去效果；焦香螺旋桨冻结复原后永久失去自身所有光环效果；寒霜和虚幻无法被冻结）' },
-        { name: '王宇都', icon: '🥧', text: '击坠1/2/3/4/5类敌人时，有0.5%/2%/5%/10%/100%概率朝上发射一个黑暗之手同款的旋转大蛋挞，大蛋挞能够消除自身碰到的敌方子弹，且对首次碰到的敌人造成3000点伤害，随后每0.1s对接触的敌人造成200点伤害。召唤大蛋挞有15s冷却时间。' },
+        { name: '慕容爵', icon: '🪃', text: '战机碰到敌方导弹时不受伤，并且将之弹反，可以对敌人造成大量伤害。' },
+        { name: '逢淞', icon: '🧊', text: '累计命中敌人20次或者累计造成2500伤害后，立刻使敌人冻结随机1.5~2s。', textEncy: '累计命中敌人20次或者累计造成2500伤害后，立刻使敌人冻结随机1.5~2s。（冻结：颜色变深蓝，立刻停止移动、攻击和技能，失去虚化护盾和所有减伤。焦香螺旋桨、御4等力场型敌人在被冻结后光环暂时消失且失去效果；焦香螺旋桨冻结复原后永久失去自身所有光环效果；寒霜和虚幻无法被冻结）' },
+        { name: '王宇都', icon: '🥧', text: '击坠敌人时，有概率朝上发射一个大蛋挞，对接触到的敌人造成大量伤害。' },
       ],
       bad: [
-        { name: '帝千邪', icon: '🟣', text: '所有紫色敌人被击坠时，朝下释放一颗子弹。（逻辑同紫电侧翼艇；紫色敌人包括卫护飞船，不包括任何长歌级敌人；紫电侧翼艇这种已经有一颗子弹亡语的不再有这个词条）' },
+        { name: '帝千邪', icon: '🟣', text: '所有紫色敌人被击坠时，朝下释放一颗子弹。', textEncy: '所有紫色敌人被击坠时，朝下释放一颗子弹。（逻辑同紫电侧翼艇；紫色敌人包括卫护飞船，不包括任何长歌级敌人；紫电侧翼艇这种已经有一颗子弹亡语的不再有这个词条）' },
         { name: '翔太初', icon: '⬆️', text: '所有BOSS均得到小幅增强。' },
-        { name: '祝陨穹', icon: '🔀', text: '炮火先兆者、先导炮火先兆者生成时，均有65%概率随机替换为中枢炮火先兆者和极夜炮火先兆者。所有中枢炮火先兆者和极夜炮火先兆者的攻击间隔减少20%。' },   // 2026-11-06 替换旧「随机替换」词条（原括注为操作指示不入文案）；2026-11-09 概率 75%→65%
-        { name: '孤落', icon: '👻', text: '每次波次等级提升时均有5%概率召唤一个战争幽灵，且所有战争幽灵的技能释放间隔改为固定0.4s。' },
+        { name: '祝陨穹', icon: '🔀', text: '炮火先兆者、先导炮火先兆者生成时，均有75%概率随机替换为中枢炮火先兆者和极夜炮火先兆者。所有中枢炮火先兆者和极夜炮火先兆者的攻击间隔减少20%。' },   // 2026-11-06 替换旧「随机替换」词条（原括注为操作指示不入文案）；2026-11-09 概率 75%→65%；2026-11-23 用户定稿 65%→75%（实现同步 04-spawn）
+        { name: '孤落', icon: '👻', text: '每次波次等级提升时均有7%概率召唤一个战争幽灵，且所有战争幽灵的技能释放间隔改为固定0.4s。' },   // 2026-11-23 用户定稿概率 5%→7%（实现同步 14-main）
         { name: '西门诩', icon: '🎭', text: '战争矩阵现在每次攻击时同时释放两个技能，但攻击间隔增大0.5s。' },
-        { name: '叶星凡', icon: '🦋', text: '浮海飘航者、破片、破片U型生成时，均有65%概率替换为破茧之梦。所有破茧之梦的移动速度提升30%。' },
-        { name: '杉蔚硙', icon: '⏸️', text: '暴鸰、暴鸰·G、虚幻生成时，均有65%概率替换为静滞虚幻。所有静滞虚幻的移动速度提升30%。' },
+        { name: '叶星凡', icon: '🦋', text: '浮海飘航者、破片、破片U型生成时，均有75%概率替换为破茧之梦。所有破茧之梦的移动速度提升30%。' },   // 2026-11-23 用户定稿概率 65%→75%（实现同步 04-spawn）
+        { name: '杉蔚硙', icon: '⏸️', text: '暴鸰、暴鸰·G、虚幻生成时，均有75%概率替换为静滞虚幻。所有静滞虚幻的移动速度提升30%。' },   // 2026-11-23 用户定稿概率 65%→75%（实现同步 04-spawn）
       ] },
     { grade: '长歌级', color: '#ff9d3c',
       good: [
         { name: '归海泷烽', icon: '🎁', text: '场上每随机15~35s掉落一个暴走道具。' },   // 2026-11-06 替换旧「升级道具 50% 变暴走」词条（原括注为操作指示不入文案）
         { name: '沐景', icon: '💠', text: '每次受到伤害后立刻触发结晶护盾。' },
         { name: '陈幻世', icon: '🧹', text: '击坠敌人时，40%概率立刻消除其残留在场上的所有弹幕。' },
-        { name: '令雨汐', icon: '🚫', text: '禁用所有敌人的亡语效果，禁用所有虚象级、真我级、长歌级的负面词条，所有S类敌人（包括4S和5S等）的血量减少95%。拥有这个词条时，后续选择词条页面的对应不生效的负面词条会被划掉。' },
+        { name: '令雨汐', icon: '🚫', text: '禁用所有敌人的亡语效果，禁用所有虚象级、真我级、长歌级的负面词条，所有S类敌人的血量减少95%。', textEncy: '禁用所有敌人的亡语效果，禁用所有虚象级、真我级、长歌级的负面词条，所有S类敌人（包括4S和5S等）的血量减少95%。拥有这个词条时，后续选择词条页面的对应不生效的负面词条会被划掉。' },   // 2026-11-23 用户定稿：实机去尾句；图鉴 textEncy 回退原带括号详细版
       ],
       bad: [
         { name: '朱天', icon: '⏫', text: '所有BOSS均得到大幅增强。' },
-        { name: '鸠', icon: '⏩', text: '所有敌人因停留而降低攻击间隔的这个时间点提前3s。' },
+        { name: '鸠', icon: '⏩', text: '所有敌人的提前3s进入暴怒。' },   // 2026-11-23 用户定稿照录：「停留降低攻击间隔」设定新称「暴怒」（仅本条文案改称，机制语义不变）；「的」字疑多待用户确认
         { name: '罗弋', icon: '🩸', text: '战机受到的所有伤害提高70%。' },
         { name: '嬴乾', icon: '🚨', text: '高危波次的刷新概率大幅增加。' },
         { name: '翙', icon: '🤖', text: '每次波次等级提升时均有8%概率召唤一个随机的强化4S敌人。' },
-        { name: '王未焚', icon: '💀', text: '所有敌人被击坠时，向其朝向方向释放一颗子弹。（子弹逻辑同紫电侧翼艇的亡语）' },
+        { name: '王未焚', icon: '💀', text: '所有敌人被击坠时，向其朝向方向释放一颗子弹。', textEncy: '所有敌人被击坠时，向其朝向方向释放一颗子弹。（子弹逻辑同紫电侧翼艇的亡语）' },
         { name: '郗若', icon: '🆘', text: '所有BOSS敌人血量首次低于50%时，召唤一名随机的4S敌人协同作战。' },
       ] },
   ];
@@ -141,11 +178,22 @@
   // 正负面不设独立名字——用户定稿，仅显示对名 + 正面/负面文案）
   const AFFIX_SPECIAL = [
     { name: '纵逭灭',
-      good: { icon: '♾️', text: '战机可以永久保持暴走状态（此时右下角不再显示读条）。' },
+      good: { icon: '♾️', text: '战机可以永久保持暴走状态。', textEncy: '战机可以永久保持暴走状态（此时右下角不再显示读条）。' },
       bad: { icon: '🌀', text: '所有敌人的攻击间隔减少75%。' } },
     { name: '澪叶',
       good: { icon: '🏎️', text: '战机的移动速度提高50%。' },
       bad: { icon: '🐌', text: '所有敌方子弹的弹速降低50%。' } },
+  ];
+
+  // 结局类绑定词条（2026-11-23 用户定稿登记，后续版本实装）：同特殊类——每个是一对（正/负面成对出现），
+  // 对结局词条的选择将直接影响游戏结局；仅在特殊情况出现、不进词条池（不参与抽取与刷新）。
+  // 出场设定（仅登记、未实装）：无垠赠礼仅在第三轮 BOSS 被击坠时出现——替换掉第三个选项，且无法被刷新。
+  // 负面括注效果（实战中不出现，仅登记未来实装说明）：击坠第五轮 BOSS 后不通关，新增第六轮 BOSS 无垠月海
+  // 及其前置等级，击坠无垠月海后通关；除此之外，立刻随机获得一个长歌级负面词条。
+  const AFFIX_ENDING = [
+    { name: '无垠赠礼',
+      good: { icon: '🌙', text: '战机生命值、造成的伤害、移动速度增加3%。' },
+      bad: { icon: '🌑', text: '无垠的彼方有群月升起...' } },   // 省略号为文案一部分照录；括注效果不入文案
   ];
 
   // ---------- 暂缓放出词条登记（2026-11-09 首批实装） ----------
@@ -164,7 +212,25 @@
   // BOSS 增强类四条（1:bad:4 / 2:bad:1 / 3:bad:1 / 4:bad:0）已于 2026-11-17 随用户数值定稿
   //（小幅 HP+20%/伤害+20%/间隔-20%，大幅 HP+40%/伤害+50%/间隔-40%）实装移出——见上方 affixNextBoss 快照体系。
   // 此后暂缓表常空（新暂缓项随批次在此登记）。
-  const AFFIX_UNIMPLEMENTED = new Set([]);
+  // 2026-11-23 用户批次登记：真我级正面 3 条（2:good:5~7）+ 具象级正面 13 条（1:good:7~19）已于同日
+  // 随用户「全部实装」指令实装移出（各效果消费点见各条目旁注释与 02/04/05/06/07/08 模块挂点）——
+  // 仅结局词条 end0（无垠赠礼）保持登记：结局类不进词条池、后续版本随结局系统实装。
+  const AFFIX_UNIMPLEMENTED = new Set(['end0']);
+
+  // 词条文案按难度动态显示（2026-11-23 用户定稿，张黄昏 0:good:6 首个使用者）：
+  // 条目可携带可选 textPoem 字段（诗篇难度文案）；affixText 统一出口——诗篇且有 textPoem 时返回诗篇版，
+  // 否则返回基础 text。消费点：03b 选择界面/温酒客与九克之王开局模态/暂停页快照 + 13-encyclopedia 词条页
+  function affixText(t) {
+    return isPoem() && t && t.textPoem ? t.textPoem : (t ? t.text : '');
+  }
+
+  // 图鉴版文案出口（2026-11-23 新增）：条目可携带可选 textEncy 字段（数值与机制图鉴展示用，优先于基础 text）；
+  // 游戏内选择界面 / 温酒客与九克之王开局模态 / 暂停页快照仍走 affixText——仅 13-encyclopedia 词条页消费本函数。
+  // 2026-11-23 二轮（用户定稿「实机/图鉴两版分开」）：19 条去括号文案条目（含纵逭灭特殊对 good）逐条回填
+  // textEncy = 原带括号详细版（照录 fdc8c6f 基线原稿）——实机 text 保持去括号版不变，图鉴回退显示详细版
+  function affixEncyText(t) {
+    return t && t.textEncy ? t.textEncy : affixText(t);
+  }
 
   // 绑定词条出场条件（0:good:7/8 文案括注定稿「仅在选择时空允诺/混乱将至时会出现这个词条」——
   // 2026-11-11 僚机「群星允诺」更名「时空允诺」，括注装备名随更名同步；绑定判定按 id 不变）：
@@ -172,6 +238,61 @@
   function affixIdOfferable(id) {
     if (id === '0:good:7') return currentWingman === WINGMEN_CFG.stars;
     if (id === '0:good:8') return currentPlane === PLANES.chaos;
+    // ↓ 2026-11-23 批次绑定条件（这些词条当前为占位批次未实装、不参与抽取——条件先行登记，
+    //   移出 AFFIX_UNIMPLEMENTED 放出时即按此生效）
+    if (id === '2:good:5') return currentPlane === PLANES.starslayer;   // 群星之杀连锁：仅机型群星之杀
+    if (id === '2:good:6') return currentWingman === WINGMEN_CFG.bulwark;   // 群星守愿吸伤：仅僚机群星守愿
+    if (id === '2:good:7') return currentArmor === ARMORS.starsGate;   // 群星之扉黑洞：仅装甲群星之扉
+    if (id === '1:good:7') return currentSubWeapon === SUB_WEAPONS.jixing;   // 极夜流光
+    if (id === '1:good:8') return currentSubWeapon === SUB_WEAPONS.xinring;   // 辛国栋之怒
+    if (id === '1:good:9') return currentSubWeapon === SUB_WEAPONS.feijian;   // 无界飞剑
+    if (id === '1:good:10') return currentSubWeapon === SUB_WEAPONS.daodan;   // 捣蛋来袭
+    if (id === '1:good:11') return currentArmor === ARMORS.tongpi;   // 铜皮夏勇
+    if (id === '1:good:12') return currentArmor === ARMORS.watch;   // 群星之歌
+    if (id === '1:good:13') return currentArmor === ARMORS.qixing;   // 祈星
+    if (id === '1:good:14') return currentArmor === ARMORS.hui;   // 时流之洄
+    if (id === '1:good:15') return currentArmor === ARMORS.lanxin;   // 七日澜心
+    if (id === '1:good:16') return currentArmor === ARMORS.bulwark;   // 最终壁垒
+    if (id === '1:good:17') return currentArmor === ARMORS.tianshu;   // 天枢圣卫
+    if (id === '1:good:18') return currentArmor === ARMORS.chengyue;   // 澄月
+    if (id === '1:good:19') return currentArmor === ARMORS.chixin;   // 炽心
+    return true;
+  }
+
+  // ---------- 2026-11-23 批次词条运行时（16 条同日实装，消费点见各函数注释） ----------
+  // 词条（具象级 1:good:17）天枢圣卫：无敌时长 +0.3s 加算——各无敌授予点表达式追加消费
+  //（07-player 受击/闪避/重生、06-enemy 接触与受击、05-boss BOSS 接触；最终壁垒免死 5s 经
+  // affixBulwarkOnTrigger 补加——02-core 不能反向 import 03b）
+  function affixInvulnAdd() { return affixHas('1:good:17') ? 0.3 : 0; }
+
+  // 词条（真我级 2:good:6）群星守愿吸伤：白盾吸收的敌方射弹伤害累计（08-entities 各吸收点调用）；
+  // 群星守愿下一轮扇形发射时定格加到本轮每颗射弹的基础伤害上（07-player 轮启动消费取走清零）
+  let bulwarkAbsorbAcc = 0;
+  function affixBulwarkAbsorbDmg(dmg) {
+    if (affixHas('2:good:6') && dmg > 0) bulwarkAbsorbAcc += dmg;
+  }
+  function affixBulwarkTakeBonus() {
+    const v = bulwarkAbsorbAcc;
+    bulwarkAbsorbAcc = 0;
+    return v;
+  }
+
+  // 词条（具象级 1:good:16 + 1:good:17）最终壁垒免死触发钩子（07-player damagePlayer / 06-enemy 各致死路径的
+  // tryBulwarkCheatDeath()===true 分支调用）：①免死 5s 无敌 +0.3s（bulwarkFxT 菱形演出同步）；②立刻进入暴走
+  //（weapon=5 + 满时长统一入口 affixBerserkDur）。返回 true = 本次触发了暴走——07-player 侧调用点据此补判
+  // 澄月 tryChengyueShield()（06-enemy 无法反向 import 07-player，该侧容缺不判澄月——口径登记于此）
+  function affixBulwarkOnTrigger() {
+    if (affixHas('1:good:17')) {
+      player.invuln += 0.3;
+      if (player.bulwarkFxT != null) player.bulwarkFxT = player.invuln;   // 菱形演出与实际无敌时长同步（02-core tryBulwarkCheatDeath 同约定）
+    }
+    if (!affixHas('1:good:16') || player.weapon >= 5) return false;
+    player.weapon = 5;
+    player.hitCount = 0;   // 升满重置受击计数（口径同 pickupBerserk）
+    player.berserk = affixBerserkDur();
+    player.berserkBanner = 1.5;
+    spawnParticles(player.x, player.y, '#ffb545', 26, 260);
+    spawnBlastRing(player.x, player.y, 96, '#ffb545', 0.45);   // 暴走触发扩散环（berserkBursts 在 08-entities——03b 禁止反向 import 下游，演出改走 02-core 同款扩散环）
     return true;
   }
 
@@ -226,32 +347,144 @@
     // 诗篇两段式选择计数（2026-11-17）：本会话已选择次数——第 1 次选择后仅重建被选选项位（poemPickCount<2），
     // 第 2 次选择后关闭界面；open/close/reset 三处归零
     poemPickCount: 0,
+    // 选择动画进行中标记（2026-11-23：边框发亮+缩小 ≈0.27s 后才结算；期间忽略重复点击）
+    pickAnim: false,
   };
 
   // 本局已选词条 id 列表（affixHas 全局查询的唯一真源）
   const affixIds = [];
 
-  // ---------- 一次性占用制 + 保底阶梯（2026-11-11 用户定稿） ----------
+  // ---------- 一次性占用制 + 保底词条池（2026-11-26 用户定稿重构） ----------
   // affixUsedIds：全场占用表——词条页选过 / 温酒客开局抽走的词条 id 都算占用，不再出现在后续任何选项。
   // 特殊对按 'sp0'/'sp1' 同规则占用（rollSpecial 过滤）。保底项无限供应、不占池、不进占用表。
   const affixUsedIds = new Set();
   // 等级全占用 → 该等级抽取权重 ×0.4（用户定稿「当一个等级的词条（不管正面还是负面）抽完后」）
   const FALLBACK_TIER_W = 0.4;
-  // 保底正面阶梯（仅词条页触发；仅加战机本体/主炮伤害，不含副武器与僚机——消费见 08-entities 主炮弹结算）：
-  // 档位 [8%,16%,24%,32%,40%] 逐档递进，无限叠加不封顶（第 6 条起每条仍按 40% 档乘算）
-  //（前三档 2026-11-11 用户定稿 v0.5.0 后微调：+10%/18%/26% → +8%/16%/24%）
-  const FALLBACK_POS_STEPS = [0.08, 0.16, 0.24, 0.32, 0.40];
-  let affixFallbackPosCount = 0, affixFallbackPosMul = 1;
-  // 保底负面阶梯（词条页负面槽耗尽 / 温酒客开局 5 连抽池空共用同一条阶梯）：
-  // 档位 [20%,30%,40%,50%,60%] 逐档递进，无限叠加不封顶——消费并入 affixPlayerDamageMul
-  const FALLBACK_NEG_STEPS = [0.20, 0.30, 0.40, 0.50, 0.60];
-  let affixFallbackNegCount = 0, affixFallbackNegMul = 1;
-  function fallbackStepMul(steps, count) { return 1 + steps[Math.min(count, steps.length - 1)]; }
+  // ── 保底词条池（原「本体伤害阶梯 + 受伤阶梯」重构为随机池，原保底负面词条删除）──
+  // 正面 8 条 / 负面 10 条：槽空时等权随机抽一条，效果值按抽取时所属等级 gi（0~4 = 虚象/具象/真我/诗篇/长歌）
+  // 取档位 steps[gi]（用户纠正：档位由等级决定，非触发次数递进）。同一词条可重复抽中、效果累积；
+  // 「增加百分之几」为加算叠加（两个+10% = +20%，消费侧统一 1+sum 乘区；间隔类为乘算累积 mul *= step）。
+  // 移除阈值：来自本词条的累计效果达标（cap）后从池中移除不再被抽到——正常流程几乎抽不满，为无尽模式铺路。
+  // 消费点总表：
+  //   pos_mainGun   → affixMainGunDamageMul（08-entities 主炮弹结算，原保底正面保留入池）
+  //   pos_maxHp     → pick 立即生效 + affixMaxHpDelta（重生补差）
+  //   pos_wingCrit  → 07-player 僚机各模型轮启动掷点 + fire 函数本轮伤害 ×10
+  //   pos_subIv     → affixSubIv（07-player 副武器开火）
+  //   pos_dmgReduce → 07-player damagePlayer 统一入口平减
+  //   pos_dropRate  → 06-enemy rollItemDrops 各掉率 ×(1+sum)
+  //   pos_negReduce → buildOption 掷点（bad='skip'——本对负面词条数-1）
+  //   pos_bomb      → pick（state.bombCapAdd +1 + bombs +1；仅正面池——2026-11-26 用户定稿）
+  //   neg_negAdd    → buildOption 掷点（追加 bad2——本对负面词条数+1）
+  //   neg_dmg       → 07-player damagePlayer 敌方伤害乘区 (1+sum)
+  //   neg_firstIv   → 04-spawn makeEnemy initFire 生成侧 ×mul（仅新生成敌机）
+  //   neg_iv        → 06-enemy enemyFireIvMul 流速 ×(1/mul)（间隔×mul 等效）+ 05-boss bossSkillIv 间隔 ×mul
+  //   neg_hp        → 04-spawn makeEnemy hpMul ×(1+sum) + 05-boss 各 spawn hp
+  //   neg_bulletSpd → 06-enemy pushEBullet + 05-boss pushBossBullet 弹速 ×(1+sum)
+  //   neg_rushCd    → 06-enemy resetEnemyFireTimer 掷点（e.rushCd 每敌机 2 轮 CD，见该函数注释）
+  //   neg_speed     → 04-spawn makeEnemy speedMul 初值 ×(1+sum)（加速度为各移动分支内部逼近率、无统一乘区，
+  //                    仅实装速度；已生成敌机不追溯——生成层乘区杜绝中途速度瞬跳，速度曲线铁律）
+  //   neg_undying   → 06-enemy killEnemy 开头掷点（hp=1 + e.ivHalved 永久间隔减半 + e.phase=3 复用虚化通道；
+  //                    多形态/返场实体为新对象自然重掷，天然满足「无法影响下一形态」）
+  //   neg_deathAttack → 06-enemy killEnemy 消弹后掷点（pushEBullet 朝玩家立刻攻击一发——同超越艇织夜亡语通道）
+  const fbState = {
+    pos_mainGunMul: 1,      // 本体伤害乘算累积
+    pos_maxHpSum: 0,        // 生命值加算
+    pos_wingCritSum: 0,     // 僚机 10 倍伤害概率（≥80% 移除）
+    pos_subIvMul: 1,        // 副武器间隔乘算（≤0.4 移除）
+    pos_dmgReduceSum: 0,    // 受伤平减（≥15 移除）
+    pos_dropRateSum: 0,     // 道具掉落概率加算
+    pos_negReduceSum: 0,    // 负面数-1 概率（≥80% 移除）
+    neg_negAddSum: 0,       // 负面数+1 概率（≥80% 移除）
+    neg_dmgSum: 0,          // 敌方伤害加算
+    neg_firstIvMul: 1,      // 敌首次间隔乘算（≤0.4 移除）
+    neg_ivMul: 1,           // 敌攻击间隔乘算（≤0.4 移除）
+    neg_hpSum: 0,           // 敌血量加算
+    neg_bulletSpdSum: 0,    // 敌弹速加算
+    neg_rushCdSum: 0,       // 敌攻击后冲刺概率（≥80% 移除）
+    neg_speedSum: 0,        // 敌速度加算
+    neg_undyingSum: 0,      // 敌免死概率（≥80% 移除）
+    neg_deathAttackSum: 0,  // 敌死前攻击概率（≥80% 移除）
+  };
+  const fbRemoved = new Set();   // 移除阈值达标的词条 key
+  // 池条目：key / text(v) 展示文案（v=档位值）/ steps[gi] 档位 / pick(v) 落地累积 / cap() 阈值达标判定（缺省不移除）
+  const FB_GOOD_POOL = [
+    { key: 'mainGun', text: (v) => '我方战机本体伤害增加 ' + v + '%', steps: [8, 16, 24, 32, 40],
+      pick: (v) => { fbState.pos_mainGunMul *= 1 + v / 100; } },   // 原保底正面保留入池（乘算叠加不封顶）
+    { key: 'maxHp', text: (v) => '战机生命值增加 ' + v, steps: [8, 16, 24, 32, 40],
+      pick: (v) => { fbState.pos_maxHpSum += v; player.maxHp += v; player.hp += v; } },   // 立即生效（同 0:good:1 口径）；重生经 affixMaxHpDelta 补差
+    { key: 'wingCrit', text: (v) => '僚机每轮发射时，有 ' + v + ' 概率使本轮造成10倍伤害', steps: ['2%', '4%', '6%', '8%', '10%'],
+      pick: () => { fbState.pos_wingCritSum += 0.02; }, cap: () => fbState.pos_wingCritSum >= 0.8 },
+    { key: 'subIv', text: (v) => '副武器的发射间隔*' + v, steps: [0.93, 0.86, 0.79, 0.72, 0.65],
+      pick: (v) => { fbState.pos_subIvMul *= v; }, cap: () => fbState.pos_subIvMul <= 0.4 },
+    { key: 'dmgReduce', text: (v) => '战机受到的所有伤害减少 ' + v, steps: [1, 2, 3, 4, 5],
+      pick: (v) => { fbState.pos_dmgReduceSum += v; }, cap: () => fbState.pos_dmgReduceSum >= 15 },
+    { key: 'dropRate', text: (v) => '所有道具的掉落概率增加 ' + v, steps: ['5%', '10%', '15%', '20%', '25%'],
+      pick: () => { fbState.pos_dropRateSum += 0.05; } },
+    { key: 'negReduce', text: (v) => '选择词条时，有 ' + v + ' 使得选择词条对时的负面词条数减少1', steps: ['5%', '10%', '15%', '20%', '25%'],
+      pick: () => { fbState.pos_negReduceSum += 0.05; }, cap: () => fbState.pos_negReduceSum >= 0.8 },
+    { key: 'bomb', text: () => '立刻获得1个高能爆弹，并使得高能爆弹的上限增加1', steps: [null, null, null, null, null],
+      pick: () => {
+        state.bombCapAdd = (state.bombCapAdd || 0) + 1;   // 上限永久 +1（与绷绷背包同通道，02-core 归域）
+        player.bombs = Math.min((player.bombs || 0) + 1, Math.max(1, (diffMods().bombCap ?? MAX_BOMBS) + (state.bombCapAdd || 0) - (affixHas('2:bad:10') ? 1 : 0)));
+      } },   // 无累积效果值（一次性获得）；仅正面池——2026-11-26 用户定稿
+  ];
+  const FB_BAD_POOL = [
+    { key: 'negAdd', text: (v) => '选择词条时，有 ' + v + ' 使得选择词条对的负面词条数增加1', steps: ['8%', '16%', '24%', '32%', '40%'],
+      pick: () => { fbState.neg_negAddSum += 0.08; }, cap: () => fbState.neg_negAddSum >= 0.8 },
+    { key: 'dmg', text: (v) => '敌方造成的伤害增加 ' + v, steps: ['10%', '20%', '30%', '40%', '50%'],
+      pick: () => { fbState.neg_dmgSum += 0.10; } },   // 加算叠加（两个+10%=+20%，消费侧 1+sum）
+    { key: 'firstIv', text: (v) => '敌方首次攻击间隔*' + v, steps: [0.9, 0.8, 0.7, 0.6, 0.5],
+      pick: (v) => { fbState.neg_firstIvMul *= v; }, cap: () => fbState.neg_firstIvMul <= 0.4 },
+    { key: 'iv', text: (v) => '敌方攻击间隔* ' + v, steps: [0.94, 0.88, 0.82, 0.76, 0.7],
+      pick: (v) => { fbState.neg_ivMul *= v; }, cap: () => fbState.neg_ivMul <= 0.4 },
+    { key: 'hp', text: (v) => '敌方生命值增加 ' + v, steps: ['6%', '12%', '18%', '24%', '30%'],
+      pick: () => { fbState.neg_hpSum += 0.06; } },   // 加算叠加
+    { key: 'bulletSpd', text: (v) => '敌方弹速增加 ' + v, steps: ['8%', '16%', '24%', '32%', '40%'],
+      pick: () => { fbState.neg_bulletSpdSum += 0.08; } },
+    { key: 'rushCd', text: (v) => '敌方攻击后，有 ' + v + ' 使得下一次攻击间隔*0.2（无法连续触发，每次触发后有2轮cd）', steps: ['6%', '12%', '18%', '24%', '30%'],
+      pick: () => { fbState.neg_rushCdSum += 0.06; }, cap: () => fbState.neg_rushCdSum >= 0.8 },
+    { key: 'speed', text: (v) => '敌方速度和加速度增加 ' + v, steps: ['10%', '20%', '30%', '40%', '50%'],
+      pick: () => { fbState.neg_speedSum += 0.10; } },
+    { key: 'undying', text: (v) => '敌方首次受到致命伤时有 ' + v + ' 不被击坠，攻击间隔永久减半（多形态敌人无法影响下一形态），并获得3s虚化护盾', steps: ['2%', '4%', '6%', '8%', '10%'],
+      pick: () => { fbState.neg_undyingSum += 0.02; }, cap: () => fbState.neg_undyingSum >= 0.8 },
+    { key: 'deathAttack', text: (v) => '敌方被击坠前有 ' + v + ' 立刻进行一次攻击', steps: ['5%', '10%', '15%', '20%', '25%'],
+      pick: () => { fbState.neg_deathAttackSum += 0.05; }, cap: () => fbState.neg_deathAttackSum >= 0.8 },
+  ];
+  // 从池随机抽一条（阈值移除过滤；全池移除 → null——正常流程不可能，负面池 dmg/hp/bulletSpd/speed 无阈值兜底）
+  function rollFallbackEntry(pool) {
+    const avail = pool.filter(d => !fbRemoved.has(d.key));
+    return avail.length ? avail[(Math.random() * avail.length) | 0] : null;
+  }
+  // 保底词条落地：按抽取时等级 gi 取档位累积 + 阈值判定移除（2026-11-26 用户纠正：档位由等级决定）
+  function applyFallbackEntry(def, gi) {
+    const v = def.steps[Math.min(gi, 4)];
+    def.pick(v);
+    if (def.cap && def.cap()) fbRemoved.add(def.key);
+  }
+  // 任意等级负面加权抽（bad2 追加用）：占用过滤 + 等级全占用降权 ×0.4（同 rollWenjiukeDebuffs 口径）；
+  // 全等级 bad 槽耗尽 → 负面保底池顶上；再空（全移除）→ null
+  function rollAnyBad() {
+    const cands = [];
+    for (let gi = 0; gi < AFFIX_DESIGN.length; gi++) {
+      if (badGradeExhausted(gi)) continue;
+      const w = gradeExhausted(gi) ? FALLBACK_TIER_W : 1;
+      for (const bi of offerableBad(gi)) cands.push({ gi, bi, w });
+    }
+    if (!cands.length) {
+      const def = rollFallbackEntry(FB_BAD_POOL);
+      return def ? { fbKey: def } : null;
+    }
+    let r = Math.random() * cands.reduce((a, c) => a + c.w, 0);
+    let pick = cands[cands.length - 1];
+    for (const c of cands) { r -= c.w; if (r < 0) { pick = c; break; } }
+    return { gi: pick.gi, bi: pick.bi };
+  }
 
-  // ---------- 温酒客开局 DEBUFF（2026-11-11 用户定稿效果重做） ----------
+  // ---------- 温酒客开局 DEBUFF（2026-11-11 用户定稿效果重做；2026-11-26 保底池重构改道） ----------
   // 开局立刻获得 5 个随机负面：复用负面词条池 id 存独立数组（不进 affixIds，不污染词条页/图鉴快照）；
   // 结算全部经 affixHas 收口（含本数组）→ 失效 = 移除 id 即自动卸载全部效果。
   // 受令雨汐影响：抽取时跳过被禁等级（0/2/4 级，affixBadDisabled 判定），与词条页负面同口径。
+  // 池空改走负面保底词条池（2026-11-26：预抽定词条按随机等级取档落地，原受伤阶梯退役）
   const wenjiukeAffixIds = [];
   // 双生 BOSS 轮次标记（暴风之眼 + 风暴编织者都击坠 = 一轮；旧日之歌不计）——失效引擎在 wenjiukeBossRoundKill
   const wjkTwinKilled = { storm: false, storm2: false };
@@ -273,19 +506,47 @@
   }
 
   // 玩家受到伤害乘区（负面：1:bad:12 受伤 +20% / 4:bad:2 受伤 +70%——乘算叠加；
-  // 负面保底阶梯档位值并入——温酒客 5 连抽池空 / 词条页负面槽耗尽共用，无限叠加不封顶）
+  // 原保底负面受伤阶梯已删（2026-11-26 保底池重构））
   function affixPlayerDamageMul() {
     let mul = 1;
     if (affixHas('1:bad:12')) mul *= 1.2;
     if (affixHas('4:bad:2')) mul *= 1.7;
-    mul *= affixFallbackNegMul;
     return mul;
   }
 
   // 保底正面乘区（仅战机本体/主炮弹消费——08-entities 主炮结算处挂 b.mainGun 判定；僚机/副武器不乘）
   function affixMainGunDamageMul() {
-    return affixFallbackPosMul;
+    return fbState.pos_mainGunMul;
   }
+
+  // ---------- 保底词条池查询接口（2026-11-26 新增，消费点见 fbState 定义处总表） ----------
+  // 战机受到的所有伤害平减（pos_dmgReduce：乘区结算后固定减量，下限 0——07-player damagePlayer 消费）
+  function affixPlayerFlatReduce() { return fbState.pos_dmgReduceSum; }
+  // 敌方造成的伤害加算乘区（neg_dmg：07-player damagePlayer 统一入口消费——敌方伤害全走该入口）
+  function affixEnemyDmgAdd() { return fbState.neg_dmgSum; }
+  // 敌方首次攻击间隔乘算（neg_firstIv：04-spawn makeEnemy 生成侧消费——仅新生成敌机）
+  function affixEnemyFirstIvMul() { return fbState.neg_firstIvMul; }
+  // 敌方攻击间隔乘算（neg_iv：06-enemy enemyFireIvMul 流速 ×1/mul + 05-boss bossSkillIv 间隔 ×mul）
+  function affixEnemyIvMul() { return fbState.neg_ivMul; }
+  // 敌方生命值加算乘区（neg_hp：04-spawn makeEnemy hpMul + 05-boss 各 spawn hp）
+  function affixEnemyHpAdd() { return fbState.neg_hpSum; }
+  // 敌方弹速加算乘区（neg_bulletSpd：06-enemy pushEBullet + 05-boss pushBossBullet）
+  function affixEnemyBulletSpdAdd() { return fbState.neg_bulletSpdSum; }
+  // 敌方速度加算乘区（neg_speed：04-spawn makeEnemy speedMul 初值——加速度无统一乘区仅实装速度）
+  function affixEnemySpeedAdd() { return fbState.neg_speedSum; }
+  // 僚机每轮 10 倍伤害概率（pos_wingCrit：07-player 僚机各模型轮启动掷点）
+  function affixWingCritChance() { return fbState.pos_wingCritSum; }
+  // 道具掉落概率加算乘区（pos_dropRate：06-enemy rollItemDrops）
+  function affixDropRateAdd() { return fbState.pos_dropRateSum; }
+  // 敌方攻击后冲刺概率（neg_rushCd：06-enemy resetEnemyFireTimer 掷点）
+  function affixEnemyRushChance() { return fbState.neg_rushCdSum; }
+  // 敌方首次致命伤免死概率（neg_undying：06-enemy killEnemy 开头掷点）
+  function affixEnemyUndyingChance() { return fbState.neg_undyingSum; }
+  // 敌方被击坠前立刻攻击概率（neg_deathAttack：06-enemy killEnemy 消弹后掷点）
+  function affixEnemyDeathAttackChance() { return fbState.neg_deathAttackSum; }
+  // 词条对负面数增减概率（buildOption 掷点：pos_negReduce → bad='skip' / neg_negAdd → 追加 bad2）
+  function affixNegReduceChance() { return fbState.pos_negReduceSum; }
+  function affixNegAddChance() { return fbState.neg_negAddSum; }
 
   // 单次伤害上限（虚象级 0:good:3：单次不超过 50）
   function affixDamageClamp(amount) {
@@ -296,11 +557,12 @@
   // 闪避掷骰（具象级 1:good:4：20% 概率闪避）
   function affixDodgeRoll() { return affixHas('1:good:4') && Math.random() < 0.2; }
 
-  // 血量上限修正（0:good:1 +25 / 2:bad:8 -35；选择瞬间一次性生效，重生时经 armorMaxHp 后补差）
+  // 血量上限修正（0:good:1 +25 / 2:bad:8 -35 / 保底池 pos_maxHp 加算累积；选择瞬间一次性生效，重生时经 armorMaxHp 后补差）
   function affixMaxHpDelta() {
     let d = 0;
     if (affixHas('0:good:1')) d += 25;
     if (affixHas('2:bad:8')) d -= 35;
+    d += fbState.pos_maxHpSum;
     return d;
   }
 
@@ -375,9 +637,10 @@
     return mul;
   }
 
-  // 攻击间隔乘区（真我级 2:good:4 主炮 / 2:good:2 副武器 / 2:good:3 僚机——间隔越乘越小）
+  // 攻击间隔乘区（真我级 2:good:4 主炮 / 2:good:2 副武器 / 2:good:3 僚机——间隔越乘越小；
+  // 副武器并入保底池 pos_subIv 乘算累积——总乘区 ≤0.4 后该保底词条移除）
   function affixFireIv() { return affixHas('2:good:4') ? 0.8 : 1; }
-  function affixSubIv() { return affixHas('2:good:2') ? 0.6 : 1; }
+  function affixSubIv() { return (affixHas('2:good:2') ? 0.6 : 1) * fbState.pos_subIvMul; }
   function affixWingIv() { return affixHas('2:good:3') ? 0.7 : 1; }
 
   // 暴走时长（真我级 2:good:0：+0.5s，每触发一次 +0.01s）——统一入口包装 01-config berserkDuration：
@@ -458,12 +721,16 @@
   function rollPair(gi) {
     const g = AFFIX_DESIGN[gi];
     const gs = offerableGood(gi), bs = offerableBad(gi);
-    // 一次性占用制：槽位池空 → 保底项顶上（good 空出保底正面 / bad 空出保底负面；null 表示该槽走保底）
+    // 一次性占用制：槽位池空 → 保底词条顶上（good 空出保底正面 / bad 空出保底负面；null 表示该槽走保底）
     if (!gs.length && !bs.length) return null;   // 双槽皆空：该等级整个走保底由 buildOption 决定
     return {
       gi,
       good: gs.length ? gs[(Math.random() * gs.length) | 0] : null,   // null = 保底正面
       bad: bs.length ? bs[(Math.random() * bs.length) | 0] : null,    // null = 保底负面
+      // 保底槽预抽定（2026-11-26 保底池重构）：槽空时即从池抽定词条——渲染与选择共用同一条，选择时不二次随机；
+      // 全池移除 → null（渲染显示「保底池暂空」，选择落地跳过）
+      fbGood: gs.length ? null : rollFallbackEntry(FB_GOOD_POOL),
+      fbBad: bs.length ? null : rollFallbackEntry(FB_BAD_POOL),
     };
   }
 
@@ -503,7 +770,21 @@
       if (sp == null) cat = 0;   // 特殊对占用完 → 回退常规档位通道
     }
     const gi = cat === AFFIX_DESIGN.length ? 0 : cat;
-    const pair = rollPair(gi) || { gi, good: null, bad: null };   // 双槽皆空 → 双保底选项
+    const pair = rollPair(gi) || {   // 双槽皆空 → 双保底选项
+      gi, good: null, bad: null,
+      fbGood: rollFallbackEntry(FB_GOOD_POOL),
+      fbBad: rollFallbackEntry(FB_BAD_POOL),
+    };
+    // 保底联动词条（buildOption 掷点预抽定，2026-11-26 用户定稿——渲染可见、选择时不二次随机）：
+    // pos_negReduce 掷中 → 本对负面词条数-1（bad='skip' / fbBad 清空，渲染标注）；
+    // neg_negAdd 掷中 → 追加一条任意等级负面 bad2（负面词条数+1；占用/禁用同常规负面）。
+    // 两掷点互斥（先减后加无意义）；仅本对存在负面（正常或保底）时判定
+    if ((pair.bad != null || pair.fbBad != null) && affixNegReduceChance() > 0 && Math.random() < affixNegReduceChance()) {
+      if (pair.bad != null) pair.bad = 'skip'; else pair.fbBad = null;
+      pair.badSkipped = true;
+    } else if ((pair.bad != null || pair.fbBad != null) && affixNegAddChance() > 0 && Math.random() < affixNegAddChance()) {
+      pair.bad2 = rollAnyBad();   // { gi, bi } 任意等级负面 / { fbKey } 负面保底池 / null 全空
+    }
     return { pairs: [pair], sp, refreshed: false };
   }
 
@@ -546,7 +827,7 @@
       const parts = id.split(':');
       const g = AFFIX_DESIGN[Number(parts[0])];
       const t = g && g[parts[1]] && g[parts[1]][Number(parts[2])];
-      return t ? { kind: 'entry', grade: g.grade, side: parts[1], name: t.name, icon: t.icon, text: t.text } : null;
+      return t ? { kind: 'entry', grade: g.grade, side: parts[1], name: t.name, icon: t.icon, text: affixText(t) } : null;
     }).filter(Boolean);
   }
 
@@ -562,25 +843,35 @@
       applyInstant('sp' + opt.sp);
     }
     for (const pr of opt.pairs) {
-      if (pr.good == null) {   // 保底正面：仅战机本体伤害阶梯（档位按触发次数递进）
-        affixFallbackPosMul *= fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount);
-        affixFallbackPosCount++;
+      if (pr.good == null) {   // 保底正面：预抽定词条按抽取时等级 gi 取档落地（applyFallbackEntry 累积+阈值移除）
+        if (pr.fbGood) applyFallbackEntry(pr.fbGood, pr.gi);
       } else {
         const gid = pr.gi + ':good:' + pr.good;
         affixIds.push(gid);
         affixUsedIds.add(gid);   // 一次性占用制：选过即占，不再出现在后续选项
         applyInstant(gid);
       }
-      if (pr.bad == null) {   // 保底负面：受伤阶梯（与温酒客 5 连抽池空共用同一条阶梯）
-        affixFallbackNegMul *= fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount);
-        affixFallbackNegCount++;
-      } else {
+      if (pr.bad == null) {   // 保底负面：预抽定词条落地（池全移除 → fbBad 为 null，跳过）
+        if (pr.fbBad) applyFallbackEntry(pr.fbBad, pr.gi);
+      } else if (pr.bad !== 'skip') {   // 'skip' = pos_negReduce 掷中（负面词条数-1）——本对无负面不登记
         const bid = pr.gi + ':bad:' + pr.bad;
         affixUsedIds.add(bid);   // 占用先于禁用判定——被令雨汐禁用的负面同样算占用（选了只得不到）
         // 词条（长歌级 4:good:3 = 令雨汐）负面禁用：被禁负面不登记不结算（选项页中划掉显示，见 renderAffixModal）
         if (!affixBadDisabled(bid)) {
           affixIds.push(bid);
           applyInstant(bid);
+        }
+      }
+      if (pr.bad2) {   // neg_negAdd 掷中追加的额外负面（负面词条数+1，2026-11-26 用户定稿）
+        if (pr.bad2.fbKey) {
+          applyFallbackEntry(pr.bad2.fbKey, pr.gi);
+        } else {
+          const bid2 = pr.bad2.gi + ':bad:' + pr.bad2.bi;
+          affixUsedIds.add(bid2);
+          if (!affixBadDisabled(bid2)) {
+            affixIds.push(bid2);
+            applyInstant(bid2);
+          }
         }
       }
     }
@@ -608,8 +899,10 @@
     }
   }
 
-  // 刷新一个选项（每选项至多 1 次；整选项重掷——稀有度与词条均重抽）
+  // 刷新一个选项（2026-11-23 用户定稿：仅诗篇难度可刷新；每选项至多 1 次；整选项重掷——稀有度与词条均重抽）。
+  // 非诗篇难度刷新按钮不渲染（renderAffixModal），此处 isPoem 兜底直接拒绝
   function refreshOption(oi) {
+    if (!isPoem()) return;
     const opt = affixFlow.options && affixFlow.options[oi];
     if (!opt || opt.chosen || affixFlow.refreshed[oi]) return;
     affixFlow.refreshed[oi] = true;
@@ -662,38 +955,49 @@
       if (opt.sp != null) {
         const sp = AFFIX_SPECIAL[opt.sp];
         appendLine(card, '特殊对 · ' + sp.name, '#ffffff', 700);
-        appendLine(card, sp.good.icon + ' 正面 · ' + sp.good.text, '#4ade80', 400);
-        appendLine(card, sp.bad.icon + ' 负面 · ' + sp.bad.text, '#ff5a5a', 400);
+        appendLine(card, sp.good.icon + ' 正面 · ' + affixText(sp.good), '#4ade80', 400);
+        appendLine(card, sp.bad.icon + ' 负面 · ' + affixText(sp.bad), '#ff5a5a', 400);
       }
       for (const pr of opt.pairs) {
-        // 保底槽（pr.good/pr.bad 为 null，2026-11-11 用户定稿）：展示当前档位值（触发后档位递进、无限叠加）
+        // 保底槽（pr.good/pr.bad 为 null，2026-11-26 保底池重构）：展示预抽定词条按本档等级取档的文案
         if (pr.good == null) {
-          const pct = Math.round((fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount) - 1) * 100);
-          appendLine(card, '⬆️ 正面 · 保底强化：我方战机本体伤害增加 ' + pct + '%', '#4ade80', 400);
+          appendLine(card, pr.fbGood ? '⬆️ 保底正面 · ' + pr.fbGood.text(pr.fbGood.steps[pr.gi]) : '⬆️ 保底正面 · 保底池暂空', '#4ade80', 400);
         } else {
           const gd = AFFIX_DESIGN[pr.gi].good[pr.good];
-          appendLine(card, gd.icon + ' 正面 · ' + gd.name + '：' + gd.text, '#4ade80', 400);
+          appendLine(card, gd.icon + ' 正面 · ' + gd.name + '：' + affixText(gd), '#4ade80', 400);
         }
-        if (pr.bad == null) {
-          const pct = Math.round((fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount) - 1) * 100);
-          appendLine(card, '⬇️ 负面 · 保底代价：我方战机受到的伤害增加 ' + pct + '%', '#ff5a5a', 400);
+        if (pr.bad == 'skip') {   // pos_negReduce 掷中：负面词条数-1（本对无负面）
+          appendLine(card, '⬇️ 负面 · 负面词条数减少1生效：本选项无负面', '#7fd1a8', 400);
+        } else if (pr.bad == null) {
+          appendLine(card, pr.fbBad ? '⬇️ 保底负面 · ' + pr.fbBad.text(pr.fbBad.steps[pr.gi]) : '⬇️ 保底负面 · 保底池暂空', '#ff5a5a', 400);
         } else {
           const bd = AFFIX_DESIGN[pr.gi].bad[pr.bad];
           // 词条（长歌级 4:good:3 = 令雨汐）负面禁用：被禁负面划掉显示（仍可选——选中只得到正面，负面不登记不结算）
           const badOff = affixBadDisabled(pr.gi + ':bad:' + pr.bad);
-          appendLine(card, bd.icon + ' 负面 · ' + bd.name + '：' + bd.text, badOff ? '#9c6b74' : '#ff5a5a', 400, badOff);
+          appendLine(card, bd.icon + ' 负面 · ' + bd.name + '：' + affixText(bd), badOff ? '#9c6b74' : '#ff5a5a', 400, badOff);
+        }
+        if (pr.bad2) {   // neg_negAdd 掷中追加的额外负面（负面词条数+1）
+          if (pr.bad2.fbKey) {
+            appendLine(card, '⬇️ 额外负面(+1) · ' + pr.bad2.fbKey.text(pr.bad2.fbKey.steps[pr.gi]), '#ff5a5a', 400);
+          } else {
+            const bd2 = AFFIX_DESIGN[pr.bad2.gi].bad[pr.bad2.bi];
+            const bad2Off = affixBadDisabled(pr.bad2.gi + ':bad:' + pr.bad2.bi);
+            appendLine(card, bd2.icon + ' 额外负面(+1) · ' + bd2.name + '：' + affixText(bd2), bad2Off ? '#9c6b74' : '#ff5a5a', 400, bad2Off);
+          }
         }
       }
-      const rbtn = document.createElement('button');
-      rbtn.textContent = affixFlow.refreshed[oi] ? '已刷新' : '刷新此选项';
-      Object.assign(rbtn.style, {
-        marginTop: '10px', fontSize: '12px', padding: '4px 10px', cursor: affixFlow.refreshed[oi] ? 'default' : 'pointer',
-        background: 'rgba(255,255,255,0.08)', color: affixFlow.refreshed[oi] ? '#77809a' : '#dfe6f5',
-        border: '1px solid rgba(160,180,220,0.4)', borderRadius: '6px',
-      });
-      rbtn.addEventListener('click', (ev) => { ev.stopPropagation(); refreshOption(oi); });
-      card.appendChild(rbtn);
-      card.addEventListener('click', () => chooseOption(oi));
+      if (isPoem()) {   // 刷新仅诗篇难度可用（2026-11-23 用户定稿；其他难度不渲染刷新按钮）
+        const rbtn = document.createElement('button');
+        rbtn.textContent = affixFlow.refreshed[oi] ? '已刷新' : '刷新此选项';
+        Object.assign(rbtn.style, {
+          marginTop: '10px', fontSize: '12px', padding: '4px 10px', cursor: affixFlow.refreshed[oi] ? 'default' : 'pointer',
+          background: 'rgba(255,255,255,0.08)', color: affixFlow.refreshed[oi] ? '#77809a' : '#dfe6f5',
+          border: '1px solid rgba(160,180,220,0.4)', borderRadius: '6px',
+        });
+        rbtn.addEventListener('click', (ev) => { ev.stopPropagation(); refreshOption(oi); });
+        card.appendChild(rbtn);
+      }
+      card.addEventListener('click', () => pickOptionAnimated(oi, card, g));
       affixOptionBox.appendChild(card);
     });
   }
@@ -706,6 +1010,27 @@
     parent.appendChild(p);
   }
 
+  // 选择动画（2026-11-23 用户需求）：被选选项卡边框发亮 + 略微缩小，≈0.27s 后再走 chooseOption 结算
+  //（诗篇第一选重建被选选项位 / 否则关闭界面恢复游戏）。实现用 style.transition + setTimeout——
+  // 不引 element.animate（兼容 smoke 无头 DOM 桩）；pickAnim 门控动画期间的重复点击；
+  // 动画期间界面被关闭（重开 / 结算 / 重置）则丢弃本次选择
+  function pickOptionAnimated(oi, card, g) {
+    if (affixFlow.pickAnim) return;
+    const opt = affixFlow.options && affixFlow.options[oi];
+    if (!opt || opt.chosen) return;
+    affixFlow.pickAnim = true;
+    const glow = g && g.color ? g.color : '#8caaff';
+    card.style.transition = 'transform 0.26s ease, box-shadow 0.26s ease, border-color 0.26s ease';
+    card.style.transform = 'scale(0.94)';
+    card.style.borderColor = '#ffffff';
+    card.style.boxShadow = '0 0 16px ' + glow + ', 0 0 6px rgba(255,255,255,0.9)';
+    setTimeout(() => {
+      affixFlow.pickAnim = false;
+      if (!affixFlow.open) return;   // 动画期间界面已关闭 → 丢弃本次选择
+      chooseOption(oi);
+    }, 270);
+  }
+
   function openAffixSelection() {
     affixFlow.pendingT = 0;
     affixFlow.open = true;
@@ -713,6 +1038,7 @@
     //（含本会话内的选项刷新，同一次抽取规则一致；close 时清空）
     affixFlow.sessionTierW = affixTierWOverride() ? [0, 0, ...AFFIX_DRAW_WEIGHTS.slice(2)] : null;
     affixFlow.poemPickCount = 0;   // 诗篇两段式：新会话选择计数归零（两次选择：1→重建选项 / 2→关闭）
+    affixFlow.pickAnim = false;
     affixFlow.options = [buildOption(), buildOption(), buildOption()];
     affixFlow.refreshed = [false, false, false];
     state.paused = true;   // 选择期间冻结主循环（14-main 战斗块停走、渲染保留最后一帧）
@@ -732,13 +1058,17 @@
   function resetAffixRunState() {
     affixIds.length = 0;
     affixUsedIds.clear();
-    affixFallbackPosCount = 0; affixFallbackPosMul = 1;
-    affixFallbackNegCount = 0; affixFallbackNegMul = 1;
+    fbState.pos_mainGunMul = 1; fbState.pos_maxHpSum = 0; fbState.pos_wingCritSum = 0; fbState.pos_subIvMul = 1;
+    fbState.pos_dmgReduceSum = 0; fbState.pos_dropRateSum = 0; fbState.pos_negReduceSum = 0;
+    fbState.neg_negAddSum = 0; fbState.neg_dmgSum = 0; fbState.neg_firstIvMul = 1; fbState.neg_ivMul = 1;
+    fbState.neg_hpSum = 0; fbState.neg_bulletSpdSum = 0; fbState.neg_rushCdSum = 0; fbState.neg_speedSum = 0;
+    fbState.neg_undyingSum = 0; fbState.neg_deathAttackSum = 0;
+    fbRemoved.clear();
     wenjiukeAffixIds.length = 0;
     wjkDraws.length = 0;
     wjkTwinKilled.storm = false;
     wjkTwinKilled.storm2 = false;
-    jiukeDraws.length = 0;   // 酒客之王开局抽签记录（2026-11-17 新增）
+    jiukeDraws.length = 0;   // 九克之王开局抽签记录（2026-11-17 新增；2026-11-23 用户定稿更名「酒客之王」→「九克之王」）
     affixFlow.pendingT = 0;
     affixFlow.open = false;
     affixFlow.options = null;
@@ -751,6 +1081,7 @@
     affixFlow.lastBossKillPhase = -1;
     affixFlow.sessionTierW = null;
     affixFlow.poemPickCount = 0;
+    affixFlow.pickAnim = false;
     if (affixModal) affixModal.style.display = 'none';
     if (wjkModal) wjkModal.style.display = 'none';
     if (jkModal) jkModal.style.display = 'none';
@@ -772,10 +1103,11 @@
         const w = gradeExhausted(gi) ? FALLBACK_TIER_W : 1;   // 等级全占用 → 权重 ×0.4
         for (const bi of offerableBad(gi)) cands.push({ id: gi + ':bad:' + bi, w });
       }
-      if (!cands.length) {   // 全部等级 bad 槽耗尽 → 负面保底阶梯（档位递进、无限叠加）
-        affixFallbackNegMul *= fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount);
-        affixFallbackNegCount++;
-        wjkDraws.push({ kind: 'fallback' });
+      if (!cands.length) {   // 全部等级 bad 槽耗尽 → 负面保底词条池随机抽（按随机等级取档，2026-11-26 改道）
+        const def = rollFallbackEntry(FB_BAD_POOL);
+        const fgi = (Math.random() * 5) | 0;   // 池空槽无等级概念：随机 gi 取档（落地与渲染共用同值）
+        if (def) applyFallbackEntry(def, fgi);
+        wjkDraws.push({ kind: 'fallback', def, gi: fgi });
         continue;
       }
       let r = Math.random() * cands.reduce((a, c) => a + c.w, 0);
@@ -866,12 +1198,11 @@
       if (d.kind === 'id') {
         const parts = d.id.split(':');
         const t = AFFIX_DESIGN[Number(parts[0])].bad[Number(parts[2])];
-        p.textContent = t.icon + ' ' + t.name + '：' + t.text;
+        p.textContent = t.icon + ' ' + t.name + '：' + affixText(t);
         p.style.color = d.off ? '#9c6b74' : '#ff5a5a';
         if (d.off) p.style.textDecoration = 'line-through';
       } else {
-        const pct = Math.round((fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount) - 1) * 100);
-        p.textContent = '⬇️ 保底代价：我方战机受到的伤害增加 ' + pct + '%';
+        p.textContent = d.def ? '⬇️ 保底负面 · ' + d.def.text(d.def.steps[d.gi]) : '⬇️ 保底负面 · 保底池暂空';
         p.style.color = '#ff5a5a';
       }
       list.appendChild(p);
@@ -898,14 +1229,14 @@
     }).filter(Boolean);
   }
 
-  // ---------- 酒客之王开局词条（2026-11-17 用户定稿：特殊主驾驶员 01-config-loadout PILOTS.jiukewang） ----------
+  // ---------- 九克之王开局词条（2026-11-17 用户定稿：特殊主驾驶员 01-config-loadout PILOTS.jiukewang；2026-11-23 用户定稿更名「酒客之王」→「九克之王」） ----------
   // 开局立刻获得六对词条：虚象/具象/真我/诗篇/长歌五档各随机一对（该档正面1+负面1）
-  // + 第六对=特殊对整体（sp0 纵逭灭 + sp1 澪叶同时授予）。与温酒客的差异：
+  // + 第六对=特殊词条一对（2026-11-23 用户定稿：复用 rollSpecial 从纵逭灭 sp0 / 澪叶 sp1 中随机抽一对——
+  //   含手机模式澪叶过滤与一次性占用制；特殊对池空时该对缺省，仅五档各一对）。与温酒客的差异：
   //   ①抽「对」（正负各一）而非只抽负面，抽取顺序=档位序 0→4（若诗篇对抽中令雨汐 4:good:3，
   //     其后长歌负面经 affixBadDisabled 过滤不登记，先前已登记的虚象/真我负面由 affixHas 回溯失效——全局收口语义自然覆盖）；
   //   ②词条永久生效（无失效引擎）：直接登记进 affixIds（affixHas / 暂停页「当前词条」/ 图鉴快照自动跟随），
-  //     同时进占用表（后续三选一不再出现同 id，同 chooseOption 口径）；
-  //   ③特殊对整体授予为开局赠礼、非三选一抽取——不做 rollSpecial 的手机模式澪叶过滤（sp0+sp1 恒两枚）。
+  //     同时进占用表（后续三选一不再出现同 id，同 chooseOption 口径）。
   // 抽签口径同 rollWenjiukeDebuffs：占用过滤（offerableGood/Bad）+ 等级全占用降权不适用（此处逐档必抽一对，
   // 槽空直接走保底阶梯——与 rollPair 保底语义一致：good 空出保底正面 / bad 空出保底负面，无限叠加不封顶）。
   const jiukeDraws = [];   // 六对抽签展示记录（与 affixIds 分离：保底槽/被禁负面不错位，开局模态按此渲染）
@@ -918,9 +1249,12 @@
         gi,
         good: gs.length ? gs[(Math.random() * gs.length) | 0] : null,   // null = 保底正面
         bad: bs.length ? bs[(Math.random() * bs.length) | 0] : null,    // null = 保底负面
+        // 保底槽预抽定（2026-11-26 保底池重构：渲染与落地共用同一条，按本档 gi 取档）
+        fbGood: gs.length ? null : rollFallbackEntry(FB_GOOD_POOL),
+        fbBad: bs.length ? null : rollFallbackEntry(FB_BAD_POOL),
       });
     }
-    jiukeDraws.push({ sp: true });   // 第六对：特殊对整体（sp0+sp1 恒两枚，见区头注释③）
+    jiukeDraws.push({ sp: rollSpecial() });   // 第六对：特殊词条一对（rollSpecial 随机抽取——sp0/sp1 二选一，含手机模式过滤；null = 池空缺省，2026-11-23 用户定稿）
   }
 
   // 抽签 + 登记 + 立即生效（12-ui resetGame 开局钩子 openJiukeOpening 调用）。
@@ -929,26 +1263,23 @@
   function grantJiukePairs() {
     rollJiukePairs();
     for (const d of jiukeDraws) {
-      if (d.sp) {
-        for (const key of ['sp0', 'sp1']) {
-          affixIds.push(key);
-          affixUsedIds.add(key);   // 一次性占用制：特殊对选过即占（同 chooseOption）
-          applyInstant(key);
-        }
+      if (d.sp != null) {   // 第六对：特殊词条一对（2026-11-23 改一对授予）——仅登记抽中的一个（d.sp = 0|1）
+        const key = 'sp' + d.sp;
+        affixIds.push(key);
+        affixUsedIds.add(key);   // 一次性占用制：特殊对选过即占（同 chooseOption；未抽中的另一个特殊对后续三选一仍可出现）
+        applyInstant(key);
         continue;
       }
-      if (d.good == null) {   // 保底正面阶梯（档位递进、无限叠加，同 chooseOption）
-        affixFallbackPosMul *= fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount);
-        affixFallbackPosCount++;
+      if (d.good == null) {   // 保底正面：预抽定词条按本档 gi 取档落地（2026-11-26 保底池重构）
+        if (d.fbGood) applyFallbackEntry(d.fbGood, d.gi);
       } else {
         const gid = d.gi + ':good:' + d.good;
         affixIds.push(gid);
         affixUsedIds.add(gid);
         applyInstant(gid);
       }
-      if (d.bad == null) {   // 保底负面阶梯（与温酒客 5 连抽池空共用同一条阶梯）
-        affixFallbackNegMul *= fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount);
-        affixFallbackNegCount++;
+      if (d.bad == null) {   // 保底负面：预抽定词条落地（池全移除 → fbBad 为 null，跳过）
+        if (d.fbBad) applyFallbackEntry(d.fbBad, d.gi);
       } else {
         const bid = d.gi + ':bad:' + d.bad;
         affixUsedIds.add(bid);   // 占用先于禁用判定（同 chooseOption——被令雨汐禁用的负面同样算占用）
@@ -963,7 +1294,7 @@
     }
   }
 
-  // 酒客之王开局确认模态（懒创建，同 affixModal / wenjiukeModal 套路避开无头环境顶层 DOM 依赖）：
+  // 九克之王开局确认模态（懒创建，同 affixModal / wenjiukeModal 套路避开无头环境顶层 DOM 依赖）：
   // 开局展示六对词条（正绿负红同暂停菜单当前词条配色、被禁负面划掉），确认后关闭并恢复游戏
   let jkModal = null;
   const JK_COLOR = '#e0b060';   // 模态边框/标题色 = PILOTS.jiukewang.color 琥珀酒金（01-config 注释待定稿可改，此处同步改）
@@ -981,11 +1312,11 @@
       maxHeight: '86vh', overflowY: 'auto',
     });
     const title = document.createElement('div');
-    title.textContent = '酒客之王 · 开局赠礼';
+    title.textContent = '九克之王 · 开局赠礼';
     Object.assign(title.style, { fontSize: '20px', fontWeight: '700', letterSpacing: '2px', marginBottom: '6px', color: JK_COLOR });
     jkModal.appendChild(title);
     const sub = document.createElement('div');
-    sub.textContent = '开局获得六对词条 · 五个等级各一对 + 特殊对整体 · 全部本局永久生效';
+    sub.textContent = '开局获得六对词条 · 五个等级各一对 + 一对特殊词条 · 全部本局永久生效';
     Object.assign(sub.style, { fontSize: '12px', color: '#93a4c6', marginBottom: '14px' });
     jkModal.appendChild(sub);
     const list = document.createElement('div');
@@ -1012,8 +1343,8 @@
     parent.appendChild(p);
   }
 
-  // 开局流程（12-ui resetGame 末尾调用，同温酒客 openWenjiukeOpening 口径）：非酒客之王直接放行；
-  // 酒客之王先抽六对（grantJiukePairs 登记生效）并弹确认模态。BOSS 试炼 / 图鉴挑战不豁免（同温酒客无难度口径）
+  // 开局流程（12-ui resetGame 末尾调用，同温酒客 openWenjiukeOpening 口径）：非九克之王直接放行；
+  // 九克之王先抽六对（grantJiukePairs 登记生效）并弹确认模态。BOSS 试炼 / 图鉴挑战不豁免（同温酒客无难度口径）
   function openJiukeOpening(hasPilotJk) {
     if (!hasPilotJk) return false;
     grantJiukePairs();
@@ -1021,32 +1352,28 @@
     const list = document.getElementById('jiukeModalList');
     list.innerHTML = '';
     for (const d of jiukeDraws) {
-      if (d.sp) {   // 第六对：特殊对整体——两小节（纵逭灭 / 澪叶），各对名 + 正/负文案
-        appendJkHead(list, '特殊对 · 整体授予', JK_COLOR);
-        for (const key of ['sp0', 'sp1']) {
-          const sp = AFFIX_SPECIAL[Number(key.slice(2))];
-          if (!sp) continue;
-          appendJkLine(list, '【' + sp.name + '】', '#ffffff');
-          appendJkLine(list, sp.good.icon + ' 正面 · ' + sp.good.text, '#4ade80');
-          appendJkLine(list, sp.bad.icon + ' 负面 · ' + sp.bad.text, '#ff5a5a');
+      if (d.sp != null) {   // 第六对：特殊词条一对（2026-11-23 用户定稿改一对）——对名 + 正/负文案；池空时缺省跳过
+        const sp = AFFIX_SPECIAL[d.sp];
+        if (sp) {
+          appendJkHead(list, '特殊对 · ' + sp.name, JK_COLOR);
+          appendJkLine(list, sp.good.icon + ' 正面 · ' + affixText(sp.good), '#4ade80');
+          appendJkLine(list, sp.bad.icon + ' 负面 · ' + affixText(sp.bad), '#ff5a5a');
         }
         continue;
       }
       const g = AFFIX_DESIGN[d.gi];
       appendJkHead(list, g.grade, g.color);
       if (d.good == null) {
-        const pct = Math.round((fallbackStepMul(FALLBACK_POS_STEPS, affixFallbackPosCount) - 1) * 100);
-        appendJkLine(list, '⬆️ 正面 · 保底强化：我方战机本体伤害增加 ' + pct + '%', '#4ade80');
+        appendJkLine(list, d.fbGood ? '⬆️ 保底正面 · ' + d.fbGood.text(d.fbGood.steps[d.gi]) : '⬆️ 保底正面 · 保底池暂空', '#4ade80');
       } else {
         const gd = g.good[d.good];
-        appendJkLine(list, gd.icon + ' 正面 · ' + gd.name + '：' + gd.text, '#4ade80');
+        appendJkLine(list, gd.icon + ' 正面 · ' + gd.name + '：' + affixText(gd), '#4ade80');
       }
       if (d.bad == null) {
-        const pct = Math.round((fallbackStepMul(FALLBACK_NEG_STEPS, affixFallbackNegCount) - 1) * 100);
-        appendJkLine(list, '⬇️ 负面 · 保底代价：我方战机受到的伤害增加 ' + pct + '%', '#ff5a5a');
+        appendJkLine(list, d.fbBad ? '⬇️ 保底负面 · ' + d.fbBad.text(d.fbBad.steps[d.gi]) : '⬇️ 保底负面 · 保底池暂空', '#ff5a5a');
       } else {
         const bd = g.bad[d.bad];
-        appendJkLine(list, bd.icon + ' 负面 · ' + bd.name + '：' + bd.text, d.off ? '#9c6b74' : '#ff5a5a', d.off);
+        appendJkLine(list, bd.icon + ' 负面 · ' + bd.name + '：' + affixText(bd), d.off ? '#9c6b74' : '#ff5a5a', d.off);
       }
     }
     jkModal.style.display = 'flex';
@@ -1071,9 +1398,13 @@
 
 
   export {
-    AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_UNIMPLEMENTED,
+    AFFIX_DESIGN, AFFIX_SPECIAL, AFFIX_ENDING, AFFIX_UNIMPLEMENTED,
     affixHas, affixModalOpen, affixPlayerDamageMul, affixDamageClamp, affixDodgeRoll, affixMaxHpDelta,
     affixMainGunDamageMul,
+    affixPlayerFlatReduce, affixEnemyDmgAdd, affixEnemyFirstIvMul, affixEnemyIvMul, affixEnemyHpAdd,
+    affixEnemyBulletSpdAdd, affixEnemySpeedAdd, affixWingCritChance, affixDropRateAdd,
+    affixEnemyRushChance, affixEnemyUndyingChance, affixEnemyDeathAttackChance,
+    affixNegReduceChance, affixNegAddChance,
     affixNoteBossKill, affixBossShieldMul, affixBossHpMul, affixBossDmgMul, affixBossIvMul, takeAffixNextBossMods,
     affixFireIv, affixSubIv, affixWingIv, affixBerserkDur, affixBerserkDurView,
     affixCrystalShieldDur, affixCrystalExtend, affixResetShieldExt,
@@ -1081,6 +1412,8 @@
     affixFreezeNote,
     queueAffixSelection, tickAffixPending, tickAffixBerserkDrop, registerAffixBerserkDrop, resetAffixRunState,
     affixOwnedEntries,
+    affixText, affixEncyText,
+    affixInvulnAdd, affixBulwarkAbsorbDmg, affixBulwarkTakeBonus, affixBulwarkOnTrigger,
     openWenjiukeOpening, closeWenjiukeOpening, wenjiukeOpeningOpen, wenjiukeBossRoundKill,
     registerWenjiukeRemoved, wenjiukeDebuffEntries,
     openJiukeOpening, closeJiukeOpening, jiukeOpeningOpen,
